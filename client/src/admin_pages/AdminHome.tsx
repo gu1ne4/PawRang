@@ -66,7 +66,7 @@ interface CurrentUser {
 interface ModalConfig {
   type: 'info' | 'success' | 'error' | 'confirm';
   title: string;
-  message: string | JSX.Element;
+  message: string | React.ReactNode;
   onConfirm?: () => void;
   showCancel: boolean;
 }
@@ -75,7 +75,7 @@ type Role = 'Admin' | 'Veterinarian' | 'Receptionist' | 'User' | 'Moderator';
 type Department = 'General Practice' | 'Surgery' | 'Internal Medicine' | 'Dentistry' | 'Administrative Services' | 'Marketing';
 type Status = 'Active' | 'Disabled';
 
-const API_URL = 'http://localhost:3000';
+const API_URL = 'http://localhost:5000';
 
 const AdminHome: React.FC = () => {
   const navigate = useNavigate();
@@ -137,7 +137,7 @@ const AdminHome: React.FC = () => {
   const showAlert = (
     type: ModalConfig['type'], 
     title: string, 
-    message: string | JSX.Element, 
+    message: string | React.ReactNode, 
     onConfirm?: () => void, 
     showCancel: boolean = false
   ) => {
