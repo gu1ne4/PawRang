@@ -7,8 +7,9 @@ function App() {
 
   return (
     <>
-    <DoctorHome/>
     <AdminHome/>
+    <DoctorHome/>
+    
       
       
     </>
