@@ -1,6 +1,4 @@
-/* DoctorStyles.css */
-
-.tableContainer {
+.doctorTableContainer {
     margin-top: 30px;
     height: 100%;
     display: flex;

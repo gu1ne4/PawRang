@@ -179,7 +179,7 @@ const DoctorHome: React.FC = () => {
 
       {/* Main Content */}
       <div className="bodyContainer">
-        <div className="tableContainer">
+        <div className="doctorTableContainer">
           {/* Left Column */}
           <div className="leftContainer">
             {/* Doctor Profile Card */}
