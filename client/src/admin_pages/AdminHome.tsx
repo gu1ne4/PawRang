@@ -529,7 +529,7 @@ const AdminHome: React.FC = () => {
       {/* Body */}
       <div className="bodyContainer">
         <div className="topContainer">
-          <div className="subTopContainer">
+          <div className="subTopContainer" style={{paddingLeft: '30px'}}>
             <IoPeopleOutline size={23} className="blueIcon" />
             <span className="blueText">Account Overview / Employees</span>
           </div>
