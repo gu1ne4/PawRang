@@ -2,21 +2,11 @@ import React from 'react';
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '../reusable_components/NavBar';
-import './AdminStyles.css'; // Make sure this path is correct!
+import './AdminStyles.css'; 
+import { MdNotificationsNone } from "react-icons/md";
 
-// Icons (you can use react-icons or any icon library)
 import { 
-  IoHomeOutline, 
   IoPeopleOutline, 
-  IoPersonOutline, 
-  IoMedkitOutline,
-  IoCalendarClearOutline,
-  IoCalendarOutline,
-  IoTodayOutline,
-  IoTimeOutline,
-  IoDocumentTextOutline,
-  IoSettingsOutline,
-  IoLogOutOutline,
   IoSearchSharp,
   IoFilterSharp,
   IoCloseCircleSharp,
@@ -29,8 +19,6 @@ import {
   IoCheckmarkCircleOutline,
   IoCloseCircleOutline,
   IoAlertCircleOutline,
-  IoChevronUpOutline,
-  IoChevronDownOutline
 } from 'react-icons/io5';
 
 interface User {
@@ -45,8 +33,6 @@ interface User {
   employeeid?: string;
   email: string;
   role: string;
-  department?: string;
-  departmend?: string;
   status: string;
   userImage?: string;
   userimage?: string;
@@ -72,7 +58,6 @@ interface ModalConfig {
 }
 
 type Role = 'Admin' | 'Veterinarian' | 'Receptionist' | 'User' | 'Moderator';
-type Department = 'General Practice' | 'Surgery' | 'Internal Medicine' | 'Dentistry' | 'Administrative Services' | 'Marketing';
 type Status = 'Active' | 'Disabled';
 
 const API_URL = 'http://localhost:3000';
@@ -114,7 +99,6 @@ const AdminHome: React.FC = () => {
   // Filter States
   const [status, setStatus] = useState<string>("defaultStatus");
   const [role, setRole] = useState<string>("defaultRole");
-  const [department, setDepartment] = useState<string>("defaultDept");
 
   // Pagination
   const [page, setPage] = useState<number>(0);
@@ -128,7 +112,6 @@ const AdminHome: React.FC = () => {
   const [newEmpID, setNewEmpID] = useState<string>('');
   const [newEmail, setNewEmail] = useState<string>('');
   const [newRole, setNewRole] = useState<Role>('Admin');
-  const [newDept, setNewDept] = useState<Department>('Marketing');
   const [newStatus, setNewStatus] = useState<Status>('Active');
   const [userImage, setUserImage] = useState<string | null>(null);
   const [userImageBase64, setUserImageBase64] = useState<string | null>(null);
@@ -195,7 +178,6 @@ const AdminHome: React.FC = () => {
     setNewEmpID('');
     setNewEmail('');
     setNewRole('Admin');
-    setNewDept('Marketing');
     setNewStatus('Active');
     setUserImage(null);
     setUserImageBase64(null);
@@ -312,7 +294,6 @@ const AdminHome: React.FC = () => {
     const matchedRole = validRoles.find(r => r.toLowerCase() === dbRole.toLowerCase()) || 'Admin';
     setNewRole(matchedRole as Role);
 
-    setNewDept((user.department || user.departmend || 'Marketing') as Department);
     setNewStatus((user.status || 'Active') as Status);
 
     const img = user.userImage || user.userimage;
@@ -400,7 +381,6 @@ const AdminHome: React.FC = () => {
             contactnumber: newContact,
             email: newEmail,
             role: newRole,
-            department: newDept,
             employeeid: newEmpID,
             userImage: userImageBase64,
             status: newStatus,
@@ -478,7 +458,6 @@ const AdminHome: React.FC = () => {
             contactnumber: newContact,
             email: newEmail,
             role: newRole,
-            department: newDept,
             employeeid: newEmpID,
             status: newStatus,
             userImage: userImageBase64
@@ -501,12 +480,11 @@ const AdminHome: React.FC = () => {
   };
 
   // Filter Logic
-  const noMatchFilters = status === "defaultStatus" && role === "defaultRole" && department === "defaultDept";
+  const noMatchFilters = status === "defaultStatus" && role === "defaultRole";
 
   const filteredUsers = accounts.filter(user => {
     const uName = (user.fullName || user.fullname || user.username || '').toLowerCase();
     const uEmail = (user.email || '').toLowerCase();
-    const uDept = (user.department || user.departmend || '').toLowerCase();
     const uStatus = user.status || 'Active';
     const uRole = user.role || '';
 
@@ -514,9 +492,8 @@ const AdminHome: React.FC = () => {
 
     const matchesStatus = status !== "defaultStatus" ? uStatus === status : true;
     const matchesRole = role !== "defaultRole" ? uRole === role : true;
-    const matchesDept = department !== "defaultDept" ? uDept.includes(department.toLowerCase()) : true;
 
-    return matchesSearch && matchesStatus && matchesRole && matchesDept;
+    return matchesSearch && matchesStatus && matchesRole;
   });
 
   // Pagination
@@ -533,9 +510,9 @@ const AdminHome: React.FC = () => {
             <IoPeopleOutline size={23} className="blueIcon" />
             <span className="blueText">Account Overview / Employees</span>
           </div>
-          <div className="subTopContainer notificationContainer">
+          <div className="subTopContainer notificationContainer" style={{padding: 17}}>
             <button className="iconButton" onClick={fetchAccounts}>
-              <IoPeopleOutline size={21} className="blueIcon" />
+              <MdNotificationsNone size={25} className="blueIcon" />
             </button>
           </div>
         </div>
@@ -602,24 +579,10 @@ const AdminHome: React.FC = () => {
                     <option value="Receptionist">Receptionist</option>
                   </select>
 
-                  <select 
-                    value={department} 
-                    onChange={(e) => {setDepartment(e.target.value); setPage(0);}}
-                    className="filterSelect wide"
-                  >
-                    <option value="defaultDept">Department</option>
-                    <option value="General Practice">General Practice</option>
-                    <option value="Surgery">Surgery</option>
-                    <option value="Internal Medicine">Internal Medicine</option>
-                    <option value="Dentistry">Dentistry</option>
-                    <option value="Administrative Services">Administrative Services</option>
-                  </select>
-
                   <button
                     onClick={() => {
                       setStatus("defaultStatus");
                       setRole("defaultRole");
-                      setDepartment("defaultDept");
                       setSearchQuery("");
                       setPage(0);
                     }}
@@ -650,7 +613,6 @@ const AdminHome: React.FC = () => {
                   <tr>
                     <th style={{flex: 3}}>Name</th>
                     <th style={{flex: 1.1}}>Role</th>
-                    <th style={{flex: 2}}>Department</th>
                     <th style={{flex: 2}}>Contact Number</th>
                     <th style={{flex: 2.5}}>E-Mail</th>
                     <th style={{flex: 1.5}}>Status</th>
@@ -665,7 +627,6 @@ const AdminHome: React.FC = () => {
                       const uImage = user.userImage || user.userimage;
                       const uName = user.username;
                       const uContact = user.contactNumber || user.contactnumber;
-                      const uDept = user.department || user.departmend;
 
                       return (
                         <tr key={user.pk || user.id || Math.random()}>
@@ -680,7 +641,6 @@ const AdminHome: React.FC = () => {
                             </div>
                           </td>
                           <td>{user.role}</td>
-                          <td>{uDept}</td>
                           <td>{uContact}</td>
                           <td>{user.email}</td>
                           <td>
@@ -748,7 +708,7 @@ const AdminHome: React.FC = () => {
                   <img src={userImage} alt="User" className="uploadedImage" />
                 ) : (
                   <div className="uploadPlaceholder">
-                    <IoImageOutline size={18} />
+                    <IoImageOutline size={18} color='#3d67ee'/>
                     <span>Upload Image</span>
                   </div>
                 )}
@@ -861,21 +821,6 @@ const AdminHome: React.FC = () => {
                     <option value="Admin">Admin</option>
                     <option value="Veterinarian">Veterinarian</option>
                     <option value="Receptionist">Receptionist</option>
-                  </select>
-                </div>
-
-                <div className="formGroup">
-                  <label>Department</label>
-                  <select 
-                    value={newDept}
-                    onChange={(e) => setNewDept(e.target.value as Department)}
-                    className="formSelect"
-                  >
-                    <option value="General Practice">General Practice</option>
-                    <option value="Surgery">Surgery</option>
-                    <option value="Internal Medicine">Internal Medicine</option>
-                    <option value="Dentistry">Dentistry</option>
-                    <option value="Administrative Services">Administrative Services</option>
                   </select>
                 </div>
 
@@ -1025,21 +970,6 @@ const AdminHome: React.FC = () => {
                 </div>
 
                 <div className="formGroup">
-                  <label>Department</label>
-                  <select 
-                    value={newDept}
-                    onChange={(e) => setNewDept(e.target.value as Department)}
-                    className="formSelect"
-                  >
-                    <option value="General Practice">General Practice</option>
-                    <option value="Surgery">Surgery</option>
-                    <option value="Internal Medicine">Internal Medicine</option>
-                    <option value="Dentistry">Dentistry</option>
-                    <option value="Administrative Services">Administrative Services</option>
-                  </select>
-                </div>
-
-                <div className="formGroup">
                   <label>Account Status</label>
                   <div className="statusToggle">
                     <label className="switch">
@@ -1124,11 +1054,6 @@ const AdminHome: React.FC = () => {
                 <div className="detailGroup">
                   <label>Role</label>
                   <div className="detailValue">{(selectedAccount as User).role}</div>
-                </div>
-
-                <div className="detailGroup">
-                  <label>Department</label>
-                  <div className="detailValue">{(selectedAccount as User).department || (selectedAccount as User).departmend}</div>
                 </div>
 
                 <div className="detailGroup">

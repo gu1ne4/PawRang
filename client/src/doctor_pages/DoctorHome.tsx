@@ -1,22 +1,15 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import './DoctorStyles.css';
+import Calendar from 'react-calendar';
+import 'react-calendar/dist/Calendar.css';
+import './DoctorStyles.css'
+import userImg from '../assets/userAvatar.jpg';
+
 
 // Icons
 import { 
-  IoHomeOutline, 
-  IoPeopleOutline, 
-  IoPersonOutline, 
-  IoMedkitOutline,
   IoCalendarClearOutline,
   IoCalendarOutline,
-  IoTodayOutline,
-  IoTimeOutline,
-  IoDocumentTextOutline,
-  IoSettingsOutline,
-  IoLogOutOutline,
-  IoChevronUpOutline,
-  IoChevronDownOutline,
   IoCreateOutline,
   IoNotificationsOutline,
   IoPersonAddOutline,
@@ -28,7 +21,10 @@ import {
   IoDocumentTextOutline as IoDocumentText,
   IoPeopleOutline as IoPeople
 } from 'react-icons/io5';
-import Navbar from '../reusable_components/NavBar';
+
+import DoctorNavbar from '../reusable_components/DoctorNavBar';
+
+// ========== ADD ALL THESE INTERFACES HERE ==========
 
 interface Doctor {
   id: number;
@@ -63,12 +59,14 @@ interface Notification {
   color: string;
 }
 
+// ========== END OF INTERFACES ==========
+
 const DoctorHome: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   
   // State
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState<string>('');
+  const [date, setDate] = useState<Date>(new Date());
   const [showAccountDropdown, setShowAccountDropdown] = useState<boolean>(false);
   const [showAppointmentsDropdown, setShowAppointmentsDropdown] = useState<boolean>(false);
   
@@ -78,7 +76,7 @@ const DoctorHome: React.FC = () => {
     name: 'Dr. Margaret Hilario',
     username: 'margaret.hilario',
     role: 'Veterinarian',
-    image: '/assets/userImg.jpg'
+    image: userImg
   };
 
   const appointments: Appointment[] = [
@@ -131,6 +129,7 @@ const DoctorHome: React.FC = () => {
     },
   ];
 
+  // Helper functions
   const getStatusStyle = (status: string): string => {
     switch(status) {
       case 'Confirmed': return 'status-confirmed';
@@ -172,10 +171,15 @@ const DoctorHome: React.FC = () => {
     navigate('/login');
   };
   
+  // Handle calendar date change
+  const handleDateChange = (value: any) => {
+    setDate(value);
+    console.log('Selected date:', value);
+  };
 
   return (
     <div className="biContainer">
-      <Navbar currentUser={currentUser} onLogout={handleLogout} />
+      <DoctorNavbar currentUser={currentUser} onLogout={handleLogout} />
 
       {/* Main Content */}
       <div className="bodyContainer">
@@ -192,7 +196,7 @@ const DoctorHome: React.FC = () => {
                     <p className="doctorRole">{currentUser.role}</p>
                   </div>
                   <div className="profileDateTime">
-                    <div className="glassContainer">
+                    <div className="profileGlassContainer">
                       <span className="dateTimeText">
                         {formatDate()} - {formatTime()}
                       </span>
@@ -205,9 +209,10 @@ const DoctorHome: React.FC = () => {
               </div>
               <div className="profileAvatar">
                 <img 
-                  src={currentUser.image || '/assets/userImg.jpg'}
+                  src={currentUser.image || '../assets/AgsikapLogo-Temp.png'}
                   alt={currentUser.name}
                   className="doctorAvatar"
+                  style={{width: "140px", height: "140px", borderRadius: "50%", objectFit: "cover", border: "5px solid white"}}
                 />
               </div>
             </div>
@@ -261,23 +266,23 @@ const DoctorHome: React.FC = () => {
             <p className="sectionSubtitle">Shortcuts for frequently used tasks.</p>
             
             <div className="quickActions">
-              <button className="quickActionBtn" style={{ borderColor: '#3566ee' }}>
+              <button className="quickActionBtn" style={{ borderColor: '#3566ee', backgroundColor: '#3566ee13' }}>
                 <IoCalendarOutline size={30} color="#3566ee" />
                 <span style={{ color: '#3566ee' }}>Appointments</span>
               </button>
-              <button className="quickActionBtn" style={{ borderColor: '#eb8716' }}>
+              <button className="quickActionBtn" style={{ borderColor: '#eb8716', backgroundColor: '#eb871613' }}>
                 <IoNotificationsOutline size={30} color="#eb8716" />
                 <span style={{ color: '#eb8716' }}>Notifications</span>
               </button>
-              <button className="quickActionBtn" style={{ borderColor: '#c201c2' }}>
+              <button className="quickActionBtn" style={{ borderColor: '#c201c2', backgroundColor: '#c201c213' }}>
                 <IoPersonAddOutline size={30} color="#c201c2" />
                 <span style={{ color: '#c201c2' }}>Add Patient</span>
               </button>
-              <button className="quickActionBtn" style={{ borderColor: '#f12ba5' }}>
+              <button className="quickActionBtn" style={{ borderColor: '#f12ba5', backgroundColor: '#f12ba513' }}>
                 <IoDocumentText size={30} color="#f12ba5" />
                 <span style={{ color: '#f12ba5' }}>Patient Records</span>
               </button>
-              <button className="quickActionBtn" style={{ borderColor: '#ff2222' }}>
+              <button className="quickActionBtn" style={{ borderColor: '#ff2222', backgroundColor: '#ff222213' }}>
                 <IoLayersOutline size={30} color="#ff2222" />
                 <span style={{ color: '#ff2222' }}>Inventory</span>
               </button>
@@ -314,7 +319,10 @@ const DoctorHome: React.FC = () => {
 
             {/* Recent Patients */}
             <div className="patientsCard">
-              <h3 className="cardTitle">Recent Patients</h3>
+              <div className="cardHeader">
+                <h3 className="cardTitle" style={{marginBottom: '10px'}}>Recent Patients</h3>
+                <button className="viewAllBtn">View All</button>
+              </div>
 
               <div className="patientsList">
                 <div className="patientsHeader">
@@ -371,34 +379,21 @@ const DoctorHome: React.FC = () => {
               </div>
             </div>
 
-            {/* Calendar */}
+            {/* Calendar - Now using react-calendar */}
             <div className="calendarCard">
               <div className="calendarGradient">
-                <div className="calendarHeader">
-                  <button className="calendarNav" onClick={() => {}}>‹</button>
-                  <span className="calendarMonth">
-                    {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                  </span>
-                  <button className="calendarNav" onClick={() => {}}>›</button>
-                </div>
-
-                <div className="calendarWeekdays">
-                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
-                    <span key={day} className="weekday">{day}</span>
-                  ))}
-                </div>
-
-                <div className="calendarDays">
-                  {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
-                    <button
-                      key={day}
-                      className={`calendarDay ${day === new Date().getDate() ? 'today' : ''}`}
-                      onClick={() => setSelectedCalendarDate(`${day}`)}
-                    >
-                      {day}
-                    </button>
-                  ))}
-                </div>
+                <Calendar
+                  onChange={handleDateChange}
+                  value={date}
+                  tileClassName={({ date, view }) => 
+                    view === 'month' && date.toDateString() === new Date().toDateString() 
+                      ? 'today' 
+                      : ''
+                  }
+                  formatShortWeekday={(locale, date) => 
+                    ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()]
+                  }
+                />
               </div>
             </div>
           </div>

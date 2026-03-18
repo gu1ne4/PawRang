@@ -79,7 +79,7 @@ html, body {
 }
 
 .navAccountContainer {
-  padding-left: 6px;
+  padding-left: 12px;
 }
 
 .navAccount {
@@ -131,7 +131,7 @@ html, body {
   margin-right: -10px;
   justify-content: center;
   padding-top: 10px;
-  padding-left: 5px;
+  padding-left: 10px;
   margin-bottom: 10px;
   background: rgba(255, 255, 255, 0.15);
   border-radius: 12px;
@@ -156,11 +156,11 @@ html, body {
   border: none;
   color: white;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 400;
   cursor: pointer;
   width: 100%;
   text-align: left;
-  padding: 5px 0;
+  padding: 3px 0;
   margin-bottom: 10px;
 }
 
@@ -527,7 +527,6 @@ html, body {
   width: 54%;
   max-width: 800px;
   height: 90%;
-  overflow-y: auto;
   box-shadow: 0 0 18px rgba(0, 0, 0, 0.15);
 }
 

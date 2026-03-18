@@ -1,14 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import '../admin_pages/AdminStyles.css';
-import { PiUsersThree } from "react-icons/pi";
-import { TbPresentationAnalytics } from "react-icons/tb";
 
 // Icons - copy all the icons you need from your original file
 import { 
   IoHomeOutline, 
-  IoPeopleOutline, 
-  IoPersonOutline, 
   IoCalendarClearOutline,
   IoCalendarOutline,
   IoTodayOutline,
@@ -19,7 +15,6 @@ import {
   IoChevronDownOutline,
   IoDocumentTextOutline as IoDocumentText,  // For Patient Records
   IoLayersOutline,  // For Inventory
-  IoFileTrayFullOutline
 } from 'react-icons/io5';
 
 // Define the props that the Navbar will receive
@@ -35,7 +30,7 @@ interface NavbarProps {
   onLogout: () => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
+const DoctorNavbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -86,43 +81,6 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
                 <IoHomeOutline size={15} />
                 <span>Home</span>
               </button>
-            </div>
-
-            <div className="navMenuSection">
-              <button 
-                className={`navBtn ${isActive('/analytics') ? 'active' : ''}`} 
-                onClick={() => navigate('/analytics')}
-              >
-                <TbPresentationAnalytics size={15} />
-                <span>Analytics</span>
-              </button>
-            </div>
-
-            <div className="navMenuSection">
-              <div className={isActive('/accounts') || isActive('/useraccounts') ? 'selectedGlass' : ''}>
-                <button className="navBtn" onClick={() => setShowAccountDropdown(!showAccountDropdown)}>
-                  <IoPeopleOutline size={15} />
-                  <span>Account Overview</span>
-                  {showAccountDropdown ? <IoChevronUpOutline size={14} /> : <IoChevronDownOutline size={14} />}
-                </button>
-              </div>
-
-              {showAccountDropdown && (
-                <div className="navSubMenu">
-                  <div className={isActive('/accounts') ? 'subSelectedGlass' : ''}>
-                    <button className="navBtn subNavBtn" onClick={() => navigate('/accounts')}>
-                      <IoPersonOutline size={14} />
-                      <span>Employees</span>
-                    </button>
-                  </div>
-                  <div className={isActive('/useraccounts') ? 'subSelectedGlass' : ''}>
-                    <button className="navBtn subNavBtn" onClick={() => navigate('/useraccounts')}>
-                      <PiUsersThree size={18} />
-                      <span>Users</span>
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="navMenuSection">
@@ -186,16 +144,6 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
 
             <div className="navMenuSection">
               <button 
-                className={`navBtn ${isActive('/audit') ? 'active' : ''}`} 
-                onClick={() => navigate('/audit')}
-              >
-                <IoFileTrayFullOutline size={15} />
-                <span>System Audit</span>
-              </button>
-            </div>
-
-            <div className="navMenuSection">
-              <button 
                 className={`navBtn ${isActive('/settings') ? 'active' : ''}`} 
                 onClick={() => navigate('/settings')}
               >
@@ -219,4 +167,4 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
   );
 };
 
-export default Navbar;
+export default DoctorNavbar;
