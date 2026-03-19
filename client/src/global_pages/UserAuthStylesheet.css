@@ -1,0 +1,822 @@
+/* ================================
+   MOBILE FIRST (default)
+   ================================ */
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+/* ================================
+   LOGIN BUTTON ANIMATIONS
+   ================================ */
+
+@keyframes spin {
+    0%   { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes shake {
+    0%   { transform: translateX(0); }
+    15%  { transform: translateX(-7px); }
+    30%  { transform: translateX(7px); }
+    45%  { transform: translateX(-5px); }
+    60%  { transform: translateX(5px); }
+    75%  { transform: translateX(-3px); }
+    90%  { transform: translateX(3px); }
+    100% { transform: translateX(0); }
+}
+
+@keyframes checkDraw {
+    from { stroke-dashoffset: 40; }
+    to   { stroke-dashoffset: 0; }
+}
+
+@keyframes successPop {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.06); }
+    100% { transform: scale(1); }
+}
+
+/* Spinner element inside the button */
+.loginSpinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255, 255, 255, 0.35);
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+/* Animated checkmark SVG inside the button */
+.loginCheckIcon {
+    width: 22px;
+    height: 22px;
+    stroke-dasharray: 40;
+    stroke-dashoffset: 40;
+    animation: checkDraw 0.35s ease-out forwards;
+}
+
+/* State: loading */
+.loginButton--loading {
+    background: linear-gradient(50deg, #2619e2, #03038a) !important;
+    cursor: not-allowed !important;
+    opacity: 0.85;
+}
+
+/* State: success */
+.loginButton--success {
+    background: linear-gradient(50deg, #17b35a, #0d8a42) !important;
+    cursor: not-allowed !important;
+    animation: successPop 0.4s ease-out;
+}
+
+/* State: error (shake then reset) */
+.loginButton--error {
+    background: linear-gradient(50deg, #e02525, #9a0f0f) !important;
+    animation: shake 0.55s ease-out;
+}
+
+/* ================================
+   USER AUTH STYLES (Registration / Login)
+   ================================ */
+
+.main {
+    animation: fadeIn 0.3s ease-in-out;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+}
+
+#divisionContainer1 {
+    display: none;
+}
+
+.divisionContainers {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #ffffff;
+    width: 90%;
+}
+
+.headerContent {
+    margin-bottom: 20px;
+}
+
+.headerContent h2 {
+    font-size: 30px;
+    font-weight: bold;
+}
+
+.inputBox {
+    width: 90%;
+    background-color: rgb(245, 248, 255);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    border-radius: 10px;
+    padding: 32px 0;
+}
+
+.inputContainer {
+    width: 90%;
+    background-color: rgb(255, 255, 255);
+    display: flex;
+    flex-direction: column;
+    align-items: baseline;
+    justify-content: center;
+    gap: 4px;
+}
+
+.inputNameContainer {
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    width: 90%;
+}
+
+.inputNames {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    align-items: baseline;
+}
+
+.inputFieldContainer {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.inputIcons {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    color: #c0c0c0;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.inputFields {
+    width: 100%;
+    height: 42px;
+    padding: 8px 12px 8px 40px;
+    border-radius: 10px;
+    box-sizing: border-box;
+    min-width: 0;
+    border: 2px solid #c0c0c0;
+}
+
+.inputFields:focus {
+    outline: none;
+    border-color: rgb(26, 131, 243);
+}
+
+.inputLabel {
+    color: rgb(88, 88, 88);
+    font-weight: bold;
+    font-size: 16px;
+    padding-left: 5px;
+    padding-bottom: 5px;
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.button {
+    width: 60%;
+    padding: 12px 0;
+    margin-top: 16px;
+    background: linear-gradient(50deg, #2619e2, #03038a);
+    color: rgb(255, 255, 255);
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    transition: background 0.25s ease;
+    min-height: 46px;
+}
+
+.button:hover:not(:disabled) {
+    background: linear-gradient(50deg, #3d2fff, #0505b0);
+}
+
+.pageNavigator {
+    border: transparent;
+    background-color: transparent;
+}
+
+/* ================================
+   RESET PASSWORD STYLES
+   ================================ */
+
+/* FIX: width: 100% ensures the background fills the full viewport */
+.resetMain {
+    animation: fadeIn 0.3s ease-in-out;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    width: 100%;
+    background-color: #f0f4ff;
+}
+
+/* FIX: removed max-width: 520px — was capping the card at ~50% on laptop screens */
+.resetCard {
+    background-color: #ffffff;
+    border-radius: 16px;
+    padding: 40px 32px;
+    width: 90%;
+    max-width: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 4px 24px rgba(38, 25, 226, 0.08);
+}
+
+.resetHeader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.resetIconWrapper {
+    background-color: #eef0ff;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 4px;
+}
+
+.resetHeader h2 {
+    font-size: 24px;
+    font-weight: bold;
+    color: #1a1a2e;
+}
+
+.resetHeader p {
+    font-size: 14px;
+    color: rgb(88, 88, 88);
+    line-height: 1.5;
+}
+
+.resetInputContainer {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: start;
+}
+
+.resetInputLabel {
+    color: rgb(88, 88, 88);
+    font-weight: bold;
+    font-size: 14px;
+    padding-left: 5px;
+    padding-bottom: 4px;
+}
+
+.resetInputFieldContainer {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.resetInputIcon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    color: #c0c0c0;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.resetInputField {
+    width: 100%;
+    height: 44px;
+    padding: 8px 12px 8px 40px;
+    border-radius: 10px;
+    box-sizing: border-box;
+    border: 2px solid #c0c0c0;
+    font-size: 14px;
+    color: #1a1a2e;
+    transition: border-color 0.2s;
+}
+
+.resetInputField:focus {
+    outline: none;
+    border-color: #2619e2;
+}
+
+.resetInputField::placeholder {
+    color: #c0c0c0;
+}
+
+.resetButton {
+    width: 100%;
+    height: 44px;
+    margin-top: 8px;
+    background: linear-gradient(50deg, #2619e2, #03038a);
+    color: #ffffff;
+    font-weight: bold;
+    font-size: 15px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.resetButton:hover {
+    background: linear-gradient(50deg, #3d2fff, #0505b0);
+}
+
+.resetButton:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.resetPageNavigator {
+    border: none;
+    background-color: transparent;
+    color: rgb(88, 88, 88);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 4px;
+}
+
+/* ================================
+   OTP STYLES
+   ================================ */
+
+.otpContainer {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.otpBox {
+    width: 42px;
+    height: 52px;
+    text-align: center;
+    font-size: 20px;
+    font-weight: bold;
+    border: 2px solid #c0c0c0;
+    border-radius: 10px;
+    color: #1a1a2e;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+    background-color: #f9f9ff;
+}
+
+.otpBox:focus {
+    outline: none;
+    border-color: #2619e2;
+    background-color: #eef0ff;
+}
+
+.otpBoxError {
+    border-color: red !important;
+    background-color: rgb(255, 245, 245);
+}
+
+/* ================================
+   OTP TIMER & RESEND
+   ================================ */
+
+.otpTimerBadge {
+    width: 100%;
+    text-align: center;
+    font-size: 13px;
+    color: rgb(38, 25, 226);
+    background-color: #eef0ff;
+    border: 1px solid #c7caff;
+    border-radius: 8px;
+    padding: 8px 12px;
+    box-sizing: border-box;
+}
+
+.otpTimerExpired {
+    color: rgb(180, 30, 30);
+    background-color: rgb(255, 245, 245);
+    border-color: rgb(255, 104, 104);
+}
+
+.otpResendRow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    margin-top: -4px;
+}
+
+.otpResendLabel {
+    font-size: 13px;
+    color: rgb(88, 88, 88);
+}
+
+.otpResendCooldown {
+    font-size: 13px;
+    font-weight: bold;
+    color: rgb(88, 88, 88);
+}
+
+.otpResendBtn {
+    background: none;
+    border: none;
+    font-size: 13px;
+    font-weight: bold;
+    color: #2619e2;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 6px;
+    transition: background 0.2s;
+}
+
+.otpResendBtn:hover:not(:disabled) {
+    background-color: #eef0ff;
+}
+
+.otpResendBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ================================
+   SHARED VALIDATION STYLES
+   ================================ */
+
+.errorLabel {
+    color: red;
+}
+
+.errorAsterisk {
+    color: red;
+}
+
+.errorField {
+    border-color: red !important;
+}
+
+.errorMessage {
+    color: red;
+    font-size: 12px;
+    padding-left: 5px;
+    margin-top: 2px;
+}
+
+.serverErrorMessage {
+    background-color: rgb(255, 245, 245);
+    width: 80%;
+    padding: 12px 16px;
+    border: rgb(255, 104, 104) solid 2px;
+    border-radius: 10px;
+    font-size: 13px;
+    text-align: center;
+}
+
+.serverSuccessMessage {
+    background-color: rgb(248, 255, 248);
+    width: 80%;
+    padding: 12px 16px;
+    border: rgb(170, 255, 174) solid 2px;
+    border-radius: 10px;
+    font-size: 13px;
+    text-align: center;
+}
+
+.resetServerError {
+    width: 100%;
+    padding: 12px 16px;
+    background-color: rgb(255, 245, 245);
+    border: 2px solid rgb(255, 104, 104);
+    border-radius: 10px;
+    color: rgb(180, 30, 30);
+    font-size: 13px;
+}
+
+.resetServerSuccess {
+    width: 100%;
+    padding: 12px 16px;
+    background-color: rgb(245, 255, 245);
+    border: 2px solid rgb(104, 200, 104);
+    border-radius: 10px;
+    color: rgb(30, 130, 30);
+    font-size: 13px;
+}
+
+/* ================================
+   IPAD (min-width: 834px)
+   ================================ */
+
+@media (min-width: 834px) {
+    .inputBox {
+        width: 90%;
+        gap: 16px;
+        padding: 40px 0;
+    }
+
+    .inputContainer {
+        width: 85%;
+    }
+
+    .inputNameContainer {
+        width: 85%;
+        gap: 16px;
+    }
+
+    .inputFields {
+        height: 42px;
+        padding: 10px 14px 10px 40px;
+    }
+
+    .inputLabel {
+        font-size: 15px;
+    }
+
+    .form {
+        gap: 16px;
+        width: 100%;
+    }
+
+    .button {
+        width: 40%;
+        padding: 12px 0;
+    }
+
+    .serverErrorMessage {
+        width: 60%;
+        padding: 2%;
+    }
+
+    /* FIX: max-width: none prevents the cap from bleeding into wider viewports */
+    .resetCard {
+        width: 65%;
+        max-width: none;
+        padding: 48px 40px;
+    }
+
+    .resetHeader h2 {
+        font-size: 28px;
+    }
+
+    .otpBox {
+        width: 52px;
+        height: 60px;
+        font-size: 22px;
+    }
+
+    .otpContainer {
+        gap: 10px;
+    }
+}
+
+/* ================================
+   LAPTOP (min-width: 1000px)
+   ================================ */
+
+@media (min-width: 1000px) {
+    .inputBox {
+        width: 90%;
+        gap: 16px;
+        padding: 40px 0;
+    }
+
+    .inputContainer {
+        width: 85%;
+    }
+
+    .inputNameContainer {
+        width: 85%;
+        gap: 16px;
+    }
+
+    .inputFields {
+        height: 42px;
+        padding: 10px 14px 10px 40px;
+    }
+
+    .inputLabel {
+        font-size: 15px;
+    }
+
+    .form {
+        gap: 16px;
+        width: 100%;
+    }
+
+    .button {
+        width: 40%;
+        padding: 12px 0;
+    }
+
+    .imageBackground {
+        border-radius: 30px;
+        background: linear-gradient(50deg, #2619e2, #03038a);
+        display: flex;
+        justify-content: center;
+        align-items: end;
+    }
+
+    #divisionContainer1 {
+        display: flex;
+        height: 96%;
+        margin: 20px;
+    }
+
+    .placeholders {
+        color: white;
+        display: flex;
+        flex-direction: column;
+        text-align: left;
+        padding: 10%;
+    }
+
+    .placeholders h2 {
+        color: white;
+        font-size: 50px;
+        font-weight: bold;
+    }
+
+    /* FIX: max-width: none */
+    .resetCard {
+        width: 55%;
+        max-width: none;
+        padding: 48px 40px;
+    }
+
+    .otpBox {
+        width: 56px;
+        height: 64px;
+        font-size: 24px;
+    }
+
+    .otpContainer {
+        gap: 12px;
+    }
+
+    .resetButton {
+        width: 60%;
+    }
+}
+
+/* ================================
+   DESKTOP (min-width: 1280px)
+   ================================ */
+
+@media (min-width: 1280px) {
+    .main {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+    }
+
+    .divisionContainers {
+        background-color: #ffffff;
+        width: 95%;
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+
+    .headerContent {
+        text-align: left;
+        width: 70%;
+        padding-bottom: 20px;
+    }
+
+    .headerContent h2 {
+        font-size: 40px;
+    }
+
+    .imageBackground {
+        height: 100%;
+        width: 100%;
+    }
+
+    .inputBox {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 90%;
+        gap: 10px;
+        padding: 40px 0;
+        background-color: #ffffff;
+    }
+
+    .form {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+    }
+
+    .inputContainer {
+        width: 70%;
+        background-color: #ffffff;
+    }
+
+    .inputNameContainer {
+        width: 70%;
+        gap: 20px;
+    }
+
+    .inputFields {
+        height: 44px;
+        padding: 12px 16px 12px 40px;
+        font-size: 16px;
+    }
+
+    .inputLabel {
+        font-size: 15px;
+    }
+
+    .button {
+        font-size: 16px;
+        width: 30%;
+        padding: 10px;
+        margin-top: 20px;
+        background: linear-gradient(50deg, #2619e2, #03038a);
+    }
+
+    .serverErrorMessage {
+        width: 50%;
+        padding: 2%;
+    }
+
+    #loginButton {
+        margin: 20px;
+    }
+
+    /* FIX: max-width: none */
+    .resetCard {
+        width: 40%;
+        max-width: none;
+        padding: 56px 48px;
+        gap: 20px;
+    }
+
+    .resetHeader h2 {
+        font-size: 32px;
+    }
+
+    .resetHeader p {
+        font-size: 15px;
+    }
+
+    .resetInputField {
+        font-size: 15px;
+    }
+
+    .resetButton {
+        font-size: 16px;
+        width: 50%;
+    }
+
+    .otpBox {
+        width: 60px;
+        height: 68px;
+        font-size: 26px;
+        border-radius: 12px;
+    }
+
+    .otpContainer {
+        gap: 14px;
+    }
+}

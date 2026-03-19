@@ -1,3 +1,12 @@
+/* 
+  Breakpoints:
+  Desktop  → default (no query)
+  Laptop   → max-width: 1024px
+  Mobile   → max-width: 640px
+*/
+
+
+
 :root {
   --text: #6b6375;
   --text-h: #08060d;
@@ -10,13 +19,13 @@
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
-
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
 
-  font: 18px/145% var(--sans);
+  font: 18px/145% var(--sans);       /* Desktop */
   letter-spacing: 0.18px;
+  color-scheme: light;
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
@@ -24,8 +33,13 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  @media (max-width: 1024px) {
+  @media (max-width: 1024px) {       /* Laptop */
     font-size: 16px;
+  }
+
+  @media (max-width: 640px) {        /* Mobile */
+    font-size: 14px;
+    letter-spacing: 0.12px;
   }
 }
 
@@ -41,23 +55,33 @@
     --accent-border: rgba(192, 132, 252, 0.5);
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+      rgba(0, 0, 0, 0.4) 0 10px 15px -3px,
+      rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
   }
-
   #social .button-icon {
     filter: invert(1) brightness(2);
   }
 }
 
 #root {
-  width: 1126px;
+  width: 1920px;
   max-width: 100%;
   margin: 0 auto;
+  text-align: center;
   border-inline: 1px solid var(--border);
   min-height: 100svh;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+
+  @media (max-width: 1024px) {       /* Laptop */
+    width: 100%;
+  }
+
+  @media (max-width: 640px) {        /* Mobile */
+    width: 100%;
+    border-inline: none;             /* removes side borders on small screens */
+  }
 }
 
 body {
@@ -72,23 +96,39 @@ h2 {
 }
 
 h1 {
-  font-size: 56px;
+  font-size: 56px;                   /* Desktop */
   letter-spacing: -1.68px;
   margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
+
+  @media (max-width: 1024px) {       /* Laptop */
+    font-size: 40px;
+    letter-spacing: -1.2px;
+    margin: 24px 0;
+  }
+
+  @media (max-width: 640px) {        /* Mobile */
+    font-size: 28px;
+    letter-spacing: -0.84px;
+    margin: 16px 0;
   }
 }
+
 h2 {
-  font-size: 24px;
+  font-size: 24px;                   /* Desktop */
   line-height: 118%;
   letter-spacing: -0.24px;
   margin: 0 0 8px;
-  @media (max-width: 1024px) {
+
+  @media (max-width: 1024px) {       /* Laptop */
     font-size: 20px;
   }
+
+  @media (max-width: 640px) {        /* Mobile */
+    font-size: 17px;
+    letter-spacing: -0.1px;
+  }
 }
+
 p {
   margin: 0;
 }
@@ -102,15 +142,17 @@ code,
 }
 
 code {
-  font-size: 15px;
+  font-size: 15px;                   /* Desktop */
   line-height: 135%;
   padding: 4px 8px;
   background: var(--code-bg);
-}
 
-input,
-select,
-textarea {
-  color: #000;
-  background: #fff;
+  @media (max-width: 1024px) {       /* Laptop */
+    font-size: 14px;
+  }
+
+  @media (max-width: 640px) {        /* Mobile */
+    font-size: 13px;
+    padding: 3px 6px;
+  }
 }

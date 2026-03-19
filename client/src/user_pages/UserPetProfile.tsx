@@ -264,22 +264,22 @@ const UserPetProfile: React.FC = () => {
   ]);
 
   // Load user session
-  useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const session = localStorage.getItem('userSession');
-        if (session) {
-          setCurrentUser(JSON.parse(session));
-        } else {
-          setCurrentUser(null);
-          navigate('/');
-        }
-      } catch (error) {
-        console.error("Failed to load user session", error);
-      }
-    };
-    loadUser();
-  }, [navigate]);
+  // useEffect(() => {
+  //   const loadUser = async () => {
+  //     try {
+  //       const session = localStorage.getItem('userSession');
+  //       if (session) {
+  //         setCurrentUser(JSON.parse(session));
+  //       } else {
+  //         setCurrentUser(null);
+  //         navigate('/');
+  //       }
+  //     } catch (error) {
+  //       console.error("Failed to load user session", error);
+  //     }
+  //   };
+  //   loadUser();
+  // }, [navigate]);
 
   // Helper functions
   const showAlert = (
