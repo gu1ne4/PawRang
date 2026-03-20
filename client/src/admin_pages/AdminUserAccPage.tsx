@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
+// Supabase imports
+import { supabase } from '../supabaseClient'; 
+import { createClient } from '@supabase/supabase-js';
+
 // Web icons equivalent to Ionicons
 import { 
   IoHomeOutline, IoPeopleOutline, IoChevronDownOutline, IoChevronUpOutline,
@@ -11,14 +15,11 @@ import {
   IoImageOutline, IoCamera, IoEye, IoPersonCircleOutline
 } from 'react-icons/io5';
 
-// Import your merged CSS file
 import './AdminStyles.css';
 
-// Using standard imports for Vite images
 import logoImg from '../assets/AgsikapLogo-Temp.png';
 import defaultUserImg from '../assets/userImg.jpg';
 
-// --- TYPESCRIPT INTERFACES ---
 interface CurrentUser {
   id?: string | number;
   pk?: string | number;
@@ -40,18 +41,11 @@ export default function UserAccPage() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Highlighting the correct Sidebar Item
   const isActive = location.pathname === '/UserAccounts'; 
 
-  // ==========================================
-  //  STATE MANAGEMENT
-  // ==========================================
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [accounts, setAccounts] = useState<any[]>([]); 
   const [loading, setLoading] = useState(true);
-  
-  // ✅ API URL (Web)
-  const API_URL = 'http://localhost:5000';
 
   // UI State
   const [searchVisible, setSearchVisible] = useState(false);
@@ -60,7 +54,7 @@ export default function UserAccPage() {
   const [addAccountVisible, setAddAccountVisible] = useState(false);
   const [editAccountVisible, setEditAccountVisible] = useState(false);
   const [viewAccountVisible, setViewAccountVisible] = useState(false);
-  const [showAccountDropdown, setShowAccountDropdown] = useState(true); // Default open since we are inside it
+  const [showAccountDropdown, setShowAccountDropdown] = useState(true); 
   const [searchHovered, setSearchHovered] = useState(false);
   const [filterHovered, setFilterHovered] = useState(false);
   const [togglingStatus, setTogglingStatus] = useState(false);
@@ -73,13 +67,12 @@ export default function UserAccPage() {
   const [page, setPage] = useState(0);
   const itemsPerPage = 8;
 
-  const [showAppointmentsDropdown, setShowAppointmentsDropdown] = useState(false);
-
   // Form Data
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null); // Changed to string for Supabase UUIDs
   const [selectedAccount, setSelectedAccount] = useState<any>({});
   const [newUsername, setNewUsername] = useState(''); 
-  const [newFullName, setNewFullName] = useState('');
+  const [newFirstName, setNewFirstName] = useState(''); // Split name for DB
+  const [newLastName, setNewLastName] = useState('');   // Split name for DB
   const [newContact, setNewContact] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newStatus, setNewStatus] = useState('Active'); 
@@ -87,31 +80,20 @@ export default function UserAccPage() {
   const [userImageBase64, setUserImageBase64] = useState<string | null>(null); 
   const [status, setStatus] = useState("defaultStatus");
   
-  // Status toggle tracking
   const [statusToggleAccount, setStatusToggleAccount] = useState<any>(null);
 
-  // Reference for hidden file input (Image Upload)
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // ==========================================
-  //  HELPERS
-  // ==========================================
 
   const showAlert = (type: 'info' | 'success' | 'error' | 'confirm', title: string, message: string | React.ReactNode, onConfirm: (() => void) | null = null, showCancel = false) => {
     setModalConfig({ type, title, message, onConfirm, showCancel });
     setModalVisible(true);
   };
 
-  // Replace useFocusEffect with useEffect depending on location.pathname
   useEffect(() => {
     const loadUser = () => {
       try {
         const session = localStorage.getItem('userSession');
-        if (session) {
-          setCurrentUser(JSON.parse(session));
-        } else {
-          setCurrentUser(null);
-        }
+        if (session) setCurrentUser(JSON.parse(session));
       } catch (error) {
         console.error("Failed to load user session", error);
       }
@@ -119,15 +101,20 @@ export default function UserAccPage() {
     loadUser();
   }, [location.pathname]);
 
+  // ✨ SUPABASE: Fetch Patients
   const fetchAccounts = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/patients`);
-      const data = await res.json();
-      setAccounts(data);
-    } catch (error) {
+      const { data, error } = await supabase
+        .from('patient_account')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setAccounts(data || []);
+    } catch (error: any) {
       console.error(error);
-      showAlert('error', 'Error', 'Failed to fetch patient data.');
+      showAlert('error', 'Error', error.message || 'Failed to fetch patient data.');
     } finally {
       setLoading(false);
     }
@@ -139,7 +126,8 @@ export default function UserAccPage() {
 
   const resetForm = () => {
     setNewUsername(''); 
-    setNewFullName(''); 
+    setNewFirstName(''); 
+    setNewLastName(''); 
     setNewContact(''); 
     setNewEmail(''); 
     setNewStatus('Active');
@@ -151,13 +139,14 @@ export default function UserAccPage() {
   const handleCancel = (mode: 'create' | 'edit') => {
     let hasChanges = false;
     if (mode === 'create') {
-      hasChanges = !!(newFullName || newContact || newEmail || userImage);
+      hasChanges = !!(newFirstName || newLastName || newContact || newEmail || userImage);
     } else if (mode === 'edit') {
-      const original = accounts.find(a => a.pk === editingId);
+      const original = accounts.find(a => a.id === editingId);
       if (original) {
         if (newUsername !== original.username || 
-            newFullName !== (original.fullName || original.fullname) ||
-            newContact !== (original.contactNumber || original.contactnumber) ||
+            newFirstName !== (original.firstName || '') ||
+            newLastName !== (original.lastName || '') ||
+            newContact !== (original.contact_number || '') ||
             newEmail !== original.email || 
             newStatus !== original.status) hasChanges = true;
       }
@@ -173,7 +162,7 @@ export default function UserAccPage() {
   };
 
   const handleStatusToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const nextStatus = e.target.checked ? 'Active' : 'Disabled';
+    const nextStatus = e.target.checked ? 'Active' : 'Inactive';
     const messageJSX = (
       <span>
         Are you sure you want to <strong style={{color: nextStatus === 'Active' ? 'green' : 'red'}}>{nextStatus === 'Active' ? 'ACTIVATE' : 'DEACTIVATE'}</strong> this account?
@@ -183,64 +172,42 @@ export default function UserAccPage() {
   };
 
   const handleStatusToggleFromTable = (account: any, e: React.ChangeEvent<HTMLInputElement>) => {
-    const nextStatus = e.target.checked ? 'Active' : 'Disabled';
+    // 👇 Change to 'Inactive'
+    const nextStatus = e.target.checked ? 'Active' : 'Disabled'; 
     const action = nextStatus === 'Active' ? 'ACTIVATE' : 'DEACTIVATE';
-    const accountName = account.fullName || account.fullname || account.username;
+    const accountName = `${account.firstName || ''} ${account.lastName || ''}`.trim() || account.username;
     
     const messageJSX = (
       <div>
         <p style={{marginBottom: '8px'}}>
           Are you sure you want to <strong style={{color: nextStatus === 'Active' ? 'green' : 'red'}}>{action}</strong> this account?
         </p>
-        <p style={{fontStyle: 'italic', color: '#666'}}>
-          Account: {accountName}
-        </p>
+        <p style={{fontStyle: 'italic', color: '#666'}}>Account: {accountName}</p>
       </div>
     );
     
     setStatusToggleAccount({ ...account, newStatus: nextStatus });
-    
-    showAlert('confirm', 'Confirm Status Change', messageJSX, () => {
-      updateAccountStatus(account.pk, nextStatus);
-    }, true);
+    showAlert('confirm', 'Confirm Status Change', messageJSX, () => updateAccountStatus(account.id, nextStatus), true);
   };
 
-  const updateAccountStatus = async (accountId: number, newStatus: string) => {
+  // ✨ SUPABASE: Update Status Quick Toggle
+  // ✨ SUPABASE: Update Status Quick Toggle
+  const updateAccountStatus = async (accountId: string, newStatus: string) => {
     setTogglingStatus(true);
     try {
-      const account = accounts.find(a => a.pk === accountId);
-      if (!account) {
-        showAlert('error', 'Error', 'Account not found');
-        setTogglingStatus(false);
-        return;
-      }
+      const { error } = await supabase
+        .from('patient_account')
+        // 👇 THE FIX: Force it to lowercase just for the database!
+        .update({ status: newStatus.toLowerCase() }) 
+        .eq('id', accountId);
       
-      const updateData = {
-        username: account.username,
-        fullname: account.fullName || account.fullname,
-        contactnumber: account.contactNumber || account.contactnumber,
-        email: account.email,
-        status: newStatus,
-        userimage: account.userimage || null
-      };
+      if (error) throw error;
       
-      const res = await fetch(`${API_URL}/patients/${accountId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updateData),
+      showAlert('success', 'Success', `Account has been ${newStatus === 'Active' ? 'activated' : 'deactivated'} successfully!`, () => {
+        fetchAccounts(); 
       });
-      
-      const responseData = await res.json();
-      
-      if (res.ok) {
-        showAlert('success', 'Success', `Account has been ${newStatus === 'Active' ? 'activated' : 'deactivated'} successfully!`, () => {
-          fetchAccounts(); 
-        });
-      } else {
-        showAlert('error', 'Update Failed', responseData.error || 'Failed to update account status');
-      }
-    } catch (error) {
-      showAlert('error', 'Network Error', 'Could not connect to the server.');
+    } catch (error: any) {
+      showAlert('error', 'Update Failed', error.message || 'Could not connect to the server.');
     } finally {
       setTogglingStatus(false);
       setStatusToggleAccount(null);
@@ -249,29 +216,13 @@ export default function UserAccPage() {
 
   const handleLogoutPress = () => {
     showAlert('confirm', 'Log Out', 'Are you sure you want to log out?', async () => {
-      try {
-        if (currentUser) {
-          await fetch(`${API_URL}/logout`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: currentUser.id || currentUser.pk, 
-              userType: 'EMPLOYEE',   
-              username: currentUser.username || currentUser.fullName,
-              role: currentUser.role
-            })
-          });
-        }
-      } catch (error) {
-        console.error("Logout audit failed:", error);
-      }
+      await supabase.auth.signOut();
       localStorage.removeItem('userSession'); 
       setCurrentUser(null);
-      navigate('/Login'); 
+      navigate('/login', { replace: true }); 
     }, true);
   };
 
-  // Image Picking Logic for Web
   const triggerImagePicker = () => {
     if (fileInputRef.current) fileInputRef.current.click();
   };
@@ -282,96 +233,110 @@ export default function UserAccPage() {
       const reader = new FileReader();
       reader.onloadend = () => {
         const resultString = reader.result as string;
-        setUserImage(resultString); // Full data URI for preview
-        // Extract just the base64 part for the backend
+        setUserImage(resultString); 
         setUserImageBase64(resultString.split(',')[1]); 
       };
       reader.readAsDataURL(file);
     }
   };
 
+  // ✨ SUPABASE: Create Patient Account
   const handleSaveAccount = async () => {
-    if (!newFullName || !newContact || !newEmail) {
-      showAlert('error', 'Missing Information', 'Please fill in Full Name, Contact, and E-Mail.'); return;
+    if (!newFirstName || !newLastName || !newContact || !newEmail) {
+      showAlert('error', 'Missing Information', 'Please fill in First Name, Last Name, Contact, and E-Mail.'); return;
     }
-    if (newFullName.length < 5) { showAlert('error', 'Invalid Input', 'Full Name must be at least 5 characters.'); return; }
-    if (newContact.length < 7) { showAlert('error', 'Invalid Input', 'Contact Number must be at least 7 digits.'); return; }
-    if (newEmail.length < 6) { showAlert('error', 'Invalid Input', 'Email must be at least 6 characters.'); return; }
 
-    const isDuplicate = accounts.some(acc => acc.email.toLowerCase() === newEmail.toLowerCase());
-    if (isDuplicate) { showAlert('error', 'Duplicate Entry', 'This email is already registered.'); return; }
-
-    const dateCreated = new Date().toLocaleDateString('en-US'); 
+    // Auto-generate a dummy password and username
+    const generatedPassword = `TempPass${Math.floor(Math.random() * 10000)}!`;
+    const dummyUsername = `user_${newFirstName.toLowerCase()}${Math.floor(Math.random() * 1000)}`;
 
     try {
-      const res = await fetch(`${API_URL}/patient-register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fullName: newFullName,
-          contactNumber: newContact,
-          email: newEmail,
-          userImage: userImageBase64,
-          status: newStatus,
-          dateCreated: dateCreated
-        }),
+      // Use Admin Auth so the current Admin doesn't get logged out!
+      const supabaseAdminAuth = createClient(
+        import.meta.env.VITE_SUPABASE_URL,
+        import.meta.env.VITE_SUPABASE_ANON_KEY,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+      );
+
+      // Create them in Supabase Auth
+      const { data: authData, error: authError } = await supabaseAdminAuth.auth.signUp({
+        email: newEmail,
+        password: generatedPassword,
+        options: {
+          emailRedirectTo: `${window.location.origin}/login` // Or wherever they should go
+        }
       });
 
-      const data = await res.json();
-      if (res.ok) {
-        setAddAccountVisible(false);
-        showAlert('success', 'Success', 'Patient Account Created Successfully!', () => { fetchAccounts(); resetForm(); });
-      } else {
-        showAlert('error', 'Failed', data.error || 'Registration failed');
-      }
-    } catch (e) { showAlert('error', 'Network Error', 'Could not connect to the server.'); }
+      if (authError) throw authError;
+
+      // Insert their profile details into patient_account
+      const { error: dbError } = await supabase
+        .from('patient_account')
+        .insert([{
+          id: authData.user?.id, 
+          username: dummyUsername, 
+          firstName: newFirstName.trim(), 
+          lastName: newLastName.trim(),  
+          contact_number: newContact,
+          email: newEmail,
+          role: 'User',
+          status: newStatus,
+        }]);
+
+      if (dbError) throw dbError;
+
+      setAddAccountVisible(false);
+      showAlert('success', 'Success', 'Patient Account Created! An email has been sent to them.', () => { 
+        fetchAccounts(); 
+        resetForm(); 
+      });
+
+    } catch (e: any) { 
+      showAlert('error', 'Failed', e.message || 'Could not connect to the server.'); 
+    }
   };
 
   const openEditModal = (user: any) => {
-    setEditingId(user.pk);
-    setNewUsername(user.username);
-    setNewFullName(user.fullName || user.fullname);
-    setNewContact((user.contactNumber || user.contactnumber || '').toString());
-    setNewEmail(user.email);
-    setNewStatus(user.status);
+    setEditingId(user.id);
+    setNewUsername(user.username || '');
+    setNewFirstName(user.firstName || '');
+    setNewLastName(user.lastName || '');
+    setNewContact((user.contact_number || '').toString());
+    setNewEmail(user.email || '');
+    setNewStatus(user.status || 'Active');
     
-    const img = user.userImage || user.userimage;
-    setUserImage(img);
+    // NOTE: If you add image support to patient_accounts, map it here
+    setUserImage(null);
     setUserImageBase64(null); 
     setEditAccountVisible(true);
   };
 
+  // ✨ SUPABASE: Update Patient Account
   const handleUpdateAccount = async () => {
-    if (newFullName.length < 5) { showAlert('error', 'Invalid Input', 'Full Name must be at least 5 characters.'); return; }
-    if (newContact.length < 7) { showAlert('error', 'Invalid Input', 'Contact Number must be at least 7 digits.'); return; }
-    if (newEmail.length < 6) { showAlert('error', 'Invalid Input', 'Email must be at least 6 characters.'); return; }
-
-    const isDuplicate = accounts.some(acc => 
-      acc.pk !== editingId && acc.email.toLowerCase() === newEmail.toLowerCase()
-    );
-    if (isDuplicate) { showAlert('error', 'Duplicate Entry', 'This email is already in use by another patient.'); return; }
+    if (!newFirstName || !newLastName || !newContact || !newEmail) {
+      showAlert('error', 'Missing Information', 'Please fill out all fields.'); return;
+    }
 
     try {
-      const res = await fetch(`${API_URL}/patients/${editingId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: newUsername,
-          fullName: newFullName,
-          contactNumber: newContact,
+      const { error } = await supabase
+        .from('patient_account')
+        .update({
+          firstName: newFirstName.trim(),
+          lastName: newLastName.trim(),
+          contact_number: newContact,
           email: newEmail,
-          status: newStatus,
-          userImage: userImageBase64
-        }),
-      });
+          status: newStatus
+        })
+        .eq('id', editingId);
 
-      if (res.ok) {
-        setEditAccountVisible(false);
-        showAlert('success', 'Success', 'Patient Updated Successfully!', () => { fetchAccounts(); resetForm(); });
-      } else {
-        showAlert('error', 'Update Failed', 'Failed to update patient information.');
-      }
-    } catch (e) { showAlert('error', 'Network Error', 'Could not connect to the server.'); }
+      if (error) throw error;
+
+      setEditAccountVisible(false);
+      showAlert('success', 'Success', 'Patient Updated Successfully!', () => { fetchAccounts(); resetForm(); });
+      
+    } catch (e: any) { 
+      showAlert('error', 'Update Failed', e.message || 'Could not connect to the server.'); 
+    }
   };
 
   const handleViewDetails = (user: any) => {
@@ -379,8 +344,10 @@ export default function UserAccPage() {
     setViewAccountVisible(true);
   };
 
+  // ✨ Filtering logic updated for First/Last names
   const filteredUsers = accounts.filter(u => {
-    const name = (u.fullName || u.fullname || u.username || '').toLowerCase();
+    const fullName = `${u.firstName || ''} ${u.lastName || ''}`.trim().toLowerCase();
+    const name = (fullName || u.username || '').toLowerCase();
     const mail = (u.email || '').toLowerCase();
     const matchesSearch = name.includes(searchQuery.toLowerCase()) || mail.includes(searchQuery.toLowerCase());
     const matchesStatus = status !== "defaultStatus" ? u.status === status : true;
@@ -389,9 +356,6 @@ export default function UserAccPage() {
 
   const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
 
-  // ==========================================
-  //  RENDER
-  // ==========================================
   return (
     <div className="biContainer">
       
@@ -567,19 +531,26 @@ export default function UserAccPage() {
                 </thead>
                 <tbody>
                   {filteredUsers.length > 0 ? (
-                      filteredUsers.slice(page * itemsPerPage, (page + 1) * itemsPerPage).map(u => (
-                        <tr key={u.pk || u.id || Math.random()}>
+                      filteredUsers.slice(page * itemsPerPage, (page + 1) * itemsPerPage).map(u => {
+                        // Display correct name from the database
+                        const displayName = `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.username;
+                        
+                        return (
+                        <tr key={u.id || Math.random()}>
                           <td>
                               <div className="userCell">
-                              <img src={u.userImage ? u.userImage : defaultUserImg} className="userAvatar" alt="avatar" />
-                              <span className="tableFont">{u.fullName || u.fullname || u.username}</span>
+                              <img src={defaultUserImg} className="userAvatar" alt="avatar" />
+                              <span className="tableFont">{displayName}</span>
                               </div>
                           </td>
-                          <td style={{textAlign: 'center'}} className="tableFont">{u.contactNumber || u.contactnumber}</td>
+                          <td style={{textAlign: 'center'}} className="tableFont">{u.contact_number}</td>
                           <td style={{textAlign: 'center'}} className="tableFont">{u.email}</td>
                           <td style={{textAlign: 'center'}}>
-                              <div className={`statusBadge ${u.status === 'Active' ? 'activeBadge' : 'inactiveBadge'}`}>
-                                  <span className={`statusText ${u.status === 'Active' ? 'activeText' : ''}`}>{u.status}</span>
+                              <div className={`statusBadge ${u.status?.toLowerCase() === 'active' ? 'activeBadge' : 'inactiveBadge'}`}>
+                                  <span className={`statusText ${u.status?.toLowerCase() === 'active' ? 'activeText' : ''}`}>
+                                    {/* Capitalizes the first letter */}
+                                    {u.status ? u.status.charAt(0).toUpperCase() + u.status.slice(1) : 'Active'}
+                                  </span>
                               </div>
                           </td>
                           <td style={{textAlign: 'center'}}>
@@ -592,26 +563,26 @@ export default function UserAccPage() {
                               <label className="switch" style={{ margin: 0 }}>
                                 <input 
                                   type="checkbox" 
-                                  checked={u.status === 'Active'} 
+                                  // Fixes the toggle switch so it reads "active" properly
+                                  checked={u.status?.toLowerCase() === 'active'} 
                                   onChange={(e) => handleStatusToggleFromTable(u, e)}
-                                  disabled={togglingStatus && statusToggleAccount?.pk === u.pk}
+                                  disabled={togglingStatus && statusToggleAccount?.id === u.id}
                                 />
                                 <span className="slider"></span>
                               </label>
-                              {togglingStatus && statusToggleAccount?.pk === u.pk && (
+                              {togglingStatus && statusToggleAccount?.id === u.id && (
                                 <div className="spinner" style={{width: '15px', height: '15px', marginLeft: '5px', borderWidth: '2px'}}></div>
                               )}
                             </div>
                           </td>
                         </tr>
-                      ))
+                      )})
                 ) : (
                   <tr><td colSpan={6} className="noData">No patients found</td></tr>
                 )}
                 </tbody>
               </table>
 
-              {/* Web Pagination */}
               {totalPages > 0 && (
                 <div className="pagination">
                   <button className="paginationBtn" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>Previous</button>
@@ -624,7 +595,6 @@ export default function UserAccPage() {
         </div>
       </div>
 
-      {/* Hidden File Input for Image Uploading */}
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -654,16 +624,29 @@ export default function UserAccPage() {
                <div className="modalForm">
                   <div className="formColumn">
                      <div className="formGroup">
-                        <label>Full Name</label>
+                        <label>First Name</label>
                         <input 
                           type="text"
                           className="formInput" 
-                          value={newFullName} 
-                          onChange={(e) => setNewFullName(e.target.value.replace(/[^a-zA-Z ,.'-]/g, ''))} 
-                          placeholder="Enter Full Name" 
-                          maxLength={60}
+                          value={newFirstName} 
+                          onChange={(e) => setNewFirstName(e.target.value.replace(/[^a-zA-Z ,.'-]/g, ''))} 
+                          placeholder="Enter First Name" 
+                          maxLength={30}
                         />
                      </div>
+                     <div className="formGroup">
+                        <label>Last Name</label>
+                        <input 
+                          type="text"
+                          className="formInput" 
+                          value={newLastName} 
+                          onChange={(e) => setNewLastName(e.target.value.replace(/[^a-zA-Z ,.'-]/g, ''))} 
+                          placeholder="Enter Last Name" 
+                          maxLength={30}
+                        />
+                     </div>
+                  </div>
+                  <div className="formColumn">
                      <div className="formGroup">
                         <label>Contact Number</label>
                         <input 
@@ -675,8 +658,6 @@ export default function UserAccPage() {
                           maxLength={15} 
                         />
                      </div>
-                  </div>
-                  <div className="formColumn">
                      <div className="formGroup">
                         <label>E-Mail</label>
                         <input 
@@ -698,80 +679,71 @@ export default function UserAccPage() {
         </div>
       )}
 
-      {/* EDIT PATIENT MODAL */}
+      {/* VIEW PATIENT MODAL */}
       {editAccountVisible && (
         <div className="modalOverlay">
             <div className="modalContainer">
-               <div className="modalHeader"><h2>Edit Patient Account</h2></div>
+               <div className="modalHeader"><h2>Account Details</h2></div>
+               
                <div className="imageUploadSection">
-                  <button onClick={triggerImagePicker} className="uploadBtn">
-                     {userImage ? (
-                       <img src={userImage} className="uploadedImage" alt="Upload Preview" />
-                     ) : (
-                       <div className="uploadPlaceholder">
-                         <IoImageOutline size={18} color="#3d67ee"/>
-                         <span>Upload Image</span>
-                       </div>
-                     )}
-                     <div className="cameraIcon"><IoCamera size={16} /></div>
-                  </button>
+                  <div className="uploadBtn" style={{ cursor: 'default', border: 'none', background: 'transparent' }}>
+                     <img 
+                       src={userImage ? userImage : defaultUserImg} 
+                       className="uploadedImage" 
+                       alt="Patient Avatar" 
+                       style={{ width: '90px', height: '90px', borderRadius: '50%', objectFit: 'cover' }}
+                     />
+                  </div>
                </div>
+               
                <div className="modalForm">
                   <div className="formColumn">
                      <div className="formGroup">
                         <label>Username</label>
-                        <input type="text" className="formInput" value={newUsername} disabled style={{backgroundColor: '#f5f5f5', color: '#888'}} />
+                        <input type="text" className="formInput" value={newUsername} readOnly style={{ cursor: 'text' }} />
                      </div>
                      <div className="formGroup">
-                        <label>Full Name</label>
-                        <input 
-                          type="text"
-                          className="formInput" 
-                          value={newFullName} 
-                          onChange={(e) => setNewFullName(e.target.value.replace(/[^a-zA-Z ,.'-]/g, ''))} 
-                          placeholder="Enter Full Name" 
-                          maxLength={60}
-                        />
+                        <label>First Name</label>
+                        <input type="text" className="formInput" value={newFirstName} readOnly style={{ cursor: 'text' }} />
                      </div>
                      <div className="formGroup">
-                        <label>Contact Number</label>
-                        <input 
-                          type="text"
-                          className="formInput" 
-                          value={newContact} 
-                          onChange={(e) => setNewContact(e.target.value.replace(/[^0-9-]/g, ''))} 
-                          placeholder="Enter Contact" 
-                          maxLength={15} 
-                        />
+                        <label>Last Name</label>
+                        <input type="text" className="formInput" value={newLastName} readOnly style={{ cursor: 'text' }} />
                      </div>
                   </div>
+                  
                   <div className="formColumn">
                      <div className="formGroup">
-                        <label>E-Mail</label>
-                        <input 
-                          type="email"
-                          className="formInput" 
-                          value={newEmail} 
-                          onChange={(e) => setNewEmail(e.target.value)} 
-                          placeholder="Enter E-mail" 
-                          maxLength={60}
-                        />
+                        <label>Contact Number</label>
+                        <input type="text" className="formInput" value={newContact} readOnly style={{ cursor: 'text' }} />
                      </div>
-                     <div className="formGroup" style={{ marginTop: '20px' }}>
-                        <label style={{ marginBottom: '15px' }}>Account Status</label>
-                        <div className="statusToggle">
-                           <label className="switch">
-                             <input type="checkbox" checked={newStatus === 'Active'} onChange={handleStatusToggle} />
-                             <span className="slider"></span>
-                           </label>
-                           <span className={newStatus === 'Active' ? 'statusActive' : 'statusInactive'}> {newStatus} </span>
+                     <div className="formGroup">
+                        <label>E-Mail</label>
+                        <input type="email" className="formInput" value={newEmail} readOnly style={{ cursor: 'text' }} />
+                     </div>
+                     
+                     <div className="formGroup" style={{ marginTop: '10px' }}>
+                        <label style={{ marginBottom: '12px', display: 'block' }}>Status</label>
+                        <div 
+                          className={`statusBadge ${newStatus?.toLowerCase() === 'active' ? 'activeBadge' : 'inactiveBadge'}`} 
+                          style={{ display: 'inline-flex', padding: '6px 16px' }}
+                        >
+                           <span className={newStatus?.toLowerCase() === 'active' ? 'activeText' : ''}>
+                             {/* Capitalizes the first letter so 'active' becomes 'Active' */}
+                             {newStatus ? newStatus.charAt(0).toUpperCase() + newStatus.slice(1) : 'Active'}
+                           </span>
                         </div>
                      </div>
                   </div>
                </div>
-               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '30px', gap: '15px' }}>
-                  <button className="cancelBtn" onClick={() => handleCancel('edit')}>Cancel</button>
-                  <button className="submitBtn gradientBtn" onClick={handleUpdateAccount}>Save Changes</button>
+               
+               <div style={{ display: 'flex', justifyContent: 'center', marginTop: '30px' }}>
+                  <button className="cancelBtn" style={{ width: '100%', maxWidth: '200px' }} onClick={() => {
+                    setEditAccountVisible(false);
+                    resetForm();
+                  }}>
+                    Close
+                  </button>
                </div>
             </div>
         </div>
@@ -791,9 +763,14 @@ export default function UserAccPage() {
             </div>
             <div className="modalForm">
               <div className="formColumn">
-                <div className="detailGroup"><label>Full Name</label><div className="detailValue">{selectedAccount.fullName || selectedAccount.fullname}</div></div>
-                <div className="detailGroup"><label>Contact Number</label><div className="detailValue">{selectedAccount.contactNumber || selectedAccount.contactnumber}</div></div>
-                <div className="detailGroup"><label>Account Creation Date</label><div className="detailValue">{selectedAccount.dateCreated || selectedAccount.datecreated || 'N/A'}</div></div>
+                <div className="detailGroup">
+                  <label>Full Name</label>
+                  <div className="detailValue">
+                    {`${selectedAccount.firstName || ''} ${selectedAccount.lastName || ''}`.trim() || selectedAccount.username}
+                  </div>
+                </div>
+                <div className="detailGroup"><label>Contact Number</label><div className="detailValue">{selectedAccount.contact_number}</div></div>
+                <div className="detailGroup"><label>Account Creation Date</label><div className="detailValue">{selectedAccount.created_at ? new Date(selectedAccount.created_at).toLocaleDateString() : 'N/A'}</div></div>
               </div>
               <div className="formColumn">
                 <div className="detailGroup"><label>E-Mail</label><div className="detailValue">{selectedAccount.email}</div></div>

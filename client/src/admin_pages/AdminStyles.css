@@ -1255,3 +1255,42 @@ input:checked + .slider:before {
     border: 1px solid #3d67ee;
     box-shadow: 0px 0px 12px rgba(0, 0, 0, 0.10);
 }
+
+/* Custom Scrollbar for Doctors List */
+.doctors-scroll-container::-webkit-scrollbar {
+    width: 14px;
+}
+
+.doctors-scroll-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.doctors-scroll-container::-webkit-scrollbar-thumb {
+    background-color: #999;
+    border-radius: 10px;
+    border: 4px solid white; /* This creates the "floating" padding effect */
+}
+
+.doctors-scroll-container::-webkit-scrollbar-thumb:hover {
+    background-color: #777;
+}
+
+/* Up Arrow */
+.doctors-scroll-container::-webkit-scrollbar-button:single-button:vertical:decrement {
+    height: 16px;
+    width: 16px;
+    background-position: center;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' fill='rgb(153, 153, 153)'><polygon points='50,20 10,80 90,80'/></svg>");
+    background-repeat: no-repeat;
+    background-size: 10px;
+}
+
+/* Down Arrow */
+.doctors-scroll-container::-webkit-scrollbar-button:single-button:vertical:increment {
+    height: 16px;
+    width: 16px;
+    background-position: center;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' fill='rgb(153, 153, 153)'><polygon points='10,20 90,20 50,80'/></svg>");
+    background-repeat: no-repeat;
+    background-size: 10px;
+}

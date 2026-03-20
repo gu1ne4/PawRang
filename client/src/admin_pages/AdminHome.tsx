@@ -1,12 +1,12 @@
-import React from 'react';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '../reusable_components/NavBar';
-import './AdminStyles.css'; // Make sure this path is correct!
+import { supabase } from '../supabaseClient'; 
+import { createClient } from '@supabase/supabase-js';
+import './AdminStyles.css';
 
-// Icons (you can use react-icons or any icon library)
+// Icons
 import { 
-  IoHomeOutline, 
   IoPeopleOutline, 
   IoPersonOutline, 
   IoMedkitOutline,
@@ -29,34 +29,23 @@ import {
   IoCheckmarkCircleOutline,
   IoCloseCircleOutline,
   IoAlertCircleOutline,
-  IoChevronUpOutline,
-  IoChevronDownOutline
 } from 'react-icons/io5';
 
 interface User {
-  pk?: number;
-  id?: number;
+  id?: string; 
   username: string;
-  fullName?: string;
-  fullname?: string;
-  contactNumber?: string;
-  contactnumber?: string;
-  employeeID?: string;
-  employeeid?: string;
+  first_name?: string;
+  last_name?: string;
+  contact_number?: string;
   email: string;
   role: string;
-  department?: string;
-  departmend?: string;
   status: string;
-  userImage?: string;
-  userimage?: string;
-  dateCreated?: string;
-  datecreated?: string;
+  employee_image?: string; 
+  created_at?: string;
 }
 
 interface CurrentUser {
-  id?: number;
-  pk?: number;
+  id?: string;
   username: string;
   fullName?: string;
   role: string;
@@ -71,16 +60,12 @@ interface ModalConfig {
   showCancel: boolean;
 }
 
-type Role = 'Admin' | 'Veterinarian' | 'Receptionist' | 'User' | 'Moderator';
-type Department = 'General Practice' | 'Surgery' | 'Internal Medicine' | 'Dentistry' | 'Administrative Services' | 'Marketing';
+type Role = 'Admin' | 'Veterinarian' | 'Receptionist' | 'Moderator';
 type Status = 'Active' | 'Disabled';
-
-const API_URL = 'http://localhost:5000';
 
 const AdminHome: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const isActive = location.pathname === '/accounts';
 
   // State
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -91,8 +76,6 @@ const AdminHome: React.FC = () => {
   const [searchVisible, setSearchVisible] = useState<boolean>(false);
   const [filterVisible, setFilterVisible] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [showAccountDropdown, setShowAccountDropdown] = useState<boolean>(false);
-  const [showAppointmentsDropdown, setShowAppointmentsDropdown] = useState<boolean>(false);
   const [searchHovered, setSearchHovered] = useState<boolean>(false);
   const [filterHovered, setFilterHovered] = useState<boolean>(false);
 
@@ -114,21 +97,19 @@ const AdminHome: React.FC = () => {
   // Filter States
   const [status, setStatus] = useState<string>("defaultStatus");
   const [role, setRole] = useState<string>("defaultRole");
-  const [department, setDepartment] = useState<string>("defaultDept");
 
   // Pagination
   const [page, setPage] = useState<number>(0);
   const itemsPerPage = 8;
 
-  // Form States
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [newUsername, setNewUsername] = useState<string>('');
-  const [newFullName, setNewFullName] = useState<string>('');
+  // Form States 
+  const [editingId, setEditingId] = useState<string | null>(null); 
+  const [newUsername, setNewUsername] = useState<string>(''); // Kept for Edit Modal
+  const [newFirstName, setNewFirstName] = useState<string>('');
+  const [newLastName, setNewLastName] = useState<string>('');
   const [newContact, setNewContact] = useState<string>('');
-  const [newEmpID, setNewEmpID] = useState<string>('');
   const [newEmail, setNewEmail] = useState<string>('');
   const [newRole, setNewRole] = useState<Role>('Admin');
-  const [newDept, setNewDept] = useState<Department>('Marketing');
   const [newStatus, setNewStatus] = useState<Status>('Active');
   const [userImage, setUserImage] = useState<string | null>(null);
   const [userImageBase64, setUserImageBase64] = useState<string | null>(null);
@@ -145,27 +126,35 @@ const AdminHome: React.FC = () => {
     setModalVisible(true);
   };
 
-  // Load current user from localStorage
   const loadCurrentUser = async (): Promise<void> => {
     try {
       const session = localStorage.getItem('userSession');
+      
       if (session) {
-        const user = JSON.parse(session);
-        console.log('Parsed user data:', user);
-        setCurrentUser(user);
+        setCurrentUser(JSON.parse(session));
+      } else {
+        // 🛑 TEMPORARILY DISABLED: The Bouncer is asleep
+        // navigate('/login', { replace: true });
+        console.log("No session found, but letting you stay for testing.");
       }
+      
     } catch (error) {
       console.log('Error loading user session', error);
+      // 🛑 TEMPORARILY DISABLED: The Bouncer is asleep
+      // navigate('/login', { replace: true });
     }
   };
 
-  // Fetch accounts
   const fetchAccounts = async (): Promise<void> => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/accounts`);
-      const data = await res.json();
-      setAccounts(data);
+      const { data, error } = await supabase
+        .from('employee_accounts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setAccounts(data || []);
     } catch (error) {
       console.error(error);
       showAlert('error', 'Error', 'Failed to fetch account data.');
@@ -179,8 +168,8 @@ const AdminHome: React.FC = () => {
     loadCurrentUser();
   }, []);
 
-  const generateRandomPassword = (length: number = 10): string => {
-    const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#";
+  const generateRandomPassword = (length: number = 12): string => {
+    const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
     let retVal = "";
     for (let i = 0, n = charset.length; i < length; ++i) {
       retVal += charset.charAt(Math.floor(Math.random() * n));
@@ -190,65 +179,46 @@ const AdminHome: React.FC = () => {
 
   const resetForm = (): void => {
     setNewUsername('');
-    setNewFullName('');
+    setNewFirstName('');
+    setNewLastName('');
     setNewContact('');
-    setNewEmpID('');
     setNewEmail('');
     setNewRole('Admin');
-    setNewDept('Marketing');
     setNewStatus('Active');
     setUserImage(null);
     setUserImageBase64(null);
     setEditingId(null);
   };
 
-  // Logout Handler
   const handleLogoutPress = (): void => {
     showAlert('confirm', 'Log Out', 'Are you sure you want to log out?', async () => {
-      try {
-        if (currentUser && (currentUser.id || currentUser.pk)) {
-          await fetch(`${API_URL}/logout`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: currentUser.id || currentUser.pk,
-              userType: 'EMPLOYEE',
-              username: currentUser.username || currentUser.fullName,
-              role: currentUser.role
-            })
-          });
-        }
-      } catch (error) {
-        console.log("Logout audit failed:", error);
-      }
-
+      await supabase.auth.signOut();
       localStorage.removeItem('userSession');
-      navigate('/login');
+      
+      // Add { replace: true } right here!
+      navigate('/login', { replace: true }); 
     }, true);
   };
 
-  // Cancel Handler
   const handleCancel = (mode: 'create' | 'edit'): void => {
     let hasUnsavedChanges = false;
+
     if (mode === 'create') {
-      hasUnsavedChanges = !!newUsername || !!newFullName || !!newContact || !!newEmpID || !!newEmail || !!userImage;
+      // If creating, just check if they typed anything at all
+      hasUnsavedChanges = !!newUsername || !!newFirstName || !!newLastName || !!newContact || !!newEmail || !!userImage;
     } else if (mode === 'edit') {
-      const original = accounts.find(a => (a.pk === editingId || a.id === editingId));
-      if (original) {
-        const orgName = original.fullName || original.fullname || '';
-        const orgContact = (original.contactNumber || original.contactnumber || '').toString();
-        const orgEmpID = (original.employeeID || original.employeeid || '').toString();
-        
-        if (
-          newUsername !== original.username ||
-          newFullName !== orgName ||
-          newContact !== orgContact ||
-          newEmpID !== orgEmpID ||
-          newEmail !== original.email ||
-          userImage !== (original.userImage || original.userimage)
-        ) {
-          hasUnsavedChanges = true;
-        }
+      // If editing, find the original user data and compare it to the text boxes
+      const originalUser = accounts.find(u => u.id === editingId);
+      
+      if (originalUser) {
+        hasUnsavedChanges = 
+          newUsername !== (originalUser.username || '') ||
+          newFirstName !== (originalUser.first_name || '') ||
+          newLastName !== (originalUser.last_name || '') ||
+          newContact !== (originalUser.contact_number || '') ||
+          newEmail !== (originalUser.email || '') ||
+          newRole !== (originalUser.role || 'Admin') ||
+          newStatus !== (originalUser.status || 'Active');
       }
     }
 
@@ -272,13 +242,11 @@ const AdminHome: React.FC = () => {
         Are you sure you want to <span style={{fontWeight: 'bold', color: nextStatus === 'Active' ? 'green' : 'red'}}>{nextStatus === 'Active' ? 'ACTIVATE' : 'DEACTIVATE'}</span> this account?
       </span>
     );
-
     showAlert('confirm', 'Confirm Status Change', messageJSX, () => {
       setNewStatus(nextStatus as Status);
     }, true);
   };
 
-  // Image Picker (simplified for web)
   const pickImage = async (): Promise<void> => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -290,7 +258,7 @@ const AdminHome: React.FC = () => {
         reader.onload = (event) => {
           const base64 = event.target?.result as string;
           setUserImage(base64);
-          setUserImageBase64(base64.split(',')[1]); // Remove data URL prefix
+          setUserImageBase64(base64.split(',')[1]); 
         };
         reader.readAsDataURL(file);
       }
@@ -298,235 +266,151 @@ const AdminHome: React.FC = () => {
     input.click();
   };
 
-  // Open Edit Modal
   const openEditModal = (user: User): void => {
-    setEditingId(user.pk || user.id || null);
+    setEditingId(user.id || null);
     setNewUsername(user.username || '');
-    setNewFullName(user.fullName || user.fullname || '');
-    setNewContact((user.contactNumber || user.contactnumber || '').toString());
-    setNewEmpID((user.employeeID || user.employeeid || '').toString());
+    setNewFirstName(user.first_name || '');
+    setNewLastName(user.last_name || '');
+    setNewContact(user.contact_number || '');
     setNewEmail(user.email || '');
-
-    const validRoles: Role[] = ['Admin', 'User', 'Moderator', 'Veterinarian', 'Receptionist'];
-    const dbRole = user.role || 'Admin';
-    const matchedRole = validRoles.find(r => r.toLowerCase() === dbRole.toLowerCase()) || 'Admin';
-    setNewRole(matchedRole as Role);
-
-    setNewDept((user.department || user.departmend || 'Marketing') as Department);
-    setNewStatus((user.status || 'Active') as Status);
-
-    const img = user.userImage || user.userimage;
+    setNewRole((user.role as Role) || 'Admin');
+    setNewStatus((user.status as Status) || 'Active');
+    
+    let img = user.employee_image;
+    if (img && !img.startsWith('data:image')) img = `data:image/jpeg;base64,${img}`;
     setUserImage(img || null);
-    setUserImageBase64(null);
-
+    
     setEditAccountVisible(true);
   };
 
-  // View Details
   const handleViewDetails = (user: User): void => {
     setSelectedAccount(user);
     setViewAccountVisible(true);
   };
 
-  // Create Account
+  // CREATE ACCOUNT LOGIC (Updated for Dummy Username)
   const handleSavePress = async (): Promise<void> => {
-    // Validation
-    if (!newUsername || !newFullName || !newContact || !newEmpID || !newEmail) {
+    // Removed newUsername validation
+    if (!newFirstName || !newLastName || !newContact || !newEmail) {
       showAlert('error', 'Missing Information', 'Please fill in all required fields.');
       return;
     }
 
-    if (newUsername.length < 4) {
-      showAlert('error', 'Invalid Input', 'Username must be at least 4 characters.');
-      return;
-    }
-    if (newFullName.length < 5) {
-      showAlert('error', 'Invalid Input', 'Full Name must be at least 5 characters.');
-      return;
-    }
-    if (newContact.length < 13) {
-      showAlert('error', 'Invalid Input', 'Contact Number must be valid (0000-000-0000).');
-      return;
-    }
-    if (newEmpID.length < 5) {
-      showAlert('error', 'Invalid Input', 'Employee ID must be at least 5 digits.');
-      return;
-    }
-    if (newEmail.length < 6) {
-      showAlert('error', 'Invalid Input', 'Email must be at least 6 characters.');
-      return;
-    }
-
-    // Email uniqueness
-    const emailExists = accounts.some(acc => 
-      (acc.email || '').toLowerCase() === newEmail.trim().toLowerCase()
-    );
-    
-    if (emailExists) {
-      showAlert('error', 'Email In Use', 'This email address is already associated with another account.');
-      return;
-    }
-
-    // Duplicate check
-    const isDuplicate = accounts.some(acc => {
-      const accUsername = acc.username || '';
-      const accEmployeeID = String(acc.employeeID || acc.employeeid || '');
+    showAlert('confirm', 'Create Account', 'Are you sure you want to register this new employee?', async () => {
       
-      return (
-        accUsername.toLowerCase() === newUsername.toLowerCase() ||
-        accEmployeeID === newEmpID.toString()
-      );
-    });
-    
-    if (isDuplicate) {
-      showAlert('error', 'Duplicate Entry', 'Username or Employee ID already exists.');
-      return;
-    }
-
-    // Confirmation & API call
-    showAlert('confirm', 'Create Account', 'Are you sure you want to register this new account?', async () => {
-      const today = new Date();
-      const dateCreated = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}/${today.getFullYear()}`;
+      // Auto-generate a dummy password and username
       const generatedPassword = generateRandomPassword();
-
+      const dummyUsername = `temp_${newFirstName.toLowerCase()}${Math.floor(Math.random() * 10000)}`;
+      
       try {
-        const res = await fetch(`${API_URL}/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: newUsername,
-            password: generatedPassword,
-            fullname: newFullName,
-            contactnumber: newContact,
-            email: newEmail,
-            role: newRole,
-            department: newDept,
-            employeeid: newEmpID,
-            userImage: userImageBase64,
-            status: newStatus,
-            dateCreated: dateCreated
-          }),
+        const supabaseAdminAuth = createClient(
+          import.meta.env.VITE_SUPABASE_URL,
+          import.meta.env.VITE_SUPABASE_ANON_KEY,
+          { auth: { autoRefreshToken: false, persistSession: false } }
+        );
+
+        const { data: authData, error: authError } = await supabaseAdminAuth.auth.signUp({
+          email: newEmail,
+          password: generatedPassword,
+          options: {
+            emailRedirectTo: `${window.location.origin}/update-account` 
+          }
         });
 
-        const data = await res.json();
-        if (res.ok) {
-          setAddAccountVisible(false);
-          showAlert('success', 'Success', 'Account Registered Successfully!', () => {
-            fetchAccounts();
-            resetForm();
-          });
-        } else {
-          const errorMessage = (data.error && data.error.includes('Email')) 
-            ? 'This email address is already in use.' 
-            : (data.error || 'Failed to create account.');
-          
-          showAlert('error', 'Registration Failed', errorMessage);
-        }
-      } catch (error) {
-        showAlert('error', 'Network Error', 'Could not connect to the server.');
+        if (authError) throw authError;
+
+        const { error: dbError } = await supabase
+          .from('employee_accounts')
+          .insert([{
+            id: authData.user?.id, 
+            username: dummyUsername, // Saving the dummy username
+            first_name: newFirstName.trim(), 
+            last_name: newLastName.trim(),   
+            contact_number: newContact,
+            email: newEmail,
+            role: newRole,
+            status: newStatus,
+            employee_image: userImageBase64,
+            is_initial_login: true
+          }]);
+
+        if (dbError) throw dbError;
+
+        setAddAccountVisible(false);
+        showAlert('success', 'Success', 'Account Created! A setup link has been emailed to the employee to configure their username and password.', () => {
+          fetchAccounts();
+          resetForm();
+        });
+
+      } catch (error: any) {
+        showAlert('error', 'Registration Failed', error.message || 'Failed to create account.');
       }
     }, true);
   };
 
-  // Update Account
+  // UPDATE ACCOUNT LOGIC
   const handleUpdateAccount = async (): Promise<void> => {
-    // Validation
-    if (newUsername.length < 4) {
-      showAlert('error', 'Invalid Input', 'Username must be at least 4 characters.');
-      return;
-    }
-    if (newFullName.length < 5) {
-      showAlert('error', 'Invalid Input', 'Full Name must be at least 5 characters.');
-      return;
-    }
-    if (newContact.length < 13) {
-      showAlert('error', 'Invalid Input', 'Contact Number must be valid (0000-000-0000).');
-      return;
-    }
-    if (newEmpID.length < 5) {
-      showAlert('error', 'Invalid Input', 'Employee ID must be at least 5 digits.');
-      return;
-    }
-    if (newEmail.length < 6) {
-      showAlert('error', 'Invalid Input', 'Email must be at least 6 characters.');
+    if (!newUsername || !newFirstName || !newLastName || !newContact || !newEmail) {
+      showAlert('error', 'Missing Information', 'Please fill in all required fields.');
       return;
     }
 
-    // Duplicate check
-    const isDuplicate = accounts.some(acc => 
-      (acc.pk !== editingId && acc.id !== editingId) && 
-      (
-        (acc.username || '').toLowerCase() === (newUsername || '').toLowerCase() || 
-        String(acc.employeeID || acc.employeeid || '') === String(newEmpID || '')
-      )
-    );
-
-    if (isDuplicate) {
-      showAlert('error', 'Duplicate Entry', 'Username or Employee ID already exists.');
-      return;
-    }
-
-    // Confirmation
     showAlert('confirm', 'Save Changes', 'Are you sure you want to save changes to this account?', async () => {
       try {
-        const res = await fetch(`${API_URL}/accounts/${editingId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: newUsername,
-            fullname: newFullName,
-            contactnumber: newContact,
-            email: newEmail,
-            role: newRole,
-            department: newDept,
-            employeeid: newEmpID,
-            status: newStatus,
-            userImage: userImageBase64
-          }),
-        });
+        const updateData: any = {
+          username: newUsername,
+          first_name: newFirstName.trim(), 
+          last_name: newLastName.trim(),   
+          contact_number: newContact,
+          email: newEmail,
+          role: newRole,
+          status: newStatus,
+        };
 
-        if (res.ok) {
-          setEditAccountVisible(false);
-          showAlert('success', 'Success', 'Account Updated Successfully!', () => {
-            fetchAccounts();
-            resetForm();
-          });
-        } else {
-          showAlert('error', 'Update Failed', 'Failed to update account information.');
+        if (userImageBase64) {
+          updateData.employee_image = userImageBase64;
         }
-      } catch (error) {
-        showAlert('error', 'Network Error', 'Could not connect to the server.');
+
+        const { error } = await supabase
+          .from('employee_accounts')
+          .update(updateData)
+          .eq('id', editingId);
+
+        if (error) throw error;
+
+        setEditAccountVisible(false);
+        showAlert('success', 'Success', 'Account Updated Successfully!', () => {
+          fetchAccounts();
+          resetForm();
+        });
+      } catch (error: any) {
+        showAlert('error', 'Update Failed', error.message || 'Failed to update account information.');
       }
     }, true);
   };
 
-  // Filter Logic
-  const noMatchFilters = status === "defaultStatus" && role === "defaultRole" && department === "defaultDept";
+  const noMatchFilters = status === "defaultStatus" && role === "defaultRole";
 
   const filteredUsers = accounts.filter(user => {
-    const uName = (user.fullName || user.fullname || user.username || '').toLowerCase();
+    const fullName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase();
+    const uName = (user.username || fullName).toLowerCase();
     const uEmail = (user.email || '').toLowerCase();
-    const uDept = (user.department || user.departmend || '').toLowerCase();
     const uStatus = user.status || 'Active';
     const uRole = user.role || '';
 
     const matchesSearch = uName.includes(searchQuery.toLowerCase()) || uEmail.includes(searchQuery.toLowerCase());
-
     const matchesStatus = status !== "defaultStatus" ? uStatus === status : true;
     const matchesRole = role !== "defaultRole" ? uRole === role : true;
-    const matchesDept = department !== "defaultDept" ? uDept.includes(department.toLowerCase()) : true;
 
-    return matchesSearch && matchesStatus && matchesRole && matchesDept;
+    return matchesSearch && matchesStatus && matchesRole;
   });
 
-  // Pagination
   const paginatedUsers = filteredUsers.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
   const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
 
   return (
     <div className="biContainer">
         <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
-      {/* Body */}
       <div className="bodyContainer">
         <div className="topContainer">
           <div className="subTopContainer" style={{paddingLeft: '30px'}}>
@@ -540,7 +424,6 @@ const AdminHome: React.FC = () => {
           </div>
         </div>
 
-        {/* Table Container */}
         <div className="tableContainer">
           <div className="tableToolbar">
             <div className="searchFilterSection">
@@ -602,24 +485,10 @@ const AdminHome: React.FC = () => {
                     <option value="Receptionist">Receptionist</option>
                   </select>
 
-                  <select 
-                    value={department} 
-                    onChange={(e) => {setDepartment(e.target.value); setPage(0);}}
-                    className="filterSelect wide"
-                  >
-                    <option value="defaultDept">Department</option>
-                    <option value="General Practice">General Practice</option>
-                    <option value="Surgery">Surgery</option>
-                    <option value="Internal Medicine">Internal Medicine</option>
-                    <option value="Dentistry">Dentistry</option>
-                    <option value="Administrative Services">Administrative Services</option>
-                  </select>
-
                   <button
                     onClick={() => {
                       setStatus("defaultStatus");
                       setRole("defaultRole");
-                      setDepartment("defaultDept");
                       setSearchQuery("");
                       setPage(0);
                     }}
@@ -649,12 +518,11 @@ const AdminHome: React.FC = () => {
                 <thead>
                   <tr>
                     <th style={{flex: 3}}>Name</th>
-                    <th style={{flex: 1.1}}>Role</th>
-                    <th style={{flex: 2}}>Department</th>
+                    <th style={{flex: 1.5}}>Role</th>
                     <th style={{flex: 2}}>Contact Number</th>
                     <th style={{flex: 2.5}}>E-Mail</th>
                     <th style={{flex: 1.5}}>Status</th>
-                    <th style={{flex: 1}}>View Details</th>
+                    <th style={{flex: 1}}>View</th>
                     <th style={{flex: 1}}>Edit</th>
                   </tr>
                 </thead>
@@ -662,13 +530,16 @@ const AdminHome: React.FC = () => {
                   {paginatedUsers.length > 0 ? (
                     paginatedUsers.map(user => {
                       const uStatus = user.status || 'Active';
-                      const uImage = user.userImage || user.userimage;
                       const uName = user.username;
-                      const uContact = user.contactNumber || user.contactnumber;
-                      const uDept = user.department || user.departmend;
+                      const uContact = user.contact_number;
+                      
+                      let uImage = user.employee_image;
+                      if (uImage && !uImage.startsWith('data:image')) {
+                          uImage = `data:image/jpeg;base64,${uImage}`;
+                      }
 
                       return (
-                        <tr key={user.pk || user.id || Math.random()}>
+                        <tr key={user.id || Math.random()}>
                           <td>
                             <div className="userCell">
                               <img 
@@ -680,7 +551,6 @@ const AdminHome: React.FC = () => {
                             </div>
                           </td>
                           <td>{user.role}</td>
-                          <td>{uDept}</td>
                           <td>{uContact}</td>
                           <td>{user.email}</td>
                           <td>
@@ -703,7 +573,7 @@ const AdminHome: React.FC = () => {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={8} className="noData">
+                      <td colSpan={7} className="noData">
                         {noMatchFilters ? "Showing all users (no filters applied)" : "No users found"}
                       </td>
                     </tr>
@@ -719,7 +589,7 @@ const AdminHome: React.FC = () => {
                 >
                   Previous
                 </button>
-                <span className="paginationInfo">{page + 1} of {totalPages}</span>
+                <span className="paginationInfo">{page + 1} of {totalPages === 0 ? 1 : totalPages}</span>
                 <button 
                   onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
                   disabled={page >= totalPages - 1}
@@ -733,15 +603,13 @@ const AdminHome: React.FC = () => {
         </div>
       </div>
 
-      {/* Add Account Modal */}
+      {/* ADD ACCOUNT MODAL */}
       {addAccountVisible && (
         <div className="modalOverlay">
           <div className="modalContainer">
             <div className="modalHeader">
               <h2>Create Account</h2>
             </div>
-
-            {/* Upload Image */}
             <div className="imageUploadSection">
               <button className="uploadBtn" onClick={pickImage}>
                 {userImage ? (
@@ -757,151 +625,86 @@ const AdminHome: React.FC = () => {
                 </div>
               </button>
             </div>
-
-            {/* Form */}
             <div className="modalForm">
+              
+              {/* Left Column */}
               <div className="formColumn">
                 <div className="formGroup">
-                  <label>Username</label>
+                  <label>First Name</label>
                   <input 
-                    type="text"
-                    placeholder="Enter Username"
-                    maxLength={30}
-                    value={newUsername}
-                    onChange={(e) => setNewUsername(e.target.value)}
-                    className="formInput"
+                    type="text" 
+                    placeholder="Enter First Name" 
+                    maxLength={30} 
+                    value={newFirstName} 
+                    onChange={(e) => setNewFirstName(e.target.value.replace(/[^a-zA-Z ,.'-]/g, ''))} 
+                    className="formInput" 
                   />
                 </div>
-
                 <div className="formGroup">
-                  <label>Full Name</label>
+                  <label>Last Name</label>
                   <input 
-                    type="text"
-                    placeholder="Enter Full Name"
-                    maxLength={60}
-                    value={newFullName}
-                    onChange={(e) => {
-                      const cleaned = e.target.value.replace(/[^a-zA-Z ,.'-]/g, '');
-                      setNewFullName(cleaned);
-                    }}
-                    className="formInput"
+                    type="text" 
+                    placeholder="Enter Last Name" 
+                    maxLength={30} 
+                    value={newLastName} 
+                    onChange={(e) => setNewLastName(e.target.value.replace(/[^a-zA-Z ,.'-]/g, ''))} 
+                    className="formInput" 
                   />
                 </div>
-
                 <div className="formGroup">
                   <label>Contact Number</label>
                   <input 
-                    type="text"
-                    placeholder="0000-000-0000"
-                    maxLength={13}
-                    value={newContact}
+                    type="text" 
+                    placeholder="0000-000-0000" 
+                    maxLength={13} 
+                    value={newContact} 
                     onChange={(e) => {
                       let cleaned = e.target.value.replace(/\D/g, '');
                       if (cleaned.length > 11) cleaned = cleaned.substring(0, 11);
-
                       let formatted = cleaned;
-                      if (cleaned.length > 4) {
-                        formatted = `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
-                      }
-                      if (cleaned.length > 7) {
-                        formatted = `${cleaned.slice(0, 4)}-${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
-                      }
-                      
+                      if (cleaned.length > 4) formatted = `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
+                      if (cleaned.length > 7) formatted = `${cleaned.slice(0, 4)}-${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
                       setNewContact(formatted);
-                    }}
-                    className="formInput"
+                    }} 
+                    className="formInput" 
                   />
-                </div>
-
-                <div className="formGroup">
-                  <label>Employee ID</label>
-                  <input 
-                    type="text"
-                    placeholder="Enter Employee ID"
-                    maxLength={15}
-                    value={newEmpID}
-                    onChange={(e) => {
-                      const cleaned = e.target.value.replace(/[^0-9]/g, '');
-                      setNewEmpID(cleaned);
-                    }}
-                    className="formInput"
-                  />
-                </div>
-
-                <div className="formGroup">
-                  <button 
-                    className="cancelBtn"
-                    onClick={() => handleCancel('create')}
-                  >
-                    Cancel
-                  </button>
                 </div>
               </div>
-
+              
+              {/* Right Column */}
               <div className="formColumn">
                 <div className="formGroup">
                   <label>E-Mail</label>
-                  <input 
-                    type="email"
-                    placeholder="Enter E-Mail"
-                    maxLength={60}
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    className="formInput"
-                  />
+                  <input type="email" placeholder="Enter E-Mail" maxLength={60} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="formInput" />
                 </div>
-
                 <div className="formGroup">
                   <label>Role</label>
-                  <select 
-                    value={newRole}
-                    onChange={(e) => setNewRole(e.target.value as Role)}
-                    className="formSelect"
-                  >
+                  <select value={newRole} onChange={(e) => setNewRole(e.target.value as Role)} className="formSelect">
                     <option value="Admin">Admin</option>
                     <option value="Veterinarian">Veterinarian</option>
                     <option value="Receptionist">Receptionist</option>
                   </select>
                 </div>
-
                 <div className="formGroup">
-                  <label>Department</label>
-                  <select 
-                    value={newDept}
-                    onChange={(e) => setNewDept(e.target.value as Department)}
-                    className="formSelect"
-                  >
-                    <option value="General Practice">General Practice</option>
-                    <option value="Surgery">Surgery</option>
-                    <option value="Internal Medicine">Internal Medicine</option>
-                    <option value="Dentistry">Dentistry</option>
-                    <option value="Administrative Services">Administrative Services</option>
-                  </select>
-                </div>
-
-                <div className="formGroup">
-                  <button 
-                    className="submitBtn gradientBtn"
-                    onClick={handleSavePress}
-                  >
-                    Create Account
-                  </button>
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
+                    <button className="cancelBtn" onClick={() => handleCancel('create')} style={{ flex: 1 }}>Cancel</button>
+                    <button className="submitBtn gradientBtn" onClick={handleSavePress} style={{ flex: 1 }}>Create Account</button>
+                  </div>
                 </div>
               </div>
+              
             </div>
           </div>
         </div>
       )}
 
-      {/* Edit Account Modal */}
+      {/* EDIT ACCOUNT MODAL */}
       {editAccountVisible && (
         <div className="modalOverlay">
           <div className="modalContainer">
             <div className="modalHeader">
               <h2>Edit Account</h2>
             </div>
-
-            {/* Upload Image */}
             <div className="imageUploadSection">
               <button className="uploadBtn" onClick={pickImage}>
                 {userImage ? (
@@ -917,152 +720,84 @@ const AdminHome: React.FC = () => {
                 </div>
               </button>
             </div>
-
-            {/* Form */}
             <div className="modalForm">
               <div className="formColumn">
                 <div className="formGroup">
                   <label>Username</label>
+                  <input type="text" placeholder="Enter Username" maxLength={30} value={newUsername} onChange={(e) => setNewUsername(e.target.value)} className="formInput" />
+                </div>
+
+                <div className="formGroup">
+                  <label>First Name</label>
                   <input 
-                    type="text"
-                    placeholder="Enter Username"
-                    maxLength={30}
-                    value={newUsername}
-                    onChange={(e) => setNewUsername(e.target.value)}
-                    className="formInput"
+                    type="text" 
+                    placeholder="Enter First Name" 
+                    maxLength={30} 
+                    value={newFirstName} 
+                    onChange={(e) => setNewFirstName(e.target.value.replace(/[^a-zA-Z ,.'-]/g, ''))} 
+                    className="formInput" 
+                  />
+                </div>
+                <div className="formGroup">
+                  <label>Last Name</label>
+                  <input 
+                    type="text" 
+                    placeholder="Enter Last Name" 
+                    maxLength={30} 
+                    value={newLastName} 
+                    onChange={(e) => setNewLastName(e.target.value.replace(/[^a-zA-Z ,.'-]/g, ''))} 
+                    className="formInput" 
                   />
                 </div>
 
                 <div className="formGroup">
-                  <label>Full Name</label>
-                  <input 
-                    type="text"
-                    placeholder="Enter Full Name"
-                    maxLength={60}
-                    value={newFullName}
-                    onChange={(e) => {
-                      const cleaned = e.target.value.replace(/[^a-zA-Z ,.'-]/g, '');
-                      setNewFullName(cleaned);
-                    }}
-                    className="formInput"
-                  />
+                  <button className="cancelBtn" onClick={() => handleCancel('edit')}>Cancel</button>
                 </div>
-
+              </div>
+              
+              <div className="formColumn">
                 <div className="formGroup">
                   <label>Contact Number</label>
                   <input 
-                    type="text"
-                    placeholder="0000-000-0000"
-                    maxLength={13}
-                    value={newContact}
+                    type="text" 
+                    placeholder="0000-000-0000" 
+                    maxLength={13} 
+                    value={newContact} 
                     onChange={(e) => {
                       let cleaned = e.target.value.replace(/\D/g, '');
                       if (cleaned.length > 11) cleaned = cleaned.substring(0, 11);
-
                       let formatted = cleaned;
-                      if (cleaned.length > 4) {
-                        formatted = `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
-                      }
-                      if (cleaned.length > 7) {
-                        formatted = `${cleaned.slice(0, 4)}-${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
-                      }
-                      
+                      if (cleaned.length > 4) formatted = `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
+                      if (cleaned.length > 7) formatted = `${cleaned.slice(0, 4)}-${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
                       setNewContact(formatted);
-                    }}
-                    className="formInput"
+                    }} 
+                    className="formInput" 
                   />
                 </div>
-
-                <div className="formGroup">
-                  <label>Employee ID</label>
-                  <input 
-                    type="text"
-                    placeholder="Enter Employee ID"
-                    maxLength={15}
-                    value={newEmpID}
-                    onChange={(e) => {
-                      const cleaned = e.target.value.replace(/[^0-9]/g, '');
-                      setNewEmpID(cleaned);
-                    }}
-                    className="formInput"
-                  />
-                </div>
-
-                <div className="formGroup">
-                  <button 
-                    className="cancelBtn"
-                    onClick={() => handleCancel('edit')}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-
-              <div className="formColumn">
                 <div className="formGroup">
                   <label>E-Mail</label>
-                  <input 
-                    type="email"
-                    placeholder="Enter E-Mail"
-                    maxLength={60}
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    className="formInput"
-                  />
+                  <input type="email" placeholder="Enter E-Mail" maxLength={60} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} className="formInput" />
                 </div>
-
                 <div className="formGroup">
                   <label>Role</label>
-                  <select 
-                    value={newRole}
-                    onChange={(e) => setNewRole(e.target.value as Role)}
-                    className="formSelect"
-                  >
+                  <select value={newRole} onChange={(e) => setNewRole(e.target.value as Role)} className="formSelect">
                     <option value="Admin">Admin</option>
                     <option value="Veterinarian">Veterinarian</option>
                     <option value="Receptionist">Receptionist</option>
                   </select>
                 </div>
-
-                <div className="formGroup">
-                  <label>Department</label>
-                  <select 
-                    value={newDept}
-                    onChange={(e) => setNewDept(e.target.value as Department)}
-                    className="formSelect"
-                  >
-                    <option value="General Practice">General Practice</option>
-                    <option value="Surgery">Surgery</option>
-                    <option value="Internal Medicine">Internal Medicine</option>
-                    <option value="Dentistry">Dentistry</option>
-                    <option value="Administrative Services">Administrative Services</option>
-                  </select>
-                </div>
-
                 <div className="formGroup">
                   <label>Account Status</label>
                   <div className="statusToggle">
                     <label className="switch">
-                      <input 
-                        type="checkbox"
-                        checked={newStatus === 'Active'}
-                        onChange={(e) => handleStatusToggle(e.target.checked)}
-                      />
+                      <input type="checkbox" checked={newStatus === 'Active'} onChange={(e) => handleStatusToggle(e.target.checked)} />
                       <span className="slider"></span>
                     </label>
-                    <span className={newStatus === 'Active' ? 'statusActive' : 'statusInactive'}>
-                      {newStatus}
-                    </span>
+                    <span className={newStatus === 'Active' ? 'statusActive' : 'statusInactive'}>{newStatus}</span>
                   </div>
                 </div>
-
                 <div className="formGroup">
-                  <button 
-                    className="submitBtn gradientBtn"
-                    onClick={handleUpdateAccount}
-                  >
-                    Save Changes
-                  </button>
+                  <button className="submitBtn gradientBtn" onClick={handleUpdateAccount}>Save Changes</button>
                 </div>
               </div>
             </div>
@@ -1070,70 +805,91 @@ const AdminHome: React.FC = () => {
         </div>
       )}
 
-      {/* View Account Modal */}
+      {/* VIEW ACCOUNT MODAL */}
+      {/* VIEW ACCOUNT MODAL */}
       {viewAccountVisible && (
-        <div className="modalOverlay">
-          <div className="modalContainer">
+        <div className="modalOverlay" onClick={() => setViewAccountVisible(false)}>
+          <div className="modalContainer" onClick={(e) => e.stopPropagation()}>
             <div className="modalHeader">
               <h2>Account Details</h2>
             </div>
-
-            {/* Profile Image */}
+            
             <div className="imageUploadSection">
-              {(selectedAccount as User).userImage || (selectedAccount as User).userimage ? (
-                <img 
-                  src={(selectedAccount as User).userImage || (selectedAccount as User).userimage} 
-                  alt="User"
-                  className="viewAvatar"
-                />
-              ) : (
-                <IoPersonCircleOutline size={100} className="blueIcon" />
-              )}
+              <div className="uploadBtn" style={{ cursor: 'default', border: 'none', background: 'transparent' }}>
+                {((selectedAccount as User).employee_image) ? (
+                  <img 
+                    src={((selectedAccount as User).employee_image?.startsWith('data:image') 
+                      ? (selectedAccount as User).employee_image 
+                      : `data:image/jpeg;base64,${(selectedAccount as User).employee_image}`)} 
+                    alt="Employee Avatar"
+                    className="uploadedImage"
+                  />
+                ) : (
+                  <div className="uploadPlaceholder">
+                    <IoPersonCircleOutline size={90} color="#3d67ee" style={{ margin: '-10px' }} />
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Details */}
             <div className="modalForm">
               <div className="formColumn">
-                <div className="detailGroup">
+                <div className="formGroup">
                   <label>Full Name</label>
-                  <div className="detailValue">{(selectedAccount as User).fullName || (selectedAccount as User).fullname}</div>
+                  <input 
+                    type="text" 
+                    className="formInput" 
+                    value={`${(selectedAccount as User).first_name || ''} ${(selectedAccount as User).last_name || ''}`.trim()} 
+                    readOnly 
+                    style={{ cursor: 'text' }} 
+                  />
                 </div>
-
-                <div className="detailGroup">
+                <div className="formGroup">
                   <label>Contact Number</label>
-                  <div className="detailValue">{(selectedAccount as User).contactNumber || (selectedAccount as User).contactnumber}</div>
+                  <input 
+                    type="text" 
+                    className="formInput" 
+                    value={(selectedAccount as User).contact_number || ''} 
+                    readOnly 
+                    style={{ cursor: 'text' }} 
+                  />
                 </div>
-
-                <div className="detailGroup">
-                  <label>Employee ID</label>
-                  <div className="detailValue">{(selectedAccount as User).employeeID || (selectedAccount as User).employeeid}</div>
-                </div>
-
-                <div className="detailGroup">
+                <div className="formGroup">
                   <label>Account Creation Date</label>
-                  <div className="detailValue">{(selectedAccount as User).dateCreated || (selectedAccount as User).datecreated || 'N/A'}</div>
+                  <input 
+                    type="text" 
+                    className="formInput" 
+                    value={(selectedAccount as User).created_at ? new Date((selectedAccount as User).created_at as string).toLocaleDateString() : 'N/A'} 
+                    readOnly 
+                    style={{ cursor: 'text' }} 
+                  />
                 </div>
               </div>
-
+              
               <div className="formColumn">
-                <div className="detailGroup">
+                <div className="formGroup">
                   <label>E-Mail</label>
-                  <div className="detailValue">{(selectedAccount as User).email}</div>
+                  <input 
+                    type="email" 
+                    className="formInput" 
+                    value={(selectedAccount as User).email || ''} 
+                    readOnly 
+                    style={{ cursor: 'text' }} 
+                  />
                 </div>
-
-                <div className="detailGroup">
+                <div className="formGroup">
                   <label>Role</label>
-                  <div className="detailValue">{(selectedAccount as User).role}</div>
+                  <input 
+                    type="text" 
+                    className="formInput" 
+                    value={(selectedAccount as User).role || ''} 
+                    readOnly 
+                    style={{ cursor: 'text' }} 
+                  />
                 </div>
-
-                <div className="detailGroup">
-                  <label>Department</label>
-                  <div className="detailValue">{(selectedAccount as User).department || (selectedAccount as User).departmend}</div>
-                </div>
-
-                <div className="detailGroup">
-                  <label>Status</label>
-                  <div className={`statusBadge ${(selectedAccount as User).status === 'Active' ? 'activeBadge' : 'inactiveBadge'}`}>
+                <div className="formGroup" style={{ marginTop: '10px' }}>
+                  <label style={{ marginBottom: '12px', display: 'block' }}>Status</label>
+                  <div className={`statusBadge ${(selectedAccount as User).status === 'Active' ? 'activeBadge' : 'inactiveBadge'}`} style={{ display: 'inline-flex', padding: '6px 16px' }}>
                     <span className={(selectedAccount as User).status === 'Active' ? 'activeText' : ''}>
                       {(selectedAccount as User).status || 'Active'}
                     </span>
@@ -1141,13 +897,9 @@ const AdminHome: React.FC = () => {
                 </div>
               </div>
             </div>
-
-            {/* Close Button */}
-            <div className="modalFooter">
-              <button 
-                className="cancelBtn wide"
-                onClick={() => setViewAccountVisible(false)}
-              >
+            
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '30px' }}>
+              <button className="cancelBtn" style={{ width: '100%', maxWidth: '200px' }} onClick={() => setViewAccountVisible(false)}>
                 Close
               </button>
             </div>
@@ -1155,7 +907,7 @@ const AdminHome: React.FC = () => {
         </div>
       )}
 
-      {/* Unified Alert Modal */}
+      {/* UNIFIED ALERT MODAL */}
       {modalVisible && (
         <div className="modalOverlay">
           <div className="alertModal">
@@ -1164,28 +916,14 @@ const AdminHome: React.FC = () => {
               {modalConfig.type === 'error' && <IoCloseCircleOutline size={55} color="#d93025" />}
               {modalConfig.type !== 'success' && modalConfig.type !== 'error' && <IoAlertCircleOutline size={55} color="#3d67ee" />}
             </div>
-            
             <h3 className="alertTitle">{modalConfig.title}</h3>
-            
-            <div className="alertMessage">
-              {typeof modalConfig.message === 'string' ? modalConfig.message : modalConfig.message}
-            </div>
-            
+            <div className="alertMessage">{modalConfig.message}</div>
             <div className="alertActions">
               {modalConfig.showCancel && (
-                <button 
-                  onClick={() => setModalVisible(false)}
-                  className="alertBtn cancelAlertBtn"
-                >
-                  Cancel
-                </button>
+                <button onClick={() => setModalVisible(false)} className="alertBtn cancelAlertBtn">Cancel</button>
               )}
-              
               <button 
-                onClick={() => {
-                  setModalVisible(false);
-                  if (modalConfig.onConfirm) modalConfig.onConfirm();
-                }}
+                onClick={() => { setModalVisible(false); if (modalConfig.onConfirm) modalConfig.onConfirm(); }}
                 className={`alertBtn confirmAlertBtn ${modalConfig.type === 'error' ? 'errorBtn' : ''}`}
               >
                 {modalConfig.type === 'confirm' ? 'Confirm' : 'OK'}

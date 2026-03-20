@@ -22,8 +22,8 @@ import {
 // Define the props that the Navbar will receive
 interface NavbarProps {
   currentUser: {
-    id?: number;
-    pk?: number;
+    id?: string | number;
+    pk?: string | number;
     username: string;
     fullName?: string;
     role: string;

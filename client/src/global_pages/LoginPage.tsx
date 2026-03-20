@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { IoArrowBackOutline, IoCheckmarkCircle, IoAlertCircle } from 'react-icons/io5';
+import { supabase } from '../supabaseClient'; 
 
 // Import the CSS file we just created!
 import './StyleSheet.css'; 
@@ -108,6 +109,7 @@ export default function LoginPage() {
     setErrors(prev => ({...prev, [fieldName]: validateField(fieldName, fieldName === 'username' ? username : password)}));
   };
 
+  // THE SUPABASE LOGIN LOGIC
   const handleLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setTouched({ username: true, password: true });
@@ -123,105 +125,110 @@ export default function LoginPage() {
     }
 
     setLoading(true);
-    const baseUrl = 'http://localhost:5000'; // Port 5000 for your Flask backend
 
     try {
-      const res = await fetch(`${baseUrl}/unified-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
+      let userEmail = '';
+      let userDetails: any = null;
+      let userType = '';
 
-      const data = await res.json();
+      // STEP 1: Find the user's email by their username
+      const { data: empData, error: empError } = await supabase
+        .from('employee_accounts')
+        .select('*')
+        .eq('username', username)
+        .single();
 
-      if (res.ok) {
-        localStorage.setItem('userSession', JSON.stringify(data.user));
-        
-        if (data.user.userType === 'employee') {
-          if (data.user.isInitialLogin && !fromPasswordReset) {
-            showPopup('First Login', 'Please update your credentials to continue.', 'info', () => {
-              navigate("/UpdateAcc", { state: { userId: data.user.id }, replace: true });
-            });
-          } else {
-            const message = fromPasswordReset 
-              ? `Password updated successfully! Welcome back ${data.user.fullname}!`
-              : `Welcome back ${data.user.fullname}!`;
-            
-            showPopup('Success', message, 'success', () => {
-              const userRole = data.user.role; 
-              if (userRole === 'Admin') {
-                navigate("/Home", { replace: true }); 
-              } else if (userRole === 'Veterinarian' || userRole === 'Receptionist') {
-                navigate("/DoctorHomePage", { replace: true }); 
-              } else {
-                navigate("/Accounts", { replace: true }); 
-              }
-            });
-          }
-        } else {
-          const message = fromPasswordReset 
-            ? `Password updated successfully! Welcome ${data.user.fullname}!`
-            : `Welcome ${data.user.fullname}!`;
-          
-          showPopup('Success', message, 'success', () => {
-            navigate("/UserHome", { replace: true });
-          });
-        }
+      if (empData) {
+        userEmail = empData.email;
+        userDetails = empData;
+        userType = 'employee';
       } else {
-        try {
-          const fallbackRes = await fetch(`${baseUrl}/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password }),
-          });
-
-          const fallbackData = await fallbackRes.json();
-
-          if (fallbackRes.ok) {
-            localStorage.setItem('userSession', JSON.stringify(fallbackData.user));
-            
-            if (fallbackData.user.isInitialLogin) {
-              showPopup('First Login', 'Please update your credentials to continue.', 'success', () => {
-                navigate("/UpdateAcc", { state: { userId: fallbackData.user.id }, replace: true });
-              });
-            } else {
-              showPopup('Success', `Welcome back, ${fallbackData.user.username}!`, 'success', () => {
-                const userRole = fallbackData.user.role; 
-                if (userRole === 'Admin' || userRole === 'Veterinarian' || userRole === 'Receptionist') {
-                    navigate("/Home", { replace: true }); 
-                } else if (userRole === 'User') {
-                    navigate("/UserHome", { replace: true }); 
-                } else {
-                    navigate("/Login", { replace: true }); 
-                }
-              });
-            }
-          } else {
-            handleLoginError(fallbackData.error || '');
-          }
-        } catch (fallbackError) {
-          handleLoginError(data.error || '');
+        const { data: patData, error: patError } = await supabase
+          .from('patient_account')
+          .select('*')
+          .eq('username', username)
+          .single();
+        
+        if (patData) {
+          userEmail = patData.email;
+          userDetails = patData;
+          userType = 'patient';
         }
       }
+
+      if (!userEmail) {
+        showPopup('Login Failed', "Invalid Username or Password.", 'error');
+        setLoading(false);
+        return;
+      }
+
+      if (userDetails.status === 'Disabled' || userDetails.status === 'Inactive') {
+        showPopup('Account Disabled', "Your account has been disabled. Please contact support.", 'error');
+        setLoading(false);
+        return;
+      }
+
+      // STEP 2: Authenticate securely with Supabase using their email
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: userEmail,
+        password: password,
+      });
+
+      if (authError) {
+        if (authError.message.includes('Email not confirmed')) {
+          showPopup('Email Not Verified', 'Please check your inbox and verify your email before logging in.', 'info');
+        } else {
+          showPopup('Login Failed', 'Invalid Username or Password', 'error');
+        }
+        setLoading(false);
+        return;
+      }
+
+      // STEP 3: Setup the user session
+      const sessionUser = {
+        id: userDetails.id || userDetails.pk,
+        username: userDetails.username,
+        fullname: userType === 'employee' 
+          ? `${userDetails.first_name || ''} ${userDetails.last_name || ''}`.trim() 
+          : `${userDetails.firstName || ''} ${userDetails.lastName || ''}`.trim(),
+        role: userDetails.role || (userType === 'patient' ? 'User' : 'Unknown'),
+        userType: userType,
+      };
+
+      localStorage.setItem('userSession', JSON.stringify(sessionUser));
+
+      // STEP 4: Direct Routing (No redundant change-creds check!)
+      if (userType === 'employee') {
+        const message = fromPasswordReset 
+          ? `Password updated successfully! Welcome back ${sessionUser.fullname}!`
+          : `Welcome back ${sessionUser.fullname}!`;
+        
+        showPopup('Success', message, 'success', () => {
+          const userRole = sessionUser.role; 
+          if (userRole === 'Admin') {
+            navigate("/Home", { replace: true }); 
+          } else if (userRole === 'Veterinarian' || userRole === 'Receptionist') {
+            navigate("/DoctorHomePage", { replace: true }); 
+          } else {
+            navigate("/Accounts", { replace: true }); 
+          }
+        });
+      } else {
+        const message = fromPasswordReset 
+          ? `Password updated successfully! Welcome ${sessionUser.fullname}!`
+          : `Welcome ${sessionUser.fullname}!`;
+        
+        showPopup('Success', message, 'success', () => {
+          navigate("/UserHome", { replace: true });
+        });
+      }
+
     } catch (error) {
       console.error(error);
-      const msg = 'Network Error: Make sure your Python backend is running!';
+      const msg = 'Network Error: Could not connect to the database.';
       showPopup('Connection Error', msg, 'error');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleLoginError = (serverError: string) => {
-    const errorLower = serverError.toLowerCase();
-    if (errorLower.includes('verify your email')) {
-      showPopup('Email Not Verified', 'Please check your inbox and verify your email before logging in.', 'info');
-    } else if (errorLower.includes('found') || errorLower.includes('exist')) {
-      showPopup('Login Failed', "Account not found.", 'error');
-    } else if (errorLower.includes('disabled') || errorLower.includes('inactive')) {
-      showPopup('Account Disabled', "Your account has been disabled. Please contact support.", 'error');
-    } else {
-      showPopup('Login Failed', 'Invalid Username or Password', 'error');
     }
   };
 
@@ -239,7 +246,6 @@ export default function LoginPage() {
             position: 'relative'
           }}
         >
-          {/* Dark Overlay for the background image */}
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 1 }}></div>
           
           <div className="gifOverlay" style={{ zIndex: 2, display: 'flex', flexDirection: 'column' }}>

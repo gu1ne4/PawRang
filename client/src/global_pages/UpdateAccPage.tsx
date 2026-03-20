@@ -1,21 +1,35 @@
-import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { IoKeyOutline, IoPersonOutline, IoLockClosedOutline, IoCheckmarkCircleOutline } from 'react-icons/io5';
+import { supabase } from '../supabaseClient'; // Ensure this points to your client setup
 
 export default function UpdateAccPage() {
   const navigate = useNavigate();
-  const location = useLocation();
-  
-  // React Router state replacement for route.params
-  const { userId } = location.state || {};
 
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<{ username?: string; password?: string; confirmPassword?: string }>({});
+  const [errors, setErrors] = useState<{ username?: string; password?: string; confirmPassword?: string; server?: string }>({});
 
-  const API_URL = 'http://localhost:5000'; // Updated to match your Flask backend
+  // Automatically fetch their temporary username when the page loads
+  useEffect(() => {
+    const fetchUserData = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from('employee_accounts')
+          .select('username')
+          .eq('id', user.id)
+          .single();
+          
+        if (data && data.username) {
+          setNewUsername(data.username);
+        }
+      }
+    };
+    fetchUserData();
+  }, []);
 
   const validateForm = () => {
     const newErrors: { username?: string; password?: string; confirmPassword?: string } = {};
@@ -50,52 +64,46 @@ export default function UpdateAccPage() {
   };
 
   const handleUpdateCredentials = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault(); // Prevent default form submission reload
+    if (e) e.preventDefault(); 
     
     if (!validateForm()) return;
 
     setLoading(true);
+    setErrors({}); // Clear previous errors
+
     try {
-      // Get user ID from localStorage if not in params
-      let currentUserId = userId;
-      if (!currentUserId) {
-        const session = localStorage.getItem('userSession');
-        if (session) {
-          const userData = JSON.parse(session);
-          currentUserId = userData.id;
-        }
+      // 1. Get the user that was authenticated by the email link
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error("Session expired or invalid. Please click the link in your email again.");
       }
 
-      if (!currentUserId) {
-        throw new Error('User session not found');
-      }
-
-      const res = await fetch(`${API_URL}/update-credentials`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: currentUserId,
-          newUsername: newUsername.trim(),
-          newPassword: newPassword
-        }),
+      // 2. Update the Password in Supabase's secure Auth vault
+      const { error: authError } = await supabase.auth.updateUser({
+        password: newPassword
       });
+      if (authError) throw authError;
 
-      const data = await res.json();
+      // 3. Update the Username in your employee_accounts table AND remove the 'initial_login' flag
+      const { error: dbError } = await supabase
+        .from('employee_accounts')
+        .update({ 
+          username: newUsername.trim(),
+          is_initial_login: false 
+        })
+        .eq('id', user.id);
+      if (dbError) throw dbError;
 
-      if (res.ok) {
-        // Clear session and redirect to logins
-        localStorage.removeItem('userSession');
-        
-        window.alert('Credentials updated! Please login with your new credentials.');
-        navigate('/Login', { replace: true });
-        
-      } else {
-        const errorMsg = data.error || 'Update failed';
-        window.alert(errorMsg);
-      }
-    } catch (error) {
+      // 4. Success! Clear session and force them to login with new creds
+      await supabase.auth.signOut();
+      localStorage.removeItem('userSession');
+      
+      window.alert('Credentials updated successfully! Please login with your new credentials.');
+      navigate('/login', { replace: true });
+
+    } catch (error: any) {
       console.error('Update error:', error);
-      window.alert('Network Error: Make sure your Python server is running!');
+      setErrors({ server: error.message || 'An error occurred while updating credentials.' });
     } finally {
       setLoading(false);
     }
@@ -179,6 +187,22 @@ export default function UpdateAccPage() {
             </p>
           </div>
 
+          {/* Server Error Alert */}
+          {errors.server && (
+            <div style={{ 
+              backgroundColor: 'rgba(255, 107, 107, 0.2)', 
+              border: '1px solid #ff6b6b', 
+              color: '#ffd0d0', 
+              padding: '12px', 
+              borderRadius: '8px', 
+              marginBottom: '20px',
+              fontSize: '14px',
+              textAlign: 'center'
+            }}>
+              {errors.server}
+            </div>
+          )}
+
           {/* Form */}
           <form onSubmit={handleUpdateCredentials} style={{ marginBottom: '32px' }}>
             
@@ -214,10 +238,8 @@ export default function UpdateAccPage() {
                   if (errors.username) setErrors({...errors, username: undefined});
                 }}
               />
-              {/* CSS placeholder styling workaround using a standard style hack isn't perfect inline, 
-                  but the standard color looks fine. We rely on the raw input styles here. */}
               {errors.username && (
-                <div style={{ color: '#ff6b6b', fontSize: '12px', marginTop: '4px' }}>
+                <div style={{ color: '#ffd0d0', fontSize: '13px', marginTop: '6px' }}>
                   {errors.username}
                 </div>
               )}
@@ -257,7 +279,7 @@ export default function UpdateAccPage() {
                 }}
               />
               {errors.password && (
-                <div style={{ color: '#ff6b6b', fontSize: '12px', marginTop: '4px' }}>
+                <div style={{ color: '#ffd0d0', fontSize: '13px', marginTop: '6px' }}>
                   {errors.password}
                 </div>
               )}
@@ -297,7 +319,7 @@ export default function UpdateAccPage() {
                 }}
               />
               {errors.confirmPassword && (
-                <div style={{ color: '#ff6b6b', fontSize: '12px', marginTop: '4px' }}>
+                <div style={{ color: '#ffd0d0', fontSize: '13px', marginTop: '6px' }}>
                   {errors.confirmPassword}
                 </div>
               )}
