@@ -76,13 +76,11 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
   const handleViewProfile = () => {
     setDropdownVisible(false);
     onViewProfile(); // Call the prop function
-    navigate('/user-profile');
   };
 
   const handleMyPets = () => {
     setDropdownVisible(false);
     onMyPets(); // Call the prop function
-    navigate('/user-pets');
   };
 
   const displayName = currentUser ? (
@@ -171,8 +169,8 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
         <div className="nav-center">
           <div className="nav-links">
             <button 
-              className={`nav-link ${isActive('/')}`}
-              onClick={() => navigate('/')}
+              className={`nav-link ${isActive('/user/home')}`}
+              onClick={() => navigate('/user/home')}
             >
               Home
             </button>
@@ -189,8 +187,8 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
               Our Services
             </button>
             <button 
-              className={`nav-link ${isActive('/appointment-booking')}`}
-              onClick={() => navigate('/appointment-booking')}
+              className={`nav-link ${isActive('/user/book-appointment')}`}
+              onClick={() => navigate('/user/book-appointment')}
             >
               Book an Appointment
             </button>
@@ -201,21 +199,21 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
         <div className="nav-icons">
           <button 
             className="icon-button"
-            onClick={() => navigate('/user-pets')}
+            onClick={() => navigate('/user/pet-profile')}
           >
             <IoPawOutline size={21} color="#3d67ee" />
           </button>
           
           <button 
             className="icon-button"
-            onClick={() => navigate('/appointments-view')}
+            onClick={() => navigate('/user/appointments')}
           >
             <IoCalendarOutline size={21} color="#3d67ee" />
           </button>
 
           <button 
             className="icon-button"
-            onClick={() => console.log('Notifications clicked')}
+            onClick={() => navigate('/user/book-appointment')}
           >
             <IoNotificationsOutline size={21} color="#3d67ee" />
           </button>

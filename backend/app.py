@@ -24,11 +24,8 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase       = create_client(SUPABASE_URL, SUPABASE_KEY)
 supabase_admin = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-print("SERVICE KEY LENGTH:", len(os.environ.get('SUPABASE_SERVICE_KEY', '')))
-print("SERVICE KEY START:", os.environ.get('SUPABASE_SERVICE_KEY', '')[:20])
-
 otp_store = {}
-RESEND_COOLDOWN_SECONDS = 60  # seconds between resend requests
+RESEND_COOLDOWN_SECONDS = 60
 
 
 # -----------------------------------------------
@@ -71,71 +68,44 @@ def signup():
     username       = data.get('username')
 
     try:
-        # Check if email already exists
         existing_email = supabase_admin.table('patient_account') \
-            .select('id') \
-            .eq('email', email) \
-            .execute()
+            .select('id').eq('email', email).execute()
 
         if existing_email.data:
-            # Check whether this account is still unconfirmed in Supabase auth
             profile_id = existing_email.data[0]['id']
             auth_user  = supabase_admin.auth.admin.get_user_by_id(profile_id)
 
             if auth_user.user and not auth_user.user.email_confirmed_at:
-                # Account exists but email not confirmed — resend OTP and redirect
-                # Enforce 60s rate limit on the resend
                 existing_otp = otp_store.get(email)
                 if existing_otp and 'sent_at' in existing_otp:
                     elapsed = (datetime.utcnow() - existing_otp['sent_at']).total_seconds()
                     if elapsed < RESEND_COOLDOWN_SECONDS:
                         wait = int(RESEND_COOLDOWN_SECONDS - elapsed)
-                        return jsonify({
-                            "error":    f"Please wait {wait} second(s) before requesting a new OTP.",
-                            "redirect": "confirmOTP"
-                        }), 429
+                        return jsonify({"error": f"Please wait {wait} second(s) before requesting a new OTP.", "redirect": "confirmOTP"}), 429
 
                 fresh_otp  = ''.join(random.choices(string.digits, k=6))
                 expires_at = datetime.utcnow() + timedelta(minutes=10)
-                otp_store[email] = {
-                    "otp":        fresh_otp,
-                    "expires_at": expires_at,
-                    "verified":   False,
-                    "mode":       "emailConfirmation",
-                    "sent_at":    datetime.utcnow(),
-                }
+                otp_store[email] = {"otp": fresh_otp, "expires_at": expires_at, "verified": False, "mode": "emailConfirmation", "sent_at": datetime.utcnow()}
                 try:
                     send_otp_email(email, fresh_otp, subject='Confirm Your Email', purpose='email confirmation')
                 except Exception as mail_err:
                     print("OTP resend error on re-registration:", str(mail_err))
 
-                return jsonify({
-                    "error":    "This email is registered but not yet confirmed. A new OTP has been sent.",
-                    "redirect": "confirmOTP"
-                }), 403
+                return jsonify({"error": "This email is registered but not yet confirmed. A new OTP has been sent.", "redirect": "confirmOTP"}), 403
 
             return jsonify({"error": "An account with this email already exists."}), 400
 
-        # Check if username already exists
         existing_username = supabase_admin.table('patient_account') \
-            .select('id') \
-            .eq('username', username) \
-            .execute()
+            .select('id').eq('username', username).execute()
 
         if existing_username.data:
             return jsonify({"error": "This username is already taken."}), 400
 
-        # Create auth user
-        auth_response = supabase.auth.sign_up({
-            "email":    email,
-            "password": password
-        })
-
+        auth_response = supabase.auth.sign_up({"email": email, "password": password})
         user = auth_response.user
         if not user:
             return jsonify({"error": "Signup failed"}), 400
 
-        # Insert profile using admin to bypass RLS
         insert_response = supabase_admin.table('patient_account').insert({
             "id":             user.id,
             "email":          email,
@@ -150,24 +120,10 @@ def signup():
         if not insert_response.data:
             return jsonify({"error": "Profile insert failed"}), 400
 
-        # Send email confirmation OTP immediately after signup
         otp        = ''.join(random.choices(string.digits, k=6))
         expires_at = datetime.utcnow() + timedelta(minutes=10)
-
-        otp_store[email] = {
-            "otp":        otp,
-            "expires_at": expires_at,
-            "verified":   False,
-            "mode":       "emailConfirmation",
-            "sent_at":    datetime.utcnow(),
-        }
-
-        send_otp_email(
-            email,
-            otp,
-            subject='Confirm Your Email',
-            purpose='email confirmation'
-        )
+        otp_store[email] = {"otp": otp, "expires_at": expires_at, "verified": False, "mode": "emailConfirmation", "sent_at": datetime.utcnow()}
+        send_otp_email(email, otp, subject='Confirm Your Email', purpose='email confirmation')
 
         return jsonify({
             "message": "Signup successful! An OTP has been sent to your email.",
@@ -186,7 +142,7 @@ def signup():
 
 
 # -----------------------------------------------
-# LOGIN (email + username + password)
+# LOGIN
 # -----------------------------------------------
 @app.route('/login', methods=['POST'])
 def login():
@@ -199,7 +155,6 @@ def login():
         return jsonify({"error": "Email, username, and password are required."}), 400
 
     try:
-        # Verify that the email and username belong to the same account
         user_lookup = supabase_admin.table('patient_account') \
             .select('id, email, username') \
             .eq('email', email) \
@@ -210,35 +165,21 @@ def login():
         if not user_lookup.data:
             return jsonify({"error": "Email and username do not match any account."}), 401
 
-        # Authenticate with Supabase using email + password
-        auth_response = supabase.auth.sign_in_with_password({
-            "email":    email,
-            "password": password
-        })
-
+        auth_response = supabase.auth.sign_in_with_password({"email": email, "password": password})
         user = auth_response.user
         if not user:
             return jsonify({"error": "Login failed."}), 401
 
         if not user.email_confirmed_at:
-            # Resend a fresh OTP so the user always has a valid code on the confirmation page
             fresh_otp  = ''.join(random.choices(string.digits, k=6))
             expires_at = datetime.utcnow() + timedelta(minutes=10)
-            otp_store[email] = {
-                "otp":        fresh_otp,
-                "expires_at": expires_at,
-                "verified":   False,
-                "mode":       "emailConfirmation",
-                "sent_at":    datetime.utcnow(),
-            }
+            otp_store[email] = {"otp": fresh_otp, "expires_at": expires_at, "verified": False, "mode": "emailConfirmation", "sent_at": datetime.utcnow()}
             try:
                 send_otp_email(email, fresh_otp, subject='Confirm Your Email', purpose='email confirmation')
             except Exception as mail_err:
                 print("OTP resend error during login:", str(mail_err))
 
-            return jsonify({
-                "error": "Please confirm your email before logging in. A new code has been sent to your inbox."
-            }), 403
+            return jsonify({"error": "Please confirm your email before logging in. A new code has been sent to your inbox."}), 403
 
         profile_response = supabase.table('patient_account') \
             .select('*') \
@@ -249,7 +190,7 @@ def login():
         profile = profile_response.data
 
         return jsonify({
-            "message": "Login successful!",
+            "message":      "Login successful!",
             "access_token": auth_response.session.access_token,
             "user": {
                 "id":             user.id,
@@ -266,6 +207,53 @@ def login():
     except Exception as e:
         print("Login error:", str(e))
         return jsonify({"error": "Invalid credentials. Please try again."}), 401
+
+
+# -----------------------------------------------
+# GET USER PROFILE
+# -----------------------------------------------
+@app.route('/profile/<user_id>', methods=['GET'])
+def get_profile(user_id):
+    try:
+        response = supabase_admin.table('patient_account') \
+            .select('*') \
+            .eq('id', user_id) \
+            .single() \
+            .execute()
+
+        if not response.data:
+            return jsonify({"error": "User not found"}), 404
+
+        return jsonify({"user": response.data}), 200
+
+    except Exception as e:
+        print("Get profile error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+# -----------------------------------------------
+# UPDATE USER PROFILE
+# -----------------------------------------------
+@app.route('/profile/<user_id>', methods=['PATCH'])
+def update_profile(user_id):
+    data    = request.get_json()
+    allowed = ['firstName', 'lastName', 'contact_number', 'userImage']
+    update_data = {k: v for k, v in data.items() if k in allowed}
+
+    if not update_data:
+        return jsonify({"error": "No valid fields to update"}), 400
+
+    try:
+        supabase_admin.table('patient_account') \
+            .update(update_data) \
+            .eq('id', user_id) \
+            .execute()
+
+        return jsonify({"message": "Profile updated successfully"}), 200
+
+    except Exception as e:
+        print("Update profile error:", str(e))
+        return jsonify({"error": str(e)}), 400
 
 
 # -----------------------------------------------
@@ -306,18 +294,17 @@ def upload_pet_photo():
 # -----------------------------------------------
 @app.route('/pets', methods=['POST'])
 def add_pet():
-    data = request.get_json()
-
-    owner_id      = data.get('owner_id')
-    pet_name      = data.get('pet_name')
-    pet_type      = data.get('pet_type')
-    breed         = data.get('breed')
-    pet_size      = data.get('pet_size')
-    gender        = data.get('gender')
-    birthday      = data.get('birthday')
-    age           = data.get('age')
-    weight        = data.get('weight_kg')
-    pet_photo_url = data.get('pet_photo_url')
+    data             = request.get_json()
+    owner_id         = data.get('owner_id')
+    pet_name         = data.get('pet_name')
+    pet_type         = data.get('pet_type')
+    breed            = data.get('breed')
+    pet_size         = data.get('pet_size')
+    gender           = data.get('gender')
+    birthday         = data.get('birthday')
+    age              = data.get('age')
+    weight           = data.get('weight_kg')
+    pet_photo_url    = data.get('pet_photo_url')
     vaccination_urls = data.get('vaccination_urls')
 
     if not all([owner_id, pet_name, pet_type, breed, pet_size, gender]):
@@ -329,17 +316,17 @@ def add_pet():
 
     try:
         response = supabase_admin.table('pet_profile').insert({
-            "owner_id":      owner_id,
-            "pet_name":      pet_name,
-            "pet_species":   pet_type,
-            "pet_breed":     breed,
-            "pet_size":      pet_size,
-            "pet_gender":    gender,
-            "birthday":      birthday,
-            "age":           age,
-            "weight_kg":     weight,
-            "pet_photo_url": pet_photo_url,
-            "vaccination_urls": [vaccination_urls] if vaccination_urls else None,
+            "owner_id":         owner_id,
+            "pet_name":         pet_name,
+            "pet_species":      pet_type,
+            "pet_breed":        breed,
+            "pet_size":         pet_size,
+            "pet_gender":       gender,
+            "birthday":         birthday,
+            "age":              age,
+            "weight_kg":        weight,
+            "pet_photo_url":    pet_photo_url,
+            "vaccination_urls": vaccination_urls if vaccination_urls else None,
         }).execute()
 
         pet = response.data[0] if response.data else None
@@ -369,12 +356,59 @@ def get_user_pets(user_id):
 
 
 # -----------------------------------------------
+# UPDATE PET
+# -----------------------------------------------
+@app.route('/pets/<int:pet_id>', methods=['PATCH'])
+def update_pet(pet_id):
+    data    = request.get_json()
+    allowed = [
+        'pet_name', 'pet_species', 'pet_breed', 'pet_gender',
+        'pet_size', 'birthday', 'age', 'weight_kg',
+        'pet_photo_url', 'vaccination_urls',
+    ]
+    update_data = {k: v for k, v in data.items() if k in allowed}
+
+    if not update_data:
+        return jsonify({"error": "No valid fields to update"}), 400
+
+    try:
+        response = supabase_admin.table('pet_profile') \
+            .update(update_data) \
+            .eq('pet_id', pet_id) \
+            .execute()
+
+        pet = response.data[0] if response.data else None
+        return jsonify({"message": "Pet updated successfully", "pet": pet}), 200
+
+    except Exception as e:
+        print("Update pet error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+# -----------------------------------------------
+# DELETE PET
+# -----------------------------------------------
+@app.route('/pets/<int:pet_id>', methods=['DELETE'])
+def delete_pet(pet_id):
+    try:
+        supabase_admin.table('pet_profile') \
+            .delete() \
+            .eq('pet_id', pet_id) \
+            .execute()
+
+        return jsonify({"message": "Pet deleted successfully"}), 200
+
+    except Exception as e:
+        print("Delete pet error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+# -----------------------------------------------
 # BOOK APPOINTMENT
 # -----------------------------------------------
 @app.route('/appointments', methods=['POST'])
 def book_appointment():
-    data = request.get_json()
-
+    data             = request.get_json()
     owner_id         = data.get('owner_id')
     pet_id           = data.get('pet_id')
     appointment_type = data.get('appointment_type')
@@ -406,13 +440,83 @@ def book_appointment():
         }).execute()
 
         appointment_id = result.data[0]["appointment_id"] if result.data else None
-        return jsonify({
-            "message":        "Appointment booked successfully!",
-            "appointment_id": appointment_id,
-        }), 200
+        return jsonify({"message": "Appointment booked successfully!", "appointment_id": appointment_id}), 200
 
     except Exception as e:
         print("Appointment error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+# -----------------------------------------------
+# CANCEL APPOINTMENT
+# -----------------------------------------------
+@app.route('/appointments/<int:appointment_id>/cancel', methods=['PATCH'])
+def cancel_appointment(appointment_id):
+    data          = request.get_json()
+    cancel_reason = data.get('cancel_reason', '')
+
+    try:
+        check = supabase_admin.table('appointments') \
+            .select('status') \
+            .eq('appointment_id', appointment_id) \
+            .single() \
+            .execute()
+
+        if not check.data:
+            return jsonify({"error": "Appointment not found"}), 404
+
+        if check.data['status'] in ('cancelled', 'completed'):
+            return jsonify({"error": f"Cannot cancel an appointment with status '{check.data['status']}'"}), 400
+
+        supabase_admin.table('appointments').update({
+            "status":         "cancelled",
+            "patient_reason": cancel_reason,
+        }).eq('appointment_id', appointment_id).execute()
+
+        return jsonify({"message": "Appointment cancelled successfully"}), 200
+
+    except Exception as e:
+        print("Cancel appointment error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+# -----------------------------------------------
+# RESCHEDULE APPOINTMENT
+# -----------------------------------------------
+@app.route('/appointments/<int:appointment_id>/reschedule', methods=['PATCH'])
+def reschedule_appointment(appointment_id):
+    data              = request.get_json()
+    new_date          = data.get('new_date')
+    new_time          = data.get('new_time')
+    reschedule_reason = data.get('reschedule_reason', '')
+
+    if not new_date or not new_time:
+        return jsonify({"error": "new_date and new_time are required"}), 400
+
+    try:
+        check = supabase_admin.table('appointments') \
+            .select('status') \
+            .eq('appointment_id', appointment_id) \
+            .single() \
+            .execute()
+
+        if not check.data:
+            return jsonify({"error": "Appointment not found"}), 404
+
+        if check.data['status'] in ('cancelled', 'completed'):
+            return jsonify({"error": f"Cannot reschedule an appointment with status '{check.data['status']}'"}), 400
+
+        supabase_admin.table('appointments').update({
+            "appointment_date": new_date,
+            "appointment_time": new_time,
+            "patient_reason":   reschedule_reason,
+            "status":           "pending",
+        }).eq('appointment_id', appointment_id).execute()
+
+        return jsonify({"message": "Reschedule request submitted successfully"}), 200
+
+    except Exception as e:
+        print("Reschedule appointment error:", str(e))
         return jsonify({"error": str(e)}), 400
 
 
@@ -421,8 +525,7 @@ def book_appointment():
 # -----------------------------------------------
 @app.route('/grooming-details', methods=['POST'])
 def save_grooming_details():
-    data = request.get_json()
-
+    data                  = request.get_json()
     appointment_id        = data.get('appointment_id')
     haircut_style         = data.get('haircut_style')
     haircut_description   = data.get('haircut_description')
@@ -451,8 +554,7 @@ def save_grooming_details():
 # -----------------------------------------------
 @app.route('/medical-information', methods=['POST'])
 def save_medical_information():
-    data = request.get_json()
-
+    data           = request.get_json()
     appointment_id = data.get('appointment_id')
 
     if not appointment_id:
@@ -460,18 +562,18 @@ def save_medical_information():
 
     try:
         supabase_admin.table('medical_information').insert({
-            "appointment_id":       appointment_id,
-            "is_pregnant":          data.get('is_pregnant'),
-            "is_vaccinated":        data.get('is_vaccinated'),
-            "has_allergies":        data.get('has_allergies'),
-            "allergy_details":      data.get('allergy_details'),
-            "has_skin_condition":   data.get('has_skin_condition'),
-            "been_groomed_before":  data.get('been_groomed_before'),
-            "on_medication":        data.get('on_medication'),
-            "medication_details":   data.get('medication_details'),
+            "appointment_id":         appointment_id,
+            "is_pregnant":            data.get('is_pregnant'),
+            "is_vaccinated":          data.get('is_vaccinated'),
+            "has_allergies":          data.get('has_allergies'),
+            "allergy_details":        data.get('allergy_details'),
+            "has_skin_condition":     data.get('has_skin_condition'),
+            "been_groomed_before":    data.get('been_groomed_before'),
+            "on_medication":          data.get('on_medication'),
+            "medication_details":     data.get('medication_details'),
             "skin_condition_details": data.get('skin_condition_details'),
-            "flea_tick_prevention": data.get('flea_tick_prevention'),
-            "additional_notes":     data.get('additional_notes'),
+            "flea_tick_prevention":   data.get('flea_tick_prevention'),
+            "additional_notes":       data.get('additional_notes'),
         }).execute()
 
         return jsonify({"message": "Medical information saved successfully!"}), 200
@@ -490,6 +592,7 @@ def get_user_appointments(user_id):
         response = supabase_admin.table('appointments') \
             .select('*, pet_profile(*)') \
             .eq('owner_id', user_id) \
+            .order('appointment_date', desc=True) \
             .execute()
 
         return jsonify({"appointments": response.data}), 200
@@ -506,8 +609,8 @@ def get_user_appointments(user_id):
 def get_branches():
     try:
         res = supabase.table('branches').select('*').order('branch_id').execute()
-        print(res.data)
         return jsonify({'branches': res.data}), 200
+
     except Exception as e:
         print("Fetch branches error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -544,12 +647,7 @@ def forgot_password():
             "sent_at":    datetime.utcnow(),
         }
 
-        send_otp_email(
-            email,
-            otp,
-            subject='Your Password Reset OTP',
-            purpose='password reset'
-        )
+        send_otp_email(email, otp, subject='Your Password Reset OTP', purpose='password reset')
 
         return jsonify({"message": "OTP sent successfully!"}), 200
 
@@ -560,7 +658,6 @@ def forgot_password():
 
 # -----------------------------------------------
 # VERIFY OTP
-# handles both emailConfirmation and passwordReset
 # -----------------------------------------------
 @app.route('/verify-otp', methods=['POST'])
 def verify_otp():
@@ -584,7 +681,6 @@ def verify_otp():
     if stored['otp'] != otp:
         return jsonify({"error": "Invalid OTP. Please try again."}), 400
 
-    # Email confirmation — confirm via Supabase and clean up OTP
     if mode == 'emailConfirmation':
         try:
             user_check = supabase_admin.table('patient_account') \
@@ -607,16 +703,13 @@ def verify_otp():
             print("Email confirmation error:", str(e))
             return jsonify({"error": str(e)}), 400
 
-    # Password reset — just mark verified, /change-password handles the rest
     otp_store[email]['verified'] = True
     return jsonify({"message": "OTP verified successfully!"}), 200
 
 
 # -----------------------------------------------
-# RESEND OTP  (60-second rate limit)
+# RESEND OTP
 # -----------------------------------------------
-RESEND_COOLDOWN_SECONDS = 60
-
 @app.route('/resend-otp', methods=['POST'])
 def resend_otp():
     data  = request.get_json()
@@ -635,15 +728,12 @@ def resend_otp():
         if not user_check.data:
             return jsonify({"error": "No account found with this email."}), 400
 
-        # Rate-limit: reject if an OTP was sent less than 60 seconds ago
         existing = otp_store.get(email)
         if existing and 'sent_at' in existing:
             elapsed = (datetime.utcnow() - existing['sent_at']).total_seconds()
             if elapsed < RESEND_COOLDOWN_SECONDS:
                 wait = int(RESEND_COOLDOWN_SECONDS - elapsed)
-                return jsonify({
-                    "error": f"Please wait {wait} second(s) before requesting a new OTP."
-                }), 429
+                return jsonify({"error": f"Please wait {wait} second(s) before requesting a new OTP."}), 429
 
         otp        = ''.join(random.choices(string.digits, k=6))
         expires_at = datetime.utcnow() + timedelta(minutes=10)
@@ -694,9 +784,7 @@ def change_password():
 
         user_id = user_check.data['id']
 
-        supabase_admin.auth.admin.update_user_by_id(user_id, {
-            "password": new_password
-        })
+        supabase_admin.auth.admin.update_user_by_id(user_id, {"password": new_password})
 
         del otp_store[email]
 

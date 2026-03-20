@@ -10,17 +10,15 @@ type ButtonState = 'default' | 'loading' | 'success' | 'error';
 export default function Login() {
 
     const nav = useNavigate();
-    const [getEmail, setEmail]       = useState('');
+    const [getEmail,    setEmail]    = useState('');
     const [getUsername, setUsername] = useState('');
     const [getPassword, setPassword] = useState('');
 
-    // Server response states
-    const [serverError, setServerError]     = useState('');
+    const [serverError,   setServerError]   = useState('');
     const [serverSuccess, setServerSuccess] = useState('');
-    const [buttonState, setButtonState]     = useState<ButtonState>('default');
+    const [buttonState,   setButtonState]   = useState<ButtonState>('default');
 
-    // Error states
-    const [emailError, setEmailError]       = useState('');
+    const [emailError,    setEmailError]    = useState('');
     const [usernameError, setUsernameError] = useState('');
     const [passwordError, setPasswordError] = useState('');
 
@@ -61,7 +59,6 @@ export default function Login() {
         handleEmailChange(getEmail);
         handleUsernameChange(getUsername);
         handlePasswordChange(getPassword);
-
         return (
             getEmail.trim() !== '' &&
             /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(getEmail) &&
@@ -85,28 +82,36 @@ export default function Login() {
 
         axios
             .post(`${API_URL}/login`, {
-                "email":    getEmail,
-                "username": getUsername,
-                "password": getPassword,
+                email:    getEmail,
+                username: getUsername,
+                password: getPassword,
             })
             .then((response: any) => {
                 const { access_token, user } = response.data;
 
+                // ─── KEY FIX: save under 'userSession' so all pages can read it ───
                 localStorage.setItem('access_token', access_token);
-                localStorage.setItem('user', JSON.stringify(user));
+                localStorage.setItem('userSession',  JSON.stringify(user));
 
                 setServerSuccess(response.data.message);
                 setButtonState('success');
 
                 setTimeout(() => {
-                    nav('/user/home');
+                    // Route by role
+                    const role = user?.role;
+                    if (role === 'admin') {
+                        nav('/admin/home');
+                    } else if (role === 'vet') {
+                        nav('/doctor/home');
+                    } else {
+                        nav('/user/home');
+                    }
                 }, 1500);
             })
             .catch((error: any) => {
-                console.error("Error:", error);
+                console.error('Login error:', error);
 
-                // 403 = registered but email not confirmed — redirect to OTP page
-                // Backend will have already sent a fresh OTP at this point
+                // 403 = email not yet confirmed — backend already sent fresh OTP
                 if (error.response?.status === 403) {
                     nav('/ConfirmOTP', { state: { email: getEmail, mode: 'emailConfirmation' } });
                     return;
@@ -122,16 +127,12 @@ export default function Login() {
     const isDisabled = buttonState === 'loading' || buttonState === 'success';
 
     function renderButtonContent() {
-        if (buttonState === 'loading') {
-            return <span className="loginSpinner" />;
-        }
-        if (buttonState === 'success') {
-            return (
-                <svg className="loginCheckIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
-                </svg>
-            );
-        }
+        if (buttonState === 'loading') return <span className="loginSpinner" />;
+        if (buttonState === 'success') return (
+            <svg className="loginCheckIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+            </svg>
+        );
         return 'Log In';
     }
 
@@ -156,9 +157,7 @@ export default function Login() {
                     </div>
 
                     {serverError && (
-                        <div className='serverErrorMessage'>
-                            <p>{serverError}</p>
-                        </div>
+                        <div className='serverErrorMessage'><p>{serverError}</p></div>
                     )}
 
                     <div className='form'>
@@ -173,7 +172,7 @@ export default function Login() {
                                 <input
                                     className={emailError ? 'inputFields errorField' : 'inputFields'}
                                     type="text"
-                                    onChange={(e) => handleEmailChange(e.target.value)}
+                                    onChange={e => handleEmailChange(e.target.value)}
                                 />
                             </div>
                             {emailError && <p className='errorMessage'>{emailError}</p>}
@@ -189,7 +188,7 @@ export default function Login() {
                                 <input
                                     className={usernameError ? 'inputFields errorField' : 'inputFields'}
                                     type="text"
-                                    onChange={(e) => handleUsernameChange(e.target.value)}
+                                    onChange={e => handleUsernameChange(e.target.value)}
                                 />
                             </div>
                             {usernameError && <p className='errorMessage'>{usernameError}</p>}
@@ -205,7 +204,7 @@ export default function Login() {
                                 <input
                                     className={passwordError ? 'inputFields errorField' : 'inputFields'}
                                     type="password"
-                                    onChange={(e) => handlePasswordChange(e.target.value)}
+                                    onChange={e => handlePasswordChange(e.target.value)}
                                 />
                             </div>
                             {passwordError && <p className='errorMessage'>{passwordError}</p>}
@@ -215,14 +214,15 @@ export default function Login() {
                             id='loginButton'
                             className={`button loginButton--${buttonState}`}
                             onClick={loginHandler}
-                            disabled={isDisabled}>
+                            disabled={isDisabled}
+                        >
                             {renderButtonContent()}
                         </button>
 
-                        <button className='pageNavigator' onClick={() => nav("/resetpassword")}>
+                        <button className='pageNavigator' onClick={() => nav('/resetpassword')}>
                             <p style={{ color: '#2619e2', fontSize: 18 }}>Forgot Password</p>
                         </button>
-                        <button className='pageNavigator' onClick={() => nav("/register")}>
+                        <button className='pageNavigator' onClick={() => nav('/register')}>
                             <p style={{ fontSize: 18 }}>Don't have an account? <strong style={{ color: '#2619e2' }}>Register</strong></p>
                         </button>
 
@@ -231,5 +231,5 @@ export default function Login() {
             </div>
 
         </div>
-    )
+    );
 }
