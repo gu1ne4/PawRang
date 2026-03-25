@@ -28,6 +28,10 @@ function App() {
     
     <AdminHome/>
     <DoctorHome/>
+    <DoctorHome/>
+    
+
+      
     </>
   )
 }
