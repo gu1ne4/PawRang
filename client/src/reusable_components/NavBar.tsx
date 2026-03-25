@@ -17,8 +17,8 @@ import {
   IoLogOutOutline,
   IoChevronUpOutline,
   IoChevronDownOutline,
-  IoDocumentTextOutline as IoDocumentText,  // For Patient Records
-  IoLayersOutline,  // For Inventory
+  IoDocumentTextOutline as IoDocumentText, 
+  IoLayersOutline,  
   IoFileTrayFullOutline
 } from 'react-icons/io5';
 
@@ -59,7 +59,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
         </div>
 
         {/* Account Logged In */}
-        <div className="glassContainer navAccountContainer">
+        <div className="navGlassContainer navAccountContainer">
           <div className="navAccount">
             <img 
               src={(currentUser && currentUser.userImage) ? currentUser.userImage : "/src/assets/userAvatar.jpg"} 
@@ -75,8 +75,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
 
         <div className="navOverview">Overview</div>
 
-        {/* This glassContainer now has a scrollable-nav class */}
-        <div className="glassContainer scrollable-nav">
+        <div className="navGlassContainer scrollable-nav">
           <div className="navMenu">
             <div className="navMenuSection" style={{marginTop: '10px'}}>
               <button 
@@ -207,7 +206,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
         </div>
 
         <div className="navFooter">
-          <div className="glassContainer" style={{paddingBottom: '1px', marginTop: '20px'}}>
+          <div className="navGlassContainer" style={{paddingBottom: '1px', marginTop: '20px'}}>
             <button className="navBtn" style={{paddingTop: '1px', paddingBottom: '1px'}} onClick={onLogout}>
               <IoLogOutOutline size={15} />
               <span>Log Out</span>

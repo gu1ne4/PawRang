@@ -1,0 +1,1467 @@
+/* Inventory Module Styles - Prefixed with inv to avoid conflicts */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+#root {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  width: 100%;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+
+/* Main Container */
+.invContainer {
+  display: flex;
+  flex-direction: row;
+  width: 100vw;
+  height: 100vh;
+  background-color: #ffffff;
+  overflow: hidden;
+}
+
+/* Body Styles */
+.invBodyContainer {
+  padding: 30px 30px 30px 15px;
+  background-color: #ffffff;
+  flex: 6;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.invTopContainer {
+  border-radius: 20px;
+  height: 10%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.invSubTopContainer {
+  background-color: #ffffff;
+  border-radius: 20px;
+  padding: 20px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 20px;
+  flex: 20;
+  box-shadow: 0 0 18px rgba(0, 0, 0, 0.12);
+}
+
+.invNotificationContainer {
+  flex: 0.5;
+  margin-left: 12px;
+  justify-content: center;
+}
+
+.invBlueIcon {
+  color: #3d67ee;
+}
+
+.invBlueText {
+  font-size: 16px;
+  color: #3d67ee;
+  font-weight: 620;
+  margin-left: 10px;
+}
+
+/* Analytics Cards */
+.invAnalyticsContainer {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.invAnalyticsCard {
+  background: white;
+  border-radius: 15px;
+  padding: 20px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  box-shadow: 0 0 18px rgba(0, 0, 0, 0.08);
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.invAnalyticsIcon {
+  width: 50px;
+  height: 50px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.invAnalyticsContent {
+  display: flex;
+  flex-direction: column;
+}
+
+.invAnalyticsLabel {
+  font-size: 13px;
+  color: #666;
+}
+
+.invAnalyticsValue {
+  font-size: 24px;
+  font-weight: bold;
+  color: #333;
+}
+
+/* Clickable Analytics Card */
+.invClickable {
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.invClickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+.invClickable:active {
+  transform: translateY(0);
+}
+
+.invClickable::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.1);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.invClickable:hover::after {
+  opacity: 1;
+}
+
+/* View Details Text - Positioned at Bottom Right */
+.invViewDetails {
+  position: absolute;
+  bottom: 5px;
+  right: 15px;
+  font-size: 11px;
+  color: #ff4d4d;
+  opacity: 0.7;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.invClickable:hover .invViewDetails {
+  opacity: 1;
+  color: #d32f2f;
+  transform: translateX(3px);
+}
+
+/* Background Colors for Analytics Icons */
+.invBlueBg {
+  background: linear-gradient(135deg, #3db6ee, #3d67ee);
+}
+
+.invRedBg {
+  background: linear-gradient(135deg, #ff4d4d, #d32f2f);
+}
+
+.invGreenBg {
+  background: linear-gradient(135deg, #4caf50, #388e3c);
+}
+
+.invPurpleBg {
+  background: linear-gradient(135deg, #9c27b0, #7b1fa2);
+}
+
+/* Table Styles */
+.invTableContainer {
+  background-color: #fff;
+  border-radius: 20px;
+  padding: 30px;
+  height: calc(100% - 200px);
+  box-shadow: 0 0 18px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+}
+
+.invTableToolbar {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.invSearchFilterSection {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+  position: relative;
+  z-index: 10;
+}
+
+.invToolbarItem {
+  position: relative;
+}
+
+.invIconButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.invIconButton:hover {
+  opacity: 0.8;
+}
+
+.invIconDefault {
+  color: #3d67ee;
+}
+
+.invIconActive {
+  color: #afccf8;
+}
+
+.invTooltip {
+  position: absolute;
+  top: -30px;
+  left: -15px;
+  background-color: #000;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.invSearchInput {
+  font-size: 13px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 0 12px;
+  height: 28px;
+  width: 250px;
+}
+
+.invFilterSection {
+  display: flex;
+  flex-direction: row;
+  margin-left: 5px;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 500px;
+  z-index: 20;
+}
+
+.invFilterSelect {
+  height: 30px;
+  width: 140px;
+  border-radius: 8px;
+  padding: 0 12px;
+  border: 1px solid #ccc;
+  font-size: 13px;
+  background-color: white;
+}
+
+.invClearFilterBtn {
+  background-color: #3d67ee;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  border: 1px solid #3d67ee;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: white;
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.invClearFilterBtn:hover {
+  opacity: 0.9;
+}
+
+.invActionSection {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.invBlackBtn {
+  background-color: #000;
+  border-radius: 8px;
+  padding: 0 20px;
+  height: 35px;
+  color: white;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.invBlackBtn:hover {
+  background-color: #333;
+}
+
+.invDeleteBtn {
+  background-color: #dc3545;
+  border-radius: 8px;
+  padding: 0 20px;
+  height: 35px;
+  color: white;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.invDeleteBtn:hover {
+  background-color: #c82333;
+}
+
+.invTableWrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.invDataTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.invDataTable th {
+  text-align: left;
+  padding: 12px 8px;
+  font-size: 13px;
+  color: #000;
+  font-weight: 600;
+  background-color: #ffffff;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.invDataTable td {
+  padding: 12px 8px;
+  font-size: 13px;
+  color: #000;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+/* Table Checkbox Styles */
+.invDataTable th:first-child,
+.invDataTable td:first-child {
+  text-align: center;
+  padding: 12px 0;
+  width: 40px;
+}
+
+.invCheckbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #3d67ee;
+  border-radius: 4px;
+}
+
+/* Stock Badge Styles */
+.invStockBadge {
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.invStockHigh {
+  background-color: #DFF5E1;
+  color: #1F7A3F;
+}
+
+.invStockAvg {
+  background-color: #fff3e0;
+  color: #f57c00;
+}
+
+.invStockLow {
+  background-color: #ffebee;
+  color: #c62828;
+}
+
+.invNoData {
+  text-align: center;
+  color: #888;
+  padding: 20px;
+}
+
+.invPagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.invPaginationBtn {
+  padding: 8px 16px;
+  border: 1px solid #3d67ee;
+  background-color: white;
+  color: #3d67ee;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.invPaginationBtn:hover:not(:disabled) {
+  background-color: #3d67ee;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(61, 103, 238, 0.3);
+}
+
+.invPaginationBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.invPaginationInfo {
+  font-size: 14px;
+  color: #666;
+}
+
+/* Form Styles */
+.invFormContainer {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.invFormHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.invFormHeader h2 {
+  font-size: 24px;
+  color: #333;
+}
+
+.invFormClose {
+  background: none;
+  border: none;
+  font-size: 32px;
+  cursor: pointer;
+  color: #666;
+  transition: color 0.2s ease;
+  line-height: 1;
+}
+
+.invFormClose:hover {
+  color: #333;
+  transform: scale(1.1);
+}
+
+.invFormContent {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+.invFormRow {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.invFormGroup {
+  flex: 1;
+  position: relative;
+  padding-bottom: 22px;
+}
+
+.invFormGroup label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 5px;
+  color: #333;
+}
+
+.invRequired {
+  color: #dc3545;
+  margin-left: 3px;
+}
+
+.invFormInput {
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.invFormInput:focus {
+  outline: none;
+  border-color: #3d67ee;
+  box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.1);
+}
+
+.invFormSelect {
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  background-color: white;
+  transition: all 0.2s ease;
+}
+
+.invFormSelect:focus {
+  outline: none;
+  border-color: #3d67ee;
+  box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.1);
+}
+
+.invCharCount {
+  position: absolute;
+  right: 10px;
+  top: 38px;
+  font-size: 11px;
+  color: #888;
+  z-index: 1;
+}
+
+.invFormActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 15px;
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 2px solid #f0f0f0;
+}
+
+.invCancelBtn {
+  padding: 10px 30px;
+  background-color: #dad8d8;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0c0c0c;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.invCancelBtn:hover {
+  background-color: #c0c0c0;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.invSubmitBtn {
+  padding: 10px 30px;
+  background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9);
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.invSubmitBtn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(61, 103, 238, 0.3);
+}
+
+/* Form Error Styles */
+.invError {
+  border-color: #dc3545 !important;
+}
+
+.invError:focus {
+  box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1) !important;
+}
+
+.invErrorText {
+  color: #dc3545;
+  font-size: 12px;
+  margin-top: 4px;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+}
+
+/* Price Input Styles */
+.invPriceInputWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.invPesoSign {
+  position: absolute;
+  left: 12px;
+  color: #666;
+  font-weight: 500;
+  z-index: 1;
+  font-size: 14px;
+}
+
+.invPriceInput {
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 10px 12px 10px 30px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.invPriceInput:focus {
+  outline: none;
+  border-color: #3d67ee;
+  box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.1);
+}
+
+/* Stock Control Styles */
+.invStockControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.invStockBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #3d67ee;
+  font-size: 24px;
+  transition: all 0.2s ease;
+}
+
+.invStockBtn:hover:not(:disabled) {
+  transform: scale(1.1);
+  color: #0738D9;
+}
+
+.invStockBtn:disabled {
+  color: #ccc;
+  cursor: not-allowed;
+}
+
+.invStockInput {
+  flex: 1;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.invStockInput:focus:not(:disabled) {
+  outline: none;
+  border-color: #3d67ee;
+  box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.1);
+}
+
+.invStockInput:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.invCheckboxGroup {
+  margin-top: 8px;
+}
+
+.invCheckboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 13px;
+  color: #666;
+  cursor: pointer;
+}
+
+.invCheckboxLabel input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-right: 10px;
+  cursor: pointer;
+}
+
+/* Loading Spinner */
+.invLoadingContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+}
+
+.invSpinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #3d67ee;
+  border-radius: 50%;
+  animation: invSpin 1s linear infinite;
+}
+
+@keyframes invSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Alert Modal */
+.invModalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.invAlertModal {
+  background-color: white;
+  padding: 25px;
+  border-radius: 12px;
+  width: 80%;
+  max-width: 350px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  animation: invFadeIn 0.3s ease;
+}
+
+@keyframes invFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.invAlertIcon {
+  margin-bottom: 10px;
+}
+
+.invAlertTitle {
+  font-size: 20px;
+  font-weight: bold;
+  margin: 10px 0;
+  color: black;
+}
+
+.invAlertMessage {
+  text-align: center;
+  color: #666;
+  margin-bottom: 25px;
+  font-size: 14px;
+}
+
+.invAlertActions {
+  display: flex;
+  flex-direction: row;
+  gap: 15px;
+  width: 100%;
+  justify-content: center;
+}
+
+.invAlertBtn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  min-width: 100px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.invAlertBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.invCancelAlertBtn {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.invCancelAlertBtn:hover {
+  background-color: #e0e0e0;
+}
+
+.invConfirmAlertBtn {
+  background-color: #3d67ee;
+  color: white;
+}
+
+.invConfirmAlertBtn:hover {
+  opacity: 0.9;
+}
+
+.invErrorBtn {
+  background-color: #d93025;
+}
+
+/* Sidebar Styles */
+.invSidebarOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: flex-end;
+  z-index: 2000;
+  animation: invFadeIn 0.3s ease;
+}
+
+.invSidebar {
+  width: 400px;
+  background-color: white;
+  height: 100vh;
+  box-shadow: -5px 0 20px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  animation: invSlideIn 0.3s ease;
+}
+
+@keyframes invSlideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.invSidebarHeader {
+  padding: 25px;
+  border-bottom: 2px solid #f0f0f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.invSidebarTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.invSidebarTitle h2 {
+  font-size: 20px;
+  color: #333;
+  margin: 0;
+}
+
+.invSidebarClose {
+  background: none;
+  border: none;
+  font-size: 32px;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.invSidebarClose:hover {
+  color: #333;
+  transform: scale(1.1);
+}
+
+.invSidebarContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.invSidebarItem {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 15px;
+  border-radius: 10px;
+  background-color: #f9f9f9;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-left: 4px solid #ff4d4d;
+}
+
+.invSidebarItem:hover {
+  transform: translateX(-5px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background-color: #fff;
+}
+
+.invSidebarItemInfo {
+  flex: 1;
+}
+
+.invSidebarItemName {
+  display: block;
+  font-weight: 600;
+  color: #333;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.invSidebarItemCode {
+  display: block;
+  font-size: 12px;
+  color: #888;
+}
+
+.invSidebarItemStock {
+  text-align: right;
+}
+
+.invSidebarStockCount {
+  display: block;
+  font-weight: 700;
+  color: #ff4d4d;
+  font-size: 16px;
+}
+
+.invSidebarStockLabel {
+  display: block;
+  font-size: 10px;
+  color: #888;
+}
+
+.invSidebarItemArrow {
+  color: #3d67ee;
+  font-size: 18px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.invSidebarItem:hover .invSidebarItemArrow {
+  opacity: 1;
+}
+
+.invSidebarEmpty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+  color: #888;
+  font-size: 14px;
+}
+
+/* Scrollbar for Sidebar */
+.invSidebarContent::-webkit-scrollbar {
+  width: 6px;
+}
+
+.invSidebarContent::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.invSidebarContent::-webkit-scrollbar-thumb {
+  background: #3d67ee;
+  border-radius: 3px;
+}
+
+.invSidebarContent::-webkit-scrollbar-thumb:hover {
+  background: #0738D9;
+}
+
+.invStockCritical {
+  background-color: #ff0000;
+  color: white;
+  padding-left: 20px;
+  font-weight: 700;
+  position: relative;
+  padding-right: 25px;
+}
+
+.invCriticalIndicator {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background-color: white;
+  color: #ff0000;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  border: 2px solid #ff0000;
+  animation: invPulse 1.5s infinite;
+}
+
+@keyframes invPulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7);
+  }
+  70% {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 10px rgba(255, 0, 0, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
+  }
+}
+
+/* Critical Badge on Analytics Card */
+.invCriticalBadge {
+  font-size: 10px;
+  color: #ff0000;
+  background-color: rgba(255, 0, 0, 0.1);
+  padding-inline: 10px;
+  border-radius: 12px;
+  font-weight: 600;
+  display: inline-block;
+}
+
+/* Critical Sidebar Item */
+.invCriticalItem {
+  border-left-color: #ff0000;
+  background-color: #fff0f0;
+  position: relative;
+  overflow: hidden;
+}
+
+.invCriticalItem::before {
+  content: '⚠️';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  font-size: 12px;
+  opacity: 0.3;
+}
+
+.invCriticalTag {
+  background-color: #ff0000;
+  color: white;
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.invCriticalCount {
+  color: #ff0000 !important;
+  font-weight: 800 !important;
+  position: relative;
+}
+
+.invStockLow {
+  background-color: #ffebee;
+  color: #c62828;
+  position: relative;
+}
+
+.invCriticalItem:hover {
+  background-color: #ffe0e0 !important;
+  border-left-color: #ff0000 !important;
+  transform: translateX(-5px) scale(1.02);
+}
+
+/* Orange Background for Expiring */
+.invOrangeBg {
+  background: linear-gradient(135deg, #ff9800, #f57c00);
+}
+
+/* Active Filter Indicator */
+.invActiveFilter {
+  background-color: #e3f2fd;
+  border-radius: 8px;
+  padding: 8px 15px;
+  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #1976d2;
+  border-left: 4px solid #1976d2;
+}
+
+.invClearFilterSmall {
+  background: none;
+  border: none;
+  color: #1976d2;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.invClearFilterSmall:hover {
+  background-color: rgba(25, 118, 210, 0.1);
+}
+
+/* Expiration Date Styles */
+.invExpirationDate {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+  position: relative;
+}
+
+.invExpiring {
+  background-color: #fff3e0;
+  color: #f57c00;
+  font-weight: 600;
+  padding-right: 20px;
+}
+
+.invExpiringIndicator {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  background-color: #f57c00;
+  color: white;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  border: 2px solid white;
+}
+
+.invExpiringRow {
+  background-color: #fffaf0;
+}
+
+/* Expiring Sidebar Item */
+.invExpiringSidebarItem {
+  border-left-color: #f57c00 !important;
+}
+
+.invExpiringSidebarItem:hover {
+  background-color: #fff3e0 !important;
+}
+
+.invExpiringCount {
+  color: #f57c00 !important;
+  font-weight: 700 !important;
+}
+
+/* Price Input Max Length */
+.invPriceInput {
+  max-length: 9; /* For 999,999.99 */
+}
+
+/* Form Input Max Length Indicators */
+.invFormInput[maxlength="6"] {
+  max-length: 6;
+}
+
+/* Fixed Stock Control Updates */
+.invStockControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.invStockInput {
+  flex: 1;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.invStockInput:focus:not(:disabled) {
+  outline: none;
+  border-color: #3d67ee;
+  box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.1);
+}
+
+.invStockInput:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+  color: #999;
+}
+
+.invStockBtn:disabled {
+  color: #ccc;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Ensure quantity updates work */
+.invStockBtn:not(:disabled):active {
+  transform: scale(0.95);
+}
+
+/* Return Button */
+.invReturnBtn {
+  background-color: #6c757d;
+  border-radius: 8px;
+  padding: 0 15px;
+  height: 35px;
+  color: white;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s ease;
+}
+
+.invReturnBtn:hover {
+  background-color: #5a6268;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Expired Badge */
+.invExpiredBadge {
+  font-size: 10px;
+  color: #ff0000;
+  background-color: rgba(255, 0, 0, 0.1);
+  padding-inline: 10px;
+  border-radius: 12px;
+  font-weight: 600;
+  display: inline-block;
+}
+
+/* Expired Row */
+.invExpiredRow {
+  background-color: #ffebee !important;
+}
+
+.invExpiredRow:hover {
+  background-color: #ffcdd2 !important;
+}
+
+/* Expired Date Styles */
+.invExpired {
+  background-color: #ffcdd2;
+  color: #c62828;
+  font-weight: 600;
+  padding-right: 20px;
+  position: relative;
+}
+
+.invExpiredIndicator {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  background-color: #c62828;
+  color: white;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  border: 2px solid white;
+}
+
+/* Disabled Input */
+.invDisabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+  color: #999;
+}
+
+/* Expired Sidebar Item */
+.invExpiredSidebarItem {
+  border-left-color: #c62828 !important;
+  background-color: #ffebee !important;
+}
+
+.invExpiredSidebarItem:hover {
+  background-color: #ffcdd2 !important;
+  transform: translateX(-5px) scale(1.02);
+}
+
+.invExpiredTag {
+  background-color: #c62828;
+  color: white;
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.invExpiredCount {
+  color: #c62828 !important;
+  font-weight: 800 !important;
+}
+
+.invActionSection {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  align-items: center;
+}
+
+.invDeleteBtn,
+.invReturnBtn,
+.invBlackBtn {
+  white-space: nowrap;
+}
+
+/* Branch Selection Dropdown */
+.invSubTopLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.invBranchSelector {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.invBranchLabel {
+  font-size: 16px;
+  font-weight: 500;
+  color: #3d67ee;
+  margin-right: 10px;
+}
+
+.invBranchSelect {
+  padding: 8px 16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background-color: #ffffff;
+  font-size: 14px;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 150px;
+  font-weight: 500;
+}
+
+.invBranchSelect:hover {
+  border-color: #3d67ee;
+  box-shadow: 0 2px 4px rgba(61, 103, 238, 0.1);
+}
+
+.invBranchSelect:focus {
+  outline: none;
+  border-color: #3d67ee;
+  box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.1);
+}
+
+.invBranchIndicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+.invBranchTaguig {
+  background-color: #4caf50;
+}
+
+.invBranchLasPinas {
+  background-color: #ff9800;
+}
+
+.invBranchAll {
+  background-color: #3d67ee;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3d67ee;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #0738D9;
+}
