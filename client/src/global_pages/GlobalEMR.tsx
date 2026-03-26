@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../reusable_components/NavBar';
 import Notifications from '../reusable_components/Notifications';
+import { HiOutlineClipboardDocumentList } from "react-icons/hi2";
 import './GlobalEMR.css';
 import { 
   IoSearchSharp,
@@ -16,9 +17,6 @@ import {
   IoEyeOutline,
   IoCloseOutline,
   IoPawOutline,
-  IoCallOutline,
-  IoMailOutline,
-  IoCalendarClearOutline,
   IoMedicalOutline,
   IoDocumentTextOutline,
   IoRefreshOutline,
@@ -26,8 +24,18 @@ import {
   IoTimeOutline,
   IoAddCircleOutline,
   IoCreateOutline,
-  IoWarningOutline
+  IoWarningOutline,
+  IoListOutline,
+  IoAttachOutline,
+  IoCloudUploadOutline,
+  IoTrashBinOutline,
+  IoImageOutline,
+  IoMedkitOutline,
+  IoCalendarOutline,
+  IoTimeSharp
 } from 'react-icons/io5';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface MedicalRecord {
   id?: number;
@@ -47,6 +55,25 @@ interface MedicalRecord {
   petDetails?: PetDetails;
 }
 
+interface LabResult {
+  id: string;
+  testType: string;
+  fileName: string;
+  fileUrl: string;
+  fileData?: string; // Base64 data for preview
+  interpretation: string;
+}
+
+interface Prescription {
+  id: string;
+  medicationName: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  instructions: string;
+  prescribedDate: string;
+}
+
 interface VisitHistory {
   id: string;
   date: string;
@@ -56,9 +83,24 @@ interface VisitHistory {
   doctorRemarks: string;
   weight: number;
   weightUnit: 'kg' | 'lbs';
+  sameAsLastWeight?: boolean;
   neutered?: boolean;
   vaccinated?: boolean;
   deceased?: boolean;
+  pregnant?: boolean;
+  pregnancyMonths?: number;
+  pregnancyDays?: number;
+  clinicalExam?: {
+    length: number;
+    lengthUnit: 'cm' | 'inches';
+    temperature: number;
+    tempUnit: 'C' | 'F';
+    heartRate: string;
+    breathingRate: string;
+    additionalFindings: string;
+  };
+  labResults?: LabResult[];
+  prescriptions?: Prescription[];
 }
 
 interface PetDetails {
@@ -74,6 +116,9 @@ interface PetDetails {
   neutered: boolean;
   deceased: boolean;
   vaccinated: boolean;
+  pregnant?: boolean;
+  pregnancyMonths?: number;
+  pregnancyDays?: number;
   vaccinationProof?: string;
   image?: string;
   doctorRemarks: string;
@@ -124,7 +169,11 @@ interface SearchResult {
   colorMarkings: string;
   neutered: boolean;
   vaccinated: boolean;
+  pregnant?: boolean;
+  pregnancyMonths?: number;
+  pregnancyDays?: number;
   vaccinationProof?: string;
+  image?: string;
   hasExistingRecord?: boolean;
   existingRecordId?: number;
   deceased?: boolean;
@@ -149,11 +198,25 @@ const CAT_BREEDS = [
 ];
 const REASONS = [
   'Routine Checkup', 'Vaccination', 'Sick Visit', 'Injury', 
-  'Surgery', 'Dental Care', 'Grooming', 'Follow-up', 'Emergency', 'Others'
+  'Surgery', 'Dental Care', 'Grooming', 'Follow-up', 'Emergency', 'Laboratory', 'Others'
+];
+const LAB_TEST_TYPES = [
+  'Complete Blood Count (CBC)',
+  'Blood Chemistry',
+  'Urinalysis',
+  'Fecal Examination',
+  'Skin Scraping',
+  'Radiology/X-Ray',
+  'Ultrasound',
+  'Biopsy',
+  'Microbiology/Culture',
+  'Parasitology',
+  'Allergy Testing',
+  'Other'
 ];
 const VETERINARIANS = ['Dr. Sarah Johnson', 'Dr. Michael Chen', 'Dr. Emily Rodriguez', 'Dr. James Wilson'];
 
-// Mock data for pet search with existing records
+// Mock data for pet search with existing records and images
 const MOCK_PET_DATABASE: SearchResult[] = [
   {
     id: 1,
@@ -170,6 +233,7 @@ const MOCK_PET_DATABASE: SearchResult[] = [
     neutered: true,
     vaccinated: true,
     vaccinationProof: 'https://example.com/vax-proof-max.pdf',
+    image: 'https://via.placeholder.com/150/3d67ee/ffffff?text=Max',
     hasExistingRecord: true,
     existingRecordId: 1,
     deceased: false
@@ -188,7 +252,9 @@ const MOCK_PET_DATABASE: SearchResult[] = [
     colorMarkings: 'White with gray patches',
     neutered: true,
     vaccinated: true,
+    pregnant: false,
     vaccinationProof: 'https://example.com/vax-proof-luna.pdf',
+    image: 'https://via.placeholder.com/150/ec489a/ffffff?text=Luna',
     hasExistingRecord: true,
     existingRecordId: 2,
     deceased: false
@@ -207,6 +273,7 @@ const MOCK_PET_DATABASE: SearchResult[] = [
     colorMarkings: 'Golden',
     neutered: false,
     vaccinated: false,
+    image: 'https://via.placeholder.com/150/f39c12/ffffff?text=Charlie',
     hasExistingRecord: true,
     existingRecordId: 3,
     deceased: false
@@ -225,7 +292,9 @@ const MOCK_PET_DATABASE: SearchResult[] = [
     colorMarkings: 'Cream with dark points',
     neutered: true,
     vaccinated: true,
+    pregnant: false,
     vaccinationProof: 'https://example.com/vax-proof-bella.pdf',
+    image: 'https://www.freepik.com/free-photos-vectors/happy-pets',
     hasExistingRecord: false,
     deceased: false
   },
@@ -244,6 +313,7 @@ const MOCK_PET_DATABASE: SearchResult[] = [
     neutered: true,
     vaccinated: true,
     vaccinationProof: 'https://example.com/vax-proof-rocky.pdf',
+    image: 'https://via.placeholder.com/150/e67e22/ffffff?text=Rocky',
     hasExistingRecord: false,
     deceased: false
   },
@@ -261,8 +331,10 @@ const MOCK_PET_DATABASE: SearchResult[] = [
     colorMarkings: 'Seal point',
     neutered: false,
     vaccinated: false,
+    pregnant: false,
+    image: 'https://via.placeholder.com/150/95a5a6/ffffff?text=Mochi',
     hasExistingRecord: false,
-    deceased: true
+    deceased: false
   }
 ];
 
@@ -289,17 +361,16 @@ const MOCK_RECORDS: MedicalRecord[] = [
         reason: 'Routine Checkup',
         doctorRemarks: 'Healthy pet, regular checkup',
         weight: 25.5,
-        weightUnit: 'kg'
-      },
-      {
-        id: 'v2',
-        date: '02/15/2024',
-        time: '2:00 PM',
-        veterinarian: 'Dr. Michael Chen',
-        reason: 'Vaccination',
-        doctorRemarks: 'Annual booster given',
-        weight: 24.8,
-        weightUnit: 'kg'
+        weightUnit: 'kg',
+        clinicalExam: {
+          length: 65,
+          lengthUnit: 'cm',
+          temperature: 38.5,
+          tempUnit: 'C',
+          heartRate: '80-120',
+          breathingRate: '15-30',
+          additionalFindings: 'No abnormalities detected'
+        }
       }
     ],
     petDetails: {
@@ -358,52 +429,10 @@ const MOCK_RECORDS: MedicalRecord[] = [
       neutered: true,
       deceased: false,
       vaccinated: true,
+      pregnant: false,
       doctorRemarks: '',
       doctorAssigned: 'Dr. Michael Chen',
       reasonForVisit: 'Vaccination'
-    }
-  },
-  {
-    id: 3,
-    patientId: 'PET-003',
-    petName: 'Charlie',
-    ownerName: 'Robert Brown',
-    ownerFirstName: 'Robert',
-    ownerLastName: 'Brown',
-    ownerEmail: 'robert.brown@email.com',
-    ownerContact: '09123456788',
-    lastVisit: '03/15/2024',
-    veterinarian: 'Dr. Emily Rodriguez',
-    reason: 'Sick Visit',
-    deceased: false,
-    visitHistory: [
-      {
-        id: 'v1',
-        date: '03/15/2024',
-        time: '9:45 AM',
-        veterinarian: 'Dr. Emily Rodriguez',
-        reason: 'Sick Visit',
-        doctorRemarks: 'Prescribed antibiotics',
-        weight: 32.0,
-        weightUnit: 'kg'
-      }
-    ],
-    petDetails: {
-      name: 'Charlie',
-      breed: 'Golden Retriever',
-      species: 'Dog',
-      gender: 'Male',
-      dateOfBirth: '2019-11-08',
-      age: '5 years',
-      weight: 32.0,
-      weightUnit: 'kg',
-      colorMarkings: 'Golden',
-      neutered: false,
-      deceased: false,
-      vaccinated: false,
-      doctorRemarks: '',
-      doctorAssigned: 'Dr. Emily Rodriguez',
-      reasonForVisit: 'Sick Visit'
     }
   }
 ];
@@ -428,7 +457,6 @@ const GlobalEMR: React.FC = () => {
   const [showPetSearch, setShowPetSearch] = useState<boolean>(false);
   const [petSearchQuery, setPetSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>(MOCK_PET_DATABASE);
-  const [searching, setSearching] = useState<boolean>(false);
   const [showVaccinationProof, setShowVaccinationProof] = useState<boolean>(false);
   const [selectedVaccinationProof, setSelectedVaccinationProof] = useState<string>('');
   const [editModeEnabled, setEditModeEnabled] = useState<boolean>(false);
@@ -438,18 +466,43 @@ const GlobalEMR: React.FC = () => {
   const [visitDoctorFilter, setVisitDoctorFilter] = useState<string>('');
   const [petStatusFilter, setPetStatusFilter] = useState<string>('all');
   const [showModeOverlay, setShowModeOverlay] = useState<boolean>(true);
+  const [activeTab, setActiveTab] = useState<'info' | 'visits'>('info');
+  const [petImage, setPetImage] = useState<string>('');
+  const [petImageFile, setPetImageFile] = useState<File | null>(null);
+  const [lastWeight, setLastWeight] = useState<{ value: number; unit: 'kg' | 'lbs' } | null>(null);
+  
+  // Pregnancy state
+  const [pregnancyMonths, setPregnancyMonths] = useState<number>(0);
+  const [pregnancyDays, setPregnancyDays] = useState<number>(0);
+  const [pregnancyUnit, setPregnancyUnit] = useState<'months' | 'days'>('months');
+  
   const [newVisit, setNewVisit] = useState<VisitHistory>({
     id: '',
-    date: new Date().toLocaleDateString(),
-    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    date: '',
+    time: '',
     veterinarian: VETERINARIANS[0],
     reason: REASONS[0],
     doctorRemarks: '',
     weight: 0,
     weightUnit: 'kg',
+    sameAsLastWeight: false,
     neutered: false,
     vaccinated: false,
-    deceased: false
+    deceased: false,
+    pregnant: false,
+    pregnancyMonths: 0,
+    pregnancyDays: 0,
+    clinicalExam: {
+      length: 0,
+      lengthUnit: 'cm',
+      temperature: 0,
+      tempUnit: 'C',
+      heartRate: '',
+      breathingRate: '',
+      additionalFindings: ''
+    },
+    labResults: [],
+    prescriptions: []
   });
 
   // Modal States
@@ -500,6 +553,387 @@ const GlobalEMR: React.FC = () => {
   
   // Form Errors
   const [formErrors, setFormErrors] = useState<FormErrors>({});
+
+  // Helper functions
+  const formatRate = (value: string): string => {
+    const cleaned = value.replace(/[^\d-]/g, '');
+    if (cleaned.match(/^\d+-\d+$/)) return cleaned;
+    if (cleaned.match(/^\d+$/)) return `${cleaned}-${cleaned}`;
+    return cleaned;
+  };
+
+  const handleImageUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPetImage(reader.result as string);
+      setPetImageFile(file);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileUpload = (labId: string, file: File) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      updateLabResult(labId, 'fileName', file.name);
+      updateLabResult(labId, 'fileData', reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const addPrescription = () => {
+    const newPrescription: Prescription = {
+      id: Date.now().toString(),
+      medicationName: '',
+      dosage: '',
+      frequency: '',
+      duration: '',
+      instructions: '',
+      prescribedDate: new Date().toISOString().split('T')[0]
+    };
+    setNewVisit({
+      ...newVisit,
+      prescriptions: [...(newVisit.prescriptions || []), newPrescription]
+    });
+  };
+
+  const updatePrescription = (id: string, field: keyof Prescription, value: string) => {
+    setNewVisit({
+      ...newVisit,
+      prescriptions: newVisit.prescriptions?.map(pres => 
+        pres.id === id ? { ...pres, [field]: value } : pres
+      )
+    });
+  };
+
+  const removePrescription = (id: string) => {
+    setNewVisit({
+      ...newVisit,
+      prescriptions: newVisit.prescriptions?.filter(pres => pres.id !== id)
+    });
+  };
+
+  const addLabResult = () => {
+    const newLabResult: LabResult = {
+      id: Date.now().toString(),
+      testType: LAB_TEST_TYPES[0],
+      fileName: '',
+      fileUrl: '',
+      fileData: '',
+      interpretation: ''
+    };
+    setNewVisit({
+      ...newVisit,
+      labResults: [...(newVisit.labResults || []), newLabResult]
+    });
+  };
+
+  const updateLabResult = (id: string, field: keyof LabResult, value: string) => {
+    setNewVisit({
+      ...newVisit,
+      labResults: newVisit.labResults?.map(lab => 
+        lab.id === id ? { ...lab, [field]: value } : lab
+      )
+    });
+  };
+
+  const removeLabResult = (id: string) => {
+    setNewVisit({
+      ...newVisit,
+      labResults: newVisit.labResults?.filter(lab => lab.id !== id)
+    });
+  };
+
+  const generatePatientPDF = (record: MedicalRecord) => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 14;
+    let yPos = 20;
+
+    doc.setFillColor(61, 103, 238);
+    doc.rect(0, 0, pageWidth, 35, 'F');
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Medical Record', margin, 22);
+    
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, margin, 32);
+    
+    doc.setTextColor(0, 0, 0);
+    yPos = 45;
+
+    doc.setFillColor(245, 247, 250);
+    doc.rect(margin - 2, yPos - 4, pageWidth - (margin * 2) + 4, 12, 'F');
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(61, 103, 238);
+    doc.text(`Patient ID: ${record.patientId}`, margin, yPos);
+    yPos += 10;
+    
+    if (record.deceased) {
+      doc.setFillColor(198, 40, 40);
+      doc.rect(pageWidth - margin - 35, yPos - 6, 35, 8, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(8);
+      doc.text('DECEASED', pageWidth - margin - 30, yPos - 1);
+      doc.setTextColor(0, 0, 0);
+    }
+    yPos += 8;
+
+    // Pet Information Section
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(61, 103, 238);
+    doc.text('🐾 Pet Information', margin, yPos);
+    yPos += 4;
+    
+    doc.setDrawColor(61, 103, 238);
+    doc.line(margin, yPos, pageWidth - margin, yPos);
+    yPos += 8;
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+    
+    const petDetails = record.petDetails;
+    const petInfo = [
+      ['Pet Name', record.petName],
+      ['Species', petDetails?.species || 'N/A'],
+      ['Breed', petDetails?.breed || 'N/A'],
+      ['Gender', petDetails?.gender || 'N/A'],
+      ['Date of Birth', petDetails?.dateOfBirth || 'N/A'],
+      ['Age', petDetails?.age || 'N/A'],
+      ['Weight', petDetails?.weight ? `${petDetails.weight} ${petDetails.weightUnit}` : 'N/A'],
+      ['Color/Markings', petDetails?.colorMarkings || 'N/A'],
+      ['Neutered/Spayed', petDetails?.neutered ? 'Yes' : 'No'],
+      ['Vaccinated', petDetails?.vaccinated ? 'Yes' : 'No'],
+      ...(petDetails?.gender === 'Female' && petDetails?.pregnant !== undefined ? [['Pregnant', petDetails.pregnant ? `Yes${petDetails.pregnancyMonths ? ` (${petDetails.pregnancyMonths} months${petDetails.pregnancyDays ? `, ${petDetails.pregnancyDays} days` : ''})` : ''}` : 'No']] : [])
+    ];
+
+    autoTable(doc, {
+      startY: yPos,
+      margin: { left: margin, right: margin },
+      body: petInfo,
+      theme: 'plain',
+      styles: { fontSize: 10, cellPadding: 3, lineColor: [221, 221, 221], lineWidth: 0.1 },
+      columnStyles: { 0: { fontStyle: 'bold', textColor: [100, 100, 100], cellWidth: 45 }, 1: { cellWidth: 'auto' } },
+      didDrawCell: (data) => {
+        if (data.row.index % 2 === 0 && data.section === 'body') {
+          doc.setFillColor(250, 250, 250);
+          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+        }
+      }
+    });
+
+    yPos = (doc as any).lastAutoTable.finalY + 8;
+
+    // Owner Information Section
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(61, 103, 238);
+    doc.text('👤 Owner Information', margin, yPos);
+    yPos += 4;
+    
+    doc.setDrawColor(61, 103, 238);
+    doc.line(margin, yPos, pageWidth - margin, yPos);
+    yPos += 8;
+
+    const ownerInfo = [
+      ['Owner Name', record.ownerName],
+      ['Email', record.ownerEmail],
+      ['Contact Number', record.ownerContact]
+    ];
+
+    autoTable(doc, {
+      startY: yPos,
+      margin: { left: margin, right: margin },
+      body: ownerInfo,
+      theme: 'plain',
+      styles: { fontSize: 10, cellPadding: 3, lineColor: [221, 221, 221], lineWidth: 0.1 },
+      columnStyles: { 0: { fontStyle: 'bold', textColor: [100, 100, 100], cellWidth: 45 }, 1: { cellWidth: 'auto' } },
+      didDrawCell: (data) => {
+        if (data.row.index % 2 === 0 && data.section === 'body') {
+          doc.setFillColor(250, 250, 250);
+          doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+        }
+      }
+    });
+
+    yPos = (doc as any).lastAutoTable.finalY + 8;
+
+    // Visit Records Section
+    if (record.visitHistory && record.visitHistory.length > 0) {
+      for (const visit of record.visitHistory) {
+        if (yPos > 240) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(61, 103, 238);
+        doc.text(`Visit: ${visit.date} at ${visit.time}`, margin, yPos);
+        yPos += 6;
+        
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(0, 0, 0);
+        
+        const visitInfo = [
+          ['Veterinarian', visit.veterinarian],
+          ['Reason', visit.reason],
+          ['Weight', `${visit.weight} ${visit.weightUnit}`],
+          ...(visit.clinicalExam ? [
+            ['Length', `${visit.clinicalExam.length} ${visit.clinicalExam.lengthUnit}`],
+            ['Temperature', `${visit.clinicalExam.temperature}°${visit.clinicalExam.tempUnit}`],
+            ['Heart Rate', `${visit.clinicalExam.heartRate}/minute`],
+            ['Breathing Rate', `${visit.clinicalExam.breathingRate}/minute`],
+            ['Additional Findings', visit.clinicalExam.additionalFindings || 'N/A']
+          ] : []),
+          ...(visit.pregnant !== undefined ? [['Pregnant', visit.pregnant ? `Yes${visit.pregnancyMonths ? ` (${visit.pregnancyMonths} months${visit.pregnancyDays ? `, ${visit.pregnancyDays} days` : ''})` : ''}` : 'No']] : []),
+          ...(visit.prescriptions && visit.prescriptions.length > 0 ? [['Prescriptions', `${visit.prescriptions.length} medication(s) prescribed`]] : []),
+          ...(visit.labResults && visit.labResults.length > 0 ? [['Lab Results', `${visit.labResults.length} test(s) performed`]] : []),
+          ['Remarks', visit.doctorRemarks || 'N/A']
+        ];
+
+        autoTable(doc, {
+          startY: yPos,
+          margin: { left: margin, right: margin },
+          body: visitInfo,
+          theme: 'plain',
+          styles: { fontSize: 9, cellPadding: 3, lineColor: [221, 221, 221], lineWidth: 0.1 },
+          columnStyles: { 0: { fontStyle: 'bold', textColor: [100, 100, 100], cellWidth: 35 }, 1: { cellWidth: 'auto' } }
+        });
+
+        yPos = (doc as any).lastAutoTable.finalY + 8;
+      }
+    }
+
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`Generated by ${record.veterinarian || 'Veterinary System'}`, margin, doc.internal.pageSize.getHeight() - 10);
+    }
+
+    const pdfDataUrl = doc.output('dataurlstring');
+    window.open(pdfDataUrl, '_blank');
+  };
+
+  const generatePrescriptionPDF = (visit: VisitHistory, petName: string, ownerName: string, recordId: string) => {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 14;
+  let yPos = 20;
+
+  // Header with blue background
+  doc.setFillColor(61, 103, 238);
+  doc.rect(0, 0, pageWidth, 35, 'F');
+  
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(24);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Prescription', margin, 22);
+  
+  doc.setFontSize(10);
+  doc.text(`Generated: ${new Date().toLocaleString()}`, margin, 32);
+  doc.text(`Prescription ID: ${visit.id}`, margin, 38);
+  
+  doc.setTextColor(0, 0, 0);
+  yPos = 50;
+
+  // Pet and Owner Information
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(61, 103, 238);
+  doc.text('Patient Information', margin, yPos);
+  yPos += 6;
+  
+  doc.setDrawColor(61, 103, 238);
+  doc.line(margin, yPos, pageWidth - margin, yPos);
+  yPos += 6;
+  
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(0, 0, 0);
+  
+  doc.text(`Pet Name: ${petName}`, margin, yPos);
+  yPos += 5;
+  doc.text(`Owner: ${ownerName}`, margin, yPos);
+  yPos += 5;
+  doc.text(`Visit Date: ${visit.date} at ${visit.time}`, margin, yPos);
+  yPos += 5;
+  doc.text(`Veterinarian: ${visit.veterinarian}`, margin, yPos);
+  yPos += 10;
+
+  // Prescription Section
+  if (visit.prescriptions && visit.prescriptions.length > 0) {
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(61, 103, 238);
+    doc.text('Prescribed Medications', margin, yPos);
+    yPos += 6;
+    
+    doc.setDrawColor(61, 103, 238);
+    doc.line(margin, yPos, pageWidth - margin, yPos);
+    yPos += 8;
+    
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(0, 0, 0);
+    
+    let presIndex = 1;
+    for (const pres of visit.prescriptions) {
+      if (yPos > 250) {
+        doc.addPage();
+        yPos = 20;
+      }
+      
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${presIndex}. ${pres.medicationName}`, margin, yPos);
+      yPos += 5;
+      
+      doc.setFont('helvetica', 'normal');
+      doc.text(`   Dosage: ${pres.dosage}`, margin, yPos);
+      yPos += 4;
+      doc.text(`   Frequency: ${pres.frequency}`, margin, yPos);
+      yPos += 4;
+      doc.text(`   Duration: ${pres.duration}`, margin, yPos);
+      yPos += 4;
+      
+      if (pres.instructions) {
+        doc.setFont('helvetica', 'italic');
+        doc.text(`   Instructions: ${pres.instructions}`, margin, yPos);
+        yPos += 5;
+        doc.setFont('helvetica', 'normal');
+      }
+      
+      doc.text(`   Prescribed Date: ${pres.prescribedDate || visit.date}`, margin, yPos);
+      yPos += 8;
+      presIndex++;
+    }
+  } else {
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(100, 100, 100);
+    doc.text('No prescriptions recorded for this visit.', margin, yPos);
+  }
+
+  // Footer
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Generated by ${visit.veterinarian} - Veterinary System`, margin, doc.internal.pageSize.getHeight() - 10);
+    doc.text(`Record ID: ${recordId}`, pageWidth - margin - 30, doc.internal.pageSize.getHeight() - 10);
+  }
+
+  const pdfDataUrl = doc.output('dataurlstring');
+  window.open(pdfDataUrl, '_blank');
+};
 
   const showAlert = (
     type: ModalConfig['type'], 
@@ -562,45 +996,79 @@ const GlobalEMR: React.FC = () => {
   };
 
   const addNewVisit = () => {
+    const now = new Date();
+    
+    let lastWeightValue = null;
+    if (visitHistory.length > 0) {
+      const lastVisit = visitHistory[visitHistory.length - 1];
+      lastWeightValue = { value: lastVisit.weight, unit: lastVisit.weightUnit };
+    }
+    
+    const finalWeight = newVisit.sameAsLastWeight && lastWeightValue 
+      ? lastWeightValue.value 
+      : parseFloat(newVisit.weight.toString()) || 0;
+    const finalWeightUnit = newVisit.sameAsLastWeight && lastWeightValue 
+      ? lastWeightValue.unit 
+      : newVisit.weightUnit;
+    
     const newVisitEntry: VisitHistory = {
       id: Date.now().toString(),
-      date: newVisit.date,
-      time: newVisit.time,
+      date: now.toLocaleDateString(),
+      time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       veterinarian: newVisit.veterinarian,
       reason: newVisit.reason,
       doctorRemarks: newVisit.doctorRemarks,
-      weight: parseFloat(newVisit.weight.toString()) || 0,
-      weightUnit: newVisit.weightUnit,
+      weight: finalWeight,
+      weightUnit: finalWeightUnit,
+      sameAsLastWeight: newVisit.sameAsLastWeight,
       neutered: newVisit.neutered,
       vaccinated: newVisit.vaccinated,
-      deceased: newVisit.deceased
+      deceased: newVisit.deceased,
+      pregnant: newVisit.pregnant,
+      pregnancyMonths: newVisit.pregnancyMonths,
+      pregnancyDays: newVisit.pregnancyDays,
+      clinicalExam: newVisit.clinicalExam,
+      labResults: newVisit.labResults,
+      prescriptions: newVisit.prescriptions
     };
     setVisitHistory([...visitHistory, newVisitEntry]);
     
-    // Update one-time fields if they were set to Yes in the add visit modal
-    if (newVisit.neutered && !neutered) {
-      setNeutered(true);
-    }
-    if (newVisit.vaccinated && !vaccinated) {
-      setVaccinated(true);
-    }
-    if (newVisit.deceased && !deceased) {
-      setDeceased(true);
+    if (newVisit.neutered && !neutered) setNeutered(true);
+    if (newVisit.vaccinated && !vaccinated) setVaccinated(true);
+    if (newVisit.deceased && !deceased) setDeceased(true);
+    if (newVisit.pregnant !== undefined && newVisit.pregnant !== (pregnancyMonths > 0 || pregnancyDays > 0)) {
+      setPregnancyMonths(newVisit.pregnancyMonths || 0);
+      setPregnancyDays(newVisit.pregnancyDays || 0);
     }
     
     setShowAddVisit(false);
     setNewVisit({
       id: '',
-      date: new Date().toLocaleDateString(),
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      date: '',
+      time: '',
       veterinarian: VETERINARIANS[0],
       reason: REASONS[0],
       doctorRemarks: '',
       weight: 0,
       weightUnit: 'kg',
+      sameAsLastWeight: false,
       neutered: false,
       vaccinated: false,
-      deceased: false
+      deceased: false,
+      pregnant: false,
+      pregnancyMonths: 0,
+      pregnancyDays: 0,
+      clinicalExam: {
+        length: 0,
+        lengthUnit: 'cm',
+        temperature: 0,
+        tempUnit: 'C',
+        heartRate: '',
+        breathingRate: '',
+        additionalFindings: ''
+      },
+      labResults: [],
+      prescriptions: []
     });
   };
 
@@ -609,9 +1077,8 @@ const GlobalEMR: React.FC = () => {
       showAlert(
         'confirm',
         'Existing Medical Record Found',
-        `${pet.petName} already has an existing medical record. Would you like to edit the existing record or create a new visit?`,
+        `${pet.petName} already has an existing medical record. Would you like to edit the existing record?`,
         () => {
-          // Edit existing record
           loadRecordForEdit(pet.existingRecordId || 0);
           setShowPetSearch(false);
           setPetSearchQuery('');
@@ -622,7 +1089,6 @@ const GlobalEMR: React.FC = () => {
       return;
     }
 
-    // Auto-fill for new pet
     setPetName(pet.petName);
     setSpecies(pet.species as Species);
     setBreed(pet.breed);
@@ -632,8 +1098,11 @@ const GlobalEMR: React.FC = () => {
     setColorMarkings(pet.colorMarkings);
     setNeutered(pet.neutered);
     setVaccinated(pet.vaccinated);
+    setPregnancyMonths(pet.pregnancyMonths || 0);
+    setPregnancyDays(pet.pregnancyDays || 0);
     setVaccinationProof(pet.vaccinationProof || '');
     setDeceased(pet.deceased || false);
+    setPetImage(pet.image || '');
     setOwnerFirstName(pet.ownerName.split(' ')[0]);
     setOwnerLastName(pet.ownerName.split(' ').slice(1).join(' '));
     setOwnerEmail(pet.ownerEmail);
@@ -668,12 +1137,21 @@ const GlobalEMR: React.FC = () => {
         setColorMarkings(record.petDetails.colorMarkings);
         setNeutered(record.petDetails.neutered);
         setVaccinated(record.petDetails.vaccinated);
+        setPregnancyMonths(record.petDetails.pregnancyMonths || 0);
+        setPregnancyDays(record.petDetails.pregnancyDays || 0);
         setVaccinationProof(record.petDetails.vaccinationProof || '');
+        setPetImage(record.petDetails.image || '');
+        
+        if (record.visitHistory && record.visitHistory.length > 0) {
+          const lastVisit = record.visitHistory[record.visitHistory.length - 1];
+          setLastWeight({ value: lastVisit.weight, unit: lastVisit.weightUnit });
+        }
       }
       
       setViewMode('edit');
       setEditModeEnabled(false);
       setShowModeOverlay(true);
+      setActiveTab('info');
     }
   };
 
@@ -699,17 +1177,11 @@ const GlobalEMR: React.FC = () => {
       months += 12;
     }
     
-    if (years > 0) {
-      return `${years} year${years > 1 ? 's' : ''}`;
-    } else if (months > 0) {
-      return `${months} month${months > 1 ? 's' : ''}`;
-    } else if (days > 1) {
-      return `${days} days old`;
-    } else if (days === 1) {
-      return `1 day old`;
-    } else {
-      return 'Born today';
-    }
+    if (years > 0) return `${years} year${years > 1 ? 's' : ''}`;
+    else if (months > 0) return `${months} month${months > 1 ? 's' : ''}`;
+    else if (days > 1) return `${days} days old`;
+    else if (days === 1) return `1 day old`;
+    else return 'Born today';
   };
 
   const handleDateOfBirthChange = (value: string) => {
@@ -719,11 +1191,8 @@ const GlobalEMR: React.FC = () => {
       return;
     }
     setDateOfBirth(value);
-    if (value) {
-      setAge(calculateAge(value));
-    } else {
-      setAge('');
-    }
+    if (value) setAge(calculateAge(value));
+    else setAge('');
   };
 
   const clearFilters = () => {
@@ -755,6 +1224,8 @@ const GlobalEMR: React.FC = () => {
     setNeutered(false);
     setDeceased(false);
     setVaccinated(false);
+    setPregnancyMonths(0);
+    setPregnancyDays(0);
     setVaccinationProof('');
     setDoctorRemarks('');
     setDoctorAssigned(VETERINARIANS[0]);
@@ -765,10 +1236,14 @@ const GlobalEMR: React.FC = () => {
     setOwnerLastName('');
     setOwnerEmail('');
     setOwnerContact('');
+    setPetImage('');
+    setPetImageFile(null);
     setEditingId(null);
     setFormErrors({});
     setEditModeEnabled(false);
     setShowModeOverlay(true);
+    setActiveTab('info');
+    setLastWeight(null);
   };
 
   const handleReturnToList = () => {
@@ -867,7 +1342,11 @@ const GlobalEMR: React.FC = () => {
         neutered,
         deceased,
         vaccinated,
+        pregnant: gender === 'Female' ? (pregnancyMonths > 0 || pregnancyDays > 0) : undefined,
+        pregnancyMonths: gender === 'Female' ? pregnancyMonths : undefined,
+        pregnancyDays: gender === 'Female' ? pregnancyDays : undefined,
         vaccinationProof,
+        image: petImage,
         doctorRemarks,
         doctorAssigned,
         reasonForVisit: reasonForVisit === 'Others' ? reasonOther : reasonForVisit
@@ -936,11 +1415,8 @@ const GlobalEMR: React.FC = () => {
 
   const toggleRecordSelection = (id: number) => {
     const newSelected = new Set(selectedRecords);
-    if (newSelected.has(id)) {
-      newSelected.delete(id);
-    } else {
-      newSelected.add(id);
-    }
+    if (newSelected.has(id)) newSelected.delete(id);
+    else newSelected.add(id);
     setSelectedRecords(newSelected);
   };
 
@@ -953,7 +1429,6 @@ const GlobalEMR: React.FC = () => {
     }
   };
 
-  // Filter logic
   const filteredRecords = records.filter(record => {
     const searchLower = searchQuery.toLowerCase();
     const matchesSearch = 
@@ -966,11 +1441,8 @@ const GlobalEMR: React.FC = () => {
     
     let matchesStatus = true;
     const isDeceased = record.deceased || false;
-    if (petStatusFilter === 'active') {
-      matchesStatus = !isDeceased;
-    } else if (petStatusFilter === 'deceased') {
-      matchesStatus = isDeceased;
-    }
+    if (petStatusFilter === 'active') matchesStatus = !isDeceased;
+    else if (petStatusFilter === 'deceased') matchesStatus = isDeceased;
 
     return matchesSearch && matchesDate && matchesDoctor && matchesStatus;
   });
@@ -978,7 +1450,6 @@ const GlobalEMR: React.FC = () => {
   const paginatedRecords = filteredRecords.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
   const totalPages = Math.ceil(filteredRecords.length / itemsPerPage);
 
-  // Filter visit history
   const filteredVisits = visitHistory.filter(visit => {
     const matchesSearch = visitSearchQuery === '' || 
       visit.reason.toLowerCase().includes(visitSearchQuery.toLowerCase()) ||
@@ -988,11 +1459,40 @@ const GlobalEMR: React.FC = () => {
     return matchesSearch && matchesDate && matchesDoctor;
   });
 
-  // Get the breed options based on species
   const breedOptions = species === 'Dog' ? DOG_BREEDS : CAT_BREEDS;
+
+  const handleViewRecord = (record: MedicalRecord) => {
+    generatePatientPDF(record);
+  };
+
+  const getLastWeight = () => {
+    if (visitHistory.length > 0) {
+      const lastVisit = visitHistory[visitHistory.length - 1];
+      return { value: lastVisit.weight, unit: lastVisit.weightUnit };
+    }
+    return null;
+  };
+
+  const isPregnant = pregnancyMonths > 0 || pregnancyDays > 0;
 
   return (
     <div className="emrContainer">
+      {showModeOverlay && viewMode !== 'list' && (
+        <div className="emrToast">
+          <div className="emrToastContent">
+            <div className="emrToastIcon">
+              {viewMode === 'add' ? <IoCreateOutline size={18} /> : <IoPencilSharp size={18} />}
+            </div>
+            <span className="emrToastMessage">
+              {viewMode === 'add' ? 'Creating a Medical Record' : 'Editing a Medical Record'}
+            </span>
+            <button className="emrToastClose" onClick={() => setShowModeOverlay(false)}>
+              <IoCloseOutline size={18} />
+            </button>
+          </div>
+        </div>
+      )}
+      
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
       
       <div className="emrBodyContainer">
@@ -1106,7 +1606,6 @@ const GlobalEMR: React.FC = () => {
                 </div>
               </div>
 
-              {/* Legend */}
               <div className="emrLegend">
                 <div className="emrLegendTitle">Legends:</div>
                 <div className="emrLegendItem">
@@ -1116,10 +1615,6 @@ const GlobalEMR: React.FC = () => {
                 <div className="emrLegendItem">
                   <div className="emrLegendColor emrActiveColor"></div>
                   <span>Active Pet</span>
-                </div>
-                <div className="emrLegendItem">
-                  <div className="emrLegendIcon">⚠️</div>
-                  <span>Cannot Edit - Pet is Deceased</span>
                 </div>
               </div>
 
@@ -1163,7 +1658,6 @@ const GlobalEMR: React.FC = () => {
                                   checked={selectedRecords.has(recordId)}
                                   onChange={() => toggleRecordSelection(recordId)}
                                   className="emrCheckbox"
-                                  disabled={isDeceased}
                                 />
                               </td>
                               <td>{record.patientId}</td>
@@ -1194,9 +1688,11 @@ const GlobalEMR: React.FC = () => {
                                   >
                                     <IoPencilSharp size={14} />
                                   </button>
-                                  <button className="emrActionBtn" onClick={() => {
-                                    console.log('View record', record);
-                                  }}>
+                                  <button 
+                                    className="emrActionBtn" 
+                                    onClick={() => handleViewRecord(record)}
+                                    title="View & Download PDF"
+                                  >
                                     <IoEyeOutline size={14} />
                                   </button>
                                 </div>
@@ -1235,18 +1731,7 @@ const GlobalEMR: React.FC = () => {
               )}
             </>
           ) : viewMode === 'add' ? (
-            // Add Mode Form
             <div className="emrFormContainer">
-              {/* Mode Overlay */}
-              {showModeOverlay && (
-                <div className="emrModeOverlay">
-                  <div className="emrModeOverlayContent">
-                    <span className="emrModeOverlayText">You are currently Creating a Medical Record</span>
-                    <button className="emrModeOverlayClose" onClick={() => setShowModeOverlay(false)}>×</button>
-                  </div>
-                </div>
-              )}
-              
               <div className="emrFormHeader">
                 <div className="emrFormHeaderLeft">
                   <IoCreateOutline size={20} className="emrHeaderIcon" />
@@ -1256,6 +1741,43 @@ const GlobalEMR: React.FC = () => {
               </div>
 
               <div className="emrFormContent">
+                {/* Pet Image Upload */}
+                <div className="emrFormSection">
+                  <div className="emrFormRow">
+                    <div className="emrFormGroup emrFullWidth">
+                      <label>Pet Photo</label>
+                      <div className="emrPetImageUpload">
+                        <div className="emrImagePreview">
+                          {petImage ? (
+                            <img src={petImage} alt="Pet" className="emrSquareImage" />
+                          ) : (
+                            <div className="emrImagePlaceholder">
+                              <IoImageOutline size={48} />
+                              <span>No image</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="emrImageUploadBtn">
+                          <input
+                            type="file"
+                            id="petImageUpload"
+                            accept="image/*"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleImageUpload(e.target.files[0]);
+                              }
+                            }}
+                            className="emrFileInput"
+                          />
+                          <label htmlFor="petImageUpload" className="emrFileUploadBtn" style={{color: '#ffffff'}}>
+                            <IoCloudUploadOutline size={16} /> Upload Photo
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="emrFormSection">
                   <div className="emrFormRow">
                     <div className="emrFormGroup emrFullWidth">
@@ -1439,6 +1961,62 @@ const GlobalEMR: React.FC = () => {
                       </div>
                     </div>
 
+                    {gender === 'Female' && (
+                      <div className="emrFormGroup">
+                        <label>Pregnant</label>
+                        <div className="emrToggleGroupFull">
+                          <button 
+                            type="button"
+                            className={`emrToggleBtnFull emrToggleYes ${isPregnant ? 'emrToggleActiveFull' : ''}`}
+                            onClick={() => {
+                              if (!isPregnant) {
+                                setPregnancyMonths(1);
+                              } else {
+                                setPregnancyMonths(0);
+                                setPregnancyDays(0);
+                              }
+                            }}
+                          >
+                            <IoCheckmarkCircleOutline size={14} /> Yes
+                          </button>
+                          <button 
+                            type="button"
+                            className={`emrToggleBtnFull emrToggleNo ${!isPregnant ? 'emrToggleActiveFull' : ''}`}
+                            onClick={() => {
+                              setPregnancyMonths(0);
+                              setPregnancyDays(0);
+                            }}
+                          >
+                            <IoCloseCircleOutline size={14} /> No
+                          </button>
+                        </div>
+                        {isPregnant && (
+                          <div className="emrPregnancyDetails">
+                            <input
+                              type="number"
+                              min="0"
+                              max="12"
+                              value={pregnancyMonths}
+                              onChange={(e) => setPregnancyMonths(parseInt(e.target.value) || 0)}
+                              placeholder="Months"
+                              className="emrFormInput emrMarginTop"
+                              style={{ width: '48%', marginRight: '4%' }}
+                            />
+                            <input
+                              type="number"
+                              min="0"
+                              max="30"
+                              value={pregnancyDays}
+                              onChange={(e) => setPregnancyDays(parseInt(e.target.value) || 0)}
+                              placeholder="Days"
+                              className="emrFormInput emrMarginTop"
+                              style={{ width: '48%' }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="emrFormGroup">
                       <label>Deceased</label>
                       <div className="emrToggleGroupFull">
@@ -1550,67 +2128,6 @@ const GlobalEMR: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="emrFormSection">
-                  <h4>Visit Information</h4>
-                  <div className="emrFormRow">
-                    <div className="emrFormGroup">
-                      <label>Doctor Assigned <span className="emrRequired">*</span></label>
-                      <select 
-                        value={doctorAssigned}
-                        onChange={(e) => setDoctorAssigned(e.target.value)}
-                        className={`emrFormSelect ${formErrors.veterinarian ? 'emrError' : ''}`}
-                      >
-                        {VETERINARIANS.map(doc => (
-                          <option key={doc} value={doc}>{doc}</option>
-                        ))}
-                      </select>
-                      {formErrors.veterinarian && <div className="emrErrorText">{formErrors.veterinarian}</div>}
-                    </div>
-
-                    <div className="emrFormGroup">
-                      <label>Reason for Visit <span className="emrRequired">*</span></label>
-                      <select 
-                        value={reasonForVisit}
-                        onChange={(e) => setReasonForVisit(e.target.value)}
-                        className={`emrFormSelect ${formErrors.reason ? 'emrError' : ''}`}
-                      >
-                        {REASONS.map(reason => (
-                          <option key={reason} value={reason}>{reason}</option>
-                        ))}
-                      </select>
-                      {formErrors.reason && <div className="emrErrorText">{formErrors.reason}</div>}
-                    </div>
-                  </div>
-
-                  {reasonForVisit === 'Others' && (
-                    <div className="emrFormRow">
-                      <div className="emrFormGroup">
-                        <label>Please specify</label>
-                        <input 
-                          type="text"
-                          value={reasonOther}
-                          onChange={(e) => setReasonOther(e.target.value)}
-                          placeholder="Enter reason for visit"
-                          className="emrFormInput"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="emrFormRow">
-                    <div className="emrFormGroup">
-                      <label>Doctor's Remarks</label>
-                      <textarea 
-                        value={doctorRemarks}
-                        onChange={(e) => setDoctorRemarks(e.target.value)}
-                        rows={3}
-                        placeholder="Enter clinical notes, diagnosis, treatment plan..."
-                        className="emrTextarea"
-                      />
-                    </div>
-                  </div>
-                </div>
-
                 <div className="emrFormActions">
                   <button className="emrCancelBtn" onClick={handleCancel}>
                     Cancel
@@ -1622,18 +2139,7 @@ const GlobalEMR: React.FC = () => {
               </div>
             </div>
           ) : (
-            // Edit Mode Form
             <div className="emrFormContainer">
-              {/* Mode Overlay */}
-              {showModeOverlay && (
-                <div className="emrModeOverlay">
-                  <div className="emrModeOverlayContent">
-                    <span className="emrModeOverlayText">You are currently Editing a Medical Record</span>
-                    <button className="emrModeOverlayClose" onClick={() => setShowModeOverlay(false)}>×</button>
-                  </div>
-                </div>
-              )}
-              
               <div className="emrFormHeader">
                 <div className="emrFormHeaderLeft">
                   <IoPencilSharp size={20} className="emrHeaderIcon" />
@@ -1650,423 +2156,553 @@ const GlobalEMR: React.FC = () => {
                       <span className="emrSlider"></span>
                       <span className="emrSwitchLabel">{editModeEnabled ? 'Edit Mode ON' : 'Edit Mode OFF'}</span>
                     </label>
-                    <button className="emrAddVisitBtn" onClick={() => setShowAddVisit(true)}>
-                      <IoAddCircleOutline size={14} /> Add Visit
-                    </button>
                   </div>
                 )}
                 <button className="emrFormClose" onClick={handleCancel}>×</button>
               </div>
 
-              <div className="emrFormContent">
-                <div className="emrFormSection">
-                  <div className="emrFormRow">
-                    <div className="emrFormGroup">
-                      <label>Pet Name <span className="emrRequired">*</span></label>
-                      <input 
-                        type="text"
-                        value={petName}
-                        onChange={(e) => setPetName(e.target.value)}
-                        placeholder="Enter pet name"
-                        disabled={!editModeEnabled}
-                        className={`emrFormInput ${formErrors.petName ? 'emrError' : ''}`}
-                      />
-                      {formErrors.petName && <div className="emrErrorText">{formErrors.petName}</div>}
-                    </div>
+              <div className="emrTabs">
+                <button 
+                  className={`emrTabBtn ${activeTab === 'info' ? 'emrTabActive' : ''}`}
+                  onClick={() => setActiveTab('info')}
+                >
+                  <IoDocumentTextOutline size={14} /> Pet & Owner Information
+                </button>
+                <button 
+                  className={`emrTabBtn ${activeTab === 'visits' ? 'emrTabActive' : ''}`}
+                  onClick={() => setActiveTab('visits')}
+                >
+                  <HiOutlineClipboardDocumentList size={14} /> Visit Records
+                </button>
+              </div>
 
-                    <div className="emrFormGroup">
-                      <label>Species</label>
-                      <div className="emrToggleGroupFull">
-                        <button 
-                          type="button"
-                          className={`emrToggleBtnFull ${species === 'Dog' ? 'emrToggleActiveFull' : ''}`}
-                          onClick={() => {
-                            if (!editModeEnabled) return;
-                            setSpecies('Dog');
-                            setBreed('');
-                          }}
-                          disabled={!editModeEnabled}
-                        >
-                          <IoPawOutline size={14} /> Dog
-                        </button>
-                        <button 
-                          type="button"
-                          className={`emrToggleBtnFull ${species === 'Cat' ? 'emrToggleActiveFull' : ''}`}
-                          onClick={() => {
-                            if (!editModeEnabled) return;
-                            setSpecies('Cat');
-                            setBreed('');
-                          }}
-                          disabled={!editModeEnabled}
-                        >
-                          <IoPawOutline size={14} /> Cat
-                        </button>
+              <div className="emrFormContent">
+                {activeTab === 'info' && (
+                  <>
+                    <div className="emrFormSection">
+                      <h4>Pet Information</h4>
+                      {/* Pet Image Display */}
+                      <div className="emrFormRow">
+                        <div className="emrFormGroup emrFullWidth">
+                          <label>Pet Photo</label>
+                          <div className="emrPetImageUpload">
+                            <div className="emrImagePreview">
+                              {petImage ? (
+                                <img src={petImage} alt="Pet" className="emrSquareImage" />
+                              ) : (
+                                <div className="emrImagePlaceholder">
+                                  <IoImageOutline size={48} />
+                                  <span>No image</span>
+                                </div>
+                              )}
+                            </div>
+                            {editModeEnabled && (
+                              <div className="emrImageUploadBtn">
+                                <input
+                                  type="file"
+                                  id="petImageUploadEdit"
+                                  accept="image/*"
+                                  onChange={(e) => {
+                                    if (e.target.files && e.target.files[0]) {
+                                      handleImageUpload(e.target.files[0]);
+                                    }
+                                  }}
+                                  className="emrFileInput"
+                                />
+                                <label htmlFor="petImageUploadEdit" className="emrFileUploadBtn" style={{color: '#ffffff'}}>
+                                  <IoCloudUploadOutline size={16}/> Change Photo
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="emrFormRow">
+                        <div className="emrFormGroup">
+                          <label>Pet Name <span className="emrRequired">*</span></label>
+                          <input 
+                            type="text"
+                            value={petName}
+                            onChange={(e) => setPetName(e.target.value)}
+                            disabled={!editModeEnabled}
+                            className={`emrFormInput ${formErrors.petName ? 'emrError' : ''}`}
+                          />
+                          {formErrors.petName && <div className="emrErrorText">{formErrors.petName}</div>}
+                        </div>
+
+                        <div className="emrFormGroup">
+                          <label>Species</label>
+                          <div className="emrToggleGroupFull">
+                            <button 
+                              type="button"
+                              className={`emrToggleBtnFull ${species === 'Dog' ? 'emrToggleActiveFull' : ''}`}
+                              onClick={() => { if (editModeEnabled) { setSpecies('Dog'); setBreed(''); } }}
+                              disabled={!editModeEnabled}
+                            >
+                              <IoPawOutline size={14} /> Dog
+                            </button>
+                            <button 
+                              type="button"
+                              className={`emrToggleBtnFull ${species === 'Cat' ? 'emrToggleActiveFull' : ''}`}
+                              onClick={() => { if (editModeEnabled) { setSpecies('Cat'); setBreed(''); } }}
+                              disabled={!editModeEnabled}
+                            >
+                              <IoPawOutline size={14} /> Cat
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="emrFormGroup">
+                          <label>Breed</label>
+                          <select 
+                            value={breed}
+                            onChange={(e) => setBreed(e.target.value)}
+                            disabled={!editModeEnabled}
+                            className="emrFormSelect"
+                          >
+                            <option value="">Select breed</option>
+                            {breedOptions.map(b => (
+                              <option key={b} value={b}>{b}</option>
+                            ))}
+                          </select>
+                          {breed === 'Others' && (
+                            <input
+                              type="text"
+                              value={breedOther}
+                              onChange={(e) => setBreedOther(e.target.value)}
+                              placeholder="Please specify breed"
+                              className="emrFormInput emrMarginTop"
+                              disabled={!editModeEnabled}
+                            />
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="emrFormRow">
+                        <div className="emrFormGroup">
+                          <label>Gender</label>
+                          <div className="emrToggleGroupFull">
+                            <button 
+                              type="button"
+                              className={`emrToggleBtnFull emrGenderMale ${gender === 'Male' ? 'emrToggleActiveFull' : ''}`}
+                              onClick={() => { if (editModeEnabled) setGender('Male'); }}
+                              disabled={!editModeEnabled}
+                            >
+                              <IoMaleFemaleOutline size={14} /> Male
+                            </button>
+                            <button 
+                              type="button"
+                              className={`emrToggleBtnFull emrGenderFemale ${gender === 'Female' ? 'emrToggleActiveFull' : ''}`}
+                              onClick={() => { if (editModeEnabled) setGender('Female'); }}
+                              disabled={!editModeEnabled}
+                            >
+                              <IoMaleFemaleOutline size={14} /> Female
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="emrFormGroup">
+                          <label>Date of Birth</label>
+                          <input 
+                            type="date"
+                            value={dateOfBirth}
+                            onChange={(e) => handleDateOfBirthChange(e.target.value)}
+                            className="emrFormInput"
+                            max={new Date().toISOString().split('T')[0]}
+                            disabled={!editModeEnabled}
+                          />
+                        </div>
+
+                        <div className="emrFormGroup">
+                          <label>Age</label>
+                          <input 
+                            type="text"
+                            value={age}
+                            readOnly
+                            className="emrFormInput emrReadOnly"
+                            placeholder="Auto-calculated"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="emrFormRow">
+                        <div className="emrFormGroup">
+                          <label>Weight</label>
+                          <div className="emrWeightInputWrapper">
+                            <input 
+                              type="text"
+                              value={weight}
+                              onChange={(e) => setWeight(e.target.value.replace(/[^\d.]/g, ''))}
+                              placeholder="0.0"
+                              className="emrWeightInput"
+                              disabled={!editModeEnabled}
+                            />
+                            <div className="emrWeightUnitSelect">
+                              <button 
+                                type="button"
+                                className={`emrWeightUnitBtn ${weightUnit === 'kg' ? 'emrWeightUnitActive' : ''}`}
+                                onClick={() => { if (editModeEnabled) setWeightUnit('kg'); }}
+                                disabled={!editModeEnabled}
+                              >
+                                kg
+                              </button>
+                              <button 
+                                type="button"
+                                className={`emrWeightUnitBtn ${weightUnit === 'lbs' ? 'emrWeightUnitActive' : ''}`}
+                                onClick={() => { if (editModeEnabled) setWeightUnit('lbs'); }}
+                                disabled={!editModeEnabled}
+                              >
+                                lbs
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="emrFormGroup">
+                          <label>Color/Markings</label>
+                          <input 
+                            type="text"
+                            value={colorMarkings}
+                            onChange={(e) => setColorMarkings(e.target.value)}
+                            placeholder="e.g., Brown with white spots"
+                            className="emrFormInput"
+                            disabled={!editModeEnabled}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="emrFormRow">
+                        <div className="emrFormGroup">
+                          <label>Neutered/Spayed</label>
+                          <div className="emrToggleGroupFull">
+                            <button 
+                              type="button"
+                              className={`emrToggleBtnFull emrToggleYes ${neutered === true ? 'emrToggleActiveFull' : ''}`}
+                              onClick={() => { if (editModeEnabled) setNeutered(true); }}
+                              disabled={!editModeEnabled}
+                            >
+                              <IoCheckmarkCircleOutline size={14} /> Yes
+                            </button>
+                            <button 
+                              type="button"
+                              className={`emrToggleBtnFull emrToggleNo ${neutered === false ? 'emrToggleActiveFull' : ''}`}
+                              onClick={() => { if (editModeEnabled) setNeutered(false); }}
+                              disabled={!editModeEnabled}
+                            >
+                              <IoCloseCircleOutline size={14} /> No
+                            </button>
+                          </div>
+                        </div>
+
+                        {gender === 'Female' && (
+                          <div className="emrFormGroup">
+                            <label>Pregnant</label>
+                            <div className="emrToggleGroupFull">
+                              <button 
+                                type="button"
+                                className={`emrToggleBtnFull emrToggleYes ${isPregnant ? 'emrToggleActiveFull' : ''}`}
+                                onClick={() => {
+                                  if (editModeEnabled) {
+                                    if (!isPregnant) {
+                                      setPregnancyMonths(1);
+                                    } else {
+                                      setPregnancyMonths(0);
+                                      setPregnancyDays(0);
+                                    }
+                                  }
+                                }}
+                                disabled={!editModeEnabled}
+                              >
+                                <IoCheckmarkCircleOutline size={14} /> Yes
+                              </button>
+                              <button 
+                                type="button"
+                                className={`emrToggleBtnFull emrToggleNo ${!isPregnant ? 'emrToggleActiveFull' : ''}`}
+                                onClick={() => {
+                                  if (editModeEnabled) {
+                                    setPregnancyMonths(0);
+                                    setPregnancyDays(0);
+                                  }
+                                }}
+                                disabled={!editModeEnabled}
+                              >
+                                <IoCloseCircleOutline size={14} /> No
+                              </button>
+                            </div>
+                            {isPregnant && editModeEnabled && (
+                              <div className="emrPregnancyDetails">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="12"
+                                  value={pregnancyMonths}
+                                  onChange={(e) => setPregnancyMonths(parseInt(e.target.value) || 0)}
+                                  placeholder="Months"
+                                  className="emrFormInput emrMarginTop"
+                                  style={{ width: '48%', marginRight: '4%' }}
+                                  disabled={!editModeEnabled}
+                                />
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="30"
+                                  value={pregnancyDays}
+                                  onChange={(e) => setPregnancyDays(parseInt(e.target.value) || 0)}
+                                  placeholder="Days"
+                                  className="emrFormInput emrMarginTop"
+                                  style={{ width: '48%' }}
+                                  disabled={!editModeEnabled}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="emrFormGroup">
+                          <label>Deceased</label>
+                          <div className="emrToggleGroupFull">
+                            <button 
+                              type="button"
+                              className={`emrToggleBtnFull emrToggleYes ${deceased === true ? 'emrToggleActiveFull' : ''}`}
+                              onClick={() => { if (editModeEnabled) setDeceased(true); }}
+                              disabled={!editModeEnabled}
+                            >
+                              <IoAlertCircleOutline size={14} /> Yes
+                            </button>
+                            <button 
+                              type="button"
+                              className={`emrToggleBtnFull emrToggleNo ${deceased === false ? 'emrToggleActiveFull' : ''}`}
+                              onClick={() => { if (editModeEnabled) setDeceased(false); }}
+                              disabled={!editModeEnabled}
+                            >
+                              <IoCheckmarkCircleOutline size={14} /> No
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="emrFormGroup">
+                          <label>Vaccinated</label>
+                          <div className="emrVaccinatedWrapper">
+                            <div className="emrToggleGroupFull">
+                              <button 
+                                type="button"
+                                className={`emrToggleBtnFull emrToggleYes ${vaccinated === true ? 'emrToggleActiveFull' : ''}`}
+                                onClick={() => { if (editModeEnabled) setVaccinated(true); }}
+                                disabled={!editModeEnabled}
+                              >
+                                <IoCheckmarkCircleOutline size={14} /> Yes
+                              </button>
+                              <button 
+                                type="button"
+                                className={`emrToggleBtnFull emrToggleNo ${vaccinated === false ? 'emrToggleActiveFull' : ''}`}
+                                onClick={() => { if (editModeEnabled) setVaccinated(false); }}
+                                disabled={!editModeEnabled}
+                              >
+                                <IoCloseCircleOutline size={14} /> No
+                              </button>
+                            </div>
+                            {vaccinated && vaccinationProof && (
+                              <button 
+                                type="button"
+                                className="emrViewProofBtn"
+                                onClick={() => {
+                                  setSelectedVaccinationProof(vaccinationProof);
+                                  setShowVaccinationProof(true);
+                                }}
+                              >
+                                <IoEyeOutline size={12} /> View Proof
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="emrFormGroup">
-                      <label>Breed</label>
-                      <select 
-                        value={breed}
-                        onChange={(e) => setBreed(e.target.value)}
-                        disabled={!editModeEnabled}
-                        className="emrFormSelect"
-                      >
-                        <option value="">Select breed</option>
-                        {breedOptions.map(b => (
-                          <option key={b} value={b}>{b}</option>
-                        ))}
-                      </select>
-                      {breed === 'Others' && (
+                    <div className="emrFormSection">
+                      <h4>Owner Information</h4>
+                      <div className="emrFormRow">
+                        <div className="emrFormGroup">
+                          <label>First Name <span className="emrRequired">*</span></label>
+                          <input 
+                            type="text"
+                            value={ownerFirstName}
+                            onChange={(e) => setOwnerFirstName(e.target.value)}
+                            disabled={!editModeEnabled}
+                            className={`emrFormInput ${formErrors.ownerFirstName ? 'emrError' : ''}`}
+                          />
+                          {formErrors.ownerFirstName && <div className="emrErrorText">{formErrors.ownerFirstName}</div>}
+                        </div>
+
+                        <div className="emrFormGroup">
+                          <label>Last Name <span className="emrRequired">*</span></label>
+                          <input 
+                            type="text"
+                            value={ownerLastName}
+                            onChange={(e) => setOwnerLastName(e.target.value)}
+                            disabled={!editModeEnabled}
+                            className={`emrFormInput ${formErrors.ownerLastName ? 'emrError' : ''}`}
+                          />
+                          {formErrors.ownerLastName && <div className="emrErrorText">{formErrors.ownerLastName}</div>}
+                        </div>
+                      </div>
+
+                      <div className="emrFormRow">
+                        <div className="emrFormGroup">
+                          <label>Email <span className="emrRequired">*</span></label>
+                          <input 
+                            type="email"
+                            value={ownerEmail}
+                            onChange={(e) => setOwnerEmail(e.target.value)}
+                            disabled={!editModeEnabled}
+                            className={`emrFormInput ${formErrors.ownerEmail ? 'emrError' : ''}`}
+                          />
+                          {formErrors.ownerEmail && <div className="emrErrorText">{formErrors.ownerEmail}</div>}
+                        </div>
+
+                        <div className="emrFormGroup">
+                          <label>Contact Number <span className="emrRequired">*</span></label>
+                          <input 
+                            type="tel"
+                            value={ownerContact}
+                            onChange={(e) => setOwnerContact(e.target.value.replace(/[^\d]/g, '').slice(0, 11))}
+                            disabled={!editModeEnabled}
+                            className={`emrFormInput ${formErrors.ownerContact ? 'emrError' : ''}`}
+                          />
+                          {formErrors.ownerContact && <div className="emrErrorText">{formErrors.ownerContact}</div>}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {activeTab === 'visits' && (
+                  <div className="emrVisitHistorySection">
+                    <div className="emrSectionHeader">
+                      <h4>
+                        <HiOutlineClipboardDocumentList size={18} />
+                        Visit Records
+                      </h4>
+                      <div className="emrVisitFilters">
+                        <div className="emrSearchInputWrapper emrSmallSearch">
+                          <IoSearchSharp size={14} className="emrSearchIconSmall" />
+                          <input
+                            type="text"
+                            placeholder="Search visits..."
+                            value={visitSearchQuery}
+                            onChange={(e) => setVisitSearchQuery(e.target.value)}
+                            className="emrSearchInputSmall"
+                          />
+                        </div>
                         <input
-                          type="text"
-                          value={breedOther}
-                          onChange={(e) => setBreedOther(e.target.value)}
-                          placeholder="Please specify breed"
-                          className="emrFormInput emrMarginTop"
-                          disabled={!editModeEnabled}
+                          type="date"
+                          value={visitDateFilter}
+                          onChange={(e) => setVisitDateFilter(e.target.value)}
+                          className="emrFilterInputSmall"
+                          placeholder="Filter by date"
                         />
+                        <select 
+                          value={visitDoctorFilter} 
+                          onChange={(e) => setVisitDoctorFilter(e.target.value)}
+                          className="emrFilterSelectSmall"
+                        >
+                          <option value="">All Doctors</option>
+                          {VETERINARIANS.map(doc => (
+                            <option key={doc} value={doc}>{doc}</option>
+                          ))}
+                        </select>
+                        <button className="emrClearFilterBtn" onClick={clearVisitFilters}>
+                          <IoRefreshOutline size={12} /> Clear
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="emrVisitHistoryContainer">
+                      {filteredVisits.length > 0 ? (
+                        filteredVisits.map((visit, index) => (
+                          <div key={visit.id} className="emrVisitCard">
+                            <div className="emrVisitHeader">
+                              <div className="emrVisitDate">
+                                <IoTimeOutline size={14} />
+                                <span>{visit.date} at {visit.time}</span>
+                              </div>
+                              <div className="emrVisitNumber">Visit #{visitHistory.length - index}</div>
+                            </div>
+                            <div className="emrVisitDetails">
+                              <div><strong>Veterinarian:</strong> {visit.veterinarian}</div>
+                              <div><strong>Reason:</strong> {visit.reason}</div>
+                              <div><strong>Weight:</strong> {visit.weight} {visit.weightUnit}</div>
+                              {visit.clinicalExam && (
+                                <>
+                                  <div><strong>Length:</strong> {visit.clinicalExam.length} {visit.clinicalExam.lengthUnit}</div>
+                                  <div><strong>Temperature:</strong> {visit.clinicalExam.temperature}°{visit.clinicalExam.tempUnit}</div>
+                                  <div><strong>Heart Rate:</strong> {visit.clinicalExam.heartRate}/min</div>
+                                  <div><strong>Breathing Rate:</strong> {visit.clinicalExam.breathingRate}/min</div>
+                                  {visit.clinicalExam.additionalFindings && (
+                                    <div className="emrFullWidth"><strong>Additional Findings:</strong> {visit.clinicalExam.additionalFindings}</div>
+                                  )}
+                                </>
+                              )}
+                              {visit.pregnant !== undefined && (
+                                <div><strong>Pregnant:</strong> {visit.pregnant ? `Yes${visit.pregnancyMonths ? ` (${visit.pregnancyMonths} months${visit.pregnancyDays ? `, ${visit.pregnancyDays} days` : ''})` : ''}` : 'No'}</div>
+                              )}
+                              
+                              {/* Prescriptions Section with View PDF Button */}
+                              {visit.prescriptions && visit.prescriptions.length > 0 && (
+                                <div className="emrFullWidth">
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                    <strong>Prescriptions:</strong>
+                                    <button 
+                                      className="emrViewFileBtn"
+                                      onClick={() => generatePrescriptionPDF(visit, petName, `${ownerFirstName} ${ownerLastName}`, patientId)}
+                                      style={{ padding: '4px 12px' }}
+                                    >
+                                      <IoDocumentTextOutline size={12} /> View Prescription PDF
+                                    </button>
+                                  </div>
+                                  {visit.prescriptions.map((pres, idx) => (
+                                    <div key={pres.id} className="emrPrescriptionItem">
+                                      • {pres.medicationName} - {pres.dosage}, {pres.frequency} for {pres.duration}
+                                      {pres.instructions && <div className="emrPrescriptionInstructions">{pres.instructions}</div>}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              
+                              {visit.labResults && visit.labResults.length > 0 && (
+                                <div className="emrFullWidth">
+                                  <strong>Lab Results:</strong> {visit.labResults.length} test(s) performed
+                                </div>
+                              )}
+                              <div className="emrFullWidth"><strong>Remarks:</strong> {visit.doctorRemarks}</div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="emrNoVisits">
+                          <IoMedicalOutline size={48} style={{ opacity: 0.3, marginBottom: '12px' }} />
+                          <p>No visits recorded yet</p>
+                          <p style={{ fontSize: '11px', marginTop: '8px', color: '#999' }}>
+                            Click the "Add New Visit" button to record a visit
+                          </p>
+                        </div>
                       )}
                     </div>
+                    
+                    <button className="emrFloatingBtn" onClick={() => setShowAddVisit(true)}>
+                      <IoAddCircleOutline size={18} /> Add New Visit
+                    </button>
                   </div>
+                )}
+              </div>
 
-                  <div className="emrFormRow">
-                    <div className="emrFormGroup">
-                      <label>Gender</label>
-                      <div className="emrToggleGroupFull">
-                        <button 
-                          type="button"
-                          className={`emrToggleBtnFull emrGenderMale ${gender === 'Male' ? 'emrToggleActiveFull' : ''}`}
-                          onClick={() => {
-                            if (!editModeEnabled) return;
-                            setGender('Male');
-                          }}
-                          disabled={!editModeEnabled}
-                        >
-                          <IoMaleFemaleOutline size={14} /> Male
-                        </button>
-                        <button 
-                          type="button"
-                          className={`emrToggleBtnFull emrGenderFemale ${gender === 'Female' ? 'emrToggleActiveFull' : ''}`}
-                          onClick={() => {
-                            if (!editModeEnabled) return;
-                            setGender('Female');
-                          }}
-                          disabled={!editModeEnabled}
-                        >
-                          <IoMaleFemaleOutline size={14} /> Female
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="emrFormGroup">
-                      <label>Date of Birth</label>
-                      <input 
-                        type="date"
-                        value={dateOfBirth}
-                        onChange={(e) => handleDateOfBirthChange(e.target.value)}
-                        className="emrFormInput"
-                        max={new Date().toISOString().split('T')[0]}
-                        disabled={!editModeEnabled}
-                      />
-                    </div>
-
-                    <div className="emrFormGroup">
-                      <label>Age</label>
-                      <input 
-                        type="text"
-                        value={age}
-                        readOnly
-                        className="emrFormInput emrReadOnly"
-                        placeholder="Auto-calculated"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="emrFormRow">
-                    <div className="emrFormGroup">
-                      <label>Weight</label>
-                      <div className="emrWeightInputWrapper">
-                        <input 
-                          type="text"
-                          value={weight}
-                          onChange={(e) => setWeight(e.target.value.replace(/[^\d.]/g, ''))}
-                          placeholder="0.0"
-                          className="emrWeightInput"
-                          disabled={!editModeEnabled}
-                        />
-                        <div className="emrWeightUnitSelect">
-                          <button 
-                            type="button"
-                            className={`emrWeightUnitBtn ${weightUnit === 'kg' ? 'emrWeightUnitActive' : ''}`}
-                            onClick={() => {
-                              if (!editModeEnabled) return;
-                              setWeightUnit('kg');
-                            }}
-                            disabled={!editModeEnabled}
-                          >
-                            kg
-                          </button>
-                          <button 
-                            type="button"
-                            className={`emrWeightUnitBtn ${weightUnit === 'lbs' ? 'emrWeightUnitActive' : ''}`}
-                            onClick={() => {
-                              if (!editModeEnabled) return;
-                              setWeightUnit('lbs');
-                            }}
-                            disabled={!editModeEnabled}
-                          >
-                            lbs
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="emrFormGroup">
-                      <label>Color/Markings</label>
-                      <input 
-                        type="text"
-                        value={colorMarkings}
-                        onChange={(e) => setColorMarkings(e.target.value)}
-                        placeholder="e.g., Brown with white spots"
-                        className="emrFormInput"
-                        disabled={!editModeEnabled}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="emrFormRow">
-                    <div className="emrFormGroup">
-                      <label>Neutered/Spayed</label>
-                      <div className="emrToggleGroupFull">
-                        <button 
-                          type="button"
-                          className={`emrToggleBtnFull emrToggleYes ${neutered === true ? 'emrToggleActiveFull' : ''}`}
-                          onClick={() => {
-                            if (!editModeEnabled) return;
-                            setNeutered(true);
-                          }}
-                          disabled={!editModeEnabled}
-                        >
-                          <IoCheckmarkCircleOutline size={14} /> Yes
-                        </button>
-                        <button 
-                          type="button"
-                          className={`emrToggleBtnFull emrToggleNo ${neutered === false ? 'emrToggleActiveFull' : ''}`}
-                          onClick={() => {
-                            if (!editModeEnabled) return;
-                            setNeutered(false);
-                          }}
-                          disabled={!editModeEnabled}
-                        >
-                          <IoCloseCircleOutline size={14} /> No
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="emrFormGroup">
-                      <label>Deceased</label>
-                      <div className="emrToggleGroupFull">
-                        <button 
-                          type="button"
-                          className={`emrToggleBtnFull emrToggleYes ${deceased === true ? 'emrToggleActiveFull' : ''}`}
-                          onClick={() => {
-                            if (!editModeEnabled) return;
-                            setDeceased(true);
-                          }}
-                          disabled={!editModeEnabled}
-                        >
-                          <IoAlertCircleOutline size={14} /> Yes
-                        </button>
-                        <button 
-                          type="button"
-                          className={`emrToggleBtnFull emrToggleNo ${deceased === false ? 'emrToggleActiveFull' : ''}`}
-                          onClick={() => {
-                            if (!editModeEnabled) return;
-                            setDeceased(false);
-                          }}
-                          disabled={!editModeEnabled}
-                        >
-                          <IoCheckmarkCircleOutline size={14} /> No
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="emrFormGroup">
-                      <label>Vaccinated</label>
-                      <div className="emrVaccinatedWrapper">
-                        <div className="emrToggleGroupFull">
-                          <button 
-                            type="button"
-                            className={`emrToggleBtnFull emrToggleYes ${vaccinated === true ? 'emrToggleActiveFull' : ''}`}
-                            onClick={() => {
-                              if (!editModeEnabled) return;
-                              setVaccinated(true);
-                            }}
-                            disabled={!editModeEnabled}
-                          >
-                            <IoCheckmarkCircleOutline size={14} /> Yes
-                          </button>
-                          <button 
-                            type="button"
-                            className={`emrToggleBtnFull emrToggleNo ${vaccinated === false ? 'emrToggleActiveFull' : ''}`}
-                            onClick={() => {
-                              if (!editModeEnabled) return;
-                              setVaccinated(false);
-                            }}
-                            disabled={!editModeEnabled}
-                          >
-                            <IoCloseCircleOutline size={14} /> No
-                          </button>
-                        </div>
-                        {vaccinated && vaccinationProof && (
-                          <button 
-                            type="button"
-                            className="emrViewProofBtn"
-                            onClick={() => {
-                              setSelectedVaccinationProof(vaccinationProof);
-                              setShowVaccinationProof(true);
-                            }}
-                          >
-                            <IoEyeOutline size={12} /> View Proof
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="emrFormSection">
-                  <h4>Owner Information</h4>
-                  <div className="emrFormRow">
-                    <div className="emrFormGroup">
-                      <label>First Name <span className="emrRequired">*</span></label>
-                      <input 
-                        type="text"
-                        value={ownerFirstName}
-                        onChange={(e) => setOwnerFirstName(e.target.value)}
-                        placeholder="First name"
-                        disabled={!editModeEnabled}
-                        className={`emrFormInput ${formErrors.ownerFirstName ? 'emrError' : ''}`}
-                      />
-                      {formErrors.ownerFirstName && <div className="emrErrorText">{formErrors.ownerFirstName}</div>}
-                    </div>
-
-                    <div className="emrFormGroup">
-                      <label>Last Name <span className="emrRequired">*</span></label>
-                      <input 
-                        type="text"
-                        value={ownerLastName}
-                        onChange={(e) => setOwnerLastName(e.target.value)}
-                        placeholder="Last name"
-                        disabled={!editModeEnabled}
-                        className={`emrFormInput ${formErrors.ownerLastName ? 'emrError' : ''}`}
-                      />
-                      {formErrors.ownerLastName && <div className="emrErrorText">{formErrors.ownerLastName}</div>}
-                    </div>
-                  </div>
-
-                  <div className="emrFormRow">
-                    <div className="emrFormGroup">
-                      <label>Email <span className="emrRequired">*</span></label>
-                      <input 
-                        type="email"
-                        value={ownerEmail}
-                        onChange={(e) => setOwnerEmail(e.target.value)}
-                        placeholder="owner@example.com"
-                        disabled={!editModeEnabled}
-                        className={`emrFormInput ${formErrors.ownerEmail ? 'emrError' : ''}`}
-                      />
-                      {formErrors.ownerEmail && <div className="emrErrorText">{formErrors.ownerEmail}</div>}
-                    </div>
-
-                    <div className="emrFormGroup">
-                      <label>Contact Number <span className="emrRequired">*</span></label>
-                      <input 
-                        type="tel"
-                        value={ownerContact}
-                        onChange={(e) => setOwnerContact(e.target.value.replace(/[^\d]/g, '').slice(0, 11))}
-                        placeholder="09123456789"
-                        disabled={!editModeEnabled}
-                        className={`emrFormInput ${formErrors.ownerContact ? 'emrError' : ''}`}
-                      />
-                      {formErrors.ownerContact && <div className="emrErrorText">{formErrors.ownerContact}</div>}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="emrFormSection">
-                  <div className="emrSectionHeader">
-                    <h4>Visit History</h4>
-                    <div className="emrVisitFilters">
-                      <div className="emrSearchInputWrapper emrSmallSearch">
-                        <IoSearchSharp size={14} className="emrSearchIconSmall" />
-                        <input
-                          type="text"
-                          placeholder="Search visits..."
-                          value={visitSearchQuery}
-                          onChange={(e) => setVisitSearchQuery(e.target.value)}
-                          className="emrSearchInputSmall"
-                        />
-                      </div>
-                      <input
-                        type="date"
-                        value={visitDateFilter}
-                        onChange={(e) => setVisitDateFilter(e.target.value)}
-                        className="emrFilterInputSmall"
-                        placeholder="Filter by date"
-                      />
-                      <select 
-                        value={visitDoctorFilter} 
-                        onChange={(e) => setVisitDoctorFilter(e.target.value)}
-                        className="emrFilterSelectSmall"
-                      >
-                        <option value="">All Doctors</option>
-                        {VETERINARIANS.map(doc => (
-                          <option key={doc} value={doc}>{doc}</option>
-                        ))}
-                      </select>
-                      <button className="emrClearFilterBtnSmall" onClick={clearVisitFilters}>
-                        <IoRefreshOutline size={12} /> Clear
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <div className="emrVisitHistoryContainer">
-                    {filteredVisits.length > 0 ? (
-                      filteredVisits.map((visit, index) => (
-                        <div key={visit.id} className="emrVisitCard">
-                          <div className="emrVisitHeader">
-                            <div className="emrVisitDate">
-                              <IoTimeOutline size={14} />
-                              <span>{visit.date} at {visit.time}</span>
-                            </div>
-                            <div className="emrVisitNumber">Visit #{visitHistory.length - index}</div>
-                          </div>
-                          <div className="emrVisitDetails">
-                            <div><strong>Veterinarian:</strong> {visit.veterinarian}</div>
-                            <div><strong>Reason:</strong> {visit.reason}</div>
-                            <div><strong>Weight:</strong> {visit.weight} {visit.weightUnit}</div>
-                            <div><strong>Remarks:</strong> {visit.doctorRemarks}</div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="emrNoVisits">
-                        <p>No visits found</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="emrFormActions">
-                  <button className="emrCancelBtn" onClick={handleCancel}>
-                    Cancel
-                  </button>
-                  <button className="emrSubmitBtn" onClick={handleSaveRecord}>
-                    Save Changes
-                  </button>
-                </div>
+              <div className="emrFormActions">
+                <button className="emrCancelBtn" onClick={handleCancel}>
+                  Cancel
+                </button>
+                <button className="emrSubmitBtn" onClick={handleSaveRecord}>
+                  Save Changes
+                </button>
               </div>
             </div>
           )}
@@ -2098,7 +2734,11 @@ const GlobalEMR: React.FC = () => {
                   searchResults.map(result => (
                     <div key={result.id} className={`emrSearchResultItem ${result.hasExistingRecord ? 'emrHasRecord' : ''} ${result.deceased ? 'emrDeceasedResult' : ''}`} onClick={() => selectPet(result)}>
                       <div className="emrSearchResultIcon">
-                        <IoPawOutline size={20} />
+                        {result.image ? (
+                          <img src={result.image} alt={result.petName} className="emrSearchResultImage" />
+                        ) : (
+                          <IoPawOutline size={20} />
+                        )}
                       </div>
                       <div className="emrSearchResultInfo">
                         <div className="emrSearchResultName">
@@ -2129,32 +2769,13 @@ const GlobalEMR: React.FC = () => {
       {/* Add Visit Modal */}
       {showAddVisit && !deceased && (
         <div className="emrModalOverlay" onClick={() => setShowAddVisit(false)}>
-          <div className="emrAddVisitModal" onClick={e => e.stopPropagation()}>
+          <div className="emrAddVisitModal emrLargeModal" onClick={e => e.stopPropagation()}>
             <div className="emrModalHeader">
               <h4>Add New Visit</h4>
               <button className="emrModalClose" onClick={() => setShowAddVisit(false)}>×</button>
             </div>
             <div className="emrAddVisitContent">
-              <div className="emrFormRow">
-                <div className="emrFormGroup">
-                  <label>Date</label>
-                  <input
-                    type="date"
-                    value={newVisit.date}
-                    onChange={(e) => setNewVisit({...newVisit, date: e.target.value})}
-                    className="emrFormInput"
-                  />
-                </div>
-                <div className="emrFormGroup">
-                  <label>Time</label>
-                  <input
-                    type="time"
-                    value={newVisit.time}
-                    onChange={(e) => setNewVisit({...newVisit, time: e.target.value})}
-                    className="emrFormInput"
-                  />
-                </div>
-              </div>
+              {/* Basic Information */}
               <div className="emrFormRow">
                 <div className="emrFormGroup">
                   <label>Veterinarian</label>
@@ -2181,38 +2802,265 @@ const GlobalEMR: React.FC = () => {
                   </select>
                 </div>
               </div>
+
+              {/* Weight Section */}
               <div className="emrFormRow">
                 <div className="emrFormGroup">
                   <label>Weight</label>
                   <div className="emrWeightInputWrapper">
                     <input
                       type="text"
-                      value={newVisit.weight || ''}
-                      onChange={(e) => setNewVisit({...newVisit, weight: parseFloat(e.target.value) || 0})}
+                      value={newVisit.sameAsLastWeight && getLastWeight() 
+                        ? getLastWeight()?.value || '' 
+                        : newVisit.weight || ''}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        // Allow numbers and decimal point
+                        if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                          setNewVisit({...newVisit, weight: parseFloat(value) || 0, sameAsLastWeight: false});
+                        }
+                      }}
                       placeholder="0.0"
                       className="emrWeightInput"
+                      disabled={newVisit.sameAsLastWeight}
                     />
                     <div className="emrWeightUnitSelect">
                       <button
                         type="button"
                         className={`emrWeightUnitBtn ${newVisit.weightUnit === 'kg' ? 'emrWeightUnitActive' : ''}`}
-                        onClick={() => setNewVisit({...newVisit, weightUnit: 'kg'})}
+                        onClick={() => setNewVisit({...newVisit, weightUnit: 'kg', sameAsLastWeight: false})}
                       >
                         kg
                       </button>
                       <button
                         type="button"
                         className={`emrWeightUnitBtn ${newVisit.weightUnit === 'lbs' ? 'emrWeightUnitActive' : ''}`}
-                        onClick={() => setNewVisit({...newVisit, weightUnit: 'lbs'})}
+                        onClick={() => setNewVisit({...newVisit, weightUnit: 'lbs', sameAsLastWeight: false})}
                       >
                         lbs
                       </button>
                     </div>
                   </div>
+                  {getLastWeight() && (
+                    <label className="emrCheckboxLabel" style={{ marginTop: '8px' }}>
+                      <input
+                        type="checkbox"
+                        checked={newVisit.sameAsLastWeight}
+                        onChange={(e) => setNewVisit({...newVisit, sameAsLastWeight: e.target.checked})}
+                      />
+                      Same as last appointment ({getLastWeight()?.value} {getLastWeight()?.unit})
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* Clinical Exam Section */}
+              <div className="emrFormSection">
+                <h4>Clinical Examination</h4>
+                <div className="emrFormRow">
+                  <div className="emrFormGroup">
+                    <label>Length</label>
+                    <div className="emrWeightInputWrapper">
+                      <input
+                          type="text"
+                          value={newVisit.clinicalExam?.length || ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                              setNewVisit({
+                                ...newVisit, 
+                                clinicalExam: { ...newVisit.clinicalExam!, length: parseFloat(value) || 0 }
+                              });
+                            }
+                          }}
+                          placeholder="0.0"
+                          className="emrWeightInput"
+                        />
+                      <div className="emrWeightUnitSelect">
+                        <button
+                          type="button"
+                          className={`emrWeightUnitBtn ${newVisit.clinicalExam?.lengthUnit === 'cm' ? 'emrWeightUnitActive' : ''}`}
+                          onClick={() => setNewVisit({
+                            ...newVisit,
+                            clinicalExam: { ...newVisit.clinicalExam!, lengthUnit: 'cm' }
+                          })}
+                        >
+                          cm
+                        </button>
+                        <button
+                          type="button"
+                          className={`emrWeightUnitBtn ${newVisit.clinicalExam?.lengthUnit === 'inches' ? 'emrWeightUnitActive' : ''}`}
+                          onClick={() => setNewVisit({
+                            ...newVisit,
+                            clinicalExam: { ...newVisit.clinicalExam!, lengthUnit: 'inches' }
+                          })}
+                        >
+                          inches
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="emrFormGroup">
+                    <label>Temperature</label>
+                    <div className="emrWeightInputWrapper">
+                      <input
+                        type="text"
+                        value={newVisit.clinicalExam?.temperature || ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                            setNewVisit({
+                              ...newVisit,
+                              clinicalExam: { ...newVisit.clinicalExam!, temperature: parseFloat(value) || 0 }
+                            });
+                          }
+                        }}
+                        placeholder="0.0"
+                        className="emrWeightInput"
+                      />
+                      <div className="emrWeightUnitSelect">
+                        <button
+                          type="button"
+                          className={`emrWeightUnitBtn ${newVisit.clinicalExam?.tempUnit === 'C' ? 'emrWeightUnitActive' : ''}`}
+                          onClick={() => setNewVisit({
+                            ...newVisit,
+                            clinicalExam: { ...newVisit.clinicalExam!, tempUnit: 'C' }
+                          })}
+                        >
+                          °C
+                        </button>
+                        <button
+                          type="button"
+                          className={`emrWeightUnitBtn ${newVisit.clinicalExam?.tempUnit === 'F' ? 'emrWeightUnitActive' : ''}`}
+                          onClick={() => setNewVisit({
+                            ...newVisit,
+                            clinicalExam: { ...newVisit.clinicalExam!, tempUnit: 'F' }
+                          })}
+                        >
+                          °F
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="emrFormRow">
+                  <div className="emrFormGroup">
+                    <label>Heart Rate (per minute)</label>
+                    <input
+                      type="text"
+                      value={newVisit.clinicalExam?.heartRate || ''}
+                      onChange={(e) => setNewVisit({
+                        ...newVisit,
+                        clinicalExam: { ...newVisit.clinicalExam!, heartRate: e.target.value }
+                      })}
+                      placeholder="e.g., 80-120 or 100"
+                      className="emrFormInput"
+                    />
+                    <small className="emrHelperText">Format: 80-120 (range) or 100 (single value)</small>
+                  </div>
+
+                  <div className="emrFormGroup">
+                    <label>Breathing Rate (per minute)</label>
+                    <input
+                      type="text"
+                      value={newVisit.clinicalExam?.breathingRate || ''}
+                      onChange={(e) => setNewVisit({
+                        ...newVisit,
+                        clinicalExam: { ...newVisit.clinicalExam!, breathingRate: e.target.value }
+                      })}
+                      placeholder="e.g., 15-30 or 20"
+                      className="emrFormInput"
+                    />
+                    <small className="emrHelperText">Format: 15-30 (range) or 20 (single value)</small>
+                  </div>
+                </div>
+
+                <div className="emrFormRow">
+                  <div className="emrFormGroup">
+                    <label>Additional Findings</label>
+                    <textarea
+                      value={newVisit.clinicalExam?.additionalFindings || ''}
+                      onChange={(e) => setNewVisit({
+                        ...newVisit,
+                        clinicalExam: { ...newVisit.clinicalExam!, additionalFindings: e.target.value }
+                      })}
+                      rows={3}
+                      placeholder="Enter any additional clinical findings..."
+                      className="emrTextarea"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Pregnant Option */}
+              <div className="emrFormRow">
+                <div className="emrFormGroup">
+                  <label>Pregnant</label>
+                  <div className="emrToggleGroupFull">
+                    <button 
+                      type="button"
+                      className={`emrToggleBtnFull emrToggleYes ${newVisit.pregnant ? 'emrToggleActiveFull' : ''}`}
+                      onClick={() => setNewVisit({...newVisit, pregnant: true})}
+                    >
+                      <IoCheckmarkCircleOutline size={14} /> Yes
+                    </button>
+                    <button 
+                      type="button"
+                      className={`emrToggleBtnFull emrToggleNo ${!newVisit.pregnant ? 'emrToggleActiveFull' : ''}`}
+                      onClick={() => setNewVisit({...newVisit, pregnant: false, pregnancyMonths: 0, pregnancyDays: 0})}
+                    >
+                      <IoCloseCircleOutline size={14} /> No
+                    </button>
+                  </div>
+                  {newVisit.pregnant && (
+                    <div className="emrPregnancyInputWrapper">
+                      <div className="emrPregnancyTabs">
+                        <button 
+                          type="button"
+                          className={`emrPregnancyTab ${pregnancyUnit === 'months' ? 'emrPregnancyTabActive' : ''}`}
+                          onClick={() => setPregnancyUnit('months')}
+                        >
+                          Months
+                        </button>
+                        <button 
+                          type="button"
+                          className={`emrPregnancyTab ${pregnancyUnit === 'days' ? 'emrPregnancyTabActive' : ''}`}
+                          onClick={() => setPregnancyUnit('days')}
+                        >
+                          Days
+                        </button>
+                      </div>
+                      <div className="emrFormRow">
+                        <div className="emrFormGroup">
+                          <label>Pregnancy {pregnancyUnit === 'months' ? 'Months' : 'Days'}</label>
+                          <div className="emrWeightInputWrapper">
+                            <input
+                              type="number"
+                              min="0"
+                              max={pregnancyUnit === 'months' ? "12" : "30"}
+                              step="1"
+                              value={pregnancyUnit === 'months' ? newVisit.pregnancyMonths : newVisit.pregnancyDays}
+                              onChange={(e) => {
+                                const value = parseInt(e.target.value) || 0;
+                                if (pregnancyUnit === 'months') {
+                                  setNewVisit({...newVisit, pregnancyMonths: value});
+                                } else {
+                                  setNewVisit({...newVisit, pregnancyDays: value});
+                                }
+                              }}
+                              placeholder={pregnancyUnit === 'months' ? "Enter months" : "Enter days"}
+                              className="emrWeightInput"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               
-              {/* One-time fields - only show if not already set */}
+              {/* Neutered/Spayed Option */}
               {!neutered && (
                 <div className="emrFormRow">
                   <div className="emrFormGroup">
@@ -2238,6 +3086,7 @@ const GlobalEMR: React.FC = () => {
                 </div>
               )}
               
+              {/* Vaccinated Option */}
               {!vaccinated && (
                 <div className="emrFormRow">
                   <div className="emrFormGroup">
@@ -2263,6 +3112,7 @@ const GlobalEMR: React.FC = () => {
                 </div>
               )}
               
+              {/* Deceased Option */}
               {!deceased && (
                 <div className="emrFormRow">
                   <div className="emrFormGroup">
@@ -2287,22 +3137,202 @@ const GlobalEMR: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {/* Prescription Section */}
+              <div className="emrFormSection">
+                <h4>Prescriptions</h4>
+                <div className="emrPrescriptionsContainer">
+                  {(newVisit.prescriptions || []).map((pres, index) => (
+                    <div key={pres.id} className="emrPrescriptionCard">
+                      <div className="emrPrescriptionHeader">
+                        <strong>Medication #{index + 1}</strong>
+                        <button
+                          type="button"
+                          className="emrRemovePrescriptionBtn"
+                          onClick={() => removePrescription(pres.id)}
+                        >
+                          <IoTrashBinOutline size={14} /> Remove
+                        </button>
+                      </div>
+                      <div className="emrFormRow">
+                        <div className="emrFormGroup">
+                          <label>Medication Name</label>
+                          <input
+                            type="text"
+                            value={pres.medicationName}
+                            onChange={(e) => updatePrescription(pres.id, 'medicationName', e.target.value)}
+                            placeholder="e.g., Amoxicillin"
+                            className="emrFormInput"
+                          />
+                        </div>
+                        <div className="emrFormGroup">
+                          <label>Dosage</label>
+                          <input
+                            type="text"
+                            value={pres.dosage}
+                            onChange={(e) => updatePrescription(pres.id, 'dosage', e.target.value)}
+                            placeholder="e.g., 250mg"
+                            className="emrFormInput"
+                          />
+                        </div>
+                      </div>
+                      <div className="emrFormRow">
+                        <div className="emrFormGroup">
+                          <label>Frequency</label>
+                          <input
+                            type="text"
+                            value={pres.frequency}
+                            onChange={(e) => updatePrescription(pres.id, 'frequency', e.target.value)}
+                            placeholder="e.g., Twice daily"
+                            className="emrFormInput"
+                          />
+                        </div>
+                        <div className="emrFormGroup">
+                          <label>Duration</label>
+                          <input
+                            type="text"
+                            value={pres.duration}
+                            onChange={(e) => updatePrescription(pres.id, 'duration', e.target.value)}
+                            placeholder="e.g., 7 days"
+                            className="emrFormInput"
+                          />
+                        </div>
+                      </div>
+                      <div className="emrFormRow">
+                        <div className="emrFormGroup">
+                          <label>Instructions</label>
+                          <textarea
+                            value={pres.instructions}
+                            onChange={(e) => updatePrescription(pres.id, 'instructions', e.target.value)}
+                            rows={2}
+                            placeholder="Additional instructions (e.g., take with food)"
+                            className="emrTextarea"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="emrAddPrescriptionBtn"
+                    onClick={addPrescription}
+                  >
+                    <IoAddCircleOutline size={16} /> Add Prescription
+                  </button>
+                </div>
+              </div>
+
+              {/* Laboratory Section */}
+              {newVisit.reason === 'Laboratory' && (
+                <div className="emrFormSection">
+                  <h4>Laboratory Results</h4>
+                  <div className="emrLabResultsContainer">
+                    {(newVisit.labResults || []).map((lab, index) => (
+                      <div key={lab.id} className="emrLabResultCard">
+                        <div className="emrLabResultHeader">
+                          <strong>Test #{index + 1}</strong>
+                          <button
+                            type="button"
+                            className="emrRemoveLabBtn"
+                            onClick={() => removeLabResult(lab.id)}
+                          >
+                            <IoTrashBinOutline size={14} /> Remove
+                          </button>
+                        </div>
+                        <div className="emrFormRow">
+                          <div className="emrFormGroup">
+                            <label>Test Type</label>
+                            <select
+                              value={lab.testType}
+                              onChange={(e) => updateLabResult(lab.id, 'testType', e.target.value)}
+                              className="emrFormSelect"
+                            >
+                              {LAB_TEST_TYPES.map(type => (
+                                <option key={type} value={type}>{type}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="emrFormRow">
+                          <div className="emrFormGroup">
+                            <label>Upload Result File/Image</label>
+                            <div className="emrFileUploadWrapper">
+                              <input
+                                type="file"
+                                id={`lab-file-${lab.id}`}
+                                accept="image/*,.pdf,.doc,.docx"
+                                onChange={(e) => {
+                                  if (e.target.files && e.target.files[0]) {
+                                    handleFileUpload(lab.id, e.target.files[0]);
+                                  }
+                                }}
+                                className="emrFileInput"
+                              />
+                              <label htmlFor={`lab-file-${lab.id}`} className="emrFileUploadBtn" style={{color: '#ffffff'}}>
+                                <IoCloudUploadOutline size={16} /> Upload File
+                              </label>
+                              {lab.fileName && (
+                                <span className="emrFileName">{lab.fileName}</span>
+                              )}
+                              {lab.fileData && (
+                                <button
+                                  type="button"
+                                  className="emrViewFileBtn"
+                                  onClick={() => {
+                                    const win = window.open();
+                                    if (win) {
+                                      win.document.write(`<img src="${lab.fileData}" style="max-width: 100%;" />`);
+                                    }
+                                  }}
+                                >
+                                  <IoEyeOutline size={12} /> View
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="emrFormRow">
+                          <div className="emrFormGroup">
+                            <label>Interpretation</label>
+                            <textarea
+                              value={lab.interpretation}
+                              onChange={(e) => updateLabResult(lab.id, 'interpretation', e.target.value)}
+                              rows={3}
+                              placeholder="Enter interpretation of results..."
+                              className="emrTextarea"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="emrAddLabBtn"
+                      onClick={addLabResult}
+                    >
+                      <IoAddCircleOutline size={16} /> Add Lab Result
+                    </button>
+                  </div>
+                </div>
+              )}
               
+              {/* Doctor's Remarks */}
               <div className="emrFormRow">
                 <div className="emrFormGroup">
                   <label>Doctor's Remarks</label>
                   <textarea
                     value={newVisit.doctorRemarks}
                     onChange={(e) => setNewVisit({...newVisit, doctorRemarks: e.target.value})}
-                    rows={3}
+                    rows={4}
                     placeholder="Enter clinical notes..."
                     className="emrTextarea"
                   />
                 </div>
               </div>
+
               <div className="emrFormActions">
                 <button className="emrCancelBtn" onClick={() => setShowAddVisit(false)}>Cancel</button>
-                <button className="emrSubmitBtn" onClick={addNewVisit}>Add Visit</button>
+                <button className="emrSubmitBtn" onClick={addNewVisit}>+ Add Visit</button>
               </div>
             </div>
           </div>
