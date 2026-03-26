@@ -119,6 +119,19 @@ const TimeSelector = ({ label, value, onChange }: any) => {
   );
 };
 
+// Helper to convert 24h time (09:00:00) to 12h time (9:00 AM)
+const formatToAMPM = (timeStr: string) => {
+  if (!timeStr) return '';
+  // If it already has AM/PM (like a temporary un-saved slot), just return it
+  if (timeStr.includes('AM') || timeStr.includes('PM')) return timeStr;
+
+  const [hours, minutes] = timeStr.split(':');
+  let h = parseInt(hours, 10);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12; // Converts 0 to 12 for midnight
+  return `${h.toString().padStart(2, '0')}:${minutes} ${ampm}`;
+};
+
 // ==========================================
 //  MAIN COMPONENT
 // ==========================================
@@ -725,20 +738,18 @@ export default function AdminAvailSettings() {
                           <tr>
                             <th style={{ textAlign: 'left' }}>Start</th>
                             <th style={{ textAlign: 'left' }}>End</th>
-                            <th style={{ textAlign: 'center' }}>Capacity</th>
                             <th style={{ textAlign: 'right' }}>Action</th>
                           </tr>
                         </thead>
                         <tbody>
                           {timeSlotsByDay[currentEditingDay]?.length === 0 ? (
-                            <tr><td colSpan={4} style={{ textAlign: 'center', padding: '30px', color: '#999', fontStyle: 'italic' }}>No time slots configured</td></tr>
+                            <tr><td colSpan={3} style={{ textAlign: 'center', padding: '30px', color: '#999', fontStyle: 'italic' }}>No time slots configured</td></tr>
                           ) : (
                             timeSlotsByDay[currentEditingDay]?.map((item: any) => (
                               <tr key={item.id}>
-                                <td>{item.startTime}</td>
-                                <td>{item.endTime}</td>
-                                <td style={{ textAlign: 'center' }}>{item.capacity || 1}</td>
-                                <td style={{ textAlign: 'right' }}>
+                                  <td>{formatToAMPM(item.startTime)}</td>
+                                  <td>{formatToAMPM(item.endTime)}</td>
+                                  <td style={{ textAlign: 'right' }}>
                                   <button onClick={() => deleteSlot(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                                     <IoTrashOutline size={20} color="#d32f2f" />
                                   </button>
@@ -788,13 +799,20 @@ export default function AdminAvailSettings() {
           </div>
         )}
 
-        {/* DELETE CONFIRMATION MODAL */}
+{/* DELETE CONFIRMATION MODAL */}
         {deleteConfirmationVisible && (
           <div className="modalOverlay">
-            <div className="modalContainer" style={{ width: '40%', maxWidth: '400px', padding: '30px' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '15px' }}>Delete Time Slot</h2>
+            {/* Added height: 'auto' and minHeight: 'auto' to override the giant CSS height! */}
+            <div className="modalContainer" style={{ width: '40%', maxWidth: '400px', padding: '30px', height: 'auto', minHeight: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <h2 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0 }}>Delete Time Slot</h2>
+                <button onClick={() => { setDeleteConfirmationVisible(false); setSlotToDelete(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                  <IoClose size={24} color="#333" />
+                </button>
+              </div>
+              
               <p style={{ fontSize: '16px', marginBottom: '25px', color: '#555' }}>
-                Are you sure you want to delete {slotToDelete ? `${slotToDelete.startTime} - ${slotToDelete.endTime}` : 'this time slot'}?
+                Are you sure you want to delete {slotToDelete ? `${formatToAMPM(slotToDelete.startTime)} - ${formatToAMPM(slotToDelete.endTime)}` : 'this time slot'}?
               </p>
               
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>

@@ -384,6 +384,149 @@ def change_password():
     except Exception as e:
         print("Change password error:", e)
         return jsonify({"error": str(e)}), 400
+    
+    
+# -----------------------------------------------
+# DAY AVAILABILITY (Matches your .ts file)
+# -----------------------------------------------
+@app.route('/api/day-availability', methods=['GET', 'POST'])
+def get_day_availability():
+    if request.method == 'GET':
+        try:
+            res = supabase.table('working_days').select('*').execute()
+            # Your TS expects an array: [{day_of_week: 'monday', is_available: true}, ...]
+            formatted_data = [{"day_of_week": row['day_of_week'], "is_available": row['is_active']} for row in res.data]
+            return jsonify(formatted_data), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+            
+    # Your TS file uses POST to /api/day-availability when it can't find the row
+    if request.method == 'POST':
+        data = request.get_json()
+        day = data.get('day_of_week') # Your TS sends 'day_of_week', not 'day'
+        is_available = data.get('is_available')
+        
+        try:
+            supabase_admin.table('working_days').upsert({
+                "day_of_week": day,
+                "is_active": is_available
+            }).execute()
+            return jsonify({"message": f"{day} saved successfully"}), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+
+# Your TS file uses PUT to /api/day-availability/<day> first
+@app.route('/api/day-availability/<day>', methods=['PUT'])
+def update_day_availability(day):
+    data = request.get_json()
+    is_available = data.get('is_available')
+    try:
+        # Upsert updates it if it exists, or creates it if it doesn't!
+        supabase_admin.table('working_days').upsert({
+            "day_of_week": day,
+            "is_active": is_available
+        }).execute()
+        return jsonify({"message": f"{day} updated successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+# -----------------------------------------------
+# TIME SLOTS (Mega-Route fixing the 405 error!)
+# -----------------------------------------------
+@app.route('/api/time-slots/<param>', methods=['GET', 'POST', 'DELETE'])
+def handle_time_slots_api(param):
+    
+    # --- FETCH SLOTS ---
+    if request.method == 'GET':
+        day = param
+        try:
+            res = supabase_admin.table('time_slots').select('*').eq('day_of_week', day).execute()
+            return jsonify({"timeSlots": res.data}), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+
+    # --- SAVE SLOTS ---
+    if request.method == 'POST':
+        day = param
+        data = request.get_json()
+        slots = data.get('slots', [])
+        try:
+            # Delete old slots for this day first to prevent duplicates!
+            supabase_admin.table('time_slots').delete().eq('day_of_week', day).execute()
+            
+            for slot in slots:
+                # Format time for Supabase
+                raw_start = datetime.strptime(slot['startTime'], '%I:%M %p').strftime('%H:%M:%S')
+                raw_end = datetime.strptime(slot['endTime'], '%I:%M %p').strftime('%H:%M:%S')
+                
+                supabase_admin.table('time_slots').insert({
+                    "day_of_week": day,
+                    "start_time": raw_start,
+                    "end_time": raw_end,
+                    "is_active": True
+                }).execute()
+            
+            res = supabase_admin.table('time_slots').select('*').eq('day_of_week', day).execute()
+            return jsonify({"timeSlots": res.data}), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+
+    # --- DELETE SLOT ---
+    if request.method == 'DELETE':
+        slot_id = param
+        try:
+            # Ignore temporary UI slots
+            if str(slot_id).startswith('temp-'):
+                return jsonify({"message": "Temp slot removed"}), 200
+                
+            supabase_admin.table('time_slots').delete().eq('id', slot_id).execute()
+            return jsonify({"message": "Slot deleted successfully"}), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+
+# -----------------------------------------------
+# CALENDAR BOOKED DATES
+# -----------------------------------------------
+@app.route('/api/booked-dates', methods=['GET'])
+def get_booked_dates():
+    try:
+        # Using supabase_admin to bypass RLS
+        res = supabase_admin.table('appointments').select('appointment_date').execute()
+        formatted = [{"date_time": row['appointment_date']} for row in res.data]
+        return jsonify(formatted), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+# -----------------------------------------------
+# SPECIAL DATES (Holidays, Blocked off days, etc.)
+# -----------------------------------------------
+@app.route('/api/special-dates', methods=['GET', 'POST'])
+def handle_special_dates():
+    if request.method == 'GET':
+        try:
+            res = supabase_admin.table('special_dates').select('*').order('event_date').execute()
+            return jsonify({"specialDates": res.data}), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+
+    if request.method == 'POST':
+        data = request.get_json()
+        try:
+            supabase_admin.table('special_dates').insert({
+                "event_name": data.get('event_name'),
+                "event_date": data.get('event_date')
+            }).execute()
+            return jsonify({"message": "Special date added successfully"}), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+
+@app.route('/api/special-dates/<date>', methods=['DELETE'])
+def delete_special_date(date):
+    try:
+        supabase_admin.table('special_dates').delete().eq('event_date', date).execute()
+        return jsonify({"message": "Special date deleted successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
 if __name__ == '__main__':
