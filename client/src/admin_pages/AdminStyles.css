@@ -34,7 +34,7 @@ html, body {
 
 /* Navbar Styles */
 .navbarContainer {
-  flex: 1;
+  flex: 0.6;
   padding: 36px 15px 30px 30px;
   box-shadow: 0 0 18px rgba(0, 0, 0, 0.15);
   height: 100vh;
@@ -47,8 +47,7 @@ html, body {
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9, #0f3bca);
-  color: white;
+   background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9, #0f3bca);
 }
 
 .navTitle {
@@ -82,8 +81,18 @@ html, body {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
 }
 
+.navGlassContainer {
+  margin-top: 10px;
+  padding: 10px 12px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
 .navAccountContainer {
-  padding-left: 6px;
+  padding-left: 12px;
 }
 
 .navAccount {
@@ -135,7 +144,7 @@ html, body {
   margin-right: -10px;
   justify-content: center;
   padding-top: 10px;
-  padding-left: 5px;
+  padding-left: 10px;
   margin-bottom: 10px;
   background: rgba(255, 255, 255, 0.15);
   border-radius: 12px;
@@ -160,11 +169,11 @@ html, body {
   border: none;
   color: white;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 400;
   cursor: pointer;
   width: 100%;
   text-align: left;
-  padding: 5px 0;
+  padding: 3px 0;
   margin-bottom: 10px;
 }
 
@@ -531,7 +540,6 @@ html, body {
   width: 54%;
   max-width: 800px;
   height: 90%;
-  overflow-y: auto;
   box-shadow: 0 0 18px rgba(0, 0, 0, 0.15);
 }
 

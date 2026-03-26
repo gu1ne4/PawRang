@@ -1,14 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import '../admin_pages/AdminStyles.css';
-import { PiUsersThree } from "react-icons/pi";
-import { TbPresentationAnalytics } from "react-icons/tb";
 
 // Icons - copy all the icons you need from your original file
 import { 
   IoHomeOutline, 
-  IoPeopleOutline, 
-  IoPersonOutline, 
   IoCalendarClearOutline,
   IoCalendarOutline,
   IoTodayOutline,
@@ -17,16 +13,15 @@ import {
   IoLogOutOutline,
   IoChevronUpOutline,
   IoChevronDownOutline,
-  IoDocumentTextOutline as IoDocumentText, 
-  IoLayersOutline,  
-  IoFileTrayFullOutline
+  IoDocumentTextOutline as IoDocumentText,  // For Patient Records
+  IoLayersOutline,  // For Inventory
 } from 'react-icons/io5';
 
 // Define the props that the Navbar will receive
 interface NavbarProps {
   currentUser: {
-    id?: string | number;
-    pk?: string | number;
+    id?: number;
+    pk?: number;
     username: string;
     fullName?: string;
     role: string;
@@ -35,7 +30,7 @@ interface NavbarProps {
   onLogout: () => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
+const DoctorNavbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -59,7 +54,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
         </div>
 
         {/* Account Logged In */}
-        <div className="navGlassContainer navAccountContainer">
+        <div className="glassContainer navAccountContainer">
           <div className="navAccount">
             <img 
               src={(currentUser && currentUser.userImage) ? currentUser.userImage : "/src/assets/userAvatar.jpg"} 
@@ -75,7 +70,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
 
         <div className="navOverview">Overview</div>
 
-        <div className="navGlassContainer scrollable-nav">
+        {/* This glassContainer now has a scrollable-nav class */}
+        <div className="glassContainer scrollable-nav">
           <div className="navMenu">
             <div className="navMenuSection" style={{marginTop: '10px'}}>
               <button 
@@ -85,43 +81,6 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
                 <IoHomeOutline size={15} />
                 <span>Home</span>
               </button>
-            </div>
-
-            <div className="navMenuSection">
-              <button 
-                className={`navBtn ${isActive('/analytics') ? 'active' : ''}`} 
-                onClick={() => navigate('/analytics')}
-              >
-                <TbPresentationAnalytics size={15} />
-                <span>Analytics</span>
-              </button>
-            </div>
-
-            <div className="navMenuSection">
-              <div className={isActive('/accounts') || isActive('/useraccounts') ? 'selectedGlass' : ''}>
-                <button className="navBtn" onClick={() => setShowAccountDropdown(!showAccountDropdown)}>
-                  <IoPeopleOutline size={15} />
-                  <span>Account Overview</span>
-                  {showAccountDropdown ? <IoChevronUpOutline size={14} /> : <IoChevronDownOutline size={14} />}
-                </button>
-              </div>
-
-              {showAccountDropdown && (
-                <div className="navSubMenu">
-                  <div className={isActive('/accounts') ? 'subSelectedGlass' : ''}>
-                    <button className="navBtn subNavBtn" onClick={() => navigate('/accounts')}>
-                      <IoPersonOutline size={14} />
-                      <span>Employees</span>
-                    </button>
-                  </div>
-                  <div className={isActive('/useraccounts') ? 'subSelectedGlass' : ''}>
-                    <button className="navBtn subNavBtn" onClick={() => navigate('/useraccounts')}>
-                      <PiUsersThree size={18} />
-                      <span>Users</span>
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="navMenuSection">
@@ -185,16 +144,6 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
 
             <div className="navMenuSection">
               <button 
-                className={`navBtn ${isActive('/audit') ? 'active' : ''}`} 
-                onClick={() => navigate('/audit')}
-              >
-                <IoFileTrayFullOutline size={15} />
-                <span>System Audit</span>
-              </button>
-            </div>
-
-            <div className="navMenuSection">
-              <button 
                 className={`navBtn ${isActive('/settings') ? 'active' : ''}`} 
                 onClick={() => navigate('/settings')}
               >
@@ -206,7 +155,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
         </div>
 
         <div className="navFooter">
-          <div className="navGlassContainer" style={{paddingBottom: '1px', marginTop: '20px'}}>
+          <div className="glassContainer" style={{paddingBottom: '1px', marginTop: '20px'}}>
             <button className="navBtn" style={{paddingTop: '1px', paddingBottom: '1px'}} onClick={onLogout}>
               <IoLogOutOutline size={15} />
               <span>Log Out</span>
@@ -218,4 +167,4 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
   );
 };
 
-export default Navbar;
+export default DoctorNavbar;

@@ -1,0 +1,3012 @@
+/* Medical Records Module Styles - Compact */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.emrContainer {
+  background-color: #ffffff;
+  display: flex;
+  width: 100vw;
+  height: 99vh;
+  overflow: hidden;
+}
+
+.emrBodyContainer {
+  padding: 30px 30px 40px 15px;
+  flex: 6;
+  height: 100vh;
+  background-color: #ffffff;
+}
+
+.emrTopContainer {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.emrSubTopContainer {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.08);
+  flex: 20;
+}
+
+.emrNotificationContainer {
+  flex: 0.5;
+  margin-left: 12px;
+  justify-content: center;
+  padding: 12px;
+}
+
+.emrBlueIcon {
+  color: #3d67ee;
+}
+
+.emrBlueText {
+  font-size: 14px;
+  color: #3d67ee;
+  font-weight: 600;
+  margin-left: 8px;
+}
+
+.emrSubTopLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.emrTableContainer {
+  background-color: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  height: calc(100% - 70px);
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+}
+
+.emrTableToolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.emrSearchFilterSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.emrToolbarItem {
+  position: relative;
+}
+
+.emrIconButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emrIconButton:hover {
+  opacity: 0.7;
+}
+
+.emrIconDefault {
+  color: #3d67ee;
+}
+
+.emrIconActive {
+  color: #afccf8;
+}
+
+.emrTooltip {
+  position: absolute;
+  top: -28px;
+  left: -10px;
+  background-color: #000;
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.emrSearchInput {
+  font-size: 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 6px 12px;
+  height: 32px;
+  width: 220px;
+}
+
+.emrFilterSection {
+  display: flex;
+  gap: 8px;
+}
+
+.emrFilterInput {
+  height: 32px;
+  border-radius: 6px;
+  padding: 0 10px;
+  border: 1px solid #ddd;
+  font-size: 12px;
+}
+
+.emrFilterSelect {
+  height: 32px;
+  width: 150px;
+  border-radius: 6px;
+  padding: 0 10px;
+  border: 1px solid #ddd;
+  font-size: 12px;
+  background-color: white;
+}
+
+.emrActionSection {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.emrBlackBtn, .emrDeleteBtn, .emrReturnBtn {
+  border-radius: 6px;
+  padding: 6px 16px;
+  height: 32px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.emrBlackBtn {
+  background-color: #000;
+  color: white;
+}
+
+.emrBlackBtn:hover {
+  background-color: #333;
+}
+
+.emrDeleteBtn {
+  background-color: #dc3545;
+  color: white;
+}
+
+.emrDeleteBtn:hover {
+  background-color: #c82333;
+}
+
+.emrReturnBtn {
+  background-color: #6c757d;
+  color: white;
+}
+
+.emrReturnBtn:hover {
+  background-color: #5a6268;
+}
+
+.emrTableWrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.emrDataTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.emrDataTable th {
+  text-align: left;
+  padding: 10px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  background-color: #fafafa;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.emrDataTable td {
+  padding: 10px 8px;
+  font-size: 12px;
+  color: #333;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.emrDataTable th:first-child,
+.emrDataTable td:first-child {
+  text-align: center;
+  padding: 10px 0;
+  width: 32px;
+}
+
+.emrCheckbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #3d67ee;
+}
+
+.emrActionButtons {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.emrActionBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: #3d67ee;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emrActionBtn:hover {
+  background-color: #f0f0f0;
+}
+
+.emrNoData {
+  text-align: center;
+  color: #999;
+  padding: 40px;
+}
+
+.emrPagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.emrPaginationBtn {
+  padding: 6px 14px;
+  border: 1px solid #3d67ee;
+  background-color: white;
+  color: #3d67ee;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.emrPaginationBtn:hover:not(:disabled) {
+  background-color: #3d67ee;
+  color: white;
+}
+
+.emrPaginationBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.emrPaginationInfo {
+  font-size: 12px;
+  color: #666;
+}
+
+.emrLoadingContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+}
+
+.emrSpinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #3d67ee;
+  border-radius: 50%;
+  animation: emrSpin 0.8s linear infinite;
+}
+
+@keyframes emrSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Form Styles - Compact */
+.emrFormContainer {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.emrFormHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.emrFormHeader h3, .emrFormHeader h4 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.emrFormClose {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #999;
+  line-height: 1;
+}
+
+.emrFormClose:hover {
+  color: #333;
+}
+
+.emrFormContent {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.emrFormSection {
+  margin-bottom: 20px;
+  padding: 16px;
+  background-color: #f9f9f9;
+  border-radius: 10px;
+}
+
+.emrFormSection h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #3d67ee;
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.emrFormRow {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.emrFormGroup {
+  flex: 1;
+  position: relative;
+}
+
+.emrFullWidth {
+  flex: 100%;
+}
+
+.emrFormGroup label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #555;
+}
+
+.emrRequired {
+  color: #dc3545;
+  margin-left: 2px;
+}
+
+.emrFormInput, .emrFormSelect, .emrTextarea {
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.emrFormInput:focus, .emrFormSelect:focus, .emrTextarea:focus {
+  outline: none;
+  border-color: #3d67ee;
+  box-shadow: 0 0 0 2px rgba(61, 103, 238, 0.1);
+}
+
+.emrTextarea {
+  resize: vertical;
+  font-family: inherit;
+}
+
+.emrReadOnly {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.emrError {
+  border-color: #dc3545 !important;
+}
+
+.emrErrorText {
+  color: #dc3545;
+  font-size: 10px;
+  margin-top: 2px;
+}
+
+.emrRadioGroup {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 4px 0;
+}
+
+.emrRadioLabel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.emrCheckboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.emrWeightInputWrapper {
+  display: flex;
+  gap: 8px;
+}
+
+.emrWeightInput {
+  flex: 2;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.emrWeightUnit {
+  flex: 1;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  background-color: white;
+}
+
+.emrSearchPetBtn {
+  width: 100%;
+  padding: 8px;
+  background-color: #3d67ee;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.emrSearchPetBtn:hover {
+  background-color: #0738D9;
+}
+
+.emrFormActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.emrCancelBtn, .emrSubmitBtn {
+  padding: 8px 24px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.emrCancelBtn {
+  background-color: #e0e0e0;
+  color: #333;
+}
+
+.emrCancelBtn:hover {
+  background-color: #d0d0d0;
+}
+
+.emrSubmitBtn {
+  background: linear-gradient(135deg, #3db6ee, #3d67ee);
+  color: white;
+}
+
+.emrSubmitBtn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+/* Modal Styles */
+.emrModalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 3000;
+}
+
+.emrSearchModal {
+  background-color: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 550px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.emrModalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.emrModalHeader h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.emrModalClose {
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  color: #999;
+  line-height: 1;
+}
+
+.emrModalClose:hover {
+  color: #333;
+}
+
+.emrSearchModalContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.emrSearchInputWrapper {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.emrSearchInputWrapper .emrSearchInput {
+  flex: 1;
+  height: 36px;
+}
+
+.emrSearchBtn {
+  padding: 0 20px;
+  background-color: #3d67ee;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.emrSearchBtn:hover:not(:disabled) {
+  background-color: #0738D9;
+}
+
+.emrSearchResults {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.emrSearchResultItem {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.emrSearchResultItem:hover {
+  background-color: #f5f5f5;
+  border-color: #3d67ee;
+}
+
+.emrSearchResultIcon {
+  width: 40px;
+  height: 40px;
+  background-color: #f0f0f0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #3d67ee;
+}
+
+.emrSearchResultInfo {
+  flex: 1;
+}
+
+.emrSearchResultName {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 2px;
+}
+
+.emrSearchResultDetails {
+  font-size: 11px;
+  color: #666;
+  margin-top: 2px;
+}
+
+.emrSearchNoResults {
+  text-align: center;
+  padding: 30px;
+  color: #999;
+  font-size: 12px;
+}
+
+/* Alert Modal */
+.emrAlertModal {
+  background-color: white;
+  padding: 20px;
+  border-radius: 12px;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.emrAlertIcon {
+  margin-bottom: 8px;
+}
+
+.emrAlertTitle {
+  font-size: 16px;
+  font-weight: bold;
+  margin: 8px 0;
+}
+
+.emrAlertMessage {
+  text-align: center;
+  color: #666;
+  margin-bottom: 20px;
+  font-size: 12px;
+}
+
+.emrAlertActions {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  justify-content: center;
+}
+
+.emrAlertBtn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 6px;
+  min-width: 80px;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.emrCancelAlertBtn {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.emrConfirmAlertBtn {
+  background-color: #3d67ee;
+  color: white;
+}
+
+.emrErrorBtn {
+  background-color: #d93025;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3d67ee;
+  border-radius: 3px;
+}
+
+/* Add these styles to your existing CSS file */
+
+/* Toggle Buttons */
+.emrToggleGroup {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.emrToggleBtn {
+  padding: 6px 16px;
+  border: 1px solid #ddd;
+  background-color: white;
+  color: #666;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.emrToggleBtn:hover {
+  border-color: #3d67ee;
+  color: #3d67ee;
+}
+
+.emrToggleActive {
+  background-color: #3d67ee;
+  border-color: #3d67ee;
+  color: white;
+}
+
+.emrToggleActive:hover {
+  background-color: #0738D9;
+  color: white;
+}
+
+/* Weight Input with Unit Toggle Inside */
+.emrWeightInputWrapper {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.emrWeightInput {
+  flex: 1;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 6px 70px 6px 10px;
+  font-size: 12px;
+}
+
+.emrWeightUnitSelect {
+  position: absolute;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+  background-color: white;
+  border-radius: 4px;
+}
+
+.emrWeightUnitBtn {
+  padding: 3px 8px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  color: #999;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.emrWeightUnitBtn:hover {
+  color: #3d67ee;
+}
+
+.emrWeightUnitActive {
+  color: #3d67ee;
+  font-weight: 600;
+}
+
+/* Search Modal with Icon */
+.emrSearchInputWrapper {
+  position: relative;
+  margin-bottom: 20px;
+}
+
+.emrSearchInputWrapper .emrSearchInput {
+  width: 100%;
+  padding: 8px 36px 8px 12px;
+}
+
+.emrSearchIcon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #999;
+  pointer-events: none;
+}
+
+/* Clear Filters Button */
+.emrClearFilterBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  height: 32px;
+  background-color: #3d67ee;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #ffffff;
+  transition: all 0.2s ease;
+}
+
+.emrClearFilterBtn:hover {
+  background-color: #0934c0;
+  border-color: #3d67ee;
+  color: #ffffff;
+}
+
+/* View Proof Button */
+.emrViewProofBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background-color: #f0f0f0;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  color: #3d67ee;
+  transition: all 0.2s ease;
+}
+
+.emrViewProofBtn:hover {
+  background-color: #e0e0e0;
+}
+
+/* Proof Modal */
+.emrProofModal {
+  background-color: white;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 25px 50px rgba(61, 103, 238, 0.25);
+  border: 1px solid rgba(61, 103, 238, 0.1);
+  overflow: hidden;
+}
+
+.emrProofContent {
+  padding: 30px;
+  text-align: center;
+}
+
+.emrProofPlaceholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: #666;
+}
+
+.emrProofPlaceholder svg {
+  color: #3d67ee;
+  opacity: 0.7;
+}
+
+.emrProofLink {
+  display: inline-block;
+  padding: 8px 20px;
+  background-color: #3d67ee;
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.emrProofLink:hover {
+  background-color: #0738D9;
+  transform: translateY(-1px);
+}
+
+/* Update existing modal styles */
+.emrSearchModal,
+.emrAlertModal {
+  box-shadow: 0 25px 50px rgba(61, 103, 238, 0.25);
+  border: 1px solid rgba(61, 103, 238, 0.1);
+}
+
+/* Search Results Scrollable */
+.emrSearchResults {
+  max-height: 400px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Ensure all toggle buttons are consistent */
+.emrToggleGroup {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .emrFormRow {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .emrWeightInputWrapper {
+    width: 100%;
+  }
+}
+
+/* Full Width Toggle Groups */
+.emrToggleGroupFull {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.emrToggleBtnFull {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #e0e0e0;
+  background-color: #f8f9fa;
+  color: #666;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.emrToggleBtnFull:hover {
+  border-color: #3d67ee;
+  background-color: #f0f4ff;
+  color: #3d67ee;
+  transform: translateY(-1px);
+}
+
+.emrToggleActiveFull {
+  background: linear-gradient(135deg, #3d67ee, #0738D9);
+  border-color: #3d67ee;
+  color: white;
+  box-shadow: 0 2px 8px rgba(61, 103, 238, 0.3);
+}
+
+.emrToggleActiveFull:hover {
+  background: linear-gradient(135deg, #0738D9, #052c9e);
+  color: white;
+  transform: translateY(-1px);
+}
+
+/* Vaccinated Wrapper */
+.emrVaccinatedWrapper {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+}
+
+.emrVaccinatedWrapper .emrToggleGroupFull {
+  flex: 2;
+}
+
+.emrViewProofBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background-color: #f0f0f0;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: #3d67ee;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.emrViewProofBtn:hover {
+  background-color: #e0e0e0;
+  border-color: #3d67ee;
+  transform: translateY(-1px);
+}
+
+/* Updated Weight Input Styles */
+.emrWeightInputWrapper {
+  display: flex;
+  align-items: center;
+  position: relative;
+  background-color: #f8f9fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.emrWeightInputWrapper:focus-within {
+  border-color: #3d67ee;
+  box-shadow: 0 0 0 2px rgba(61, 103, 238, 0.1);
+}
+
+.emrWeightInput {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+}
+
+.emrWeightUnitSelect {
+  display: flex;
+  gap: 4px;
+  padding-right: 8px;
+}
+
+.emrWeightUnitBtn {
+  padding: 4px 12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: #999;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.emrWeightUnitBtn:hover {
+  color: #3d67ee;
+  background-color: #f0f0f0;
+}
+
+.emrWeightUnitActive {
+  color: #3d67ee;
+  background-color: #f0f4ff;
+  font-weight: 600;
+}
+
+/* Search Modal with Icon */
+.emrSearchInputWrapper {
+  position: relative;
+  margin-bottom: 20px;
+}
+
+.emrSearchInputWrapper .emrSearchInput {
+  width: 100%;
+  padding: 8px 36px 8px 12px;
+}
+
+.emrSearchIcon {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #999;
+  pointer-events: none;
+}
+
+
+
+/* Modal Styles with Blue Shadow */
+.emrSearchModal,
+.emrAlertModal,
+.emrProofModal {
+  box-shadow: 0 25px 50px rgba(61, 103, 238, 0.25);
+  border: 1px solid rgba(61, 103, 238, 0.1);
+}
+
+.emrProofModal {
+  background-color: white;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 500px;
+  overflow: hidden;
+}
+
+.emrProofContent {
+  padding: 30px;
+  text-align: center;
+}
+
+.emrProofPlaceholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: #666;
+}
+
+.emrProofPlaceholder svg {
+  color: #3d67ee;
+  opacity: 0.7;
+}
+
+.emrProofLink {
+  display: inline-block;
+  padding: 8px 20px;
+  background-color: #3d67ee;
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.emrProofLink:hover {
+  background-color: #0738D9;
+  transform: translateY(-1px);
+}
+
+/* Search Results Scrollable */
+.emrSearchResults {
+  max-height: 400px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .emrFormRow {
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .emrVaccinatedWrapper {
+    flex-direction: column;
+  }
+  
+  .emrVaccinatedWrapper .emrToggleGroupFull {
+    width: 100%;
+  }
+  
+  .emrViewProofBtn {
+    width: 100%;
+  }
+}
+
+/* Gender specific colors */
+.emrGenderMale {
+  border-color: #3d67ee;
+}
+
+.emrGenderMale.emrToggleActiveFull {
+  background: linear-gradient(135deg, #3d67ee, #1e3a8a);
+}
+
+.emrGenderFemale {
+  border-color: #ec489a;
+}
+
+.emrGenderFemale.emrToggleActiveFull {
+  background: linear-gradient(135deg, #ec489a, #9d174d);
+}
+
+/* Yes/No toggle colors */
+.emrToggleYes {
+  border-color: #2e9e0c;
+}
+
+.emrToggleYes.emrToggleActiveFull {
+  background: linear-gradient(135deg, #2e9e0c, #1a5a06);
+}
+
+.emrToggleNo {
+  border-color: #dc3545;
+}
+
+.emrToggleNo.emrToggleActiveFull {
+  background: linear-gradient(135deg, #dc3545, #9b2c3a);
+}
+
+/* Form Header Actions */
+.emrHeaderActions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-left: auto;
+  margin-right: 16px;
+}
+
+.emrEditToggleBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.2s ease;
+}
+
+.emrEditToggleBtn:hover {
+  background-color: #e0e0e0;
+}
+
+.emrEditActive {
+  background-color: #3d67ee;
+  border-color: #3d67ee;
+  color: white;
+}
+
+.emrEditActive:hover {
+  background-color: #0738D9;
+}
+
+.emrAddVisitBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: #f1ff2f;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgb(75, 74, 74);
+  transition: all 0.2s ease;
+}
+
+.emrAddVisitBtn:hover {
+  background-color: #adb815;
+  transform: translateY(-1px);
+}
+
+/* Visit Cards */
+.emrVisitCard {
+  background-color: #ffffff;
+  border: 1px solid #dbe3fd;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.emrVisitHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.emrVisitDate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #3d67ee;
+}
+
+.emrVisitDetails {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  font-size: 12px;
+}
+
+.emrVisitDetails div {
+  color: #666;
+}
+
+.emrVisitDetails strong {
+  color: #333;
+}
+
+/* Add Visit Modal */
+.emrAddVisitModal {
+  background-color: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 550px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 25px 50px rgba(61, 103, 238, 0.25);
+  border: 1px solid rgba(61, 103, 238, 0.1);
+}
+
+.emrAddVisitContent {
+  padding: 20px;
+}
+
+.emrMarginTop {
+  margin-top: 8px;
+}
+
+/* Existing Record Badge */
+.emrExistingBadge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  background-color: #ff9800;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 12px;
+}
+
+.emrHasRecord {
+  border-left: 3px solid #ff9800;
+}
+
+/* Disabled input styles */
+input:disabled, select:disabled, button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Disabled toggle buttons */
+.emrToggleBtnFull:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .emrHeaderActions {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+  }
+  
+  .emrVisitDetails {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Form Header with Icons */
+.emrFormHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.emrHeaderIcon {
+  color: #3d67ee;
+}
+
+.emrModeBadge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 12px;
+}
+
+.emrEditBadge {
+  background-color: #3d67ee;
+  color: white;
+}
+
+/* Legend */
+.emrLegend {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.emrLegendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.emrLegendColor {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+
+.emrDeceasedColor {
+  background-color: #ffebee;
+  border: 1px solid #c62828;
+}
+
+.emrLegendIcon {
+  font-size: 14px;
+}
+
+/* Deceased Row */
+.emrDeceasedRow {
+  background-color: #ffebee;
+  opacity: 0.8;
+}
+
+.emrDeceasedRow:hover {
+  background-color: #ffcdd2;
+}
+
+.emrDeceasedBadge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  background-color: #c62828;
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 12px;
+}
+
+.emrStatusDeceased {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background-color: #ffebee;
+  color: #c62828;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.emrStatusActive {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Info Grid for Read-Only Fields */
+.emrInfoGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.emrInfoItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.emrInfoItem label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.emrInfoItem span {
+  font-size: 14px;
+  color: #333;
+  font-weight: 500;
+}
+
+.emrDeceasedText {
+  color: #c62828;
+  font-weight: 600;
+}
+
+/* Visit History Section */
+.emrSectionHeader {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.emrSectionHeader h4{
+  display: flex;
+  align-items: center;
+  margin-bottom: 2px;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 15px;
+  color: #000;
+}
+
+.emrVisitFilters {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.emrSmallSearch {
+  position: relative;
+  width: 200px;
+  margin-bottom: 0px;
+}
+
+.emrSearchInputSmall {
+  width: 100%;
+  padding: 6px 12px 6px 32px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.emrSearchIconSmall {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #999;
+}
+
+.emrFilterInputSmall {
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 12px;
+  height: 32px;
+}
+
+.emrFilterSelectSmall {
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 12px;
+  height: 32px;
+  background-color: white;
+}
+
+
+.emrVisitCard:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.emrVisitHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.emrVisitDate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #3d67ee;
+}
+
+.emrVisitNumber {
+  font-size: 11px;
+  color: #999;
+  font-weight: 500;
+}
+
+.emrVisitDetails {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  font-size: 12px;
+}
+
+.emrVisitDetails div {
+  color: #666;
+}
+
+.emrVisitDetails strong {
+  color: #333;
+}
+
+/* Empty Visits State */
+.emrNoVisits {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.emrNoVisits p {
+  margin: 4px 0;
+}
+
+/* Visit Filters Container */
+.emrVisitFilters {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Adjust Section Header for better spacing */
+.emrSectionHeaderWithBtn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #e0e0e0;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.emrSectionHeaderWithBtn h4 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #3d67ee;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.emrHeaderRight {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .emrSectionHeaderWithBtn {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .emrHeaderRight {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .emrVisitFilters {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .emrSmallSearch {
+    width: 100%;
+  }
+  
+  .emrFilterInputSmall,
+  .emrFilterSelectSmall {
+    width: 100%;
+  }
+  
+  .emrAddVisitGradientBtn {
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+/* Deceased Result in Search */
+.emrDeceasedResult {
+  opacity: 0.7;
+  border-left: 3px solid #c62828;
+}
+
+.emrDeceasedBadgeSmall {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 6px;
+  background-color: #c62828;
+  color: white;
+  font-size: 9px;
+  font-weight: 600;
+  border-radius: 10px;
+}
+
+/* Disabled buttons */
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.emrActionBtn:disabled {
+  cursor: not-allowed;
+}
+
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .emrInfoGrid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  
+  .emrVisitDetails {
+    grid-template-columns: 1fr;
+  }
+  
+  .emrSectionHeader {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .emrVisitFilters {
+    width: 100%;
+  }
+  
+  .emrSmallSearch {
+    flex: 1;
+  }
+  
+  .emrFilterInputSmall,
+  .emrFilterSelectSmall {
+    flex: 1;
+  }
+}
+
+/* Helper Text */
+.emrHelperText {
+  display: block;
+  font-size: 10px;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* Legend and Filters Section */
+.emrLegendFilters {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.emrLegend {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.emrLegendTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+}
+
+.emrLegendItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.emrLegendColor {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+
+.emrDeceasedColor {
+  background-color: #ffebee;
+  border: 1px solid #c62828;
+}
+
+.emrActiveColor {
+  background-color: #e8f5e9;
+  border: 1px solid #2e7d32;
+}
+
+.emrLegendIcon {
+  font-size: 14px;
+}
+
+/* Status Filters */
+.emrStatusFilters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.emrStatusFilters label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+}
+
+.emrStatusFilterGroup {
+  display: flex;
+  gap: 4px;
+  background-color: #f0f0f0;
+  padding: 2px;
+  border-radius: 6px;
+}
+
+.emrStatusFilterBtn {
+  padding: 4px 12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  color: #666;
+}
+
+.emrStatusFilterBtn:hover {
+  background-color: #e0e0e0;
+}
+
+.emrStatusFilterActive {
+  background-color: #3d67ee;
+  color: white;
+}
+
+.emrStatusFilterActive:hover {
+  background-color: #0738D9;
+}
+
+.emrHideDeceasedBtn {
+  padding: 4px 12px;
+  background-color: #ffebee;
+  border: 1px solid #c62828;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  color: #c62828;
+  transition: all 0.2s ease;
+}
+
+.emrHideDeceasedBtn:hover {
+  background-color: #ffcdd2;
+  transform: translateY(-1px);
+}
+
+/* Visit History Container Scroll */
+.emrVisitHistoryContainer {
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.emrVisitHistoryContainer::-webkit-scrollbar {
+  width: 4px;
+}
+
+.emrVisitHistoryContainer::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.emrVisitHistoryContainer::-webkit-scrollbar-thumb {
+  background: #3d66ee6b;
+  border-radius: 3px;
+}
+
+/* Form Overlay */
+.emrFormOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(4px);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: emrOverlayFadeIn 0.3s ease;
+  border-radius: 12px;
+}
+
+.emrFormOverlayContent {
+  background: linear-gradient(135deg, #3d67ee, #0738D9);
+  color: white;
+  padding: 24px 32px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  box-shadow: 0 8px 32px rgba(61, 103, 238, 0.3);
+  animation: emrOverlayScaleIn 0.3s ease;
+}
+
+.emrFormOverlayText {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.emrFormOverlayClose {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.emrFormOverlayClose:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
+}
+
+@keyframes emrOverlayFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes emrOverlayScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Make form container position relative for overlay */
+.emrFormContainer {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.emrFormContent {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 8px;
+  position: relative;
+}
+
+.emrToast {
+  position: fixed;
+  top: 40px;
+  left: 58%;
+  transform: translateX(-50%);
+  z-index: 3000;
+  animation: emrToastSlideDown 0.3s ease;
+}
+
+.emrToastContent {
+  background: linear-gradient(135deg, #3d67ee, #0738D9);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 40px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 15px rgba(61, 103, 238, 0.3);
+  backdrop-filter: blur(8px);
+}
+
+.emrToastIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emrToastMessage {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.emrToastClose {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  margin-left: 4px;
+}
+
+.emrToastClose:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: scale(1.1);
+}
+
+@keyframes emrToastSlideDown {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .emrToastMessage {
+    font-size: 11px;
+    white-space: normal;
+    max-width: 200px;
+  }
+  
+  .emrToastContent {
+    padding: 8px 16px;
+  }
+}
+/* Switch Toggle - Modern iOS-style Switch with Smaller Circle */
+.emrSwitch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  gap: 10px;
+}
+
+.emrSwitch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.emrSlider {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 22px;
+  background-color: #ccc;
+  border-radius: 22px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.emrSlider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.3s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+input:checked + .emrSlider {
+  background-color: #3d67ee;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2), 0 0 0 3px rgba(61, 103, 238, 0.2);
+}
+
+input:checked + .emrSlider:before {
+  transform: translateX(22px);
+}
+
+.emrSwitchLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: #666;
+  transition: color 0.3s ease;
+}
+
+input:checked ~ .emrSwitchLabel {
+  color: #3d67ee;
+  font-weight: 600;
+}
+
+/* Optional: Add a subtle glow effect on hover */
+.emrSlider:hover {
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2), 0 0 0 2px rgba(61, 103, 238, 0.3);
+}
+
+/* Disabled state for the switch */
+.emrSwitch input:disabled + .emrSlider {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.emrSwitch input:disabled ~ .emrSwitchLabel {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Tabs Styles */
+.emrTabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #e0e0e0;
+  padding: 0 20px;
+}
+
+.emrTabBtn {
+  padding: 12px 24px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #666;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  position: relative;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+}
+
+.emrTabBtn:hover {
+  color: #3d67ee;
+}
+
+.emrTabActive {
+  color: #3d67ee;
+  border-bottom-color: #3d67ee;
+}
+
+/* Fix textarea and container width */
+.emrTextarea {
+  width: 100%;
+  max-width: 100%;
+  resize: vertical;
+  font-family: inherit;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+  box-sizing: border-box;
+}
+
+.emrVisitCard {
+  background-color: #ffffff;
+  border: 1px solid #dbe3fd;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  word-wrap: break-word;
+}
+
+.emrVisitDetails {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  font-size: 12px;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.emrVisitDetails div {
+  color: #666;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.emrVisitDetails .emrFullWidth {
+  grid-column: span 2;
+}
+
+.emrVisitDetails strong {
+  color: #333;
+}
+
+/* Ensure all containers handle text overflow */
+.emrFormContent,
+.emrFormSection,
+.emrFormGroup,
+.emrFormInput,
+.emrFormSelect {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+/* Doctor remarks container */
+.emrFormGroup .emrTextarea {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.emrAddVisitModal {
+  background-color: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 550px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 25px 50px rgba(61, 103, 238, 0.25);
+  border: 1px solid rgba(61, 103, 238, 0.1);
+}
+
+.emrAddVisitContent {
+  padding: 20px;
+}
+
+/* Helper Text */
+.emrHelperText {
+  display: block;
+  font-size: 10px;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* Add Visit Button with Gradient Effect */
+.emrAddVisitGradientBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  background: linear-gradient(135deg, #3d67ee, #0738D9);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: white;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(61, 103, 238, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.emrAddVisitGradientBtn:hover::before {
+  left: 100%;
+}
+
+.emrAddVisitGradientBtn:hover {
+  background: linear-gradient(135deg, #0738D9, #052c9e);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(61, 103, 238, 0.4);
+}
+
+.emrAddVisitGradientBtn:active {
+  transform: translateY(0);
+}
+
+/* Section Header with Flex Layout */
+.emrSectionHeaderWithBtn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #e0e0e0;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.emrSectionHeaderWithBtn h4 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #3d67ee;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.emrSectionHeaderWithBtn h4 svg {
+  color: #3d67ee;
+}
+
+.emrHeaderRight {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .emrSectionHeaderWithBtn {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .emrHeaderRight {
+    justify-content: flex-start;
+  }
+  
+  .emrAddVisitGradientBtn {
+    justify-content: center;
+  }
+}
+
+.emrFloatingBtn {
+  top: 20px;
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #3d67ee, #0738D9);
+  border: none;
+  border-radius: 40px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(61, 103, 238, 0.4);
+  width: fit-content;
+  z-index: 10;
+}
+
+.emrFloatingBtn:hover {
+  background: linear-gradient(135deg, #2d57de, #062cb9);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(61, 103, 238, 0.5);
+}
+
+.emrFloatingBtn:active {
+  transform: translateY(0);
+}
+
+/* Visit History Section with Floating Button - New container */
+.emrVisitHistorySection {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Responsive adjustment for floating button - Add to existing mobile styles */
+@media (max-width: 768px) {
+  .emrFloatingBtn {
+    width: calc(100% - 40px);
+    justify-content: center;
+    margin: 0 20px 20px 20px;
+    position: sticky;
+    bottom: 20px;
+  }
+}
+
+/* Rich Text Editor Styles */
+.emrRichTextEditor {
+  position: relative;
+  width: 100%;
+}
+
+.emrRichTextToolbar {
+  position: absolute;
+  top: -32px;
+  left: 0;
+  display: flex;
+  gap: 4px;
+  background-color: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+}
+
+.emrRichTextBtn {
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  transition: all 0.2s ease;
+}
+
+.emrRichTextBtn:hover {
+  background-color: #f0f0f0;
+  color: #3d67ee;
+}
+
+.emrRichTextPreview {
+  margin-top: 8px;
+  padding: 8px;
+  background-color: #f9f9f9;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #666;
+}
+
+.emrRichTextPreview small {
+  color: #999;
+  margin-right: 8px;
+}
+
+.emrRichTextPreview strong {
+  font-weight: 600;
+  color: #333;
+}
+
+.emrRichTextPreview em {
+  font-style: italic;
+  color: #333;
+}
+
+/* Large Modal */
+.emrLargeModal {
+  width: 90%;
+  max-width: 800px !important;
+  max-height: 90vh;
+}
+
+/* Lab Results Styles */
+.emrLabResultsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.emrLabResultCard {
+  background-color: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.emrLabResultHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.emrLabResultHeader strong {
+  color: #3d67ee;
+  font-size: 13px;
+}
+
+.emrRemoveLabBtn {
+  background: none;
+  border: none;
+  color: #dc3545;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.emrRemoveLabBtn:hover {
+  background-color: #ffebee;
+}
+
+.emrAddLabBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px;
+  background-color: #f0f4ff;
+  border: 1px dashed #3d67ee;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: #3d67ee;
+  transition: all 0.2s ease;
+  margin-top: 8px;
+}
+
+.emrAddLabBtn:hover {
+  background-color: #e8edff;
+  transform: translateY(-1px);
+}
+
+/* File Upload Styles */
+.emrFileUploadWrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.emrFileInput {
+  display: none;
+}
+
+.emrFileUploadBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  background-color: #3d67ee;
+  color: rgb(255, 255, 255);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.emrFileUploadBtn:hover {
+  background-color: #0738D9;
+  transform: translateY(-1px);
+}
+
+.emrFileName {
+  font-size: 11px;
+  color: #666;
+  background-color: #f0f0f0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Enhanced Visit Card Styles */
+.emrVisitCard {
+  background-color: #ffffff;
+  border: 1px solid #dbe3fd;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  transition: all 0.2s ease;
+}
+
+.emrVisitCard:hover {
+  box-shadow: 0 4px 12px rgba(61, 103, 238, 0.1);
+  transform: translateY(-1px);
+}
+
+.emrVisitHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.emrVisitDate {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #3d67ee;
+}
+
+.emrVisitNumber {
+  font-size: 11px;
+  color: #999;
+  font-weight: 500;
+}
+
+.emrVisitDetails {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  font-size: 12px;
+}
+
+.emrVisitDetails div {
+  color: #666;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.emrVisitDetails .emrFullWidth {
+  grid-column: span 2;
+}
+
+.emrVisitDetails strong {
+  color: #333;
+  font-weight: 600;
+}
+
+/* Helper Text */
+.emrHelperText {
+  display: block;
+  font-size: 10px;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* Checkbox Label */
+.emrCheckboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #666;
+}
+
+.emrCheckboxLabel input {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: #3d67ee;
+}
+
+/* Margin Top Utility */
+.emrMarginTop {
+  margin-top: 8px;
+}
+
+/* Responsive adjustments for new components */
+@media (max-width: 768px) {
+  .emrLargeModal {
+    width: 95%;
+    max-width: 95% !important;
+  }
+  
+  .emrVisitDetails {
+    grid-template-columns: 1fr;
+  }
+  
+  .emrVisitDetails .emrFullWidth {
+    grid-column: span 1;
+  }
+  
+  .emrLabResultCard {
+    padding: 12px;
+  }
+  
+  .emrFileUploadWrapper {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .emrRichTextToolbar {
+    top: -28px;
+  }
+}
+
+/* Animation for modal */
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.emrAddVisitModal,
+.emrSearchModal,
+.emrProofModal {
+  animation: modalSlideIn 0.2s ease;
+}
+
+/* Pet Image Upload - Square Image */
+.emrPetImageUpload {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.emrImagePreview {
+  width: 150px;
+  height: 150px;
+  border-radius: 12px;
+  overflow: hidden;
+  background-color: #f5f5f5;
+  border: 2px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emrSquareImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.emrImagePlaceholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #999;
+}
+
+.emrImagePlaceholder svg {
+  opacity: 0.5;
+}
+
+.emrImagePlaceholder span {
+  font-size: 11px;
+}
+
+.emrImageUploadBtn {
+  text-align: center;
+}
+
+/* Search Result Image */
+.emrSearchResultIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  background-color: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emrSearchResultImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Pregnancy Details */
+.emrPregnancyDetails {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* Prescription Styles */
+.emrPrescriptionsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.emrPrescriptionCard {
+  background-color: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.emrPrescriptionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.emrPrescriptionHeader strong {
+  color: #3d67ee;
+  font-size: 13px;
+}
+
+.emrRemovePrescriptionBtn {
+  background: none;
+  border: none;
+  color: #dc3545;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.emrRemovePrescriptionBtn:hover {
+  background-color: #ffebee;
+}
+
+.emrAddPrescriptionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px;
+  background-color: #f0f4ff;
+  border: 1px dashed #3d67ee;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: #3d67ee;
+  transition: all 0.2s ease;
+  margin-top: 8px;
+}
+
+.emrAddPrescriptionBtn:hover {
+  background-color: #e8edff;
+  transform: translateY(-1px);
+}
+
+.emrPrescriptionItem {
+  margin-top: 4px;
+  padding-left: 12px;
+  border-left: 2px solid #3d67ee;
+}
+
+.emrPrescriptionInstructions {
+  font-size: 11px;
+  color: #666;
+  margin-top: 2px;
+  margin-left: 8px;
+}
+
+/* View File Button */
+.emrViewFileBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background-color: #ffffff;
+  border-color: #3d67ee;
+  color: #3d67ee;
+  border: 1px solid #3d67ee;
+  border-radius: 40px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.2s ease;
+}
+
+.emrViewFileBtn:hover {
+  background-color: #ffffff;
+  border: 1px solid #0738D9;
+  box-shadow: 0 1px 10px rgba(61, 102, 238, 0.336);
+}
+
+/* Add to GlobalEMR.css */
+.emrPregnancyInputWrapper {
+  margin-top: 8px;
+}
+
+.emrPregnancyTabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.emrPregnancyTab {
+  flex: 1;
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  background-color: white;
+  color: #666;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.emrPregnancyTab:hover {
+  border-color: #3d67ee;
+  color: #3d67ee;
+}
+
+.emrPregnancyTabActive {
+  background-color: #3d67ee;
+  border-color: #3d67ee;
+  color: white;
+}
+
+.emrPregnancyTabActive:hover {
+  background-color: #0738D9;
+  color: white;
+}
+
+/* Prescription PDF Button */
+.emrViewPrescriptionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #2e9e0c, #1a5a06);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.emrViewPrescriptionBtn:hover {
+  background: linear-gradient(135deg, #1a5a06, #0f3a04);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(46, 158, 12, 0.3);
+}

@@ -1,0 +1,1436 @@
+/* ===== USER PROFILE STYLES (UserStyles3.css) ===== */
+/* All classes are prefixed with 'upf-' to avoid conflicts with other CSS files */
+
+/* ===== GLOBAL STYLES ===== */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.upf-user-container {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-image: url('src/assets/WebBG.svg'); 
+  background-size: cover;
+  height: 100vh;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+}
+
+.upf-user-container::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1300px; /* Adjust height based on your navbar height */
+  /*background: linear-gradient(180deg, 
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 255, 255, 0.9) 30%,
+    rgba(255, 255, 255, 0.7) 60%,
+    rgba(255, 255, 255, 0) 80%
+  );*/
+  z-index: 1;
+  pointer-events: none;
+}
+.upf-user-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.upf-user-container::-webkit-scrollbar-track {
+  background: rgba(61, 103, 238, 0.05);
+  border-radius: 4px;
+}
+
+.upf-user-container::-webkit-scrollbar-thumb {
+  background: #3d67ee;
+  border-radius: 4px;
+}
+
+.upf-user-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(61, 103, 238, 0.5);
+}
+
+/* ===== MAIN CONTENT LAYOUT ===== */
+.upf-main-content {
+  max-width: 1200px;
+  margin: 20px auto 40px;
+  padding: 20px 20px 40px;
+  width: 100%;
+  position: relative;
+  z-index: 2;
+}
+
+/* ===== PROFILE HEADER SECTION ===== */
+.upf-profile-header-section {
+  position: relative;
+  margin-bottom: 60px;
+  border-radius: 30px;
+  overflow: visible;
+  box-shadow: 0 15px 35px rgba(61, 103, 238, 0.15);
+  background: white;
+  border: 1px solid rgba(61, 103, 238, 0.1);
+}
+
+.upf-header-bg {
+  width: 100%;
+  height: 150px;
+  border-radius: 30px 30px 30px 30px;
+  display: block;
+  object-fit: cover;
+}
+
+.upf-header-overlay {
+  position: absolute;
+  bottom: -40px;
+  left: 40px;
+  right: 30px;
+  display: flex;
+  align-items: flex-end;
+  gap: 25px;
+  z-index: 10;
+}
+
+.upf-profile-picture-wrapper {
+  position: relative;
+  filter: drop-shadow(0 8px 20px rgba(61, 103, 238, 0.25));
+}
+
+.upf-profile-picture-border {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  border-radius: 90px;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 5px 15px rgba(61, 103, 238, 0.2);
+  border: 3px solid white;
+}
+
+.upf-profile-picture {
+  width: 150px;
+  height: 150px;
+  border-radius: 80px;
+  object-fit: cover;
+  border: 3px solid #3d67ee;
+}
+
+.upf-change-photo-btn {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  width: 38px;
+  height: 38px;
+  border-radius: 19px;
+  background: #3d67ee;
+  border: 2px solid white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 10px rgba(61, 103, 238, 0.3);
+}
+
+.upf-change-photo-btn:hover {
+  transform: scale(1.1) rotate(10deg);
+  background: #2d4fb0;
+}
+
+.upf-header-info {
+  flex: 1;
+  padding-bottom: 75px;
+  margin-left: 20px;
+}
+
+.upf-header-info h1 {
+  font-size: 32px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 5px 0;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.upf-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #f0f4ff;
+  font-size: 16px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.upf-edit-profile-btn {
+  position: absolute;
+  top: 55px;
+  right: 15px;
+  background: white;
+  border: 1px solid #3d67ee;
+  border-radius: 30px;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: #3d67ee;
+  font-size: 15px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 10px rgba(61, 103, 238, 0.1);
+}
+
+.upf-edit-profile-btn:hover {
+  background: #3d67ee;
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(61, 103, 238, 0.2);
+}
+
+/* ===== TAB NAVIGATION ===== */
+.upf-tabs-container {
+  display: flex;
+  gap: 10px;
+  margin: 50px 0 30px;
+  background: white;
+  border-radius: 50px;
+  padding: 6px;
+  max-width: 100%;
+  box-shadow: 0 5px 20px rgba(61, 103, 238, 0.1);
+  border: 1px solid rgba(61, 103, 238, 0.1);
+}
+
+.upf-tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 24px;
+  border: none;
+  background: transparent;
+  border-radius: 40px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 600;
+  color: #64748b;
+  transition: all 0.2s ease;
+}
+
+.upf-tab-btn.upf-active {
+  background: #3d67ee;
+  color: white;
+  box-shadow: 0 4px 10px rgba(61, 103, 238, 0.2);
+}
+
+.upf-tab-btn:hover:not(.upf-active) {
+  background: #f1f5f9;
+  color: #3d67ee;
+}
+
+/* ===== TAB CONTENT ===== */
+.upf-tab-content {
+  min-height: 400px;
+}
+
+/* ===== PROFILE TAB ===== */
+.upf-profile-tab {
+  display: grid;
+  grid-template-columns: 1fr 350px;
+  gap: 25px;
+}
+
+.upf-info-card,
+.upf-notifications-card {
+  background: white;
+  border-radius: 30px;
+  padding: 30px;
+  box-shadow: 0 10px 30px rgba(61, 103, 238, 0.08);
+  border: 1px solid rgba(61, 103, 238, 0.1);
+  transition: all 0.2s ease;
+}
+
+.upf-info-card:hover,
+.upf-notifications-card:hover {
+  box-shadow: 0 15px 40px rgba(61, 103, 238, 0.12);
+  border-color: rgba(61, 103, 238, 0.2);
+}
+
+.upf-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 25px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #f1f5f9;
+}
+
+.upf-card-header h3 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+  flex: 1;
+}
+
+.upf-required-note {
+  font-size: 12px;
+  font-weight: 400;
+  color: #64748b;
+  margin-left: 10px;
+}
+
+.upf-asterisk {
+  color: #ef4444;
+  font-size: 14px;
+  font-weight: 600;
+  margin-left: 2px;
+}
+
+.upf-notification-badge {
+  background: #3d67ee;
+  color: white;
+  padding: 4px 12px;
+  border-radius: 30px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.upf-info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 25px;
+}
+
+.upf-info-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 10px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.upf-info-label {
+  width: 120px;
+  font-size: 14px;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.upf-info-value {
+  flex: 1;
+  font-size: 16px;
+  color: #1e293b;
+  font-weight: 500;
+}
+
+.upf-input-wrapper {
+  flex: 1;
+}
+
+.upf-input-container {
+  position: relative;
+  width: 100%;
+}
+
+.upf-info-input {
+  width: 100%;
+  padding: 10px 70px 10px 15px;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  font-size: 15px;
+  transition: all 0.2s ease;
+  background: white;
+}
+
+.upf-info-input:focus {
+  outline: none;
+  border-color: #3d67ee;
+  box-shadow: 0 0 0 4px rgba(61, 103, 238, 0.1);
+}
+
+.upf-info-input.upf-error {
+  border-color: #ef4444;
+  background-color: #fef2f2;
+}
+
+.upf-char-counter {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: #94a3b8;
+  background: white;
+  padding: 2px 6px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.upf-field-error {
+  display: block;
+  color: #ef4444;
+  font-size: 12px;
+  margin-top: 5px;
+  font-weight: 500;
+}
+
+.upf-email-display {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.upf-change-email-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  background: #f1f5f9;
+  border: 1px solid #3d67ee;
+  border-radius: 30px;
+  color: #3d67ee;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.upf-change-email-btn:hover {
+  background: #3d67ee;
+  color: white;
+}
+
+.upf-edit-actions-bottom {
+  display: flex;
+  gap: 15px;
+  margin-top: 20px;
+}
+
+.upf-save-btn,
+.upf-cancel-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  border: none;
+  border-radius: 15px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.upf-save-btn {
+  background: #10b981;
+  color: white;
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);
+}
+
+.upf-save-btn:hover {
+  background: #059669;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
+}
+
+.upf-cancel-btn {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.upf-cancel-btn:hover {
+  background: #e2e8f0;
+  transform: translateY(-2px);
+}
+
+.upf-change-password-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  background: #f1f5f9;
+  border: 1px solid #3d67ee;
+  border-radius: 20px;
+  color: #3d67ee;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.upf-change-password-btn:hover {
+  background: #3d67ee;
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(61, 103, 238, 0.2);
+}
+
+/* ===== NOTIFICATIONS CARD ===== */
+.upf-notifications-card {
+  display: flex;
+  flex-direction: column;
+  height: fit-content;
+  max-height: 500px;
+}
+
+.upf-notifications-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 20px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 5px;
+}
+
+.upf-notifications-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.upf-notifications-list::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.upf-notifications-list::-webkit-scrollbar-thumb {
+  background: #3d67ee;
+  border-radius: 4px;
+}
+
+.upf-notifications-list::-webkit-scrollbar-thumb:hover {
+  background: #2d4fb0;
+}
+
+.upf-notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 15px;
+  padding: 15px;
+  background: #f8fafc;
+  border-radius: 15px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  position: relative;
+  border: 1px solid #e2e8f0;
+}
+
+.upf-notification-item:hover {
+  background: #f1f5f9;
+  transform: translateX(5px);
+  border-color: #3d67ee;
+}
+
+.upf-notification-item.upf-unread {
+  background: #f0f7ff;
+  border-left: 4px solid #3d67ee;
+}
+
+.upf-notification-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  flex-shrink: 0;
+}
+
+.upf-notification-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.upf-notification-content h4 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.upf-notification-content p {
+  font-size: 13px;
+  line-height: 12px;
+  color: #64748b;
+  margin: 0 0 5px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.upf-notification-time {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.upf-unread-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  background: #3d67ee;
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  flex-shrink: 0;
+}
+
+.upf-view-all-notifications {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 15px;
+  background: transparent;
+  border: 2px solid #e2e8f0;
+  border-radius: 15px;
+  color: #3d67ee;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: auto;
+}
+
+.upf-view-all-notifications:hover {
+  background: #3d67ee;
+  color: white;
+  border-color: #3d67ee;
+}
+
+/* ===== PETS TAB ===== */
+.upf-pets-tab {
+  padding: 10px 0;
+}
+
+.upf-pets-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+  background: white;
+  padding: 15px 25px;
+  border-radius: 50px;
+  box-shadow: 0 5px 15px rgba(61, 103, 238, 0.05);
+  border: 1px solid rgba(61, 103, 238, 0.1);
+}
+
+.upf-pets-header h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.upf-add-pet-btn {
+  background: #3d67ee;
+  border: none;
+  border-radius: 40px;
+  padding: 12px 25px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 10px rgba(61, 103, 238, 0.2);
+}
+
+.upf-add-pet-btn:hover {
+  background: #2d4fb0;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(61, 103, 238, 0.3);
+}
+
+.upf-pets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+}
+
+.upf-pet-card {
+  background: white;
+  border-radius: 30px;
+  padding: 25px;
+  box-shadow: 0 10px 30px rgba(61, 103, 238, 0.08);
+  border: 1px solid rgba(61, 103, 238, 0.1);
+  display: flex;
+  width: 280px;
+  height: 310px;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.upf-pet-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 20px 40px rgba(61, 103, 238, 0.15);
+  border-color: #3d67ee;
+}
+
+.upf-pet-image {
+  width: 120px;
+  height: 120px;
+  border-radius: 70px;
+  object-fit: cover;
+  border: 4px solid white;
+  box-shadow: 0 5px 15px rgba(61, 103, 238, 0.2);
+  margin-bottom: 20px;
+}
+
+.upf-pet-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 5px;
+}
+
+.upf-pet-details {
+  font-size: 15px;
+  color: #64748b;
+  margin-bottom: 20px;
+}
+
+.upf-pet-stats {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+}
+
+.upf-pet-stat {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: #3d67ee;
+  background: #f1f5f9;
+  padding: 8px 15px;
+  border-radius: 30px;
+}
+
+/* ===== APPOINTMENTS TAB ===== */
+.upf-appointments-tab {
+  padding: 10px 0;
+}
+
+.upf-appointments-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 25px;
+  background: white;
+  padding: 15px 25px;
+  border-radius: 50px;
+  box-shadow: 0 5px 15px rgba(61, 103, 238, 0.05);
+  border: 1px solid rgba(61, 103, 238, 0.1);
+}
+
+.upf-appointments-header h3 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.upf-view-all-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 25px;
+  background: #f1f5f9;
+  border: 1px solid #3d67ee;
+  border-radius: 40px;
+  color: #3d67ee;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.upf-view-all-btn:hover {
+  background: #3d67ee;
+  color: white;
+  transform: translateX(5px);
+}
+
+.upf-appointments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.upf-appointment-item {
+  display: flex;
+  align-items: center;
+  gap: 25px;
+  background: white;
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 5px 20px rgba(61, 103, 238, 0.05);
+  border: 1px solid rgba(61, 103, 238, 0.1);
+  transition: all 0.2s ease;
+}
+
+.upf-appointment-item:hover {
+  transform: translateX(10px);
+  box-shadow: 0 10px 30px rgba(61, 103, 238, 0.1);
+  border-color: #3d67ee;
+}
+
+.upf-appointment-pet-image {
+  width: 70px;
+  height: 70px;
+  border-radius: 35px;
+  object-fit: cover;
+  border: 3px solid white;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  flex-shrink: 0;
+}
+
+.upf-appointment-details {
+  flex: 1;
+}
+
+.upf-appointment-header {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 8px;
+}
+
+.upf-appointment-header h4 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.upf-status-badge {
+  padding: 4px 12px;
+  border-radius: 30px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.upf-status-badge.upf-upcoming {
+  background: #f0f7ff;
+  color: #3d67ee;
+  border: 1px solid #3d67ee;
+}
+
+.upf-status-badge.upf-completed {
+  background: #f0fdf4;
+  color: #10b981;
+  border: 1px solid #10b981;
+}
+
+.upf-status-badge.upf-cancelled {
+  background: #fef2f2;
+  color: #ef4444;
+  border: 1px solid #ef4444;
+}
+
+.upf-appointment-type {
+  font-size: 15px;
+  color: #64748b;
+  margin: 0 0 5px;
+}
+
+.upf-appointment-datetime {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #3d67ee;
+  margin: 0;
+}
+
+/* ===== MODAL STYLES ===== */
+.upf-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+  animation: upf-fadeIn 0.2s ease;
+}
+
+@keyframes upf-fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.upf-modal-content {
+  background: white;
+  padding: 30px;
+  border-radius: 40px;
+  width: 80%;
+  max-width: 450px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 25px 50px rgba(61, 103, 238, 0.25);
+  border: 1px solid rgba(61, 103, 238, 0.1);
+  position: relative;
+  animation: upf-slideUp 0.2s ease;
+}
+
+@keyframes upf-slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.upf-modal-content.upf-password-modal,
+.upf-modal-content.upf-email-modal {
+  max-width: 500px;
+  padding: 35px;
+}
+
+.upf-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 25px;
+}
+
+.upf-modal-header h2 {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.upf-modal-close-btn {
+  background: #f1f5f9;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+  color: #64748b;
+}
+
+.upf-modal-close-btn:hover {
+  background: #e2e8f0;
+  transform: rotate(90deg);
+  color: #1e293b;
+}
+
+.upf-modal-body {
+  width: 100%;
+  padding: 10px 0;
+}
+
+.upf-otp-info {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.upf-otp-info p {
+  color: #64748b;
+  margin: 15px 0 5px;
+  font-size: 15px;
+}
+
+.upf-otp-info strong {
+  color: #3d67ee;
+  font-size: 16px;
+}
+
+.upf-otp-resend {
+  text-align: center;
+  margin: 20px 0;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.upf-resend-btn {
+  background: none;
+  border: none;
+  color: #3d67ee;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.upf-resend-btn:hover {
+  color: #2d4fb0;
+}
+
+.upf-password-hint {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 5px;
+  font-style: italic;
+}
+
+/* ===== FORM ELEMENTS ===== */
+.upf-form-group {
+  margin-bottom: 25px;
+  width: 100%;
+}
+
+.upf-form-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.upf-form-label .upf-asterisk {
+  color: #ef4444;
+  font-size: 14px;
+  margin-left: 2px;
+}
+
+.upf-form-input {
+  width: 100%;
+  padding: 14px 18px;
+  border: 2px solid #e2e8f0;
+  border-radius: 15px;
+  font-size: 15px;
+  transition: all 0.2s ease;
+  background: white;
+}
+
+.upf-form-input:focus {
+  outline: none;
+  border-color: #3d67ee;
+  box-shadow: 0 0 0 4px rgba(61, 103, 238, 0.1);
+}
+
+.upf-form-input.upf-error {
+  border-color: #ef4444;
+  background-color: #fef2f2;
+}
+
+.upf-error-message {
+  color: #ef4444;
+  font-size: 13px;
+  margin-top: 5px;
+  display: block;
+  font-weight: 500;
+}
+
+/* Password Input */
+.upf-password-input-wrapper {
+  position: relative;
+}
+
+.upf-password-toggle {
+  position: absolute;
+  right: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  padding: 0;
+  transition: color 0.2s ease;
+}
+
+.upf-password-toggle:hover {
+  color: #3d67ee;
+}
+
+/* Buttons */
+.upf-btn-primary,
+.upf-btn-secondary {
+  flex: 1;
+  padding: 14px;
+  border: none;
+  border-radius: 15px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.upf-btn-primary {
+  background: #3d67ee;
+  color: white;
+  box-shadow: 0 4px 10px rgba(61, 103, 238, 0.2);
+}
+
+.upf-btn-primary:hover {
+  background: #2d4fb0;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(61, 103, 238, 0.3);
+}
+
+.upf-btn-secondary {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.upf-btn-secondary:hover {
+  background: #e2e8f0;
+  transform: translateY(-2px);
+}
+
+.upf-modal-actions-row {
+  display: flex;
+  gap: 15px;
+  margin-top: 30px;
+  width: 100%;
+}
+
+/* Add these styles to your existing CSS file */
+
+/* ===== EDITING MODE INDICATORS ===== */
+.upf-profile-header-section.upf-editing-mode {
+  border: 2px solid #3d67ee;
+  box-shadow: 0 15px 35px rgba(61, 103, 238, 0.25);
+}
+
+.upf-editing-badge {
+  position: absolute;
+  top: 90px;
+  left: 980px;
+  background: #3d67ee;
+  color: white;
+  padding: 6px 15px;
+  border-radius: 30px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 20;
+  box-shadow: 0 4px 10px rgba(61, 103, 238, 0.3);
+  animation: upf-pulse 2s infinite;
+}
+
+@keyframes upf-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+.upf-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 25px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #f1f5f9;
+  flex-wrap: wrap;
+}
+
+.upf-editing-indicator {
+  font-size: 13px;
+  font-weight: 500;
+  color: #3d67ee;
+  background: #e8f0fe;
+  padding: 4px 12px;
+  border-radius: 30px;
+  margin-left: 10px;
+}
+
+/* Disabled tabs */
+.upf-tab-btn.upf-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.upf-tab-btn.upf-disabled:hover {
+  background: transparent;
+  color: #64748b;
+}
+
+/* Editing overlay message */
+.upf-editing-overlay-message {
+  background: #fff3cd;
+  border: 1px solid #ffeeba;
+  border-radius: 10px;
+  padding: 10px 15px;
+  margin-bottom: 20px;
+  text-align: center;
+  color: #856404;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Required fields note */
+.upf-required-fields-note {
+  margin-bottom: 20px;
+  padding: 10px;
+  background: #fce7e7;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #64748b;
+  text-align: center;
+}
+
+.upf-required-fields-note .upf-asterisk {
+  color: #ef4444;
+  margin-right: 4px;
+}
+
+/* Phone input specific */
+.upf-phone-input {
+  letter-spacing: 0.5px;
+}
+
+/* Disabled state for buttons */
+.upf-add-pet-btn:disabled,
+.upf-view-all-btn:disabled,
+.upf-change-email-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.upf-change-email-btn:disabled:hover {
+  background: #f1f5f9;
+  color: #3d67ee;
+  transform: none;
+}
+
+/* ===== MODAL BUTTON STYLES ===== */
+.upf-modal-btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 100px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.upf-modal-btn-cancel {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+
+.upf-modal-btn-cancel:hover {
+  background: #e2e8f0;
+  color: #475569;
+  transform: translateY(-2px);
+}
+
+.upf-modal-btn-confirm {
+  background: #3d67ee;
+  color: white;
+  box-shadow: 0 4px 10px rgba(61, 103, 238, 0.2);
+}
+
+.upf-modal-btn-confirm:hover {
+  background: #2d4fb0;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(61, 103, 238, 0.3);
+}
+
+/* Success button style */
+.upf-modal-btn-success {
+  background: #10b981;
+  color: white;
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);
+}
+
+.upf-modal-btn-success:hover {
+  background: #059669;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
+}
+
+/* Error button style (for logout, delete, etc) */
+.upf-modal-btn-error {
+  background: #ef4444;
+  color: white;
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2);
+}
+
+.upf-modal-btn-error:hover {
+  background: #dc2626;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(220, 38, 38, 0.3);
+}
+
+/* Warning button style */
+.upf-modal-btn-warning {
+  background: #d90606;
+  color: white;
+  box-shadow: 0 8px 20px rgba(217, 6, 6, 0.09);
+}
+
+.upf-modal-btn-warning:hover {
+  background: #d90606;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(217, 6, 6, 0.12);
+}
+
+/* Info button style */
+.upf-modal-btn-info {
+  background: #3b82f6;
+  color: white;
+  box-shadow: 0 4px 10px rgba(59, 130, 246, 0.2);
+}
+
+.upf-modal-btn-info:hover {
+  background: #2563eb;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3);
+}
+
+/* Modal actions container */
+.upf-modal-actions {
+  display: flex;
+  gap: 15px;
+  width: 100%;
+  justify-content: center;
+  margin-top: 20px;
+}
+
+/* For single button modals */
+.upf-modal-actions .upf-modal-btn:only-child {
+  min-width: 150px;
+}
+
+/* Responsive modal buttons */
+@media (max-width: 480px) {
+  .upf-modal-actions {
+    flex-direction: column;
+  }
+  
+  .upf-modal-btn {
+    width: 100%;
+  }
+}
+
+/* ===== RESPONSIVE DESIGN ===== */
+@media (max-width: 1024px) {
+  .upf-profile-tab {
+    grid-template-columns: 1fr;
+  }
+  
+  .upf-header-overlay {
+    left: 20px;
+    right: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .upf-header-overlay {
+    flex-direction: column;
+    align-items: flex-start;
+    bottom: -60px;
+  }
+  
+  .upf-header-info {
+    padding-bottom: 0;
+  }
+  
+  .upf-header-info h1 {
+    font-size: 24px;
+  }
+  
+  .upf-profile-header-section {
+    margin-bottom: 100px;
+  }
+  
+  .upf-tabs-container {
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+  
+  .upf-pets-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+  
+  .upf-appointment-item {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .upf-appointment-header {
+    justify-content: center;
+  }
+  
+  .upf-appointment-datetime {
+    justify-content: center;
+  }
+  
+  .upf-edit-actions-bottom {
+    flex-direction: column;
+  }
+  
+  .upf-info-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .upf-info-label {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .upf-edit-profile-btn {
+    position: static;
+    margin-top: 15px;
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .upf-pets-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .upf-modal-actions-row {
+    flex-direction: column;
+  }
+  
+  .upf-type-selector {
+    flex-direction: column;
+  }
+}
+

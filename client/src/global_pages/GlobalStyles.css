@@ -1,0 +1,376 @@
+/* GlobalStyles.css */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Container Styles */
+.container {
+  flex: 1;
+  background-color: #fff;
+  align-items: center;
+  justify-content: center;
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+.loginContainer {
+  display: flex;
+  flex-direction: row;
+  z-index: 1;
+  width: 100%;
+  min-height: 100vh;
+  height: auto;
+}
+
+.gifContainer {
+  background-color: #3a40ff;
+  width: 55%;
+  z-index: 2;
+  border-radius: 30px;
+  overflow: hidden;
+  margin: 20px;
+  flex: 3;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+  position: relative;
+  min-height: 500px; /* Minimum height to prevent cutting off */
+  height: auto;
+  max-height: 95vh; /* Prevent it from being too tall */
+}
+
+.gifBackground {
+  width: 100%;
+  height: 100%;
+  border-radius: 30px;
+  object-fit: cover; /* Changed from 'cover' to ensure it fills the container properly */
+  object-position: center; /* Center the image */
+  min-height: 500px; /* Match container min-height */
+}
+
+.gifOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding: 60px; /* Reduced from 100px for better spacing */
+  display: flex;
+  flex-direction: column;
+  justify-content: center; /* Center content vertically */
+  background: linear-gradient(to right, rgba(58, 64, 255, 0.2), rgba(58, 64, 255, 0.8)); /* Add gradient overlay for better text readability */
+}
+
+.whiteFont {
+  color: #fff;
+  font-family: "Segoe UI", sans-serif;
+  font-size: clamp(40px, 8vw, 90px); /* Responsive font size */
+  line-height: 1.1; /* Changed from fixed 90px */
+  margin: 0;
+}
+
+.whiteSubtitle {
+  color: #fff;
+  font-family: "Segoe UI", sans-serif;
+  font-size: clamp(40px, 8vw, 90px);
+  font-style: italic;
+  font-weight: 600;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.gifDescription {
+  color: #e0e0e0;
+  margin-top: 30px;
+  font-size: clamp(12px, 2vw, 14px);
+  line-height: 1.6;
+  max-width: min(400px, 90%);
+}
+
+/* Login Section - Improved Responsive */
+.loginSection {
+  background-color: #fefefe;
+  width: 45%;
+  padding: 60px; /* Reduced from 100px */
+  padding-left: 60px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-height: 100vh;
+}
+
+.agsikapTitle {
+  font-size: clamp(32px, 5vw, 40px);
+  font-weight: bold;
+  margin-bottom: 10px;
+  color: #000;
+  font-family: "Segoe UI", sans-serif;
+}
+
+.loginHeader {
+  font-size: clamp(18px, 3vw, 20px);
+  font-weight: 600;
+  margin-bottom: 15px;
+  margin-top: 35px;
+  color: #333;
+  font-family: "Segoe UI", sans-serif;
+}
+
+.loginSubtext {
+  font-size: clamp(13px, 2vw, 14px);
+  color: #666;
+  margin-bottom: 40px;
+  padding-right: 20px;
+  font-family: "Segoe UI", sans-serif;
+  line-height: 1.5;
+}
+
+/* Input Styles */
+.inputGroup {
+  flex-direction: column;
+  margin-bottom: 10px;
+  margin-right: 20px;
+  width: 100%;
+  padding-left: 15px;
+  background-color: white;
+}
+
+.inputField {
+  height: 50px;
+  font-size: 16px;
+  color: #000;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding-left: 45px;
+  padding-right: 15px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  width: 100%;
+  font-family: "Segoe UI", sans-serif;
+  transition: border-color 0.3s ease;
+}
+
+.inputField:focus {
+  outline: none;
+  border-color: #3a40ff;
+}
+
+.inputError {
+  border-color: #ff4444;
+  border-width: 2px;
+  background-color: #fff8f8;
+}
+
+.inputValid {
+  border-color: #4caf50;
+  border-width: 2px;
+}
+
+.inputIcon {
+  position: absolute;
+  left: 30px;
+  top: 15px;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+}
+
+/* Field Feedback */
+.fieldFeedbackContainer {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: center;
+  width: 100%;
+  margin-top: 4px;
+  position: relative;
+}
+
+.errorContainer {
+  width: 100%;
+  margin-left: 50px;
+}
+
+.errorText {
+  color: #ff4444;
+  font-size: 12px;
+  padding-left: 30px;
+  text-align: left;
+  width: 100%;
+  font-family: "Segoe UI", sans-serif;
+}
+
+.charCount {
+  color: #999;
+  font-size: 12px;
+  text-align: right;
+  width: 100%;
+  font-family: "Segoe UI", sans-serif;
+}
+
+.charCountError {
+  color: #ff4444;
+  font-weight: bold;
+}
+
+.charCountValid {
+  color: #4caf50;
+  font-weight: bold;
+}
+
+/* Forgot Password */
+.forgotPasswordContainer {
+  display: flex;
+  align-items: flex-end;
+  margin-bottom: 45px;
+  margin-right: 20px;
+}
+
+.forgotPassword {
+  color: #3a40ff;
+  font-size: 14px;
+  font-family: "Segoe UI", sans-serif;
+  text-decoration: none;
+}
+
+.forgotPassword:hover {
+  text-decoration: underline;
+}
+
+/* Button Styles */
+.loginButton {
+  background-color: #000;
+  padding-top: 12px;
+  padding-bottom: 12px;
+  border-radius: 8px;
+  align-items: center;
+  margin-right: 20px;
+  margin-top: 10px;
+  width: 100%;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.3s ease;
+}
+
+.loginButton:hover {
+  opacity: 0.9;
+}
+
+.loginButton:disabled {
+  background-color: #cccccc;
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.loginButtonDisabled {
+  background-color: #cccccc;
+  opacity: 0.7;
+}
+
+.loginButtonText {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: "Segoe UI", sans-serif;
+}
+
+/* Return to Home Link */
+.returnHomeLink {
+  align-self: flex-start;
+  margin-bottom: 30px; /* Reduced from 50px */
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #3d67ee;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.returnHomeLink:hover {
+  text-decoration: underline;
+}
+
+/* Auth Links */
+.authLinks {
+  margin-top: 25px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.authLink {
+  background: none;
+  border: none;
+  font-size: 14px;
+  color: #555;
+  cursor: pointer;
+  font-family: "Segoe UI", sans-serif;
+}
+
+.authLink:hover {
+  text-decoration: underline;
+}
+
+.authLinkHighlight {
+  color: #3d67ee;
+  font-weight: 600;
+}
+
+/* Logo */
+.logo {
+  width: clamp(60px, 8vw, 80px);
+  height: clamp(60px, 8vw, 80px);
+  margin-bottom: 20px;
+  object-fit: contain;
+}
+
+/* Modal Styles */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 20px; /* Add padding for small screens */
+}
+
+.modalContent {
+  background-color: white;
+  border-radius: 20px;
+  padding: 35px;
+  max-width: 90%;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Loading Spinner */
+.loadingSpinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #ffffff;
+  border-top: 2px solid transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

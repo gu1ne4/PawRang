@@ -1,42 +1,40 @@
 .doctorTableContainer {
-    margin-top: 30px;
     height: 100%;
     display: flex;
     flex-direction: row;
-    padding-bottom: 30px;
-    gap: 30px;
+    gap: 20px;
+    overflow: hidden;
 }
 
 .leftContainer {
     flex: 2.5;
     padding-right: 20px;
     padding-left: 10px;
-    overflow-y: auto;
-    max-height: calc(100vh - 150px);
+    overflow-y: scroll;
+    padding-top: 10px;
+    padding-bottom: 10px;
 }
 
 .rightContainer {
-    flex: 1;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    flex: 0.5;
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    overflow-y: auto;
-    max-height: calc(100vh - 150px);
+    gap: 10px;
 }
 
 /* Profile Card */
 .profileCard {
-    background-color: #fffefe;
     border-radius: 12px;
     margin-bottom: 30px;
     overflow: visible;
     position: relative;
-    box-shadow: 0 0 18px rgba(0, 0, 0, 0.15);
     min-height: 180px;
 }
 
 .profileHeader {
-    background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9, #0f3bca);
+    background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9, #0f3bca,  #3db6ee);
     border-radius: 12px 12px 12px 12px;
     padding: 20px;
     width: 100%;
@@ -49,6 +47,7 @@
     justify-content: space-between;
     align-items: flex-start;
     width: 100%;
+    padding-top: 5px;
 }
 
 .profileNameSection {
@@ -85,7 +84,8 @@
     margin-right: 20px;
 }
 
-.glassContainer {
+
+.profileGlassContainer {
     padding: 5px 18px;
     background-color: rgba(255, 255, 255, 0.15);
     border-radius: 12px;
@@ -108,8 +108,8 @@
 
 .profileAvatar {
     position: absolute;
-    bottom: -28px;
-    left: 40px;
+    bottom: -10px;
+    left: 30px;
 }
 
 .doctorAvatar {
@@ -149,6 +149,7 @@
     flex: 1;
     background-color: #fffefe;
     padding: 20px;
+    padding-bottom: 25px;
     border-radius: 12px;
     box-shadow: 0 0 18px rgba(0, 0, 0, 0.15);
 }
@@ -170,12 +171,14 @@
     display: flex;
     flex-direction: row;
     align-items: center;
+    justify-content: center;
     gap: 12px;
 }
 
 .valueNumber {
     font-size: 30px;
     font-weight: 600;
+    color: #000000d3;
 }
 
 .trendBadge {
@@ -183,7 +186,8 @@
     flex-direction: row;
     align-items: center;
     gap: 6px;
-    padding: 5px 8px;
+    padding-left: 10px;
+    padding-right: 10px;
     border-radius: 10px;
     font-size: 12px;
     font-weight: 500;
@@ -235,7 +239,7 @@
 
 .quickActionBtn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.199);
 }
 
 .quickActionBtn span {
@@ -267,13 +271,13 @@
     font-size: 18px;
     font-weight: 600;
     color: #3566ee;
-    margin: 0;
 }
 
 .viewAllBtn {
     background: none;
     border: none;
-    font-size: 14px;
+    font-size: 13px;
+    min-width: 60px;
     color: #3566ee;
     font-weight: 500;
     cursor: pointer;
@@ -282,7 +286,7 @@
 .appointmentTotal {
     font-size: 14px;
     color: #666;
-    margin: 4px 0 20px 0;
+    margin: 0px 0 20px 0;
 }
 
 .appointmentsList {
@@ -486,6 +490,9 @@
     border-radius: 12px;
     padding: 20px;
     flex: 1.5;
+    height: 200px;           /* Fixed height on the card */
+    display: flex;
+    flex-direction: column;
     box-shadow: 0 0 18px rgba(0, 0, 0, 0.15);
 }
 
@@ -496,13 +503,15 @@
     align-items: center;
     margin-bottom: 15px;
     gap: 70px;
+    flex-shrink: 0;           /* Prevent header from shrinking */
 }
 
 .notificationsTitle {
     display: flex;
+    min-width: 180px;
     flex-direction: row;
     align-items: center;
-    gap: 5px;
+    gap: 10px;
 }
 
 .notificationsTitle h3 {
@@ -516,17 +525,47 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    overflow-y: auto;         /* Move overflow here */
+    overflow-x: hidden;
+    flex: 1;                   /* Take remaining space */
+    padding-right: 5px;        /* Space for scrollbar */
+}
+
+/* Remove the blue background - this was just for debugging */
+.notificationsList {
+    background-color: transparent;  /* Changed from #0e82f5 */
 }
 
 .notificationItem {
     background-color: #f8fafc;
     border-radius: 12px;
-    padding: 12px;
+    padding: 10px;
     border: 1px solid #e2e8f0;
+    line-height: 18px;
     display: flex;
     flex-direction: row;
     align-items: center;
     gap: 10px;
+    flex-shrink: 0;           /* Prevent items from shrinking */
+}
+
+/* Style the scrollbar */
+.notificationsList::-webkit-scrollbar {
+    width: 6px;
+}
+
+.notificationsList::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.notificationsList::-webkit-scrollbar-thumb {
+    background: #b9b7b7;
+    border-radius: 10px;
+}
+
+.notificationsList::-webkit-scrollbar-thumb:hover {
+    background: #e2e2e2;
 }
 
 .notificationItem.clickable {
@@ -669,18 +708,137 @@
 
 .leftContainer::-webkit-scrollbar-thumb,
 .rightContainer::-webkit-scrollbar-thumb {
-    background: #888;
+    background: #b9b7b7;
     border-radius: 10px;
 }
 
 .leftContainer::-webkit-scrollbar-thumb:hover,
 .rightContainer::-webkit-scrollbar-thumb:hover {
-    background: #555;
+    background: #e2e2e2;
 }
 
 /* Text Utilities */
 .text-center {
     text-align: center;
+}
+
+/* react-calendar overrides */
+.calendarCard .react-calendar {
+    background: transparent !important;
+    border: none !important;
+    width: 100% !important;
+    font-family: inherit !important;
+}
+
+.calendarCard .react-calendar__navigation {
+    background: transparent !important;
+    margin-bottom: 15px !important;
+    height: 40px !important;
+}
+
+.calendarCard .react-calendar__navigation button {
+    color: white !important;
+    background: transparent !important;
+    font-size: 16px !important;
+    min-width: 30px !important;
+}
+
+.calendarCard .react-calendar__navigation button:enabled:hover,
+.calendarCard .react-calendar__navigation button:enabled:focus {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+    border-radius: 8px !important;
+}
+
+.calendarCard .react-calendar__navigation button[disabled] {
+    opacity: 0.5 !important;
+}
+
+.calendarCard .react-calendar__month-view__weekdays {
+    color: white !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+    text-transform: none !important;
+    text-decoration: none !important;
+}
+
+.calendarCard .react-calendar__month-view__weekdays__weekday {
+    color: white !important;
+    text-align: center !important;
+    padding: 8px 0 !important;
+}
+
+.calendarCard .react-calendar__month-view__weekdays__weekday abbr {
+    text-decoration: none !important;
+    border: none !important;
+    cursor: default !important;
+}
+
+.calendarCard .react-calendar__month-view__days {
+    display: grid !important;
+    grid-template-columns: repeat(7, 1fr) !important;
+    gap: 5px !important;
+}
+
+.calendarCard .react-calendar__tile {
+    background: transparent !important;
+    color: white !important;
+    border-radius: 50% !important;
+    aspect-ratio: 1 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    font-size: 13px !important;
+    padding: 8px !important;
+    max-width: 36px !important;
+    margin: 0 auto !important;
+}
+
+/* Disable clicking on month/year label */
+.calendarCard .react-calendar__navigation__label {
+    pointer-events: none !important;  /* ← This prevents clicking */
+    cursor: default !important;       /* ← Changes cursor to default instead of pointer */
+}
+
+/* Optional: Keep the style but remove the hover effect */
+.calendarCard .react-calendar__navigation__label:hover {
+    background-color: transparent !important;
+}
+
+.calendarCard .react-calendar__tile:enabled:hover,
+.calendarCard .react-calendar__tile:enabled:focus {
+    background-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.calendarCard .react-calendar__tile--active {
+    background:  rgba(255, 255, 255, 0.15) !important;
+    color: #ffffff !important;
+}
+
+
+.calendarCard .react-calendar__tile--now {
+    background: rgba(255, 255, 255, 0.25) !important;
+}
+
+.calendarCard .react-calendar__tile--now:enabled:hover,
+.calendarCard .react-calendar__tile--now:enabled:focus {
+    background: rgba(255, 255, 255, 0.35) !important;
+}
+
+.calendarCard .react-calendar__month-view__days__day--neighboringMonth {
+    opacity: 0.5 !important;
+}
+
+.calendarCard .react-calendar__tile:disabled {
+    opacity: 0.25 !important;
+}
+
+.calendarCard .react-calendar__navigation__label {
+    font-weight: 600 !important;
+}
+
+.calendarCard .react-calendar__navigation__arrow {
+    font-size: 24px !important;
 }
 
 /* Responsive */

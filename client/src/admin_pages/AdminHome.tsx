@@ -3,20 +3,13 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '../reusable_components/NavBar';
 import { supabase } from '../supabaseClient'; 
 import { createClient } from '@supabase/supabase-js';
-import './AdminStyles.css';
 
 // Icons
+import './AdminStyles.css'; 
+import { MdNotificationsNone } from "react-icons/md";
+
 import { 
   IoPeopleOutline, 
-  IoPersonOutline, 
-  IoMedkitOutline,
-  IoCalendarClearOutline,
-  IoCalendarOutline,
-  IoTodayOutline,
-  IoTimeOutline,
-  IoDocumentTextOutline,
-  IoSettingsOutline,
-  IoLogOutOutline,
   IoSearchSharp,
   IoFilterSharp,
   IoCloseCircleSharp,
@@ -417,9 +410,9 @@ const AdminHome: React.FC = () => {
             <IoPeopleOutline size={23} className="blueIcon" />
             <span className="blueText">Account Overview / Employees</span>
           </div>
-          <div className="subTopContainer notificationContainer">
+          <div className="subTopContainer notificationContainer" style={{padding: 17}}>
             <button className="iconButton" onClick={fetchAccounts}>
-              <IoPeopleOutline size={21} className="blueIcon" />
+              <MdNotificationsNone size={25} className="blueIcon" />
             </button>
           </div>
         </div>
@@ -518,7 +511,7 @@ const AdminHome: React.FC = () => {
                 <thead>
                   <tr>
                     <th style={{flex: 3}}>Name</th>
-                    <th style={{flex: 1.5}}>Role</th>
+                    <th style={{flex: 1.1}}>Role</th>
                     <th style={{flex: 2}}>Contact Number</th>
                     <th style={{flex: 2.5}}>E-Mail</th>
                     <th style={{flex: 1.5}}>Status</th>
@@ -616,7 +609,7 @@ const AdminHome: React.FC = () => {
                   <img src={userImage} alt="User" className="uploadedImage" />
                 ) : (
                   <div className="uploadPlaceholder">
-                    <IoImageOutline size={18} />
+                    <IoImageOutline size={18} color='#3d67ee'/>
                     <span>Upload Image</span>
                   </div>
                 )}
