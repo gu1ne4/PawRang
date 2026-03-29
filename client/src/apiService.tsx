@@ -38,7 +38,7 @@ async function request<T = any>(
 
 export const apiService = {
 
-  login(payload: { email: string; username: string; password: string }) {
+  login(payload: { identifier: string; password: string }) {
     return request('/login', { method: 'POST', body: JSON.stringify(payload) });
   },
 

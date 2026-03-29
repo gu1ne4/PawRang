@@ -28,6 +28,74 @@ otp_store = {}
 RESEND_COOLDOWN_SECONDS = 60
 
 
+def get_single_row(table_name, column, value):
+    result = supabase_admin.table(table_name) \
+        .select('*') \
+        .eq(column, value) \
+        .execute()
+
+    rows = result.data or []
+    if len(rows) > 1:
+        raise ValueError(f"Multiple {table_name} records found for {column}.")
+
+    return rows[0] if rows else None
+
+
+def find_account_by_identifier(identifier):
+    column = 'email' if '@' in identifier else 'username'
+
+    employee_profile = get_single_row('employee_accounts', column, identifier)
+    if employee_profile:
+        return employee_profile, 'employee_accounts'
+
+    patient_profile = get_single_row('patient_account', column, identifier)
+    if patient_profile:
+        return patient_profile, 'patient_account'
+
+    return None, None
+
+
+def find_account_by_user_id(user_id):
+    employee_profile = get_single_row('employee_accounts', 'id', user_id)
+    if employee_profile:
+        return employee_profile, 'employee_accounts'
+
+    patient_profile = get_single_row('patient_account', 'id', user_id)
+    if patient_profile:
+        return patient_profile, 'patient_account'
+
+    return None, None
+
+
+def normalize_profile(profile, source_table):
+    if source_table == 'employee_accounts':
+        return {
+            "id": profile.get('id'),
+            "email": profile.get('email'),
+            "username": profile.get('username'),
+            "firstName": profile.get('first_name'),
+            "lastName": profile.get('last_name'),
+            "contact_number": profile.get('contact_number'),
+            "role": profile.get('role'),
+            "status": profile.get('status'),
+            "userImage": profile.get('employee_image'),
+            "account_type": "employee",
+        }
+
+    return {
+        "id": profile.get('id'),
+        "email": profile.get('email'),
+        "username": profile.get('username'),
+        "firstName": profile.get('firstName'),
+        "lastName": profile.get('lastName'),
+        "contact_number": profile.get('contact_number'),
+        "role": profile.get('role'),
+        "status": profile.get('status'),
+        "userImage": profile.get('userImage'),
+        "account_type": "patient",
+    }
+
+
 # -----------------------------------------------
 # HELPER — send OTP email via Gmail SMTP
 # -----------------------------------------------
@@ -146,24 +214,19 @@ def signup():
 # -----------------------------------------------
 @app.route('/login', methods=['POST'])
 def login():
-    data     = request.get_json()
-    email    = data.get('email')
-    username = data.get('username')
-    password = data.get('password')
+    data       = request.get_json()
+    identifier = (data.get('identifier') or '').strip()
+    password   = data.get('password')
 
-    if not email or not username or not password:
-        return jsonify({"error": "Email, username, and password are required."}), 400
+    if not identifier or not password:
+        return jsonify({"error": "Email or username, and password are required."}), 400
 
     try:
-        user_lookup = supabase_admin.table('patient_account') \
-            .select('id, email, username') \
-            .eq('email', email) \
-            .eq('username', username) \
-            .single() \
-            .execute()
+        profile, source_table = find_account_by_identifier(identifier)
+        if not profile:
+            return jsonify({"error": "No account found for that email or username."}), 401
 
-        if not user_lookup.data:
-            return jsonify({"error": "Email and username do not match any account."}), 401
+        email = profile.get('email')
 
         auth_response = supabase.auth.sign_in_with_password({"email": email, "password": password})
         user = auth_response.user
@@ -179,29 +242,19 @@ def login():
             except Exception as mail_err:
                 print("OTP resend error during login:", str(mail_err))
 
-            return jsonify({"error": "Please confirm your email before logging in. A new code has been sent to your inbox."}), 403
+            return jsonify({
+                "error": "Please confirm your email before logging in. A new code has been sent to your inbox.",
+                "email": email
+            }), 403
 
-        profile_response = supabase.table('patient_account') \
-            .select('*') \
-            .eq('id', user.id) \
-            .single() \
-            .execute()
-
-        profile = profile_response.data
+        fresh_profile, fresh_source_table = find_account_by_user_id(user.id)
+        if not fresh_profile:
+            return jsonify({"error": "Authenticated user profile was not found."}), 404
 
         return jsonify({
             "message":      "Login successful!",
             "access_token": auth_response.session.access_token,
-            "user": {
-                "id":             user.id,
-                "email":          user.email,
-                "username":       profile.get('username'),
-                "firstName":      profile.get('firstName'),
-                "lastName":       profile.get('lastName'),
-                "contact_number": profile.get('contact_number'),
-                "role":           profile.get('role'),
-                "status":         profile.get('status'),
-            }
+            "user": normalize_profile(fresh_profile, fresh_source_table)
         }), 200
 
     except Exception as e:
@@ -215,16 +268,11 @@ def login():
 @app.route('/profile/<user_id>', methods=['GET'])
 def get_profile(user_id):
     try:
-        response = supabase_admin.table('patient_account') \
-            .select('*') \
-            .eq('id', user_id) \
-            .single() \
-            .execute()
-
-        if not response.data:
+        profile, source_table = find_account_by_user_id(user_id)
+        if not profile:
             return jsonify({"error": "User not found"}), 404
 
-        return jsonify({"user": response.data}), 200
+        return jsonify({"user": normalize_profile(profile, source_table)}), 200
 
     except Exception as e:
         print("Get profile error:", str(e))
@@ -237,14 +285,37 @@ def get_profile(user_id):
 @app.route('/profile/<user_id>', methods=['PATCH'])
 def update_profile(user_id):
     data    = request.get_json()
-    allowed = ['firstName', 'lastName', 'contact_number', 'userImage']
-    update_data = {k: v for k, v in data.items() if k in allowed}
-
-    if not update_data:
-        return jsonify({"error": "No valid fields to update"}), 400
 
     try:
-        supabase_admin.table('patient_account') \
+        profile, source_table = find_account_by_user_id(user_id)
+        if not profile:
+            return jsonify({"error": "User not found"}), 404
+
+        if source_table == 'employee_accounts':
+            field_map = {
+                'firstName': 'first_name',
+                'lastName': 'last_name',
+                'contact_number': 'contact_number',
+                'userImage': 'employee_image',
+            }
+        else:
+            field_map = {
+                'firstName': 'firstName',
+                'lastName': 'lastName',
+                'contact_number': 'contact_number',
+                'userImage': 'userImage',
+            }
+
+        update_data = {
+            db_key: data[key]
+            for key, db_key in field_map.items()
+            if key in data
+        }
+
+        if not update_data:
+            return jsonify({"error": "No valid fields to update"}), 400
+
+        supabase_admin.table(source_table) \
             .update(update_data) \
             .eq('id', user_id) \
             .execute()

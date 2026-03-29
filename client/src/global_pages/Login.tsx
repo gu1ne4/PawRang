@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios';
 import API_URL from '../API';
@@ -10,37 +10,31 @@ type ButtonState = 'default' | 'loading' | 'success' | 'error';
 export default function Login() {
 
     const nav = useNavigate();
-    const [getEmail,    setEmail]    = useState('');
-    const [getUsername, setUsername] = useState('');
+    const [getIdentifier, setIdentifier] = useState('');
     const [getPassword, setPassword] = useState('');
 
-    const [serverError,   setServerError]   = useState('');
+    const [serverError, setServerError] = useState('');
     const [serverSuccess, setServerSuccess] = useState('');
-    const [buttonState,   setButtonState]   = useState<ButtonState>('default');
+    const [buttonState, setButtonState] = useState<ButtonState>('default');
 
-    const [emailError,    setEmailError]    = useState('');
-    const [usernameError, setUsernameError] = useState('');
+    const [identifierError, setIdentifierError] = useState('');
     const [passwordError, setPasswordError] = useState('');
 
-    function handleEmailChange(value: string) {
-        setEmail(value);
-        if (value.trim() === '') {
-            setEmailError('Email is required.');
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-            setEmailError('Please enter a valid email.');
-        } else {
-            setEmailError('');
-        }
+    function isEmailIdentifier(value: string) {
+        return value.includes('@');
     }
 
-    function handleUsernameChange(value: string) {
-        setUsername(value);
+    function handleIdentifierChange(value: string) {
+        setIdentifier(value);
+
         if (value.trim() === '') {
-            setUsernameError('Username is required.');
-        } else if (value.length < 3) {
-            setUsernameError('Username must be at least 3 characters.');
+            setIdentifierError('Email or username is required.');
+        } else if (isEmailIdentifier(value) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+            setIdentifierError('Please enter a valid email.');
+        } else if (!isEmailIdentifier(value) && value.length < 3) {
+            setIdentifierError('Username must be at least 3 characters.');
         } else {
-            setUsernameError('');
+            setIdentifierError('');
         }
     }
 
@@ -48,23 +42,25 @@ export default function Login() {
         setPassword(value);
         if (value.trim() === '') {
             setPasswordError('Password is required.');
-        } else if (value.length < 8) {
-            setPasswordError('Password must be at least 8 characters.');
+        } else if (value.length < 6) {
+            setPasswordError('Password must be at least 6 characters.');
         } else {
             setPasswordError('');
         }
     }
 
     function validateAll() {
-        handleEmailChange(getEmail);
-        handleUsernameChange(getUsername);
+        handleIdentifierChange(getIdentifier);
         handlePasswordChange(getPassword);
+
+        const identifierIsValid = isEmailIdentifier(getIdentifier)
+            ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(getIdentifier)
+            : getIdentifier.trim().length >= 3;
+
         return (
-            getEmail.trim() !== '' &&
-            /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(getEmail) &&
-            getUsername.trim() !== '' &&
-            getUsername.length >= 3 &&
-            getPassword.length >= 8
+            getIdentifier.trim() !== '' &&
+            identifierIsValid &&
+            getPassword.length >= 6
         );
     }
 
@@ -82,26 +78,28 @@ export default function Login() {
 
         axios
             .post(`${API_URL}/login`, {
-                email:    getEmail,
-                username: getUsername,
+                identifier: getIdentifier,
                 password: getPassword,
             })
             .then((response: any) => {
                 const { access_token, user } = response.data;
 
-                // ─── KEY FIX: save under 'userSession' so all pages can read it ───
                 localStorage.setItem('access_token', access_token);
-                localStorage.setItem('userSession',  JSON.stringify(user));
+                localStorage.setItem('userSession', JSON.stringify(user));
 
                 setServerSuccess(response.data.message);
                 setButtonState('success');
 
                 setTimeout(() => {
-                    // Route by role
-                    const role = user?.role;
-                    if (role === 'admin') {
+                    const normalizedRole = (user?.role || '').toLowerCase();
+
+                    if (normalizedRole === 'admin') {
                         nav('/admin/home');
-                    } else if (role === 'vet') {
+                    } else if (
+                        normalizedRole === 'vet' ||
+                        normalizedRole === 'doctor' ||
+                        normalizedRole === 'veterinarian'
+                    ) {
                         nav('/doctor/home');
                     } else {
                         nav('/user/home');
@@ -111,9 +109,13 @@ export default function Login() {
             .catch((error: any) => {
                 console.error('Login error:', error);
 
-                // 403 = email not yet confirmed — backend already sent fresh OTP
                 if (error.response?.status === 403) {
-                    nav('/ConfirmOTP', { state: { email: getEmail, mode: 'emailConfirmation' } });
+                    nav('/ConfirmOTP', {
+                        state: {
+                            email: error.response?.data?.email ?? getIdentifier,
+                            mode: 'emailConfirmation'
+                        }
+                    });
                     return;
                 }
 
@@ -159,42 +161,32 @@ export default function Login() {
                     {serverError && (
                         <div className='serverErrorMessage'><p>{serverError}</p></div>
                     )}
+                    {serverSuccess && (
+                        <div className='serverSuccessMessage'><p>{serverSuccess}</p></div>
+                    )}
 
                     <div className='form'>
 
-                        {/* Email */}
                         <div className="inputContainer">
-                            <p className={emailError ? 'inputLabel errorLabel' : 'inputLabel'}>
-                                Email {emailError && <span className='errorAsterisk'>*</span>}
+                            <p className={identifierError ? 'inputLabel errorLabel' : 'inputLabel'}>
+                                Email or Username {identifierError && <span className='errorAsterisk'>*</span>}
                             </p>
                             <div className='inputFieldContainer'>
-                                <Mail className='inputIcons'/>
+                                {isEmailIdentifier(getIdentifier) ? (
+                                    <Mail className='inputIcons' />
+                                ) : (
+                                    <User className='inputIcons' />
+                                )}
                                 <input
-                                    className={emailError ? 'inputFields errorField' : 'inputFields'}
+                                    className={identifierError ? 'inputFields errorField' : 'inputFields'}
                                     type="text"
-                                    onChange={e => handleEmailChange(e.target.value)}
+                                    value={getIdentifier}
+                                    onChange={e => handleIdentifierChange(e.target.value)}
                                 />
                             </div>
-                            {emailError && <p className='errorMessage'>{emailError}</p>}
+                            {identifierError && <p className='errorMessage'>{identifierError}</p>}
                         </div>
 
-                        {/* Username */}
-                        <div className="inputContainer">
-                            <p className={usernameError ? 'inputLabel errorLabel' : 'inputLabel'}>
-                                Username {usernameError && <span className='errorAsterisk'>*</span>}
-                            </p>
-                            <div className='inputFieldContainer'>
-                                <User className='inputIcons'/>
-                                <input
-                                    className={usernameError ? 'inputFields errorField' : 'inputFields'}
-                                    type="text"
-                                    onChange={e => handleUsernameChange(e.target.value)}
-                                />
-                            </div>
-                            {usernameError && <p className='errorMessage'>{usernameError}</p>}
-                        </div>
-
-                        {/* Password */}
                         <div className="inputContainer">
                             <p className={passwordError ? 'inputLabel errorLabel' : 'inputLabel'}>
                                 Password {passwordError && <span className='errorAsterisk'>*</span>}
@@ -204,6 +196,7 @@ export default function Login() {
                                 <input
                                     className={passwordError ? 'inputFields errorField' : 'inputFields'}
                                     type="password"
+                                    value={getPassword}
                                     onChange={e => handlePasswordChange(e.target.value)}
                                 />
                             </div>
