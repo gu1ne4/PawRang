@@ -394,7 +394,7 @@ const UserAppointmentBook: React.FC = () => {
   const [panelPosition, setPanelPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const panelWidth = 280;
 
-  // Load user from localStorage
+ // Load user from localStorage
   useEffect(() => {
     const loadUser = () => {
       try {
@@ -403,8 +403,10 @@ const UserAppointmentBook: React.FC = () => {
           setCurrentUser(JSON.parse(session));
         } else {
           setCurrentUser(null);
-          // If they are not logged in, redirect them back to Home
-          navigate('/');
+          
+          // 👇 TEMPORARILY DISABLED THE REDIRECT HERE 👇
+          // navigate('/'); 
+          
         }
       } catch (error) {
         console.error("Failed to load user session", error);

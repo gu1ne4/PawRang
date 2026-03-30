@@ -83,7 +83,7 @@ interface Pet {
 interface User {
   fullname?: string;
   fullName?: string;
-  username?: string;
+  username: string;     
   userImage?: string;
   userimage?: string;
 }
@@ -263,7 +263,7 @@ const UserPetProfile: React.FC = () => {
     }
   ]);
 
-  // Load user session
+// Load user session
   useEffect(() => {
     const loadUser = async () => {
       try {
@@ -272,7 +272,10 @@ const UserPetProfile: React.FC = () => {
           setCurrentUser(JSON.parse(session));
         } else {
           setCurrentUser(null);
-          navigate('/');
+          
+          // 👇 TEMPORARILY DISABLED THE REDIRECT HERE 👇
+          // navigate('/'); 
+          
         }
       } catch (error) {
         console.error("Failed to load user session", error);
@@ -738,7 +741,7 @@ const UserPetProfile: React.FC = () => {
       )}
 
       <ClientNavBar 
-        currentUser={currentUser}
+        currentUser={currentUser as any}
         onLogout={handleLogout}
         onViewProfile={handleViewProfile}
         onMyPets={handleMyPets}

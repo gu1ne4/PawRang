@@ -12,6 +12,7 @@ import {
 
 // Import your converted CSS file
 import './AdminStyles.css';
+import Notifications from '../reusable_components/Notifications';
 
 // --- TYPESCRIPT INTERFACES ---
 interface CurrentUser {
@@ -111,10 +112,21 @@ export default function AdminDashboardPage() {
             <IoHomeOutline size={20} color="#3d67ee" style={{ marginTop: '2px' }} />
             <span className="blueText" style={{ marginLeft: '10px' }}>Home</span>
           </div>
-          <div className="subTopContainer" style={{ justifyContent: 'center', flex: 0.5, marginLeft: '12px' }}>
-            <div style={{ cursor: 'pointer' }}>
-              <IoNotifications size={21} color="#3d67ee" style={{ marginTop: '3px' }} />
-            </div>
+          <div className="invSubTopContainer invNotificationContainer" style={{padding: 20}}>
+            <Notifications 
+              buttonClassName="invIconButton"
+              iconClassName="invBlueIcon"
+              onViewAll={() => {
+                // Handle view all notifications
+                console.log('View all notifications');
+              }}
+              onNotificationClick={(notification) => {
+                // Handle individual notification click
+                if (notification.link) {
+                  navigate(notification.link);
+                }
+              }}
+            />
           </div>
         </div>
 

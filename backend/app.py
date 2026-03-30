@@ -8,6 +8,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import random
 import string
+import uuid
 from datetime import datetime, timedelta
 
 load_dotenv()
@@ -220,45 +221,83 @@ def get_user_pets(user_id):
         return jsonify({"error": str(e)}), 400
 
 
-# -----------------------------------------------
-# BOOK APPOINTMENT
-# -----------------------------------------------
 @app.route('/appointments', methods=['POST'])
-def book_appointment():
-    data = request.get_json()
-
-    owner_id         = data.get('owner_id')
-    pet_id           = data.get('pet_id')
-    appointment_type = data.get('appointment_type')
-    appointment_date = data.get('appointment_date')
-    appointment_time = data.get('appointment_time')
-    patient_reason   = data.get('patient_reason', '')
-
-    if not all([owner_id, pet_id, appointment_type, appointment_date, appointment_time]):
-        missing = [k for k, v in {
-            "owner_id":         owner_id,
-            "pet_id":           pet_id,
-            "appointment_type": appointment_type,
-            "appointment_date": appointment_date,
-            "appointment_time": appointment_time,
-        }.items() if not v]
-        return jsonify({"error": f"Missing required fields: {missing}"}), 400
-
+def create_appointment():
     try:
-        supabase.table('appointments').insert({
-            "owner_id":         owner_id,
-            "pet_id":           pet_id,
-            "appointment_type": appointment_type,
-            "appointment_date": appointment_date,
-            "appointment_time": appointment_time,
-            "patient_reason":   patient_reason,
-            "status":           "pending",
-        }).execute()
+        data = request.json
+        owner_id = data.get('owner_id')
+        pet_id = data.get('pet_id')
 
-        return jsonify({"message": "Appointment booked successfully!"}), 200
+        # ==========================================
+        # THE WALK-IN MAGIC (Background Profile Generation)
+        # ==========================================
+        if owner_id == 'WALK_IN' or pet_id == 'WALK_IN':
+            try:
+                # 1. Create a "Silent" Auth User (To satisfy Supabase's strict UUID rules)
+                # We use a random fake email so it never clashes with real users
+                generated_email = f"walkin_{uuid.uuid4().hex[:8]}@guest.pawrang.com"
+                
+                new_auth_user = supabase_admin.auth.admin.create_user({
+                    "email": generated_email,
+                    "password": "WalkInPassword123!",
+                    "email_confirm": True
+                })
+                real_owner_id = new_auth_user.user.id
+
+               # 2. Save them to patient_account
+                first_name = data.get('walk_in_first_name', 'Walk-In').strip()
+                last_name = data.get('walk_in_last_name', 'Guest').strip()
+                
+                # Generate the required unique username for the database backend
+                base_username = f"{first_name}{last_name}".replace(" ", "").lower()
+                unique_suffix = uuid.uuid4().hex[:4]
+                
+                supabase_admin.table('patient_account').insert({
+                    "id": real_owner_id,
+                    "firstName": first_name,         
+                    "lastName": last_name,           
+                    "username": f"{base_username}_{unique_suffix}", 
+                    "email": generated_email,
+                    "role": "patient"
+                }).execute()
+
+                # 3. Create the Pet Profile
+                pet_insert = supabase_admin.table('pet_profile').insert({
+                    "owner_id": real_owner_id,
+                    "pet_name": data.get('walk_in_pet_name', 'Unknown Pet'),
+                    "pet_species": data.get('walk_in_pet_type', 'Other'),
+                    "pet_breed": data.get('walk_in_breed', 'Unknown'),
+                    "pet_gender": data.get('walk_in_gender', 'Unknown'),
+                    "birthday": data.get('walk_in_dob') or None
+                }).execute()
+
+                # Grab the newly generated pet_id
+                real_pet_id = pet_insert.data[0]['pet_id']
+
+                # 4. Swap the fake 'WALK_IN' text for our real, freshly generated IDs!
+                owner_id = real_owner_id
+                pet_id = real_pet_id
+
+            except Exception as walk_in_error:
+                return jsonify({"error": f"Failed to generate walk-in profile: {str(walk_in_error)}"}), 400
+
+        # ==========================================
+        # SAVE THE ACTUAL APPOINTMENT
+        # ==========================================
+        appt_data = {
+            "owner_id": owner_id,
+            "pet_id": pet_id,
+            "appointment_type": data.get('appointment_type'),
+            "appointment_date": data.get('appointment_date'),
+            "appointment_time": data.get('appointment_time'),
+            "patient_reason": data.get('patient_reason', ''),
+            "status": "pending"
+        }
+        
+        res = supabase_admin.table('appointments').insert(appt_data).execute()
+        return jsonify({"message": "Appointment created!", "data": res.data}), 200
 
     except Exception as e:
-        print("Appointment error:", e)
         return jsonify({"error": str(e)}), 400
 
 
@@ -525,6 +564,19 @@ def delete_special_date(date):
     try:
         supabase_admin.table('special_dates').delete().eq('event_date', date).execute()
         return jsonify({"message": "Special date deleted successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    
+    
+# -----------------------------------------------
+# GET ALL EMPLOYEE ACCOUNTS (For Doctors List)
+# -----------------------------------------------
+@app.route('/accounts', methods=['GET'])
+def get_all_accounts():
+    try:
+        # Fetching from employee_accounts so the frontend can filter by 'role'
+        res = supabase_admin.table('employee_accounts').select('*').execute()
+        return jsonify(res.data), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 

@@ -23,6 +23,7 @@ import {
   IoCloseCircleOutline,
   IoAlertCircleOutline,
 } from 'react-icons/io5';
+import Notifications from '../reusable_components/Notifications';
 
 interface User {
   id?: string; 
@@ -410,10 +411,21 @@ const AdminHome: React.FC = () => {
             <IoPeopleOutline size={23} className="blueIcon" />
             <span className="blueText">Account Overview / Employees</span>
           </div>
-          <div className="subTopContainer notificationContainer" style={{padding: 17}}>
-            <button className="iconButton" onClick={fetchAccounts}>
-              <MdNotificationsNone size={25} className="blueIcon" />
-            </button>
+          <div className="invSubTopContainer invNotificationContainer" style={{padding: 20}}>
+            <Notifications 
+              buttonClassName="invIconButton"
+              iconClassName="invBlueIcon"
+              onViewAll={() => {
+                // Handle view all notifications
+                console.log('View all notifications');
+              }}
+              onNotificationClick={(notification) => {
+                // Handle individual notification click
+                if (notification.link) {
+                  navigate(notification.link);
+                }
+              }}
+            />
           </div>
         </div>
 

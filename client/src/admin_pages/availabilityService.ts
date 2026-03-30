@@ -1,13 +1,15 @@
 const API_URL = 'http://localhost:5000';
 
 export const availabilityService = {
-  // 1. Get Day Availability
+  
+  // ==========================================
+  // AVAILABILITY SETTINGS FUNCTIONS
+  // ==========================================
   getDayAvailability: async () => {
     const res = await fetch(`${API_URL}/api/day-availability`);
     if (!res.ok) throw new Error('Failed to fetch days');
     const data = await res.json();
     
-    // Transforms the database array into the { monday: true } object your UI needs
     const formattedDays: any = {};
     data.forEach((item: any) => {
       if (item.day_of_week) {
@@ -17,7 +19,6 @@ export const availabilityService = {
     return formattedDays;
   },
 
-  // 2. Save Day Availability
   saveDayAvailability: async (day: string, is_active: boolean) => {
     const res = await fetch(`${API_URL}/api/day-availability`, {
       method: 'POST',
@@ -28,7 +29,6 @@ export const availabilityService = {
     return await res.json();
   },
 
-  // 3. Get Time Slots
   getTimeSlotsForDay: async (day: string) => {
     const res = await fetch(`${API_URL}/api/time-slots/${day}`);
     if (!res.ok) throw new Error('Failed to fetch slots');
@@ -36,7 +36,6 @@ export const availabilityService = {
     return data.timeSlots || [];
   },
 
-  // 4. Save Time Slots
   saveTimeSlots: async (day: string, slots: any[]) => {
     const res = await fetch(`${API_URL}/api/time-slots/${day}`, {
       method: 'POST',
@@ -47,7 +46,6 @@ export const availabilityService = {
     return await res.json();
   },
 
-  // 5. Delete Time Slot
   deleteTimeSlot: async (slotId: number | string) => {
     const res = await fetch(`${API_URL}/api/time-slots/${slotId}`, {
       method: 'DELETE'
@@ -56,10 +54,77 @@ export const availabilityService = {
     return await res.json();
   },
 
-  // 6. Get Booked Dates (For Calendar)
   getAppointmentsForTable: async () => {
     const res = await fetch(`${API_URL}/api/booked-dates`);
-    if (!res.ok) return []; // Returns empty array if it fails so calendar doesn't crash
+    if (!res.ok) return []; 
+    return await res.json();
+  },
+
+  // ==========================================
+  // SCHEDULE PAGE FUNCTIONS (Restored!)
+  // ==========================================
+  getDoctors: async () => {
+    const res = await fetch(`${API_URL}/accounts`);
+    if (!res.ok) throw new Error('Failed to load doctors');
+    const data = await res.json();
+    return data.filter((account: any) => {
+      const role = account.role?.toLowerCase() || '';
+      return role.includes('vet') || role.includes('doctor') || role.includes('veterinarian');
+    });
+  },
+
+  assignDoctor: async (appointmentId: string | number, doctorId: string | number) => {
+    const res = await fetch(`${API_URL}/api/appointments/${appointmentId}/assign-doctor`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doctorId })
+    });
+    if (!res.ok) throw new Error('Failed to assign doctor');
+    return await res.json();
+  },
+
+  cancelAppointmentWithReason: async (appointmentId: string | number, cancellationData: any) => {
+    const res = await fetch(`${API_URL}/api/appointments/${appointmentId}/cancel-with-reason`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(cancellationData)
+    });
+    if (!res.ok) throw new Error('Failed to cancel appointment');
+    return await res.json();
+  },
+
+  createRescheduleRequest: async (appointmentId: string | number, rescheduleData: any) => {
+    const res = await fetch(`${API_URL}/api/appointments/${appointmentId}/reschedule`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rescheduleData)
+    });
+    if (!res.ok) throw new Error('Failed to create reschedule request');
+    return await res.json();
+  },
+
+  updateAppointmentStatus: async (appointmentId: string | number, status: string) => {
+    const res = await fetch(`${API_URL}/api/appointments/${appointmentId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    if (!res.ok) throw new Error('Failed to update appointment status');
+    return await res.json();
+  },
+
+
+  // Add this to the bottom of availabilityService.ts
+  createAppointment: async (appointmentData: any) => {
+    const res = await fetch(`${API_URL}/appointments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(appointmentData)
+    });
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.error || 'Failed to create appointment');
+    }
     return await res.json();
   }
 };

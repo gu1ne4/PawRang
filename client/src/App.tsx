@@ -26,6 +26,8 @@ import ChangeCreds from './global_pages/ChangeCreds';
 // Doctor Pages
 import DoctorHome from './doctor_pages/DoctorHome';
 import AdminHistory from './admin_pages/AdminHistory';
+
+
 import UserHome from './user_pages/UserHome'
 import UserAppointmentBook from './user_pages/UserAppointmentBook'
 import UserPetProfile from './user_pages/UserPetProfile'
@@ -59,6 +61,23 @@ function App() {
         <Route path="/audit" element={<AdminAuditPage />} />
         <Route path="/settings" element={<AdminSettingsPage />} />
         <Route path="/history" element={<AdminHistory/>} />
+
+
+
+        <Route path="/UserHome" element={<UserHome/>} />
+        <Route path="/user/appointment-book" element={<UserAppointmentBook/>} />
+        <Route path="/user/pet-profile" element={<UserPetProfile/>} />
+        <Route path="/user/appointment-view" element={<UserAppointmentView/>} />
+        <Route path="/user/profile" element={<UserProfile/>} />
+
+        <Route path="/Login" element={<GlobalLogin/>} />
+
+        
+        <Route path="/inventory" element={<GlobalInventory/>} />
+        <Route path="/patient-records" element={<GlobalEMR/>} />
+
+
+
 
         {/* Doctor Screens */}
         <Route path="/doctor-home" element={<DoctorHome />} />

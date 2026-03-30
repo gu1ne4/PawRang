@@ -299,6 +299,7 @@ const UserAppointmentView: React.FC = () => {
   };
 
   // Load user session
+// Load user session
   useEffect(() => {
     const loadUser = async () => {
       try {
@@ -307,7 +308,10 @@ const UserAppointmentView: React.FC = () => {
           setCurrentUser(JSON.parse(session));
         } else {
           setCurrentUser(null);
-          navigate('/');
+          
+          // 👇 TEMPORARILY DISABLED THE REDIRECT HERE 👇
+          // navigate('/'); 
+          
         }
       } catch (error) {
         console.error("Failed to load user session", error);
