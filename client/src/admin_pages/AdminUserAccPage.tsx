@@ -13,6 +13,7 @@ import {
 
 // Import your merged CSS file
 import './AdminStyles.css';
+import Navbar from '../reusable_components/NavBar';
 
 // Using standard imports for Vite images
 import logoImg from '../assets/AgsikapLogo-Temp.png';
@@ -394,95 +395,7 @@ export default function UserAccPage() {
   // ==========================================
   return (
     <div className="biContainer">
-      
-      {/* NAVBAR */}
-      <div className="navbarContainer">
-        <div className="navBody" style={{ background: 'linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9, #0f3bca)' }}>
-          <div className="navTitle" style={{ gap: '10px' }}>
-            <img src={logoImg} style={{ width: '25px', height: '25px', marginTop: '1px', objectFit: 'contain' }} alt="Logo" />
-            <span className="brandFont">Agsikap</span>
-          </div>
-          
-          <div className="glassContainer" style={{ paddingLeft: '8px' }}>
-            <div className="navAccount" style={{ gap: '8px' }}>
-              <img 
-                src={(currentUser && currentUser.userImage) ? currentUser.userImage : defaultUserImg} 
-                style={{ width: '35px', height: '35px', borderRadius: '25px', marginTop: '2px', objectFit: 'cover' }}
-                alt="Profile"
-              />
-              <div>
-                <div style={{ color: '#fff', fontSize: '13px', fontWeight: '600' }}>
-                  {currentUser ? currentUser.username : "Loading..."}
-                </div>
-                <div style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '10px' }}>
-                  {currentUser ? currentUser.role : "..."}
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <span style={{ color: 'rgba(255, 255, 255, 0.83)', fontSize: '11px', fontStyle: 'italic', marginLeft: '5px', marginTop: '20px', display: 'block' }}>Overview</span>
-          
-          <div className="glassContainer scrollable-nav">
-             <div style={{ marginTop: '8px' }}>
-              <button className="navBtn" onClick={() => navigate('/Home')}>
-                <IoHomeOutline size={15} color="#fffefe" style={{ marginTop: '2px' }}/>
-                <span className="navFont" style={{ fontWeight: '400' }}>Home</span>
-              </button>
-            </div> 
-            
-            <div className={isActive ? "selectedGlass" : ""}>
-              <button className="navBtn" onClick={() => setShowAccountDropdown(!showAccountDropdown)}>
-                <IoPeopleOutline size={15} color="#fffefe" style={{ marginTop: '2px' }}/>
-                <span className="navFont" style={{ fontWeight: '400' }}>Account Overview</span>
-                {showAccountDropdown ? 
-                  <IoChevronUpOutline size={14} color="#fffefe" style={{ marginLeft: '5px', marginTop: '2px' }} /> : 
-                  <IoChevronDownOutline size={14} color="#fffefe" style={{ marginLeft: '5px', marginTop: '2px' }} />
-                }
-              </button>
-                {showAccountDropdown && (
-                <div style={{ marginLeft: '25px', marginTop: '5px' }}>
-                    <div>
-                    <button className="navBtn" onClick={() => navigate('/Accounts')}>
-                        <IoPersonOutline size={14} color="#fffefe" style={{ marginTop: '2px' }}/>
-                        <span className="navFont" style={{ fontWeight: '400', fontSize: '12px' }}>Employees</span>
-                    </button>
-                    </div>
-                    <div className={isActive ? "subSelectedGlass" : ""} style={{ width: '100%' }}>
-                    <button className="navBtn" onClick={() => navigate('/UserAccounts')}>
-                        <IoMedkitOutline size={14} color="#fffefe" style={{ marginTop: '2px' }}/>
-                        <span className="navFont" style={{ fontWeight: '400', fontSize: '12px' }}>Users / Patients</span>
-                    </button>
-                    </div>
-                </div>
-                )}
-            </div>
-            
-            <div>
-              <button className="navBtn" onClick={() => navigate('/Audit')}>
-                <IoDocumentTextOutline size={15} color="#fffefe" style={{ marginTop: '2px' }}/>
-                <span className="navFont" style={{ fontWeight: '400' }}>System Audit</span>
-              </button>
-            </div>
-            
-            <div>
-              <button className="navBtn" onClick={() => navigate('/Settings')}>
-                <IoSettingsOutline size={15} color="#fffefe" style={{ marginTop: '2px' }}/>
-                <span className="navFont" style={{ fontWeight: '400' }}>Settings</span>
-              </button>
-            </div>
-          </div>
-          
-          <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', paddingBottom: '10px' }}>
-            <div className="glassContainer" style={{ paddingTop: '12px', paddingBottom: '12px' }}>
-              <button className="navBtn" onClick={handleLogoutPress} style={{ marginBottom: 0 }}>
-                <IoLogOutOutline size={15} color="#fffefe" style={{ marginTop: '2px' }}/>
-                <span className="navFont" style={{ fontWeight: '400' }}>Log Out</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
 
       {/* BODY CONTENT */}
       <div className="bodyContainer">

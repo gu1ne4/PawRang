@@ -36,11 +36,33 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
 
   const formatTimeForDisplay = (timeStr: string) => {
     if (!timeStr) return '';
+    if (/\b(AM|PM)\b/i.test(timeStr)) return timeStr.trim();
     const [hours, minutes] = timeStr.split(':');
     const hour = parseInt(hours);
     const ampm = hour >= 12 ? 'PM' : 'AM';
     const displayHour = hour % 12 || 12;
     return `${displayHour}:${minutes} ${ampm}`;
+  };
+
+  const toDbTime = (timeStr: string) => {
+    if (!timeStr) return '';
+    const trimmed = timeStr.trim();
+
+    if (/^\d{2}:\d{2}(:\d{2})?$/.test(trimmed)) {
+      return trimmed.length === 5 ? `${trimmed}:00` : trimmed;
+    }
+
+    const match = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
+    if (!match) return trimmed;
+
+    let hours = parseInt(match[1], 10);
+    const minutes = match[2];
+    const meridiem = match[3].toUpperCase();
+
+    if (meridiem === 'PM' && hours !== 12) hours += 12;
+    if (meridiem === 'AM' && hours === 12) hours = 0;
+
+    return `${String(hours).padStart(2, '0')}:${minutes}:00`;
   };
 
   // Load day availability on mount
@@ -152,6 +174,7 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
     try {
       const rescheduleData = {
         new_date: selectedDate,
+        new_time: toDbTime(selectedTimeSlot.startTime),
         new_time_slot_id: selectedTimeSlot.id,
         new_time_slot_display: selectedTimeSlot.displayText,
         reason: reason.trim() || null,

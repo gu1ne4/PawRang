@@ -8,7 +8,7 @@ import {
   IoTodayOutline, IoTimeOutline, IoDocumentTextOutline, IoSettingsOutline,
   IoLogOutOutline, IoNotifications, IoCheckmarkCircleOutline, IoCloseCircleOutline,
   IoAlertCircleOutline, IoAddCircle, IoFilterSharp, IoCloseCircle, IoEyeOutline,
-  IoClose, IoCamera, IoImageOutline, IoMedical, IoArrowBack, IoPersonCircleOutline,
+  IoClose, IoCamera, IoImageOutline, IoPersonCircleOutline,
   IoInformationCircle
 } from 'react-icons/io5';
 
@@ -18,6 +18,8 @@ import './AdminStyles.css';
 // 3. Using standard imports for Vite images
 import logoImg from '../assets/AgsikapLogo-Temp.png';
 import defaultUserImg from '../assets/userImg.jpg';
+import UserDetailsView from './UserDetailsView';
+import Navbar from '../reusable_components/NavBar';
 
 // Imported Modals and Services (Assuming these are also converted to React web)
 import AdminCancelAppointmentModal from './AdminCancelAppointmentModal';
@@ -637,7 +639,7 @@ const TableView = ({ onViewUser, loading, filteredAppointments, service, setServ
                         <th style={{ textAlign: 'center', width: '20%' }}>Time & Date</th>
                         <th style={{ textAlign: 'center', width: '15%' }}>Status</th>
                         <th style={{ textAlign: 'center', width: '20%' }}>Doctor</th>
-                        <th style={{ textAlign: 'right', width: '5%' }}>View</th>
+                        <th style={{ textAlign: 'right', width: '10%' }}>View</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -666,8 +668,23 @@ const TableView = ({ onViewUser, loading, filteredAppointments, service, setServ
                             </div>
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                            <button onClick={() => onViewUser(user)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                            <button
+                                onClick={() => onViewUser(user)}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #cdd8ff',
+                                    backgroundColor: '#f4f7ff',
+                                    color: '#3d67ee',
+                                    cursor: 'pointer',
+                                    fontWeight: '600',
+                                }}
+                            >
                                 <IoEyeOutline size={18} color="#3d67ee" />
+                                <span>View</span>
                             </button>
                         </td>
                     </tr>
@@ -689,134 +706,7 @@ const TableView = ({ onViewUser, loading, filteredAppointments, service, setServ
 };
 
 // ==========================================
-//  5. USER DETAILS VIEW
-// ==========================================
-const UserDetailsView = ({ user, onBack, onCancel, onComplete, onAssignDoctor, onReschedule }: any) => {
-    if (!user) return null;
-    
-    const userDetails = {
-        fullName: user.name,
-        email: user.patient_email,
-        phone: user.patient_phone,
-        reasonForVisit: user.reasonForVisit || 'Not provided',  
-        petName: user.pet_name,
-        petType: user.pet_type,
-        petBreed: 'Unknown', 
-        gender: user.petGender || 'Unknown'
-    };
-    
-    return (
-        <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', flex: 1, overflowY: 'auto', boxShadow: '0 0 18px rgba(0,0,0,0.05)' }}>
-            <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', marginBottom: '20px', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                <IoArrowBack size={20} color="#3d67ee" />
-                <span style={{ color: '#3d67ee', marginLeft: '8px', fontSize: '16px', fontWeight: '500' }}>Back to Appointments</span>
-            </button>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
-                <h2 style={{ fontSize: '25px', fontWeight: '700', margin: 0 }}>Patient Details</h2>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-                {/* User Info Section */}
-                <div>
-                    <h3 style={{ fontSize: '18px', color: '#3d67ee', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px', marginBottom: '15px' }}>Patient Information</h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                        <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Full Name</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.fullName}</div></div>
-                        <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Email</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.email}</div></div>
-                        <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Phone</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.phone}</div></div>
-                        <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Reason for Visit</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.reasonForVisit}</div></div>
-                    </div>
-                </div>
-
-                {/* Pet Information Section */}
-                <div>
-                    <h3 style={{ fontSize: '18px', color: '#3d67ee', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px', marginBottom: '15px' }}>Pet Information</h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                        <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Pet Name</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.petName}</div></div>
-                        <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Type</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.petType}</div></div>
-                        <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Breed</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.petBreed}</div></div>
-                        <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Gender</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.gender}</div></div>
-                    </div>
-                </div>
-
-                {/* Appointment Details Section */}
-                <div>
-                    <h3 style={{ fontSize: '18px', color: '#3d67ee', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px', marginBottom: '15px' }}>Appointment Details</h3>
-                    <div style={{ backgroundColor: '#f9f9f9', padding: '20px', borderRadius: '12px', border: '1px solid #eee' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                            <span style={{ fontSize: '16px', fontWeight: '600' }}>{user.service}</span>
-                            <span style={{ color: '#3d67ee', fontWeight: '600' }}>{user.date_time}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                                <span style={{ fontSize: '14px', color: '#666' }}>Assigned Doctor: </span>
-                                <strong style={{ color: user.doctor === 'Not Assigned' ? '#f57c00' : '#333' }}>{user.doctor}</strong>
-                            </div>
-                            <button 
-                                onClick={() => onAssignDoctor(user)}
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
-                                    backgroundColor: user.doctor === 'Not Assigned' ? '#fff3e0' : '#e8f5e9',
-                                    padding: '6px 12px', borderRadius: '6px', border: '1px solid',
-                                    borderColor: user.doctor === 'Not Assigned' ? '#ffcc80' : '#c8e6c9',
-                                    color: user.doctor === 'Not Assigned' ? '#f57c00' : '#2e7d32',
-                                    fontWeight: '600', fontSize: '12px'
-                                }}
-                            >
-                                <IoMedical size={14} />
-                                <span>{user.doctor === 'Not Assigned' ? 'Assign Doctor' : 'Change Doctor'}</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Actions */}
-                <div style={{ display: 'flex', justifyContent: 'space-around', padding: '20px 0', borderTop: '1px solid #eee' }}>
-                    <button 
-                        onClick={() => onReschedule(user)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', backgroundColor: '#3d67ee', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer' }}
-                    >
-                        <IoCalendarClearOutline size={18} />
-                        <span>Reschedule</span>
-                    </button>
-                    
-                    <button 
-                        onClick={() => onCancel(user)}
-                        disabled={user.status === 'cancelled'}
-                        style={{ 
-                            display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', 
-                            backgroundColor: user.status === 'cancelled' ? '#e0e0e0' : '#ffebee', 
-                            color: user.status === 'cancelled' ? '#757575' : '#d32f2f', 
-                            border: '1px solid', borderColor: user.status === 'cancelled' ? '#bdbdbd' : '#ffcdd2',
-                            borderRadius: '8px', fontWeight: '600', cursor: user.status === 'cancelled' ? 'not-allowed' : 'pointer' 
-                        }}
-                    >
-                        <IoCloseCircleOutline size={18} />
-                        <span>{user.status === 'cancelled' ? 'Cancelled' : 'Cancel'}</span>
-                    </button>
-                    
-                    <button 
-                        onClick={() => onComplete(user)}
-                        disabled={user.status === 'completed'}
-                        style={{ 
-                            display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', 
-                            backgroundColor: user.status === 'completed' ? '#e0e0e0' : '#e8f5e9', 
-                            color: user.status === 'completed' ? '#757575' : '#2e7d32', 
-                            border: '1px solid', borderColor: user.status === 'completed' ? '#bdbdbd' : '#c8e6c9',
-                            borderRadius: '8px', fontWeight: '600', cursor: user.status === 'completed' ? 'not-allowed' : 'pointer' 
-                        }}
-                    >
-                        <IoCheckmarkCircleOutline size={18} />
-                        <span>{user.status === 'completed' ? 'Completed' : 'Complete'}</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// ==========================================
-//  6. MAIN COMPONENT (SCHEDULE)
+//  5. MAIN COMPONENT (SCHEDULE)
 // ==========================================
 export default function Schedule() {
     const navigate = useNavigate();
@@ -1117,129 +1007,7 @@ export default function Schedule() {
 
     return (
         <div className="biContainer">
-            
-            {/* NAVBAR */}
-            <div className="navbarContainer">
-                <div className="navBody" style={{ background: 'linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9, #0f3bca)' }}>
-                    <div className="navTitle" style={{ gap: '10px' }}>
-                        <img src={logoImg} style={{ width: '25px', height: '25px', marginTop: '1px', objectFit: 'contain' }} alt="Logo" />
-                        <span className="brandFont">Agsikap</span>
-                    </div>
-
-                    <div className="glassContainer" style={{ paddingLeft: '8px' }}>
-                        <div className="navAccount" style={{ gap: '8px' }}>
-                            <img 
-                                src={(currentUser && currentUser.userImage) ? currentUser.userImage : defaultUserImg} 
-                                style={{ width: '35px', height: '35px', borderRadius: '25px', marginTop: '2px', objectFit: 'cover' }}
-                                alt="Profile"
-                            />
-                            <div>
-                                <div style={{ color: '#fff', fontSize: '13px', fontWeight: '600' }}>
-                                    {currentUser ? currentUser.username : "Loading..."}
-                                </div>
-                                <div style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: '10px' }}>
-                                    {currentUser ? currentUser.role : "..."}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <span style={{ color: 'rgba(255, 255, 255, 0.83)', fontSize: '11px', fontStyle: 'italic', marginLeft: '5px', marginTop: '20px', display: 'block' }}>Overview</span>
-
-                    {/* NAVIGATION MENU */}
-                    <div className="glassContainer scrollable-nav">
-                        <div style={{ marginTop: '8px' }}>
-                            <button className="navBtn" onClick={() => navigate('/Home')}>
-                                <IoHomeOutline size={15} color="#fffefe" style={{ marginTop: '2px' }}/>
-                                <span className="navFont" style={{ fontWeight: '400' }}>Home</span>
-                            </button>
-                        </div>
-
-                        <div>
-                            <button className="navBtn" onClick={() => setShowAccountDropdown(!showAccountDropdown)}>
-                                <IoPeopleOutline size={15} color="#fffefe" style={{ marginTop: '2px' }}/>
-                                <span className="navFont" style={{ fontWeight: '400' }}>Account Overview</span>
-                                {showAccountDropdown ? 
-                                    <IoChevronUpOutline size={14} color="#fffefe" style={{ marginLeft: '5px', marginTop: '2px' }} /> : 
-                                    <IoChevronDownOutline size={14} color="#fffefe" style={{ marginLeft: '5px', marginTop: '2px' }} />
-                                }
-                            </button>
-                            {showAccountDropdown && (
-                            <div style={{ marginLeft: '25px', marginTop: '5px' }}>
-                                <div>
-                                <button className="navBtn" onClick={() => navigate('/Accounts')}>
-                                    <IoPersonOutline size={14} color="#fffefe" style={{ marginTop: '2px' }}/>
-                                    <span className="navFont" style={{ fontWeight: '400', fontSize: '12px' }}>Employees</span>
-                                </button>
-                                </div>
-                                <div>
-                                <button className="navBtn" onClick={() => navigate('/UserAccounts')}>
-                                    <IoMedkitOutline size={14} color="#fffefe" style={{ marginTop: '2px' }}/>
-                                    <span className="navFont" style={{ fontWeight: '400', fontSize: '12px' }}>Users / Patients</span>
-                                </button>
-                                </div>
-                            </div>
-                            )}
-                        </div>
-
-                        <div>
-                            <button className="navBtn" onClick={() => setShowAppointmentsDropdown(!showAppointmentsDropdown)}>
-                                <IoCalendarClearOutline size={15} color="#fffefe" style={{ marginTop: '2px' }}/>
-                                <span className="navFont" style={{ fontWeight: '400' }}>Appointments</span>
-                                {showAppointmentsDropdown ? 
-                                    <IoChevronUpOutline size={14} color="#fffefe" style={{ marginLeft: '5px', marginTop: '2px' }} /> : 
-                                    <IoChevronDownOutline size={14} color="#fffefe" style={{ marginLeft: '5px', marginTop: '2px' }} />
-                                }
-                            </button>
-                            {showAppointmentsDropdown && (
-                            <div style={{ marginLeft: '25px', marginTop: '5px' }}>
-                                <div className={isActive ? "subSelectedGlass" : ""} style={{ width: '100%' }}>
-                                <button className="navBtn" onClick={() => navigate('/Schedule')}>
-                                    <IoCalendarOutline size={14} color="#fffefe" style={{ marginTop: '2px' }}/>
-                                    <span className="navFont" style={{ fontWeight: '400', fontSize: '12px' }}>Schedule</span>
-                                </button>
-                                </div>
-                                <div>
-                                <button className="navBtn" onClick={() => navigate('/AvailSettings')}>
-                                    <IoTodayOutline size={14} color="#fffefe" style={{ marginTop: '2px' }}/>
-                                    <span className="navFont" style={{ fontWeight: '400', fontSize: '12px' }}>Availability</span>
-                                </button>
-                                </div>
-                                <div>
-                                <button className="navBtn" onClick={() => navigate('/History')}>
-                                    <IoTimeOutline size={14} color="#fffefe" style={{ marginTop: '2px' }}/>
-                                    <span className="navFont" style={{ fontWeight: '400', fontSize: '12px' }}>History</span>
-                                </button>
-                                </div>
-                            </div>
-                            )}
-                        </div>
-
-                        <div>
-                            <button className="navBtn" onClick={() => navigate('/Audit')}>
-                                <IoDocumentTextOutline size={15} color="#fffefe" style={{ marginTop: '2px' }}/>
-                                <span className="navFont" style={{ fontWeight: '400' }}>System Audit</span>
-                            </button>
-                        </div>
-
-                        <div>
-                            <button className="navBtn" onClick={() => navigate('/Settings')}>
-                                <IoSettingsOutline size={15} color="#fffefe" style={{ marginTop: '2px' }}/>
-                                <span className="navFont" style={{ fontWeight: '400' }}>Settings</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', paddingBottom: '10px' }}>
-                        <div className="glassContainer" style={{ paddingTop: '12px', paddingBottom: '12px' }}>
-                            <button className="navBtn" onClick={handleLogoutPress} style={{ marginBottom: 0 }}>
-                                <IoLogOutOutline size={15} color="#fffefe" style={{ marginTop: '2px' }}/>
-                                <span className="navFont" style={{ fontWeight: '400' }}>Log Out</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
 
             {/* BODY CONTAINER */}
             <div className="bodyContainer">

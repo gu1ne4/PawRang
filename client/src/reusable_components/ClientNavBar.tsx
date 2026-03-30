@@ -13,14 +13,15 @@ import {
 
 // Types and Interfaces
 interface User {
-  id?: number;
-  pk?: number;
+  id?: string | number;
+  pk?: string | number;
   username: string;
   fullname?: string;
   fullName?: string;
   userImage?: string;
   userimage?: string;
   email?: string;
+  contact_number?: string;
   contactnumber?: string;
   contactNumber?: string;
   address?: string;

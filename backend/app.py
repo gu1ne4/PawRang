@@ -10,6 +10,180 @@ import random
 import string
 from datetime import datetime, timedelta
 
+day_availability_store = {
+    "sunday": False,
+    "monday": True,
+    "tuesday": True,
+    "wednesday": True,
+    "thursday": True,
+    "friday": True,
+    "saturday": False,
+}
+time_slots_store = {
+    day: [] for day in ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
+}
+special_dates_store = []
+
+
+def title_name(value):
+    return (value or "").replace("_", " ").title()
+
+
+def build_display_name(profile):
+    full = f"{profile.get('firstName', '')} {profile.get('lastName', '')}".strip()
+    return full or profile.get('username') or profile.get('email') or "Unknown"
+
+
+def normalize_db_time(value):
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+
+    if " - " in raw:
+        raw = raw.split(" - ")[0].strip()
+
+    for fmt in ("%H:%M:%S", "%H:%M", "%I:%M %p", "%I:%M:%S %p"):
+        try:
+            return datetime.strptime(raw, fmt).strftime("%H:%M:%S")
+        except ValueError:
+            continue
+
+    return raw
+
+
+def format_time_for_email(value):
+    normalized = normalize_db_time(value)
+    if not normalized:
+        return "TBD"
+    for fmt in ("%H:%M:%S", "%H:%M"):
+        try:
+            return datetime.strptime(normalized, fmt).strftime("%I:%M %p").lstrip("0")
+        except ValueError:
+            continue
+    return normalized
+
+
+def format_date_for_email(value):
+    raw = (value or "").strip()
+    if not raw:
+        return "TBD"
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(raw, fmt).strftime("%B %d, %Y")
+        except ValueError:
+            continue
+    return raw
+
+
+def send_html_email(to_email, subject, html):
+    smtp_email = os.environ.get('SMTP_EMAIL')
+    smtp_pass = os.environ.get('SMTP_PASSWORD')
+
+    if not smtp_email or not smtp_pass:
+        raise ValueError("SMTP_EMAIL and SMTP_PASSWORD must be configured")
+
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = subject
+    msg['From'] = smtp_email
+    msg['To'] = to_email
+    msg.attach(MIMEText(html, 'html'))
+
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+        server.login(smtp_email, smtp_pass)
+        server.sendmail(smtp_email, to_email, msg.as_string())
+
+
+def send_appointment_status_email(notification_type, patient_email, patient_name, pet_name, service, appointment_date, appointment_time, reason=""):
+    if not patient_email:
+        raise ValueError("Patient email is missing")
+
+    safe_patient = patient_name or "Patient"
+    safe_pet = pet_name or "your pet"
+    safe_service = service or "appointment"
+    display_date = format_date_for_email(appointment_date)
+    display_time = format_time_for_email(appointment_time)
+    reason_html = f"<p><strong>Reason:</strong> {reason}</p>" if reason else ""
+
+    if notification_type == "cancelled":
+        subject = "Your PawRang Appointment Has Been Cancelled"
+        heading = "Appointment Cancelled"
+        intro = f"Hello {safe_patient}, your appointment for <strong>{safe_pet}</strong> has been cancelled by the clinic."
+    elif notification_type == "rescheduled":
+        subject = "Your PawRang Appointment Has Been Rescheduled"
+        heading = "Appointment Rescheduled"
+        intro = f"Hello {safe_patient}, your appointment for <strong>{safe_pet}</strong> has been rescheduled by the clinic."
+    else:
+        raise ValueError(f"Unsupported notification type: {notification_type}")
+
+    html = f"""
+        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
+            <h2>{heading}</h2>
+            <p>{intro}</p>
+            <p><strong>Service:</strong> {safe_service}</p>
+            <p><strong>Date:</strong> {display_date}</p>
+            <p><strong>Time:</strong> {display_time}</p>
+            {reason_html}
+            <p>If you have any questions, please contact the clinic.</p>
+            <p>Thank you,<br/>PawRang Veterinary Clinic</p>
+        </div>
+    """
+
+    send_html_email(patient_email, subject, html)
+
+
+def format_admin_appointment(appointment, patients_by_id, pets_by_id, doctors_by_id):
+    owner = patients_by_id.get(appointment.get("owner_id"), {})
+    pet = pets_by_id.get(appointment.get("pet_id"), {})
+    doctor_id = appointment.get("assigned_doctor_id") or appointment.get("doctor_id")
+    doctor_profile = doctors_by_id.get(doctor_id, {}) if doctor_id else {}
+    doctor_name = (
+        f"{doctor_profile.get('first_name', '')} {doctor_profile.get('last_name', '')}".strip()
+        or doctor_profile.get("username")
+        or "Not Assigned"
+    )
+
+    date_part = appointment.get("appointment_date") or ""
+    time_part = appointment.get("appointment_time") or ""
+    date_time = f"{date_part} - {time_part}" if date_part or time_part else ""
+
+    return {
+        "id": appointment.get("appointment_id"),
+        "appointment_id": appointment.get("appointment_id"),
+        "name": build_display_name(owner),
+        "patient_email": owner.get("email"),
+        "patient_phone": owner.get("contact_number"),
+        "service": appointment.get("appointment_type") or "Unknown",
+        "date_time": date_time,
+        "status": (appointment.get("status") or "pending").lower(),
+        "doctor": doctor_name,
+        "assignedDoctor": doctor_id,
+        "pet_name": pet.get("pet_name"),
+        "pet_type": pet.get("pet_species"),
+        "petGender": pet.get("pet_gender"),
+        "reasonForVisit": appointment.get("patient_reason") or "",
+    }
+
+
+def load_admin_appointments():
+    appointments = supabase_admin.table("appointments").select("*").execute().data or []
+    patients = supabase_admin.table("patient_account").select("*").execute().data or []
+    pets = supabase_admin.table("pet_profile").select("*").execute().data or []
+    doctors = supabase_admin.table("employee_accounts").select("*").execute().data or []
+
+    patients_by_id = {item.get("id"): item for item in patients}
+    pets_by_id = {item.get("pet_id"): item for item in pets}
+    doctors_by_id = {
+        item.get("id"): item for item in doctors
+        if (item.get("role") or "").lower() in ("vet", "doctor", "veterinarian", "receptionist", "admin")
+    }
+
+    return [
+        build for build in (
+            format_admin_appointment(item, patients_by_id, pets_by_id, doctors_by_id)
+            for item in appointments
+        )
+    ]
+
 load_dotenv()
 app = Flask(__name__)
 CORS(app, resources={r'/*': {'origins': '*'}})
@@ -684,6 +858,325 @@ def get_branches():
 
     except Exception as e:
         print("Fetch branches error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+# -----------------------------------------------
+# ADMIN COMPATIBILITY ROUTES
+# -----------------------------------------------
+@app.route('/accounts', methods=['GET'])
+def get_accounts():
+    try:
+        res = supabase_admin.table('employee_accounts').select('*').execute()
+        return jsonify(res.data or []), 200
+    except Exception as e:
+        print("Fetch accounts error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/day-availability', methods=['GET'])
+def get_day_availability():
+    return jsonify([
+        {"day_of_week": day, "is_available": value}
+        for day, value in day_availability_store.items()
+    ]), 200
+
+
+@app.route('/api/day-availability', methods=['POST'])
+def create_day_availability():
+    data = request.get_json() or {}
+    day = (data.get('day_of_week') or '').lower()
+    if day not in day_availability_store:
+        return jsonify({"error": "Invalid day_of_week"}), 400
+    day_availability_store[day] = bool(data.get('is_available'))
+    return jsonify({"message": "Day availability saved", "day_of_week": day, "is_available": day_availability_store[day]}), 200
+
+
+@app.route('/api/day-availability/<day_name>', methods=['PUT'])
+def update_day_availability(day_name):
+    day = (day_name or '').lower()
+    if day not in day_availability_store:
+        return jsonify({"error": "Invalid day"}), 404
+    data = request.get_json() or {}
+    day_availability_store[day] = bool(data.get('is_available'))
+    return jsonify({"message": "Day availability updated", "day_of_week": day, "is_available": day_availability_store[day]}), 200
+
+
+@app.route('/api/time-slots/<day_name>', methods=['GET'])
+def get_time_slots(day_name):
+    day = (day_name or '').lower()
+    return jsonify({"timeSlots": time_slots_store.get(day, [])}), 200
+
+
+@app.route('/api/time-slots/<day_name>', methods=['POST'])
+def save_time_slots(day_name):
+    day = (day_name or '').lower()
+    slots = (request.get_json() or {}).get('slots', [])
+    normalized = []
+    for idx, slot in enumerate(slots, start=1):
+        normalized.append({
+            "id": slot.get("id") or f"{day}-{idx}",
+            "start_time": slot.get("startTime") or slot.get("start_time"),
+            "end_time": slot.get("endTime") or slot.get("end_time"),
+            "capacity": slot.get("capacity", 1),
+        })
+    time_slots_store[day] = normalized
+    return jsonify({"message": "Time slots saved", "timeSlots": normalized}), 200
+
+
+@app.route('/api/time-slots/<slot_id>', methods=['DELETE'])
+def delete_time_slot(slot_id):
+    for day, slots in time_slots_store.items():
+        filtered = [slot for slot in slots if str(slot.get("id")) != str(slot_id)]
+        if len(filtered) != len(slots):
+            time_slots_store[day] = filtered
+            return jsonify({"message": "Time slot deleted"}), 200
+    return jsonify({"error": "Time slot not found"}), 404
+
+
+@app.route('/api/appointments/booked-slots/<time_slot_id>', methods=['GET'])
+def get_booked_slots(time_slot_id):
+    date = request.args.get('date')
+    appointments = supabase_admin.table('appointments').select('*').eq('appointment_date', date).execute().data or []
+    slot = None
+    for slots in time_slots_store.values():
+        slot = next((item for item in slots if str(item.get("id")) == str(time_slot_id)), None)
+        if slot:
+            break
+    if not slot:
+        return jsonify({"bookedCount": 0, "capacity": 1, "availableSlots": 1}), 200
+
+    slot_time = normalize_db_time(slot.get('start_time'))
+    booked_count = sum(
+        1 for item in appointments
+        if normalize_db_time(item.get("appointment_time")) == slot_time
+    )
+    capacity = slot.get("capacity", 1)
+    return jsonify({
+        "bookedCount": booked_count,
+        "capacity": capacity,
+        "availableSlots": max(capacity - booked_count, 0),
+    }), 200
+
+
+@app.route('/api/appointments', methods=['POST'])
+def create_admin_appointment():
+    return jsonify({"error": "Admin-side create appointment is not yet supported by this backend flow."}), 400
+
+
+@app.route('/api/appointments/table', methods=['GET'])
+def get_appointments_table():
+    try:
+        return jsonify({"appointments": load_admin_appointments()}), 200
+    except Exception as e:
+        print("Appointments table error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/appointments/history', methods=['GET'])
+def get_appointments_history():
+    try:
+        history = [
+            item for item in load_admin_appointments()
+            if item.get("status") in ("completed", "cancelled")
+        ]
+        return jsonify({"appointments": history}), 200
+    except Exception as e:
+        print("Appointments history error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/appointments/<int:appointment_id>/cancel-with-reason', methods=['PUT'])
+def cancel_appointment_with_reason(appointment_id):
+    data = request.get_json() or {}
+    cancel_reason = data.get("cancellation_details") or data.get("cancel_reason") or ""
+    try:
+        check = supabase_admin.table('appointments') \
+            .select('status, owner_id, pet_id, appointment_type, appointment_date, appointment_time') \
+            .eq('appointment_id', appointment_id) \
+            .single() \
+            .execute()
+
+        if not check.data:
+            return jsonify({"error": "Appointment not found"}), 404
+
+        if check.data['status'] in ('cancelled', 'completed'):
+            return jsonify({"error": f"Cannot cancel an appointment with status '{check.data['status']}'"}), 400
+
+        appointment = check.data
+
+        supabase_admin.table('appointments').update({
+            "status": "cancelled",
+            "patient_reason": cancel_reason,
+        }).eq('appointment_id', appointment_id).execute()
+
+        email_sent = False
+        try:
+            patient = get_single_row('patient_account', 'id', appointment.get('owner_id'))
+            pet = get_single_row('pet_profile', 'pet_id', appointment.get('pet_id'))
+            send_appointment_status_email(
+                'cancelled',
+                patient.get('email') if patient else None,
+                build_display_name(patient or {}),
+                (pet or {}).get('pet_name'),
+                appointment.get('appointment_type'),
+                appointment.get('appointment_date'),
+                appointment.get('appointment_time'),
+                cancel_reason,
+            )
+            email_sent = True
+        except Exception as mail_err:
+            print("Cancel notification email error:", str(mail_err))
+
+        return jsonify({"message": "Appointment cancelled successfully", "emailSent": email_sent}), 200
+    except Exception as e:
+        print("Cancel with reason error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/appointments/<int:appointment_id>/reschedule', methods=['POST'])
+def create_admin_reschedule_request(appointment_id):
+    data = request.get_json() or {}
+    new_date = data.get("new_date")
+    new_time = data.get("new_time")
+    new_time_slot_id = data.get("new_time_slot_id")
+    reschedule_reason = data.get("reason") or data.get("reschedule_reason") or ""
+
+    if not new_time and new_time_slot_id and new_date:
+        day_name = datetime.strptime(new_date, "%Y-%m-%d").strftime("%A").lower()
+        slot = next(
+            (item for item in time_slots_store.get(day_name, []) if str(item.get("id")) == str(new_time_slot_id)),
+            None
+        )
+        if slot:
+            new_time = normalize_db_time(slot.get("start_time"))
+
+    if not new_time:
+        new_time = normalize_db_time(data.get("new_time_slot_display"))
+
+    if not new_date or not new_time:
+        return jsonify({"error": "new_date and new_time are required"}), 400
+
+    try:
+        check = supabase_admin.table('appointments') \
+            .select('status, owner_id, pet_id, appointment_type') \
+            .eq('appointment_id', appointment_id) \
+            .single() \
+            .execute()
+
+        if not check.data:
+            return jsonify({"error": "Appointment not found"}), 404
+
+        if check.data['status'] in ('cancelled', 'completed'):
+            return jsonify({"error": f"Cannot reschedule an appointment with status '{check.data['status']}'"}), 400
+
+        appointment = check.data
+
+        supabase_admin.table('appointments').update({
+            "appointment_date": new_date,
+            "appointment_time": new_time,
+            "patient_reason": reschedule_reason,
+            "status": "pending",
+        }).eq('appointment_id', appointment_id).execute()
+
+        email_sent = False
+        try:
+            patient = get_single_row('patient_account', 'id', appointment.get('owner_id'))
+            pet = get_single_row('pet_profile', 'pet_id', appointment.get('pet_id'))
+            send_appointment_status_email(
+                'rescheduled',
+                patient.get('email') if patient else None,
+                build_display_name(patient or {}),
+                (pet or {}).get('pet_name'),
+                appointment.get('appointment_type'),
+                new_date,
+                new_time,
+                reschedule_reason,
+            )
+            email_sent = True
+        except Exception as mail_err:
+            print("Reschedule notification email error:", str(mail_err))
+
+        return jsonify({"message": "Reschedule request submitted successfully", "emailSent": email_sent}), 200
+    except Exception as e:
+        print("Admin reschedule error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/available-time-slots', methods=['GET'])
+def get_available_time_slots():
+    date = request.args.get('date')
+    if not date:
+        return jsonify({"timeSlots": []}), 200
+
+    day_name = datetime.strptime(date, "%Y-%m-%d").strftime("%A").lower()
+    slots = time_slots_store.get(day_name, [])
+    appointments = supabase_admin.table('appointments').select('*').eq('appointment_date', date).execute().data or []
+    time_slots = []
+    for slot in slots:
+        display = f"{slot.get('start_time')} - {slot.get('end_time')}"
+        slot_time = normalize_db_time(slot.get("start_time"))
+        booked_count = sum(
+            1 for item in appointments
+            if normalize_db_time(item.get("appointment_time")) == slot_time
+        )
+        capacity = slot.get("capacity", 1)
+        time_slots.append({
+            "id": slot.get("id"),
+            "start_time": slot.get("start_time"),
+            "end_time": slot.get("end_time"),
+            "availableSlots": max(capacity - booked_count, 0),
+        })
+    return jsonify({"timeSlots": time_slots}), 200
+
+
+@app.route('/api/appointments/<int:appointment_id>/assign-doctor', methods=['PUT'])
+def assign_doctor(appointment_id):
+    doctor_id = (request.get_json() or {}).get("doctorId")
+    try:
+        response = supabase_admin.table('appointments') \
+            .update({"assigned_doctor_id": doctor_id}) \
+            .eq('appointment_id', appointment_id) \
+            .execute()
+        return jsonify({"message": "Doctor assigned successfully", "appointment": response.data[0] if response.data else None}), 200
+    except Exception as e:
+        print("Assign doctor warning:", str(e))
+        return jsonify({"message": "Doctor assignment was accepted for UI flow, but could not be persisted.", "warning": str(e)}), 200
+
+
+@app.route('/api/special-dates', methods=['GET'])
+def get_special_dates():
+    return jsonify({"specialDates": special_dates_store}), 200
+
+
+@app.route('/api/special-dates', methods=['POST'])
+def save_special_dates():
+    data = request.get_json() or {}
+    event = {"event_name": data.get("event_name"), "event_date": data.get("event_date")}
+    special_dates_store.append(event)
+    return jsonify({"message": "Special date saved", "specialDate": event}), 200
+
+
+@app.route('/api/special-dates/<event_date>', methods=['DELETE'])
+def delete_special_dates(event_date):
+    global special_dates_store
+    special_dates_store = [item for item in special_dates_store if item.get("event_date") != event_date]
+    return jsonify({"message": "Special date deleted"}), 200
+
+
+@app.route('/api/appointments/<int:appointment_id>/status', methods=['PUT'])
+def update_admin_appointment_status(appointment_id):
+    status = ((request.get_json() or {}).get("status") or "").lower()
+    if status not in ("pending", "completed", "cancelled", "scheduled"):
+        return jsonify({"error": "Invalid status"}), 400
+    try:
+        response = supabase_admin.table('appointments') \
+            .update({"status": status}) \
+            .eq('appointment_id', appointment_id) \
+            .execute()
+        return jsonify({"message": "Appointment status updated", "appointment": response.data[0] if response.data else None}), 200
+    except Exception as e:
+        print("Update appointment status error:", str(e))
         return jsonify({"error": str(e)}), 400
 
 

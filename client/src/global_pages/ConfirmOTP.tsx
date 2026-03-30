@@ -203,7 +203,9 @@ export default function ConfirmOTP() {
                     {otp.map((digit, index) => (
                         <input
                             key={index}
-                            ref={(el) => (inputRefs.current[index] = el)}
+                            ref={(el) => {
+                                inputRefs.current[index] = el;
+                            }}
                             className={`otpBox${otpError || otpExpired ? ' otpBoxError' : ''}`}
                             type="text"
                             inputMode="numeric"

@@ -13,6 +13,7 @@ import AdminCancelAppointmentModal from './admin_pages/AdminCancelAppointmentMod
 import AdminSchedule from './admin_pages/AdminSchedule'
 import AdminRescheduleModal from './admin_pages/AdminRescheduleModal'
 import AdminAvailSettings from './admin_pages/AdminAvailSettings'
+import AdminHistory from './admin_pages/AdminHistory'
 
 import Registration from './global_pages/Registration'
 import Login from './global_pages/Login'
@@ -39,12 +40,23 @@ function App() {
         <Route path="/admin/users" element={<AdminUserAccPage />} />
         <Route path="/admin/settings" element={<AdminSettingsPage />} />
         <Route path="/admin/audit" element={<AdminAuditPage />} />
+        <Route path="/admin/history" element={<AdminHistory />} />
 
         {/* Admin Appointment Module */}
         <Route path="/admin/schedule" element={<AdminSchedule />} />
         <Route path="/admin/reschedule" element={<AdminRescheduleModal />} />
         <Route path="/admin/availability" element={<AdminAvailSettings />} />
         <Route path="/admin/cancel-appointment" element={<AdminCancelAppointmentModal />} />
+
+        {/* Legacy Admin Routes */}
+        <Route path="/Home" element={<Navigate to="/admin/home" replace />} />
+        <Route path="/Accounts" element={<Navigate to="/admin/home" replace />} />
+        <Route path="/UserAccounts" element={<Navigate to="/admin/users" replace />} />
+        <Route path="/Schedule" element={<Navigate to="/admin/schedule" replace />} />
+        <Route path="/AvailSettings" element={<Navigate to="/admin/availability" replace />} />
+        <Route path="/History" element={<Navigate to="/admin/history" replace />} />
+        <Route path="/Audit" element={<Navigate to="/admin/audit" replace />} />
+        <Route path="/Settings" element={<Navigate to="/admin/settings" replace />} />
 
         {/* Doctor Routes */}
         <Route path="/doctor/home" element={<DoctorHome />} />

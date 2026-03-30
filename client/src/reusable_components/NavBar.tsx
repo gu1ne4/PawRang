@@ -25,11 +25,11 @@ import {
 // Define the props that the Navbar will receive
 interface NavbarProps {
   currentUser: {
-    id?: number;
-    pk?: number;
-    username: string;
+    id?: string | number;
+    pk?: string | number;
+    username?: string;
     fullName?: string;
-    role: string;
+    role?: string;
     userImage?: string;
   } | null;
   onLogout: () => void;
@@ -39,12 +39,12 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isActive = (path: string): boolean => {
-    return location.pathname === path;
-  };
+  const isActive = (path: string): boolean => location.pathname === path;
+  const isAppointmentsSection = ['/admin/schedule', '/admin/availability', '/admin/history'].includes(location.pathname);
+  const isAccountsSection = ['/admin/home', '/admin/users'].includes(location.pathname);
   
-  const [showAccountDropdown, setShowAccountDropdown] = useState<boolean>(false);
-  const [showAppointmentsDropdown, setShowAppointmentsDropdown] = useState<boolean>(false);
+  const [showAccountDropdown, setShowAccountDropdown] = useState<boolean>(isAccountsSection);
+  const [showAppointmentsDropdown, setShowAppointmentsDropdown] = useState<boolean>(isAppointmentsSection);
 
   return (
     <div className="navbarContainer">
@@ -80,8 +80,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
           <div className="navMenu">
             <div className="navMenuSection" style={{marginTop: '10px'}}>
               <button 
-                className={`navBtn ${isActive('/home') ? 'active' : ''}`} 
-                onClick={() => navigate('/home')}
+                className={`navBtn ${isActive('/admin/home') ? 'active' : ''}`} 
+                onClick={() => navigate('/admin/home')}
               >
                 <IoHomeOutline size={15} />
                 <span>Home</span>
@@ -90,8 +90,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
 
             <div className="navMenuSection">
               <button 
-                className={`navBtn ${isActive('/analytics') ? 'active' : ''}`} 
-                onClick={() => navigate('/analytics')}
+                className={`navBtn ${isActive('/admin/dashboard') ? 'active' : ''}`} 
+                onClick={() => navigate('/admin/dashboard')}
               >
                 <TbPresentationAnalytics size={15} />
                 <span>Analytics</span>
@@ -99,7 +99,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
             </div>
 
             <div className="navMenuSection">
-              <div className={isActive('/accounts') || isActive('/useraccounts') ? 'selectedGlass' : ''}>
+              <div className={isAccountsSection ? 'selectedGlass' : ''}>
                 <button className="navBtn" onClick={() => setShowAccountDropdown(!showAccountDropdown)}>
                   <IoPeopleOutline size={15} />
                   <span>Account Overview</span>
@@ -109,14 +109,14 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
 
               {showAccountDropdown && (
                 <div className="navSubMenu">
-                  <div className={isActive('/accounts') ? 'subSelectedGlass' : ''}>
-                    <button className="navBtn subNavBtn" onClick={() => navigate('/accounts')}>
+                  <div className={isActive('/admin/home') ? 'subSelectedGlass' : ''}>
+                    <button className="navBtn subNavBtn" onClick={() => navigate('/admin/home')}>
                       <IoPersonOutline size={14} />
                       <span>Employees</span>
                     </button>
                   </div>
-                  <div className={isActive('/useraccounts') ? 'subSelectedGlass' : ''}>
-                    <button className="navBtn subNavBtn" onClick={() => navigate('/useraccounts')}>
+                  <div className={isActive('/admin/users') ? 'subSelectedGlass' : ''}>
+                    <button className="navBtn subNavBtn" onClick={() => navigate('/admin/users')}>
                       <PiUsersThree size={18} />
                       <span>Users</span>
                     </button>
@@ -126,11 +126,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
             </div>
 
             <div className="navMenuSection">
-              <div className={
-                isActive('/schedule') || isActive('/availSettings') || isActive('/history') 
-                  ? 'selectedGlass' 
-                  : ''
-              }>
+              <div className={isAppointmentsSection ? 'selectedGlass' : ''}>
                 <button className="navBtn" onClick={() => setShowAppointmentsDropdown(!showAppointmentsDropdown)}>
                   <IoCalendarClearOutline size={15} />
                   <span>Appointments</span>
@@ -140,20 +136,20 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
 
               {showAppointmentsDropdown && (
                 <div className="navSubMenu">
-                  <div className={isActive('/schedule') ? 'subSelectedGlass' : ''}>
-                    <button className="navBtn subNavBtn" onClick={() => navigate('/schedule')}>
+                  <div className={isActive('/admin/schedule') ? 'subSelectedGlass' : ''}>
+                    <button className="navBtn subNavBtn" onClick={() => navigate('/admin/schedule')}>
                       <IoCalendarOutline size={14} />
                       <span>Schedule</span>
                     </button>
                   </div>
-                  <div className={isActive('/availSettings') ? 'subSelectedGlass' : ''}>
-                    <button className="navBtn subNavBtn" onClick={() => navigate('/availSettings')}>
+                  <div className={isActive('/admin/availability') ? 'subSelectedGlass' : ''}>
+                    <button className="navBtn subNavBtn" onClick={() => navigate('/admin/availability')}>
                       <IoTodayOutline size={14} />
                       <span>Availability Settings</span>
                     </button>
                   </div>
-                  <div className={isActive('/history') ? 'subSelectedGlass' : ''}>
-                    <button className="navBtn subNavBtn" onClick={() => navigate('/history')}>
+                  <div className={isActive('/admin/history') ? 'subSelectedGlass' : ''}>
+                    <button className="navBtn subNavBtn" onClick={() => navigate('/admin/history')}>
                       <IoTimeOutline size={14} />
                       <span>History</span>
                     </button>
@@ -165,8 +161,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
             {/* Patient Records - New Section */}
             <div className="navMenuSection">
               <button 
-                className={`navBtn ${isActive('/patient-records') ? 'active' : ''}`} 
-                onClick={() => navigate('/patient-records')}
+                className="navBtn"
+                type="button"
               >
                 <IoDocumentText size={15} />
                 <span>Patient Records</span>
@@ -176,8 +172,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
             {/* Inventory - New Section */}
             <div className="navMenuSection">
               <button 
-                className={`navBtn ${isActive('/inventory') ? 'active' : ''}`} 
-                onClick={() => navigate('/inventory')}
+                className="navBtn"
+                type="button"
               >
                 <IoLayersOutline size={15} />
                 <span>Inventory</span>
@@ -186,8 +182,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
 
             <div className="navMenuSection">
               <button 
-                className={`navBtn ${isActive('/audit') ? 'active' : ''}`} 
-                onClick={() => navigate('/audit')}
+                className={`navBtn ${isActive('/admin/audit') ? 'active' : ''}`} 
+                onClick={() => navigate('/admin/audit')}
               >
                 <IoFileTrayFullOutline size={15} />
                 <span>System Audit</span>
@@ -196,8 +192,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
 
             <div className="navMenuSection">
               <button 
-                className={`navBtn ${isActive('/settings') ? 'active' : ''}`} 
-                onClick={() => navigate('/settings')}
+                className={`navBtn ${isActive('/admin/settings') ? 'active' : ''}`} 
+                onClick={() => navigate('/admin/settings')}
               >
                 <IoSettingsOutline size={15} />
                 <span>Settings</span>
