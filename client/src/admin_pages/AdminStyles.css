@@ -32,12 +32,17 @@ html, body {
   overflow: hidden;
 }
 
-/* Navbar Styles */
 .navbarContainer {
-  flex: 1;
-  padding: 36px 15px 30px 30px;
-  box-shadow: 0 0 18px rgba(0, 0, 0, 0.15);
-  height: 100vh;
+  width: 16%;
+  padding: 30px;
+  padding-top: 36px;
+  padding-right: 15px;
+  box-shadow: 0px 0px 18px rgba(0, 0, 0, 0.15);
+}
+
+.navbarContainer.collapsed {
+  flex: 0.3;
+  min-width: 80px;
 }
 
 .navBody {
@@ -48,33 +53,184 @@ html, body {
   display: flex;
   flex-direction: column;
   background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9, #0f3bca);
-  color: white;
 }
 
+/* Logo container styles */
 .navTitle {
   width: 100%;
-  padding: 20px;
+  padding: 15px 20px;
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 10px;
+  position: relative;
+}
+
+.navbarContainer:not(.collapsed) .navTitle {
+  justify-content: center;
+  position: relative;
+}
+
+/* Collapsed state - everything centered */
+.navbarContainer.collapsed .navTitle {
+  justify-content: center;
+  padding: 15px 10px;
+}
+
+.navLogoContainer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease-in-out;
+}
+
+.navbarContainer:not(.collapsed) .navLogoContainer {
+  justify-content: center;
+  width: 100%;
+  transition: all 0.3s ease-in-out;
+}
+
+.navbarContainer.collapsed .navLogoContainer {
+  justify-content: center;
+  position: relative;
+  min-height: 48px; /* Fixed height to prevent layout shift */
+  width: 100%;
 }
 
 .navLogo {
-  width: 25px;
-  height: 25px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
+  transition: opacity 0.2s ease, visibility 0.2s ease; /* Only transition opacity and visibility */
+  position: relative;
+  z-index: 1;
+}
+
+/* Make logo bigger when collapsed */
+.navbarContainer.collapsed .navLogo {
+  width: 36px;
+  height: 36px;
+}
+
+/* Hide logo when hovering in collapsed mode */
+.navbarContainer.collapsed .navTitle:hover .navLogo {
+  opacity: 0;
+  visibility: hidden;
 }
 
 .brandFont {
   color: #ffffff;
   font-size: 18px;
   font-weight: 600;
+  transition: all 0.3s ease-in-out;
 }
 
-.glassContainer {
-  margin-top: 10px;
-  padding: 10px 12px;
+.navbarContainer.collapsed .brandFont {
+  display: none;
+}
+
+/* Collapse button styles - just icon, no background */
+.navCollapseBtn {
+  position: absolute;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  transition: all 0.3s ease-in-out;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(0.8);
+}
+
+.navCollapseBtn svg {
+  width: 23px;  
+  height: 23px; 
+  margin-top: 2px;
+}
+
+.navCollapseBtn:hover {
+  color: rgb(255, 255, 255);
+  transform: scale(1.1);
+}
+
+.navbarContainer:not(.collapsed) .navTitle:hover .navLogoContainer {
+  justify-content: flex-start;
+  padding-left: 5px;
+}
+
+/* Show collapse button when hovering in expanded state */
+.navbarContainer:not(.collapsed) .navTitle:hover .navCollapseBtn {
+  opacity: 1;
+  visibility: visible;
+  transform: scale(1);
+}
+
+/* Logo collapse button for collapsed mode - centered replacement */
+.navLogoCollapseBtn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  transition: opacity 0.2s ease, visibility 0.2s ease, transform 0.2s ease;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  opacity: 0;
+  visibility: hidden;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+
+.navLogoCollapseBtn svg {
+  width: 24px;
+  height: 24px;
+}
+
+.navLogoCollapseBtn:hover {
+  color: white;
+  transform: translate(-50%, -50%) scale(1.1);
+}
+
+/* Show logo collapse button when hovering in collapsed mode */
+.navbarContainer.collapsed .navTitle:hover .navLogoCollapseBtn {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Animation for button appearance */
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.navLogoCollapseBtn {
+  animation: fadeInScale 0.2s ease-out;
+}
+
+/* Glass container styles */
+.glassContainer, .navGlassContainer {
+  margin-top: 8px;
+  padding: 8px 10px;
   width: 100%;
   background: rgba(255, 255, 255, 0.15);
   border-radius: 16px;
@@ -82,29 +238,60 @@ html, body {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
 }
 
+.navGlassContainer {
+  padding: 10px 12px;
+}
+
+.navbarContainer.collapsed .navGlassContainer {
+  padding: 8px;
+}
+
 .navAccountContainer {
   padding-left: 12px;
+}
+
+.navbarContainer.collapsed .navAccountContainer {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
 }
 
 .navAccount {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-top: 5px;
-  padding-bottom: 5px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+  flex-direction: row;
+  justify-content: flex-start;
+}
+
+.navbarContainer.collapsed .navAccount {
+  justify-content: center;
+  padding: 3px 0;
 }
 
 .navAvatar {
-  width: 35px;
-  height: 35px;
+  width: 38px;
+  height: 38px;
   border-radius: 25px;
   object-fit: cover;
+}
+
+.navbarContainer.collapsed .navAvatar {
+  width: 40px;
+  height: 40px;
 }
 
 .navUserName {
   color: #fff;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
+}
+
+.navbarContainer.collapsed .navUserName,
+.navbarContainer.collapsed .navUserRole {
+  display: none;
 }
 
 .navUserRole {
@@ -117,37 +304,51 @@ html, body {
   font-size: 11px;
   font-style: italic;
   margin-left: 5px;
-  margin-top: 20px;
+  margin-top: 15px;
+  margin-bottom: 5px;
+}
+
+.navbarContainer.collapsed .navOverview {
+  display: none;
 }
 
 .navMenu {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
 .navMenuSection {
-  margin-bottom: 2px;
+  margin-bottom: 0;
+}
+
+.navbarContainer.collapsed .navMenuSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
 }
 
 .selectedGlass {
-  width: '100%';
+  width: 100%;
   margin-left: -10px;
   margin-right: -10px;
   justify-content: center;
-  padding-top: 10px;
+  padding-top: 6px;
   padding-left: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   background: rgba(255, 255, 255, 0.15);
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
 }
 
 .subSelectedGlass {
-  width: '200px';
+  width: 200px;
   margin-left: -10px;
   margin-right: -10px;
   padding-bottom: 1px;
-  padding-top: 8px;
+  padding-top: 4px;
   background: rgba(221, 224, 255, 0.22);
   border-radius: 10px;
 }
@@ -155,7 +356,7 @@ html, body {
 .navBtn {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 10px;
   background: none;
   border: none;
   color: white;
@@ -164,28 +365,241 @@ html, body {
   cursor: pointer;
   width: 100%;
   text-align: left;
-  padding: 3px 0;
-  margin-bottom: 10px;
+  padding: 6px 10px;
+  margin-bottom: 2px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.navBtn svg {
+  flex-shrink: 0;
 }
 
 .navBtn:hover {
-  opacity: 0.9;
+  transform: scale(1.09);
+  font-weight: 600;
+}
+
+.navBtn.active {
+  background: rgba(255, 255, 255, 0.2);
+  font-weight: 500;
+}
+
+.navbarContainer.collapsed .navBtn {
+  justify-content: center;
+  padding: 8px;
+  margin-bottom: 4px;
+}
+
+.navbarContainer.collapsed .navBtn span {
+  display: none;
+}
+
+.navbarContainer.collapsed .navBtn svg {
+  margin: 0;
 }
 
 .subNavBtn {
   font-size: 12px;
-  margin-left: 15px;
+  margin-left: 28px;
+  padding: 5px 10px;
+  gap: 8px;
+}
+
+.subNavBtn svg {
+  opacity: 0.9;
 }
 
 .navSubMenu {
   margin-left: 5px;
-  margin-top: 5px;
+  margin-top: 2px;
+  margin-bottom: 4px;
 }
 
 .navFooter {
   flex: 1;
   display: flex;
   align-items: flex-end;
+}
+
+.navbarContainer.collapsed .navFooter .navGlassContainer {
+  padding: 6px;
+}
+
+.navbarContainer.collapsed .navFooter .navBtn {
+  justify-content: center;
+}
+
+.scrollable-nav {
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: calc(100vh - 250px);
+  scrollbar-width: thin;
+  scrollbar-color: #888 #f1f1f100;
+}
+
+.navbarContainer.collapsed .scrollable-nav {
+  max-height: calc(100vh - 180px);
+}
+
+.navbarContainer.collapsed .scrollable-nav .navBtn {
+  justify-content: center;
+  margin: 0 auto 4px auto;
+}
+
+.navbarContainer.collapsed .scrollable-nav .navMenu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3d67ee;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #0738D9;
+}
+
+.scrollable-nav::-webkit-scrollbar {
+  width: 6px;
+  height: 0;
+}
+
+.scrollable-nav::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.scrollable-nav::-webkit-scrollbar-thumb {
+  background: #ffffff;
+  border-radius: 10px;
+}
+
+.scrollable-nav::-webkit-scrollbar-thumb:hover {
+  background: #ffffff;
+}
+
+.navbarContainer.collapsed .scrollable-nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.navbarContainer.collapsed .scrollable-nav::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.navbarContainer.collapsed .scrollable-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 10px;
+}
+
+.navbarContainer.collapsed .scrollable-nav::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+/* Make sure content doesn't overflow */
+.scrollable-nav .navMenu {
+  padding-right: 5px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.scrollable-nav .navBtn {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Collapsed dropdown menu */
+.collapsedDropdown {
+  position: fixed;
+  left: calc(82px + 15px);
+  background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9, #0f3bca);
+  border-radius: 18px;
+  padding: 8px;
+  min-width: 180px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  z-index: 1000;
+  animation: slideIn 0.5s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.collapsedDropdownItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  color: white;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 8px;
+  text-align: left;
+  transition: all 0.2s ease;
+}
+
+.collapsedDropdownItem:hover {
+  transform: scale(1.08);
+  font-weight: 600;
+}
+
+.collapsedDropdownItem svg {
+  flex-shrink: 0;
+}
+
+/* Hover tooltip */
+.hoverTooltip {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  z-index: 1000;
+  pointer-events: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* Body Styles */
@@ -195,6 +609,10 @@ html, body {
   flex: 6;
   height: 100vh;
   overflow-y: auto;
+}
+
+.navbarContainer.collapsed + .bodyContainer {
+  flex: 6.4;
 }
 
 .topContainer {
@@ -235,7 +653,7 @@ html, body {
   margin-left: 10px;
 }
 
-/* Table Styles */
+/* Table Styles (keeping your existing table styles) */
 .tableContainer {
   margin-top: 30px;
   background-color: #fff;
@@ -319,7 +737,6 @@ html, body {
   margin-left: 5px;
   flex-wrap: wrap;
   gap: 10px;
-  width: '100%';
   min-width: 500px;
   z-index: 20;
 }
@@ -863,394 +1280,46 @@ input:checked + .slider:before {
   background-color: #d93025;
 }
 
-/* Scrollbar Styling */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #3d67ee;
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #0738D9;
-}
-
-.scrollable-nav {
-  overflow-y: auto;        
-  overflow-x: hidden;     
-  max-height: calc(100vh - 250px); 
-  scrollbar-width: thin;  
-  scrollbar-color: #888 #f1f1f100; 
-}
-
-/* For Chrome, Edge, and Safari */
-.scrollable-nav::-webkit-scrollbar {
-  width: 6px;  /* Width of the vertical scrollbar */
-  height: 0;   /* HIDE horizontal scrollbar */
-}
-
-.scrollable-nav::-webkit-scrollbar-track {
-  background: #f1f1f1;  /* Color of the track */
-  border-radius: 10px;
-}
-
-.scrollable-nav::-webkit-scrollbar-thumb {
-  background: #ffffff;  /* Color of the scrollbar handle */
-  border-radius: 10px;
-}
-
-.scrollable-nav::-webkit-scrollbar-thumb:hover {
-  background: #ffffff;  
-}
-
-.scrollable-nav {
-  -ms-overflow-style: none;  
-  scrollbar-width: thin;    
-}
-
-/* Make sure content doesn't overflow */
-.scrollable-nav .navMenu {
-  padding-right: 5px; 
-  width: 100%;         
-  box-sizing: border-box; 
-}
-
-/* Ensure all buttons stay within bounds */
-.scrollable-nav .navBtn {
-  max-width: 100%;      
-  white-space: nowrap;  
-  overflow: hidden;     
-  text-overflow: ellipsis; 
-}
-
-/* ========================================= */
-/* HOME STYLE                  */
-/* ========================================= */
-
-.biContainer {
-    background-color: #ffffff;
-    display: flex;
-    flex-direction: row;
-    width: 100%;
-    height: 100%;
-}
-
-.navbarContainer {
-    flex: 1;
-    padding: 30px;
-    padding-top: 36px;
-    padding-right: 15px;
-    box-shadow: 0px 0px 18px rgba(0, 0, 0, 0.15);
-}
-
-.navBody {
-    padding: 10px;
-    border-radius: 20px;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-}
-
-.navTitle {
-    width: 100%;
-    height: 12%;
-    padding: 20px;
-    align-items: center;
-    justify-content: center;
-    flex-direction: row;
-}
-
-.glassContainer {
-    margin-top: 10px;
-    padding-top: 10px;
-    padding-bottom: 10px;
-    padding-left: 12px;
-    padding-right: 12px;
-    width: 100%;
-    background-color: rgba(255, 255, 255, 0.15);
-    border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-}
-
-.selectedGlass {
-    width: 200px;
-    margin-left: -10px;
-    margin-right: -10px;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 8px;
-    margin-bottom: 5px;
-    background-color: rgba(255, 255, 255, 0.15);
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-}
-
-.subSelectedGlass {
-    width: 200px;
-    margin-left: -10px;
-    margin-right: -10px;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 8px;
-    margin-bottom: 5px;
-    background-color: rgba(221, 224, 255, 0.22);
-    border-radius: 10px;
-}
-
-.navFont {
-    color: #fff;
-    font-size: 13px;
-    font-weight: 600;
-    font-family: 'Segoe UI', sans-serif;
-}
-
-.navBtn {
-    flex-direction: row;
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    margin-bottom: 10px;
-}
-
-.navAccount {
-    flex-direction: row;
-    align-items: center;
-    justify-content: flex-start;
-}
-
-.brandFont {
-    color: #ffffff;
-    font-size: 18px;
-    font-weight: 600;
-}
-
-.bodyContainer {
-    padding: 30px;
-    padding-left: 15px;
-    background-color: #ffffff;
-    flex: 6;
-}
-
-.topContainer {
-    border-radius: 20px;
-    height: 10%;
-    align-items: center;
-    display: flex;
-    flex-direction: row;
-}
-
-.subTopContainer {
-    background-color: #ffffff;
-    border-radius: 20px;
-    height: 10%;
-    padding: 30px;
-    align-items: center;
-    flex: 20;
-    display: flex;
-    flex-direction: row;
-    box-shadow: 0px 0px 18px rgba(0, 0, 0, 0.12);
-}
-
-.blueText {
-    font-size: 16px;
-    color: #3d67ee;
-    font-weight: 620;
-    font-family: 'Segoe UI', sans-serif;
-}
-
-.tableContainer {
-    margin-top: 30px;
-    background-color: #fff;
-    border-radius: 20px;
-    padding: 30px;
-    height: 85%;
-    box-shadow: 0px 0px 18px rgba(0, 0, 0, 0.15);
-}
-
-.tableLayer1 {
-    flex-direction: row;
-    display: flex;
-    justify-content: flex-start;
-    align-items: center;
-    gap: 20px;
-}
-
-.subTable1 {
-    flex-direction: row;
-    display: flex;
-    gap: 20px;
-    flex: 1;
-}
-
-.subTable2 {
-    flex: 1;
-    flex-direction: row;
-    display: flex;
-}
-
-.blackBtn {
-    background-color: #000;
-    border-radius: 8px;
-    padding-left: 20px;
-    padding-right: 20px;
-    height: 35px;
-    justify-content: center;
-}
-
-.tableFont {
-    font-size: 13px;
-    font-family: 'Segoe UI', sans-serif;
-    color: #000000;
-}
-
-.tableHeader {
-    margin-top: 20px;
-    font-size: 25px;
-    background-color: #ffffff;
-}
-
-.pickerStyle {
-    height: 30px;
-    width: 100px;
-    border-radius: 8px;
-    padding-left: 12px;
-    padding-right: 12px;
-    padding-top: 2px;
-    padding-bottom: 2px;
-    border: 1px solid #ccc;
-    font-size: 13px;
-    font-family: 'Segoe UI', sans-serif;
-}
-
-.clearFilterBtn {
-    background-color: #3d67ee;
-    flex-direction: row;
-    align-items: center;
-    gap: 5px;
-    height: 30px;
-    margin-left: 10px;
-    border: 1px solid #3d67ee;
-    border-radius: 8px;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 5px;
-    padding-bottom: 5px;
-    z-index: 1;
-}
-
-.statusBadge {
-    margin-top: 4px;
-    padding-left: 10px;
-    padding-right: 10px;
-    padding-top: 4px;
-    padding-bottom: 4px;
-    border-radius: 12px;
-    align-self: flex-start;
-}
-
-.statusText {
-    font-size: 12px;
-    font-weight: 600;
-}
-
-.activeBadge {
-    background-color: #DFF5E1;
-}
-
-.activeText {
-    color: #1F7A3F;
-}
-
-.inactiveBadge {
-    background-color: #ffc3c3;
-}
-
-.searchVisible {
-    font-size: 13px;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    padding-left: 12px;
-    padding-right: 12px;
-    height: 28px;
-    width: 180px;
-}
-
 /* Create Account Modal */
-
-.modalContainer {
-    background-color: rgb(255, 255, 255);
-    padding: 45px;
-    border-radius: 15px;
-    width: 54%;
-    height: 90%;
-    box-shadow: 0px 0px 18px rgba(0, 0, 0, 0.15);
-}
-
 .modalSections {
-    display: flex;
-    flex-direction: row;
-    gap: 50px;
+  display: flex;
+  flex-direction: row;
+  gap: 50px;
 }
 
 .leftModalSection {
-    flex: 1;
+  flex: 1;
 }
 
 .rightModalSection {
-    flex: 1;
+  flex: 1;
 }
 
 .textInputStyle {
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    padding-left: 12px;
-    padding-right: 12px;
-    padding-top: 8px;
-    padding-bottom: 8px;
-    margin-top: 5px;
-    margin-bottom: 15px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding-left: 12px;
+  padding-right: 12px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  margin-top: 5px;
+  margin-bottom: 15px;
 }
 
 .createPickerStyle {
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    padding-left: 12px;
-    padding-right: 12px;
-    padding-top: 8px;
-    padding-bottom: 8px;
-    margin-top: 5px;
-    margin-bottom: 15px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding-left: 12px;
+  padding-right: 12px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  margin-top: 5px;
+  margin-bottom: 15px;
 }
 
 .labelStyle {
-    font-size: 14px;
-    font-weight: 600;
-    font-family: 'Segoe UI', sans-serif;
-    margin-bottom: 5px;
-}
-
-.uploadBtn {
-    background-color: #fdfdfd;
-    border-radius: 60px;
-    margin-top: 10px;
-    width: 100px;
-    height: 100px;
-    display: flex;
-    flex-direction: row;
-    gap: 5px;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid #3d67ee;
-    box-shadow: 0px 0px 12px rgba(0, 0, 0, 0.10);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: 'Segoe UI', sans-serif;
+  margin-bottom: 5px;
 }

@@ -161,8 +161,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
             {/* Patient Records - New Section */}
             <div className="navMenuSection">
               <button 
-                className="navBtn"
-                type="button"
+                className={`navBtn ${isActive('/patient-records') ? 'active' : ''}`}
+                onClick={() => navigate('/patient-records')}
               >
                 <IoDocumentText size={15} />
                 <span>Patient Records</span>
@@ -172,8 +172,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
             {/* Inventory - New Section */}
             <div className="navMenuSection">
               <button 
-                className="navBtn"
-                type="button"
+                className={`navBtn ${isActive('/inventory') ? 'active' : ''}`}
+                onClick={() => navigate('/inventory')}
               >
                 <IoLayersOutline size={15} />
                 <span>Inventory</span>
