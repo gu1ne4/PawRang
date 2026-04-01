@@ -270,6 +270,39 @@ def normalize_profile(profile, source_table):
     }
 
 
+def split_full_name(full_name):
+    parts = (full_name or "").strip().split()
+    if not parts:
+        return "", ""
+    if len(parts) == 1:
+        return parts[0], ""
+    return parts[0], " ".join(parts[1:])
+
+
+def normalize_patient_admin_account(profile):
+    first_name = profile.get('firstName') or ""
+    last_name = profile.get('lastName') or ""
+    full_name = f"{first_name} {last_name}".strip() or profile.get('username') or profile.get('email') or "Unknown"
+    contact = profile.get('contact_number') or ""
+    user_image = profile.get('userImage')
+    raw_status = (profile.get('status') or 'active').strip().lower()
+    status = 'Disabled' if raw_status in ('disabled', 'inactive') else 'Active'
+
+    return {
+        "id": profile.get('id'),
+        "pk": profile.get('id'),
+        "username": profile.get('username') or "",
+        "fullName": full_name,
+        "fullname": full_name,
+        "contactNumber": contact,
+        "contactnumber": contact,
+        "email": profile.get('email') or "",
+        "status": status,
+        "userImage": user_image,
+        "userimage": user_image,
+    }
+
+
 # -----------------------------------------------
 # HELPER — send OTP email via Gmail SMTP
 # -----------------------------------------------
@@ -872,6 +905,139 @@ def get_accounts():
     except Exception as e:
         print("Fetch accounts error:", str(e))
         return jsonify({"error": str(e)}), 400
+
+
+@app.route('/patients', methods=['GET'])
+def get_patients():
+    try:
+        res = supabase_admin.table('patient_account').select('*').execute()
+        patients = [normalize_patient_admin_account(item) for item in (res.data or [])]
+        return jsonify(patients), 200
+    except Exception as e:
+        print("Fetch patients error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/patients/<account_id>', methods=['PUT'])
+def update_patient_account(account_id):
+    data = request.get_json() or {}
+
+    try:
+        existing = get_single_row('patient_account', 'id', account_id)
+        if not existing:
+            return jsonify({"error": "Patient account not found"}), 404
+
+        full_name = data.get('fullName') or data.get('fullname')
+        first_name = None
+        last_name = None
+        if full_name is not None:
+            first_name, last_name = split_full_name(full_name)
+
+        update_data = {}
+        if 'username' in data:
+            update_data['username'] = data.get('username')
+        if full_name is not None:
+            update_data['firstName'] = first_name
+            update_data['lastName'] = last_name
+        if 'contactNumber' in data or 'contactnumber' in data:
+            update_data['contact_number'] = data.get('contactNumber') or data.get('contactnumber')
+        if 'email' in data:
+            update_data['email'] = data.get('email')
+        if 'userImage' in data or 'userimage' in data:
+            update_data['userImage'] = data.get('userImage') or data.get('userimage')
+        if 'status' in data:
+            raw_status = (data.get('status') or '').strip().lower()
+            update_data['status'] = 'disabled' if raw_status in ('disabled', 'inactive') else 'active'
+
+        if not update_data:
+            return jsonify({"error": "No valid fields to update"}), 400
+
+        response = supabase_admin.table('patient_account') \
+            .update(update_data) \
+            .eq('id', account_id) \
+            .execute()
+
+        updated = response.data[0] if response.data else get_single_row('patient_account', 'id', account_id)
+        return jsonify({
+            "message": "Patient updated successfully",
+            "account": normalize_patient_admin_account(updated or existing)
+        }), 200
+    except Exception as e:
+        print("Update patient account error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/patient-register', methods=['POST'])
+def patient_register():
+    data = request.get_json() or {}
+
+    full_name = (data.get('fullName') or data.get('fullname') or '').strip()
+    email = (data.get('email') or '').strip().lower()
+    contact_number = (data.get('contactNumber') or data.get('contactnumber') or '').strip()
+    user_image = data.get('userImage') or data.get('userimage')
+    status_value = (data.get('status') or 'active').strip().lower()
+
+    if not full_name or not email:
+        return jsonify({"error": "fullName and email are required"}), 400
+
+    try:
+        existing_email = supabase_admin.table('patient_account').select('id').eq('email', email).execute()
+        if existing_email.data:
+            return jsonify({"error": "An account with this email already exists."}), 400
+
+        first_name, last_name = split_full_name(full_name)
+        username_seed = (data.get('username') or email.split('@')[0] or 'patient').strip()
+        username = username_seed
+        suffix = 1
+        while get_single_row('patient_account', 'username', username):
+            username = f"{username_seed}{suffix}"
+            suffix += 1
+
+        temp_password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+        auth_user = supabase_admin.auth.admin.create_user({
+            "email": email,
+            "password": temp_password,
+            "email_confirm": True,
+        })
+
+        user = getattr(auth_user, 'user', None)
+        if not user:
+            return jsonify({"error": "Failed to create auth user"}), 400
+
+        insert_response = supabase_admin.table('patient_account').insert({
+            "id": user.id,
+            "email": email,
+            "username": username,
+            "firstName": first_name,
+            "lastName": last_name,
+            "contact_number": contact_number,
+            "role": "patient",
+            "status": 'disabled' if status_value in ('disabled', 'inactive') else 'active',
+            "userImage": user_image,
+        }).execute()
+
+        created = insert_response.data[0] if insert_response.data else None
+        return jsonify({
+            "message": "Patient account created successfully",
+            "account": normalize_patient_admin_account(created or {
+                "id": user.id,
+                "email": email,
+                "username": username,
+                "firstName": first_name,
+                "lastName": last_name,
+                "contact_number": contact_number,
+                "status": status_value,
+                "userImage": user_image,
+            })
+        }), 200
+    except Exception as e:
+        print("Patient register error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    return jsonify({"message": "Logout acknowledged"}), 200
 
 
 @app.route('/api/day-availability', methods=['GET'])

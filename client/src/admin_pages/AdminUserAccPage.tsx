@@ -124,6 +124,9 @@ export default function UserAccPage() {
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}/patients`);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch patients (${res.status})`);
+      }
       const data = await res.json();
       setAccounts(data);
     } catch (error) {
@@ -230,8 +233,7 @@ export default function UserAccPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData),
       });
-      
-      const responseData = await res.json();
+      const responseData = await res.json().catch(() => ({}));
       
       if (res.ok) {
         showAlert('success', 'Success', `Account has been ${newStatus === 'Active' ? 'activated' : 'deactivated'} successfully!`, () => {
@@ -318,7 +320,7 @@ export default function UserAccPage() {
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setAddAccountVisible(false);
         showAlert('success', 'Success', 'Patient Account Created Successfully!', () => { fetchAccounts(); resetForm(); });
@@ -366,11 +368,12 @@ export default function UserAccPage() {
         }),
       });
 
+      const responseData = await res.json().catch(() => ({}));
       if (res.ok) {
         setEditAccountVisible(false);
         showAlert('success', 'Success', 'Patient Updated Successfully!', () => { fetchAccounts(); resetForm(); });
       } else {
-        showAlert('error', 'Update Failed', 'Failed to update patient information.');
+        showAlert('error', 'Update Failed', responseData.error || 'Failed to update patient information.');
       }
     } catch (e) { showAlert('error', 'Network Error', 'Could not connect to the server.'); }
   };
