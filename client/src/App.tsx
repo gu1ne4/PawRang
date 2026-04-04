@@ -22,6 +22,8 @@ import ChangePassOTP from './global_pages/ChangePassOTP';
 import ChangePass from './global_pages/ChangePass';
 import UpdateAccPage from './global_pages/UpdateAccPage';
 import ChangeCreds from './global_pages/ChangeCreds';
+import GlobalInventoryOUT from './global_pages/GlobalInventoryOUT';
+import GlobalInventoryIN from './global_pages/GlobalInventoryIN';
 
 // Doctor Pages
 import DoctorHome from './doctor_pages/DoctorHome';
@@ -36,6 +38,8 @@ import GlobalLogin from './global_pages/GlobalLogin'
 import UserProfile from './user_pages/UserProfile'
 import GlobalInventory from './global_pages/GlobalInventory'
 import GlobalEMR from './global_pages/GlobalEMR'
+import GlobalInventoryLogs from './global_pages/GlobalInventoryLogs';
+import GlobalInventoryArchive from './global_pages/GlobalInventoryArchive';
 
 function App() {
   return (
@@ -75,7 +79,10 @@ function App() {
         
         <Route path="/inventory" element={<GlobalInventory/>} />
         <Route path="/patient-records" element={<GlobalEMR/>} />
-
+        <Route path="/inventory-in" element={<GlobalInventoryIN/>} />
+        <Route path="/inventory-out" element={<GlobalInventoryOUT/>} />
+        <Route path="/inventory-logs" element={<GlobalInventoryLogs/>} />
+        <Route path="/inventory-archive" element={<GlobalInventoryArchive/>} />
 
 
 

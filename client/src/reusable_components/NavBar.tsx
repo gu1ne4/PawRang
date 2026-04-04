@@ -4,6 +4,9 @@ import '../admin_pages/AdminStyles.css';
 import { PiUsersThree } from "react-icons/pi";
 import { TbPresentationAnalytics } from "react-icons/tb";
 import { TbLayoutSidebarLeftCollapse, TbLayoutSidebarRightCollapse } from "react-icons/tb";
+import { CiBoxes } from "react-icons/ci";
+import { TbArrowsUpDown } from "react-icons/tb";
+import { IoIosArchive } from "react-icons/io";
 
 // Icons
 import { 
@@ -20,7 +23,9 @@ import {
   IoChevronDownOutline,
   IoDocumentTextOutline as IoDocumentText, 
   IoLayersOutline,  
-  IoFileTrayFullOutline
+  IoFileTrayFullOutline,
+  IoArrowDownOutline,
+  IoArrowUpOutline
 } from 'react-icons/io5';
 
 interface NavbarProps {
@@ -38,18 +43,41 @@ interface NavbarProps {
 const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
+  
+  // Load collapsed state from localStorage
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    const saved = localStorage.getItem('navbarCollapsed');
+    return saved ? JSON.parse(saved) : false;
+  });
+  
   const [showAccountDropdown, setShowAccountDropdown] = useState<boolean>(false);
   const [showAppointmentsDropdown, setShowAppointmentsDropdown] = useState<boolean>(false);
+  const [showInventoryDropdown, setShowInventoryDropdown] = useState<boolean>(false);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isHoveringTitle, setIsHoveringTitle] = useState<boolean>(false);
   
   const accountDropdownRef = useRef<HTMLDivElement>(null);
   const appointmentsDropdownRef = useRef<HTMLDivElement>(null);
+  const inventoryDropdownRef = useRef<HTMLDivElement>(null);
 
   const isActive = (path: string): boolean => {
     return location.pathname === path;
+  };
+
+  // Check if any appointment sub-page is active
+  const isAppointmentsActive = (): boolean => {
+    return isActive('/schedule') || isActive('/availSettings') || isActive('/history');
+  };
+
+  // Check if any account sub-page is active
+  const isAccountActive = (): boolean => {
+    return isActive('/accounts') || isActive('/useraccounts');
+  };
+
+  // Check if any inventory sub-page is active
+  const isInventoryActive = (): boolean => {
+    return isActive('/manage-inventory') || isActive('/inventory-logs') || isActive('/inventory-in') || isActive('/inventory-out') || isActive('/inventory-archive');
   };
   
   // Close dropdowns when clicking outside
@@ -61,6 +89,9 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
       if (appointmentsDropdownRef.current && !appointmentsDropdownRef.current.contains(event.target as Node)) {
         setShowAppointmentsDropdown(false);
       }
+      if (inventoryDropdownRef.current && !inventoryDropdownRef.current.contains(event.target as Node)) {
+        setShowInventoryDropdown(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -69,11 +100,29 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
     };
   }, []);
 
-  const toggleNavbar = () => {
-    setIsCollapsed(!isCollapsed);
+  // Keep dropdowns open when on sub-pages (for expanded mode)
+  useEffect(() => {
     if (!isCollapsed) {
+      if (isAccountActive()) {
+        setShowAccountDropdown(true);
+      }
+      if (isAppointmentsActive()) {
+        setShowAppointmentsDropdown(true);
+      }
+      if (isInventoryActive()) {
+        setShowInventoryDropdown(true);
+      }
+    }
+  }, [location.pathname, isCollapsed]);
+
+  const toggleNavbar = () => {
+    const newCollapsedState = !isCollapsed;
+    setIsCollapsed(newCollapsedState);
+    localStorage.setItem('navbarCollapsed', JSON.stringify(newCollapsedState));
+    if (newCollapsedState) {
       setShowAccountDropdown(false);
       setShowAppointmentsDropdown(false);
+      setShowInventoryDropdown(false);
     }
   };
 
@@ -100,6 +149,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
       setShowAccountDropdown(false);
     } else {
       setShowAppointmentsDropdown(false);
+      setShowInventoryDropdown(false);
       setShowAccountDropdown(true);
     }
   };
@@ -109,7 +159,18 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
       setShowAppointmentsDropdown(false);
     } else {
       setShowAccountDropdown(false);
+      setShowInventoryDropdown(false);
       setShowAppointmentsDropdown(true);
+    }
+  };
+
+  const handleInventoryDropdownToggle = () => {
+    if (showInventoryDropdown) {
+      setShowInventoryDropdown(false);
+    } else {
+      setShowAccountDropdown(false);
+      setShowAppointmentsDropdown(false);
+      setShowInventoryDropdown(true);
     }
   };
 
@@ -226,35 +287,38 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
               <div className="navMenuSection" ref={accountDropdownRef}>
                 {!isCollapsed ? (
                   <>
-                    <div className={isActive('/accounts') || isActive('/useraccounts') ? 'selectedGlass' : ''}>
-                      <button className="navBtn" onClick={handleAccountDropdownToggle}>
-                        <IoPeopleOutline size={16} />
-                        <span>Account Overview</span>
-                        {showAccountDropdown ? <IoChevronUpOutline size={12} /> : <IoChevronDownOutline size={12} />}
-                      </button>
-                    </div>
+                    <button 
+                      className={`navBtn ${isAccountActive() ? 'active' : ''}`}
+                      onClick={handleAccountDropdownToggle}
+                    >
+                      <IoPeopleOutline size={16} />
+                      <span>Account Overview</span>
+                      {showAccountDropdown ? <IoChevronUpOutline size={12} /> : <IoChevronDownOutline size={12} />}
+                    </button>
 
                     {showAccountDropdown && (
                       <div className="navSubMenu">
-                        <div className={isActive('/accounts') ? 'subSelectedGlass' : ''}>
-                          <button className="navBtn subNavBtn" onClick={() => navigate('/accounts')}>
-                            <IoPersonOutline size={14} />
-                            <span>Employees</span>
-                          </button>
-                        </div>
-                        <div className={isActive('/useraccounts') ? 'subSelectedGlass' : ''}>
-                          <button className="navBtn subNavBtn" onClick={() => navigate('/useraccounts')}>
-                            <PiUsersThree size={16} />
-                            <span>Users</span>
-                          </button>
-                        </div>
+                        <button 
+                          className={`navBtn subNavBtn ${isActive('/accounts') ? 'active' : ''}`}
+                          onClick={() => navigate('/accounts')}
+                        >
+                          <IoPersonOutline size={14} />
+                          <span>Employees</span>
+                        </button>
+                        <button 
+                          className={`navBtn subNavBtn ${isActive('/useraccounts') ? 'active' : ''}`}
+                          onClick={() => navigate('/useraccounts')}
+                        >
+                          <PiUsersThree size={16} />
+                          <span>Users</span>
+                        </button>
                       </div>
                     )}
                   </>
                 ) : (
                   <>
                     <button 
-                      className={`navBtn ${isActive('/accounts') || isActive('/useraccounts') ? 'active' : ''}`}
+                      className={`navBtn ${isAccountActive() ? 'active' : ''}`}
                       onClick={handleAccountDropdownToggle}
                       onMouseEnter={(e) => handleMouseEnter(e, 'Account Overview')}
                       onMouseLeave={handleMouseLeave}
@@ -286,45 +350,45 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
               <div className="navMenuSection" ref={appointmentsDropdownRef}>
                 {!isCollapsed ? (
                   <>
-                    <div className={
-                      isActive('/schedule') || isActive('/availSettings') || isActive('/history') 
-                        ? 'selectedGlass' 
-                        : ''
-                    }>
-                      <button className="navBtn" onClick={handleAppointmentsDropdownToggle}>
-                        <IoCalendarClearOutline size={16} />
-                        <span>Appointments</span>
-                        {showAppointmentsDropdown ? <IoChevronUpOutline size={12} /> : <IoChevronDownOutline size={12} />}
-                      </button>
-                    </div>
+                    <button 
+                      className={`navBtn ${isAppointmentsActive() ? 'active' : ''}`}
+                      onClick={handleAppointmentsDropdownToggle}
+                    >
+                      <IoCalendarClearOutline size={16} />
+                      <span>Appointments</span>
+                      {showAppointmentsDropdown ? <IoChevronUpOutline size={12} /> : <IoChevronDownOutline size={12} />}
+                    </button>
 
                     {showAppointmentsDropdown && (
                       <div className="navSubMenu">
-                        <div className={isActive('/schedule') ? 'subSelectedGlass' : ''}>
-                          <button className="navBtn subNavBtn" onClick={() => navigate('/schedule')}>
-                            <IoCalendarOutline size={14} />
-                            <span>Schedule</span>
-                          </button>
-                        </div>
-                        <div className={isActive('/availSettings') ? 'subSelectedGlass' : ''}>
-                          <button className="navBtn subNavBtn" onClick={() => navigate('/availSettings')}>
-                            <IoTodayOutline size={14} />
-                            <span>Availability Settings</span>
-                          </button>
-                        </div>
-                        <div className={isActive('/history') ? 'subSelectedGlass' : ''}>
-                          <button className="navBtn subNavBtn" onClick={() => navigate('/history')}>
-                            <IoTimeOutline size={14} />
-                            <span>History</span>
-                          </button>
-                        </div>
+                        <button 
+                          className={`navBtn subNavBtn ${isActive('/schedule') ? 'active' : ''}`}
+                          onClick={() => navigate('/schedule')}
+                        >
+                          <IoCalendarOutline size={14} />
+                          <span>Schedule</span>
+                        </button>
+                        <button 
+                          className={`navBtn subNavBtn ${isActive('/availSettings') ? 'active' : ''}`}
+                          onClick={() => navigate('/availSettings')}
+                        >
+                          <IoTodayOutline size={14} />
+                          <span>Availability Settings</span>
+                        </button>
+                        <button 
+                          className={`navBtn subNavBtn ${isActive('/history') ? 'active' : ''}`}
+                          onClick={() => navigate('/history')}
+                        >
+                          <IoTimeOutline size={14} />
+                          <span>History</span>
+                        </button>
                       </div>
                     )}
                   </>
                 ) : (
                   <>
                     <button 
-                      className={`navBtn ${isActive('/schedule') || isActive('/availSettings') || isActive('/history') ? 'active' : ''}`}
+                      className={`navBtn ${isAppointmentsActive() ? 'active' : ''}`}
                       onClick={handleAppointmentsDropdownToggle}
                       onMouseEnter={(e) => handleMouseEnter(e, 'Appointments')}
                       onMouseLeave={handleMouseLeave}
@@ -373,17 +437,110 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
                 </button>
               </div>
 
-              {/* Inventory */}
-              <div className="navMenuSection">
-                <button 
-                  className={`navBtn ${isActive('/inventory') ? 'active' : ''}`} 
-                  onClick={() => navigate('/inventory')}
-                  onMouseEnter={(e) => handleMouseEnter(e, 'Inventory')}
-                  onMouseLeave={handleMouseLeave}
-                >
-                  <IoLayersOutline size={isCollapsed ? 20 : 16} />
-                  {!isCollapsed && <span>Inventory</span>}
-                </button>
+              {/* Inventory with Dropdown */}
+              <div className="navMenuSection" ref={inventoryDropdownRef}>
+                {!isCollapsed ? (
+                  <>
+                    <button 
+                      className={`navBtn ${isInventoryActive() ? 'active' : ''}`}
+                      onClick={handleInventoryDropdownToggle}
+                    >
+                      <IoLayersOutline size={16} />
+                      <span>Inventory</span>
+                      {showInventoryDropdown ? <IoChevronUpOutline size={12} /> : <IoChevronDownOutline size={12} />}
+                    </button>
+
+                    {showInventoryDropdown && (
+                      <div className="navSubMenu">
+                        <button 
+                          className={`navBtn subNavBtn ${isActive('/manage-inventory') ? 'active' : ''}`}
+                          onClick={() => navigate('/inventory')}
+                        >
+                          <CiBoxes size={14} />
+                          <span>Item Catalog</span>
+                        </button>
+                        <button 
+                          className={`navBtn subNavBtn ${isActive('/inventory-logs') ? 'active' : ''}`}
+                          onClick={() => navigate('/inventory-logs')}
+                        >
+                          <TbArrowsUpDown size={16} />
+                          <span>Movement Logs</span>
+                        </button>
+                        <button 
+                          className={`navBtn subNavBtn ${isActive('/inventory-in') ? 'active' : ''}`}
+                          onClick={() => navigate('/inventory-in')}
+                        >
+                          <IoArrowDownOutline size={16} />
+                          <span>Inventory IN</span>
+                        </button>
+                        <button 
+                          className={`navBtn subNavBtn ${isActive('/inventory-out') ? 'active' : ''}`}
+                          onClick={() => navigate('/inventory-out')}
+                        >
+                          <IoArrowUpOutline size={16} />
+                          <span>Inventory OUT</span>
+                        </button>
+                        <button 
+                          className={`navBtn subNavBtn ${isActive('/inventory-archive') ? 'active' : ''}`}
+                          onClick={() => navigate('/inventory-archive')}
+                        >
+                          <IoIosArchive size={16} />
+                          <span>Archived Items</span>
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <button 
+                      className={`navBtn ${isInventoryActive() ? 'active' : ''}`}
+                      onClick={handleInventoryDropdownToggle}
+                      onMouseEnter={(e) => handleMouseEnter(e, 'Inventory')}
+                      onMouseLeave={handleMouseLeave}
+                    >
+                      <IoLayersOutline size={20} />
+                    </button>
+                    {showInventoryDropdown && (
+                      <div className="collapsedDropdown">
+                        <button className="collapsedDropdownItem" onClick={() => {
+                          navigate('/inventory');
+                          setShowInventoryDropdown(false);
+                        }}>
+                          <CiBoxes size={16} />
+                          <span>Item Catalog</span>
+                        </button>
+                        <button className="collapsedDropdownItem" onClick={() => {
+                          navigate('/inventory-logs');
+                          setShowInventoryDropdown(false);
+                        }}>
+                          <TbArrowsUpDown size={16} />
+                          <span>Movement Logs</span>
+                        </button>
+                        <button className="collapsedDropdownItem" onClick={() => {
+                          navigate('/inventory-in');
+                          setShowInventoryDropdown(false);
+                        }}>
+                          <IoArrowDownOutline size={16} />
+                          <span>Inventory IN</span>
+                        </button>
+                        <button className="collapsedDropdownItem" onClick={() => {
+                          navigate('/inventory-out');
+                          setShowInventoryDropdown(false);
+                        }}>
+                          <IoArrowUpOutline size={16} />
+                          <span>Inventory OUT</span>
+                        </button>
+                        <button className="collapsedDropdownItem" onClick={() => {
+                          navigate('/inventory-archive');
+                          setShowInventoryDropdown(false);
+                        }}>
+                          <IoIosArchive size={16} />
+                          <span>Archived Items</span>
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
 
               <div className="navMenuSection">
