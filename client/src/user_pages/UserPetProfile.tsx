@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import API_URL from '../API';
 import profileHeader from '../assets/ProfileHeader.png';
 import petsPeeking from '../assets/PetsPeeking.png';
 import ClientNavBar from '../reusable_components/ClientNavBar';
+import { formatPetAge } from '../utils/formatPetAge';
 import {
   IoPaw, IoMedical, IoDocumentText, IoEyeOutline,
   IoCloudUploadOutline, IoTrashOutline, IoClose, IoCameraOutline,
@@ -53,6 +54,10 @@ interface AlertConfig {
 }
 
 type PetModalLayer = 'pet' | 'add' | 'edit';
+
+interface PetProfileLocationState {
+  returnToBooking?: boolean;
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -118,6 +123,7 @@ const getToken = () => localStorage.getItem('access_token') ?? '';
 
 const UserPetProfile: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const leftRef  = useRef<HTMLDivElement>(null);
   const rightRef = useRef<HTMLDivElement>(null);
@@ -332,7 +338,7 @@ const UserPetProfile: React.FC = () => {
         }
       }
 
-      await axios.post(
+      const addRes = await axios.post(
         `${API_URL}/pets`,
         {
           owner_id:         currentUser.id,
@@ -350,9 +356,25 @@ const UserPetProfile: React.FC = () => {
         { headers: { Authorization: `Bearer ${getToken()}` } },
       );
 
-      await fetchPets(currentUser.id);
+      const refreshedPets = await fetchPets(currentUser.id);
+      const locationState = location.state as PetProfileLocationState | null;
+      const createdPetId = Number(addRes.data?.pet_id ?? addRes.data?.id ?? addRes.data?.pet?.pet_id ?? 0);
+      const createdPet = refreshedPets.find(pet => pet.pet_id === createdPetId)
+        ?? refreshedPets[refreshedPets.length - 1];
+
       setAddModalOpen(false);
       resetAddForm();
+
+      if (locationState?.returnToBooking && createdPet) {
+        navigate('/user/book-appointment', {
+          state: {
+            returnFromPetCreate: true,
+            newPetId: createdPet.pet_id,
+          },
+        });
+        return;
+      }
+
       showAlert('success', 'Pet Added!', `${addForm.petName} has been added to your profile.`);
     } catch (err: any) {
       console.error('handleAddPet error:', err);
@@ -557,7 +579,7 @@ const UserPetProfile: React.FC = () => {
                 ['Breed',    pet.pet_breed],
                 ['Size',     pet.pet_size],
                 ['Birthday', pet.birthday ? formatDate(pet.birthday) : 'Unknown'],
-                ['Age',      pet.age ? `${pet.age} years` : 'Unknown'],
+                ['Age',      formatPetAge(pet.age, pet.birthday)],
                 ['Weight',   pet.weight_kg ? `${pet.weight_kg} kg` : 'Unknown'],
                 ['Gender',   pet.pet_gender],
               ] as [string, string][]).map(([label, value]) => (
@@ -807,7 +829,7 @@ const UserPetProfile: React.FC = () => {
                         ['Breed',    selectedPet.pet_breed],
                         ['Size',     selectedPet.pet_size],
                         ['Birthday', selectedPet.birthday ? formatDate(selectedPet.birthday) : 'Unknown'],
-                        ['Age',      selectedPet.age      ? `${selectedPet.age} years`        : 'Unknown'],
+                        ['Age',      formatPetAge(selectedPet.age, selectedPet.birthday)],
                         ['Weight',   selectedPet.weight_kg ? `${selectedPet.weight_kg} kg`    : 'Unknown'],
                         ['Gender',   selectedPet.pet_gender],
                       ] as [string, string][]).map(([label, value]) => (

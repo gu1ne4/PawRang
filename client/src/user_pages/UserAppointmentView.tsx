@@ -73,6 +73,14 @@ const getToken         = () => localStorage.getItem('access_token') ?? '';
 const isMobileViewport = () =>
   typeof window !== 'undefined' && window.innerWidth <= 768;
 
+const getAppointmentCreatedTime = (appointment: Appointment) => {
+  const createdAt = new Date(appointment.created_at).getTime();
+  if (!Number.isNaN(createdAt)) return createdAt;
+
+  const fallback = new Date(`${appointment.appointment_date}T${appointment.appointment_time}`).getTime();
+  return Number.isNaN(fallback) ? 0 : fallback;
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const UserAppointmentView: React.FC = () => {
@@ -94,7 +102,7 @@ const UserAppointmentView: React.FC = () => {
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [selectedForDetails, setSelectedForDetails] = useState<Appointment | null>(null);
-  const [activeFilter,       setActiveFilter]       = useState<'All' | 'Active' | 'Pending'>('Active');
+  const [activeFilter,       setActiveFilter]       = useState<'All' | 'Active' | 'Pending'>('All');
   const [searchQuery,        setSearchQuery]        = useState('');
   const [currentPage,        setCurrentPage]        = useState(1);
   const [isMobileView,       setIsMobileView]       = useState(isMobileViewport);
@@ -199,7 +207,10 @@ const UserAppointmentView: React.FC = () => {
       const res = await axios.get(`${API_URL}/appointments/user/${currentUser.id}`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
-      setAppointments(res.data.appointments ?? []);
+      const sortedAppointments = [...(res.data.appointments ?? [])].sort(
+        (a: Appointment, b: Appointment) => getAppointmentCreatedTime(b) - getAppointmentCreatedTime(a),
+      );
+      setAppointments(sortedAppointments);
     } catch (err) {
       console.error('Failed to fetch appointments:', err);
     } finally {

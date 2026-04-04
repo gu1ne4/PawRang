@@ -6,6 +6,7 @@ import {
   IoChevronUpOutline,
   IoClose,
   IoHomeOutline,
+  IoInformationCircleOutline,
   IoLogOutOutline,
   IoMenuOutline,
   IoNotificationsOutline,
@@ -67,7 +68,7 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
   useEffect(() => {
     setDropdownVisible(false);
     setMobileMenuOpen(false);
-  }, [location.pathname]);
+  }, [location.pathname, location.hash]);
 
   useEffect(() => {
     if (!mobileMenuOpen) return undefined;
@@ -84,7 +85,10 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
     ? currentUser.fullname || currentUser.fullName || currentUser.username || 'User'
     : '';
 
-  const isActive = (path: string) => (location.pathname === path ? 'active' : '');
+  const isHomeActive = location.pathname === '/user/home' && location.hash !== '#about';
+  const isBookActive = location.pathname === '/user/book-appointment';
+  const isPetProfilesActive = location.pathname === '/user/pet-profile';
+  const isAboutActive = location.pathname === '/user/home' && location.hash === '#about';
 
   const closeMobileMenu = () => setMobileMenuOpen(false);
 
@@ -101,6 +105,40 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
   const handleMyPets = () => {
     setDropdownVisible(false);
     onMyPets();
+  };
+
+  const scrollHomePageToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.documentElement.scrollTo({ top: 0, behavior: 'smooth' });
+    document.body.scrollTo({ top: 0, behavior: 'smooth' });
+
+    const homePage = document.querySelector('.user-home-page');
+    if (homePage instanceof HTMLElement) {
+      homePage.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const navigateHome = () => {
+    if (location.pathname === '/user/home') {
+      if (location.hash) {
+        navigate('/user/home', { replace: true });
+      }
+
+      scrollHomePageToTop();
+      window.setTimeout(scrollHomePageToTop, 60);
+      return;
+    }
+
+    navigate('/user/home');
+  };
+
+  const navigateToAbout = () => {
+    if (location.pathname === '/user/home' && location.hash === '#about') {
+      document.getElementById('about')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
+    navigate('/user/home#about');
   };
 
   const confirmLogout = () => {
@@ -140,27 +178,31 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
   const mobileNavItems = [
     {
       key: 'home',
-      label: 'Homepage',
+      label: 'Home',
       icon: <IoHomeOutline size={20} />,
-      action: () => navigate('/user/home'),
+      action: navigateHome,
+      active: isHomeActive,
     },
     {
       key: 'book',
-      label: 'Book Appointment',
+      label: 'Book an Appointment',
       icon: <IoNotificationsOutline size={20} />,
       action: () => navigate('/user/book-appointment'),
-    },
-    {
-      key: 'appointments',
-      label: 'View Appointments',
-      icon: <IoCalendarOutline size={20} />,
-      action: () => navigate('/user/appointments'),
+      active: isBookActive,
     },
     {
       key: 'pets',
-      label: 'Pet Profile',
+      label: 'Pet Profiles',
       icon: <IoPawOutline size={20} />,
       action: handleMyPets,
+      active: isPetProfilesActive,
+    },
+    {
+      key: 'about',
+      label: 'About Us',
+      icon: <IoInformationCircleOutline size={20} />,
+      action: navigateToAbout,
+      active: isAboutActive,
     },
   ];
 
@@ -243,31 +285,31 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
           <div className="nav-links">
             <button
               type="button"
-              className={`nav-link ${isActive('/user/home')}`}
-              onClick={() => navigate('/user/home')}
+              className={`nav-link ${isHomeActive ? 'active' : ''}`}
+              onClick={navigateHome}
             >
               Home
             </button>
             <button
               type="button"
-              className={`nav-link ${isActive('/about')}`}
-              onClick={() => navigate('/about')}
-            >
-              About Us
-            </button>
-            <button
-              type="button"
-              className={`nav-link ${isActive('/services')}`}
-              onClick={() => navigate('/services')}
-            >
-              Our Services
-            </button>
-            <button
-              type="button"
-              className={`nav-link ${isActive('/user/book-appointment')}`}
+              className={`nav-link ${isBookActive ? 'active' : ''}`}
               onClick={() => navigate('/user/book-appointment')}
             >
               Book an Appointment
+            </button>
+            <button
+              type="button"
+              className={`nav-link ${isPetProfilesActive ? 'active' : ''}`}
+              onClick={handleMyPets}
+            >
+              Pet Profiles
+            </button>
+            <button
+              type="button"
+              className={`nav-link ${isAboutActive ? 'active' : ''}`}
+              onClick={navigateToAbout}
+            >
+              About Us
             </button>
           </div>
         </div>
@@ -336,7 +378,7 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
                 <button
                   key={item.key}
                   type="button"
-                  className="mobile-nav-item"
+                  className={`mobile-nav-item ${item.active ? 'is-active' : ''}`}
                   onClick={() => runMobileAction(item.action)}
                 >
                   {item.icon}

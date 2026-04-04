@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import './UserStyles.css';
 import API_URL from '../API';
+import { formatPetAge } from '../utils/formatPetAge';
 
 import {
   IoPawOutline, IoCalendarOutline, IoChevronBackCircle, IoChevronForwardCircle,
@@ -37,6 +38,7 @@ interface Pet {
   pet_breed: string;
   pet_gender: string;
   age: string;
+  birthday?: string | null;
   pet_photo_url: string | null;
 }
 
@@ -70,6 +72,22 @@ interface AlertConfig {
   onConfirm?: () => void;
   showCancel: boolean;
   confirmText: string;
+}
+
+type BookingConfirmStage = 'terms' | 'submitting' | 'submitted';
+
+interface BookingDraft {
+  step: number;
+  selectedServiceId: number | null;
+  selectedGroomingOptionIds: string[];
+  selectedLabOptionIds: string[];
+  currentCardIndex: number;
+  expandedService: number | null;
+}
+
+interface BookingReturnState {
+  newPetId?: number;
+  returnFromPetCreate?: boolean;
 }
 
 // ─── Static data ──────────────────────────────────────────────────────────────
@@ -133,14 +151,17 @@ const DEFAULT_PET_IMG = 'https://images.unsplash.com/photo-1548199973-03cce0bbc8
 const getToken = () => localStorage.getItem('access_token') ?? '';
 const isMobileViewport = () =>
   typeof window !== 'undefined' && window.innerWidth <= 768;
+const BOOKING_DRAFT_KEY = 'userAppointmentBookingDraft';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const UserAppointmentBook: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isMobileCarousel, setIsMobileCarousel] = useState(isMobileViewport);
   const pageContainerRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const progressStepRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   // ── Session — read once, no redirect ─────────────────────────────────────
   const [currentUser] = useState<User | null>(() => {
@@ -194,8 +215,10 @@ const UserAppointmentBook: React.FC = () => {
   const [alertVisible,        setAlertVisible]        = useState(false);
   const [alertConfig,         setAlertConfig]         = useState<AlertConfig>({ type:'info', title:'', message:'', showCancel:false, confirmText:'OK' });
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
+  const [confirmModalStage,   setConfirmModalStage]   = useState<BookingConfirmStage>('terms');
   const [isChecked,           setIsChecked]           = useState(false);
-  const [isSubmitting,        setIsSubmitting]        = useState(false);
+  const restoredDraftRef = useRef(false);
+  const handledReturnedPetRef = useRef<number | null>(null);
 
   // ── Fetch pets ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -207,6 +230,39 @@ const UserAppointmentBook: React.FC = () => {
       .catch(err => console.error('Failed to fetch pets:', err))
       .finally(() => setLoadingPets(false));
   }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (restoredDraftRef.current) return;
+
+    const rawDraft = sessionStorage.getItem(BOOKING_DRAFT_KEY);
+    if (!rawDraft) {
+      restoredDraftRef.current = true;
+      return;
+    }
+
+    try {
+      const draft = JSON.parse(rawDraft) as BookingDraft;
+      const restoredService = services.find(service => service.id === draft.selectedServiceId) ?? null;
+      const restoredGroomingOptions = groomingOptions.filter(option =>
+        draft.selectedGroomingOptionIds.includes(option.id),
+      );
+      const restoredLabOptions = laboratoryOptions.filter(option =>
+        draft.selectedLabOptionIds.includes(option.id),
+      );
+
+      setSelectedService(restoredService);
+      setSelectedGroomingOptions(restoredGroomingOptions);
+      setSelectedLabOptions(restoredLabOptions);
+      setCurrentCardIndex(draft.currentCardIndex ?? 0);
+      setExpandedService(draft.expandedService ?? null);
+      setStep(draft.step ?? 2);
+    } catch (err) {
+      console.error('Failed to restore booking draft:', err);
+    } finally {
+      sessionStorage.removeItem(BOOKING_DRAFT_KEY);
+      restoredDraftRef.current = true;
+    }
+  }, []);
 
   // ── Fetch branches ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -232,6 +288,22 @@ const UserAppointmentBook: React.FC = () => {
     document.body.scrollTop = 0;
   }, [step]);
 
+  useEffect(() => {
+    const returnState = location.state as BookingReturnState | null;
+    const newPetId = returnState?.newPetId;
+
+    if (!returnState?.returnFromPetCreate || !newPetId || loadingPets || pets.length === 0) return;
+    if (handledReturnedPetRef.current === newPetId) return;
+
+    const createdPet = pets.find(pet => pet.pet_id === newPetId);
+    if (!createdPet) return;
+
+    handledReturnedPetRef.current = newPetId;
+    setSelectedPet(createdPet);
+    setStep(3);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [loadingPets, location.pathname, location.state, navigate, pets]);
+
   // ─────────────────────────────────────────────────────────────────────────
   // Helpers
   // ─────────────────────────────────────────────────────────────────────────
@@ -254,10 +326,43 @@ const UserAppointmentBook: React.FC = () => {
     setAlertVisible(true);
   };
 
+  const openConfirmModal = () => {
+    setIsChecked(false);
+    setConfirmModalStage('terms');
+    setConfirmModalVisible(true);
+  };
+
+  const closeConfirmModal = () => {
+    if (confirmModalStage === 'submitting') return;
+    setConfirmModalVisible(false);
+    setConfirmModalStage('terms');
+    setIsChecked(false);
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('userSession');
     localStorage.removeItem('access_token');
     navigate('/login');
+  };
+
+  const persistBookingDraft = () => {
+    const draft: BookingDraft = {
+      step,
+      selectedServiceId: selectedService?.id ?? null,
+      selectedGroomingOptionIds: selectedGroomingOptions.map(option => option.id),
+      selectedLabOptionIds: selectedLabOptions.map(option => option.id),
+      currentCardIndex,
+      expandedService,
+    };
+
+    sessionStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify(draft));
+  };
+
+  const handleAddPetFromBooking = () => {
+    persistBookingDraft();
+    navigate('/user/pet-profile', {
+      state: { returnToBooking: true },
+    });
   };
 
   const getDayName = (date: Date | null) => {
@@ -420,10 +525,10 @@ const UserAppointmentBook: React.FC = () => {
         if (medicalAnswers.medications72h && !medicationDetails.trim()) { showAlert('info','Incomplete','Please specify the medications given'); return; }
         setStep(7);
       } else {
-        setConfirmModalVisible(true);
+        openConfirmModal();
       }
     } else if (step === 7) {
-      setConfirmModalVisible(true);
+      openConfirmModal();
     }
   };
 
@@ -433,7 +538,7 @@ const UserAppointmentBook: React.FC = () => {
 
   const handleConfirmBooking = async () => {
     if (!currentUser || !selectedPet || !selectedDate || !selectedTime || !selectedBranch || !selectedService) return;
-    setIsSubmitting(true);
+    setConfirmModalStage('submitting');
 
     try {
       let typeLabel = selectedService.name;
@@ -496,16 +601,13 @@ const UserAppointmentBook: React.FC = () => {
         );
       }
 
-      setIsSubmitting(false);
-      setConfirmModalVisible(false);
-      showAlert('success','Appointment Submitted!',
-        'Your appointment is under review. You will receive an email once it is confirmed.',
-        () => navigate('/user/home'),
-      );
+      setConfirmModalStage('submitted');
+      setIsChecked(false);
     } catch (err: any) {
-      setIsSubmitting(false);
+      setConfirmModalVisible(false);
+      setConfirmModalStage('terms');
       showAlert('error','Booking Failed', err.response?.data?.error ?? 'Something went wrong. Please try again.');
-      console.log(err)
+      console.log(err);
     }
   };
 
@@ -537,6 +639,18 @@ const UserAppointmentBook: React.FC = () => {
     : '';
 
   const timeSlots = getTimeSlots();
+  const progressSteps = getProgressSteps();
+
+  useEffect(() => {
+    const activeNode = progressStepRefs.current[step];
+    if (!activeNode) return;
+
+    activeNode.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    });
+  }, [step]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -575,42 +689,70 @@ const UserAppointmentBook: React.FC = () => {
         </div>
       )}
 
-      {/* ── Submitting overlay ── */}
-      {isSubmitting && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <IoHourglassOutline size={55} color="#3d67ee" />
-            <h3 className="modal-title">Submitting…</h3>
-            <p className="modal-message">Please wait while we book your appointment.</p>
-          </div>
-        </div>
-      )}
-
       {/* ── Confirmation Modal ── */}
       {confirmModalVisible && (
-        <div className="modal-overlay" onClick={() => setConfirmModalVisible(false)}>
+        <div className="modal-overlay" onClick={closeConfirmModal}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="modal-close-btn" onClick={() => setConfirmModalVisible(false)}>
-              <IoClose size={24} color="#999" />
-            </button>
-            <div className="confirmation-icon"><IoHourglassOutline size={70} color="#3d67ee" /></div>
-            <h2 className="confirmation-title">Appointment Under Review</h2>
-            <p className="confirmation-text">
-              Your appointment will be reviewed by our team. You will receive an email once it is confirmed.
-            </p>
-            <div className="checkbox-container">
-              <label className="checkbox-label">
-                <input type="checkbox" checked={isChecked} onChange={e => setIsChecked(e.target.checked)} className="checkbox-input" />
-                <span className="checkbox-text">I understand</span>
-              </label>
-            </div>
-            <button
-              className={`confirmation-btn ${!isChecked ? 'disabled' : ''}`}
-              onClick={handleConfirmBooking}
-              disabled={!isChecked || isSubmitting}
-            >
-              Confirm Booking
-            </button>
+            {confirmModalStage !== 'submitting' && (
+              <button className="modal-close-btn" onClick={closeConfirmModal}>
+                <IoClose size={24} color="#999" />
+              </button>
+            )}
+
+            {confirmModalStage === 'terms' && (
+              <>
+                <div className="confirmation-icon"><IoHourglassOutline size={70} color="#3d67ee" /></div>
+                <h2 className="confirmation-title">Appointment Under Review</h2>
+                <p className="confirmation-text">
+                  Your appointment will be reviewed by our team. You will receive an email once it is confirmed.
+                </p>
+                <div className="checkbox-container">
+                  <label className="checkbox-label">
+                    <input type="checkbox" checked={isChecked} onChange={e => setIsChecked(e.target.checked)} className="checkbox-input" />
+                    <span className="checkbox-text">I understand</span>
+                  </label>
+                </div>
+                <button
+                  className={`confirmation-btn ${!isChecked ? 'disabled' : ''}`}
+                  onClick={handleConfirmBooking}
+                  disabled={!isChecked}
+                >
+                  Confirm Booking
+                </button>
+              </>
+            )}
+
+            {confirmModalStage === 'submitting' && (
+              <>
+                <div className="confirmation-icon"><IoHourglassOutline size={70} color="#3d67ee" /></div>
+                <h2 className="confirmation-title">Submitting Appointment</h2>
+                <p className="confirmation-text">
+                  Please wait while we finalize your booking.
+                </p>
+                <button className="confirmation-btn disabled" disabled>
+                  Processing...
+                </button>
+              </>
+            )}
+
+            {confirmModalStage === 'submitted' && (
+              <>
+                <div className="confirmation-icon"><IoCheckmark size={70} color="#2e9e0c" /></div>
+                <h2 className="confirmation-title">Appointment Submitted!</h2>
+                <p className="confirmation-text">
+                  Your appointment is under review. You will receive an email once it is confirmed.
+                </p>
+                <button
+                  className="confirmation-btn"
+                  onClick={() => {
+                    closeConfirmModal();
+                    navigate('/user/home');
+                  }}
+                >
+                  Go to Home
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -628,11 +770,22 @@ const UserAppointmentBook: React.FC = () => {
         {/* Progress bar */}
         <div className="progress-container">
           <div className="progress-steps">
-            {getProgressSteps().map((s, i, arr) => (
+            {progressSteps.map((s, i, arr) => (
               <React.Fragment key={s.n}>
-                <div className="step-item">
-                  <div className={`step-circle ${step >= s.n ? 'active' : ''}`}><span>{s.n}</span></div>
-                  <span className={`step-label ${step === s.n ? 'active' : ''}`}>{s.l}</span>
+                <div
+                  className={`progress-step-segment ${
+                    step === s.n ? 'current' : step > s.n ? 'completed' : 'upcoming'
+                  }`}
+                  ref={node => {
+                    progressStepRefs.current[s.n] = node;
+                  }}
+                >
+                  <div className={`step-item ${step === s.n ? 'current' : ''}`}>
+                    <div className="step-circle-shell">
+                      <div className={`step-circle ${step >= s.n ? 'active' : ''}`}><span>{s.n}</span></div>
+                    </div>
+                    <span className={`step-label ${step === s.n ? 'active' : ''}`}>{s.l}</span>
+                  </div>
                 </div>
                 {i < arr.length - 1 && <div className={`step-line ${step > s.n ? 'active' : ''}`} />}
               </React.Fragment>
@@ -789,10 +942,10 @@ const UserAppointmentBook: React.FC = () => {
                     <img src={pet.pet_photo_url ?? DEFAULT_PET_IMG} alt={pet.pet_name} className="pet-image" />
                     <h3 className="pet-name">{pet.pet_name}</h3>
                     <p className="pet-details">{pet.pet_species} • {pet.pet_breed}</p>
-                    <p className="pet-details">{pet.pet_gender} • {pet.age} yrs</p>
+                    <p className="pet-details">{pet.pet_gender} • {formatPetAge(pet.age, pet.birthday)}</p>
                   </button>
                 ))}
-                <button className="add-pet-card" onClick={() => navigate('/user/pet-profile')}>
+                <button className="add-pet-card" onClick={handleAddPetFromBooking}>
                   <div className="add-pet-icon"><IoAdd size={50} color="#3d67ee" /></div>
                   <span className="add-pet-text">Add Pet</span>
                 </button>
@@ -1038,17 +1191,6 @@ const UserAppointmentBook: React.FC = () => {
                 </div>
               )}
 
-              <div className="confirmation-card">
-                <div className="card-header"><IoMedicalOutline size={22} color="#3d67ee" /><h3>Medical Information</h3></div>
-                <div className="card-details">
-                  <div className="detail-row"><span className="detail-label">Medications (72h)</span><span className="detail-value">{medicalAnswers.medications72h ? `Yes — ${medicationDetails}` : 'No'}</span></div>
-                  <div className="detail-row"><span className="detail-label">Flea/Tick Prev.</span><span className="detail-value">{medicalAnswers.fleaPrevention ? 'Yes' : 'No'}</span></div>
-                  <div className="detail-row"><span className="detail-label">Vaccinations</span><span className="detail-value">{medicalAnswers.catVaccinations ? 'Yes' : 'No'}</span></div>
-                  <div className="detail-row"><span className="detail-label">Not Pregnant</span><span className="detail-value">{medicalAnswers.notPregnant ? 'Yes' : 'No'}</span></div>
-                  {additionalNotes && <div className="detail-row"><span className="detail-label">Notes</span><span className="detail-value">{additionalNotes}</span></div>}
-                </div>
-              </div>
-
               {selectedDate && selectedTime && selectedBranch && (
                 <div className="confirmation-card">
                   <div className="card-header"><IoCalendarOutline size={22} color="#3d67ee" /><h3>Appointment Details</h3></div>
@@ -1074,6 +1216,17 @@ const UserAppointmentBook: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              <div className="confirmation-card">
+                <div className="card-header"><IoMedicalOutline size={22} color="#3d67ee" /><h3>Medical Information</h3></div>
+                <div className="card-details">
+                  <div className="detail-row"><span className="detail-label">Medications (72h)</span><span className="detail-value">{medicalAnswers.medications72h ? `Yes — ${medicationDetails}` : 'No'}</span></div>
+                  <div className="detail-row"><span className="detail-label">Flea/Tick Prev.</span><span className="detail-value">{medicalAnswers.fleaPrevention ? 'Yes' : 'No'}</span></div>
+                  <div className="detail-row"><span className="detail-label">Vaccinations</span><span className="detail-value">{medicalAnswers.catVaccinations ? 'Yes' : 'No'}</span></div>
+                  <div className="detail-row"><span className="detail-label">Not Pregnant</span><span className="detail-value">{medicalAnswers.notPregnant ? 'Yes' : 'No'}</span></div>
+                  {additionalNotes && <div className="detail-row"><span className="detail-label">Notes</span><span className="detail-value">{additionalNotes}</span></div>}
+                </div>
+              </div>
             </div>
 
             <div className="action-buttons-row">

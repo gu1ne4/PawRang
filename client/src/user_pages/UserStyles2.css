@@ -1711,6 +1711,14 @@
 }
 
 @media (max-width: 768px) {
+  .app-view-root {
+    min-height: 100dvh;
+    height: 100dvh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .app-view-wrapper {
     margin-top: 0;
     padding-bottom: 18px;
@@ -1721,12 +1729,13 @@
     padding: 0 14px 18px;
     height: auto;
     min-height: 0;
+    flex: 1 0 auto;
   }
 
   .app-list-panel {
     height: auto;
-    max-height: none;
-    overflow: visible;
+    max-height: calc(100dvh - 120px);
+    overflow: hidden;
   }
 
   .app-list-header {
@@ -1739,17 +1748,30 @@
 
   .app-filter-bar {
     margin: 0 14px 14px;
-    overflow-x: auto;
-    padding-bottom: 2px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    overflow: visible;
+    padding-bottom: 0;
   }
 
   .app-filter-option {
     white-space: nowrap;
+    width: 100%;
+    padding: 9px 0;
+    text-align: center;
   }
 
   .app-table-container {
-    overflow: visible;
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-height: calc(100dvh - 280px);
     padding: 0 14px 18px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-table-body {
+    padding-bottom: 4px;
   }
 
   .app-table-row {
