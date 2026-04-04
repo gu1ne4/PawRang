@@ -1,98 +1,107 @@
-import React, { useState } from 'react';
+import React, { useState } from 'react'
 import './UserAuthStylesheet.css'
-import { Lock } from 'lucide-react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import axios from 'axios';
-import API_URL from '../API';
+import { Lock } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import API_URL from '../API'
 
 export default function ResetPasswordPage2() {
-    const nav = useNavigate();
-    const location = useLocation();
+    const nav = useNavigate()
+    const location = useLocation()
 
-    // ← retrieve email passed from ConfirmOTP
-    const email = (location.state as { email: string })?.email || '';
+    const email = (location.state as { email: string } | undefined)?.email || ''
 
-    const [getPassword, setPassword] = useState('');
-    const [getPasswordConfirm, setPasswordConfirm] = useState('');
-    const [passwordError, setPasswordError] = useState('');
-    const [confirmPasswordError, setConfirmPasswordError] = useState('');
-    const [serverError, setServerError] = useState('');
-    const [serverSuccess, setServerSuccess] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
+    const [getPassword, setPassword] = useState('')
+    const [getPasswordConfirm, setPasswordConfirm] = useState('')
+    const [passwordError, setPasswordError] = useState('')
+    const [confirmPasswordError, setConfirmPasswordError] = useState('')
+    const [serverError, setServerError] = useState('')
+    const [serverSuccess, setServerSuccess] = useState('')
+    const [isLoading, setIsLoading] = useState(false)
 
     function handlePasswordChange(value: string) {
-        setPassword(value);
+        setPassword(value)
         if (value.trim() === '') {
-            setPasswordError('Password is required.');
+            setPasswordError('Password is required.')
         } else if (value.length < 8) {
-            setPasswordError('Password must be at least 8 characters.');
+            setPasswordError('Password must be at least 8 characters.')
         } else {
-            setPasswordError('');
+            setPasswordError('')
         }
+
         if (getPasswordConfirm !== '' && value !== getPasswordConfirm) {
-            setConfirmPasswordError('Passwords do not match.');
+            setConfirmPasswordError('Passwords do not match.')
         } else if (getPasswordConfirm !== '') {
-            setConfirmPasswordError('');
+            setConfirmPasswordError('')
         }
     }
 
     function handleConfirmPasswordChange(value: string) {
-        setPasswordConfirm(value);
+        setPasswordConfirm(value)
         if (value.trim() === '') {
-            setConfirmPasswordError('Please confirm your password.');
+            setConfirmPasswordError('Please confirm your password.')
         } else if (value !== getPassword) {
-            setConfirmPasswordError('Passwords do not match.');
+            setConfirmPasswordError('Passwords do not match.')
         } else {
-            setConfirmPasswordError('');
+            setConfirmPasswordError('')
         }
     }
 
     function validateAll() {
-        handlePasswordChange(getPassword);
-        handleConfirmPasswordChange(getPasswordConfirm);
+        handlePasswordChange(getPassword)
+        handleConfirmPasswordChange(getPasswordConfirm)
+
         return (
             getPassword.trim() !== '' &&
             getPassword.length >= 8 &&
             getPasswordConfirm === getPassword
-        );
+        )
     }
 
     function changePasswordHandler() {
-        setServerError('');
-        setServerSuccess('');
+        setServerError('')
+        setServerSuccess('')
 
         if (!email) {
-            setServerError('Session expired. Please restart the password reset process.');
-            return;
+            setServerError('Session expired. Please restart the password reset process.')
+            return
         }
 
-        if (!validateAll()) return;
+        if (!validateAll()) return
 
-        setIsLoading(true);
+        setIsLoading(true)
 
-        axios
-            .post(`${API_URL}/change-password`, {
-                "email": email,
-                "new_password": getPassword  // ← matches app.py's data.get('new_password')
-            })
-            .then((response: any) => {
-                setServerSuccess(response.data.message);
-                setIsLoading(false);
+        fetch(`${API_URL}/change-password`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                email,
+                new_password: getPassword,
+            }),
+        })
+            .then(async (response) => {
+                const data = await response.json().catch(() => ({}))
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Something went wrong. Please try again.')
+                }
+
+                setServerSuccess(data.message || 'Password changed successfully.')
+                setIsLoading(false)
                 setTimeout(() => {
-                    nav('/login');
-                }, 2000);
+                    nav('/login')
+                }, 2000)
             })
-            .catch((error: any) => {
-                const message = error.response?.data?.error || 'Something went wrong. Please try again.';
-                setServerError(message);
-                setIsLoading(false);
-            });
+            .catch((error: Error) => {
+                setServerError(error.message || 'Something went wrong. Please try again.')
+                setIsLoading(false)
+            })
     }
 
     return (
         <div className='resetMain'>
             <div className='resetCard'>
-
                 <div className='resetHeader'>
                     <div className='resetIconWrapper'>
                         <Lock size={28} color='#2619e2' />
@@ -154,8 +163,7 @@ export default function ResetPasswordPage2() {
                 <button className='resetPageNavigator' onClick={() => nav('/login')}>
                     Back to <strong style={{ color: '#2619e2' }}>Login</strong>
                 </button>
-
             </div>
         </div>
-    );
+    )
 }

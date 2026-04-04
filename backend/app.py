@@ -3,12 +3,10 @@ from flask_cors import CORS
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import os
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 import random
 import string
 from datetime import datetime, timedelta
+import resend
 
 day_availability_store = {
     "sunday": False,
@@ -76,21 +74,15 @@ def format_date_for_email(value):
 
 
 def send_html_email(to_email, subject, html):
-    smtp_email = os.environ.get('SMTP_EMAIL')
-    smtp_pass = os.environ.get('SMTP_PASSWORD')
+    if not to_email:
+        raise ValueError("Recipient email is required")
 
-    if not smtp_email or not smtp_pass:
-        raise ValueError("SMTP_EMAIL and SMTP_PASSWORD must be configured")
-
-    msg = MIMEMultipart('alternative')
-    msg['Subject'] = subject
-    msg['From'] = smtp_email
-    msg['To'] = to_email
-    msg.attach(MIMEText(html, 'html'))
-
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-        server.login(smtp_email, smtp_pass)
-        server.sendmail(smtp_email, to_email, msg.as_string())
+    return resend.Emails.send({
+        "from": RESEND_FROM_EMAIL,
+        "to": [to_email],
+        "subject": subject,
+        "html": html,
+    })
 
 
 def send_appointment_status_email(notification_type, patient_email, patient_name, pet_name, service, appointment_date, appointment_time, reason=""):
@@ -191,12 +183,17 @@ CORS(app, resources={r'/*': {'origins': '*'}})
 SUPABASE_URL         = os.environ.get('SUPABASE_URL')
 SUPABASE_KEY         = os.environ.get('SUPABASE_KEY')
 SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY')
+RESEND_API_KEY       = os.environ.get('RESEND_API_KEY')
+RESEND_FROM_EMAIL    = os.environ.get('RESEND_FROM_EMAIL', 'onboarding@resend.dev')
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise ValueError("Missing Supabase credentials in .env")
+if not RESEND_API_KEY:
+    raise ValueError("Missing RESEND_API_KEY in .env")
 
 supabase       = create_client(SUPABASE_URL, SUPABASE_KEY)
 supabase_admin = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+resend.api_key = RESEND_API_KEY
 
 otp_store = {}
 RESEND_COOLDOWN_SECONDS = 60
@@ -303,18 +300,30 @@ def normalize_patient_admin_account(profile):
     }
 
 
+def normalize_employee_admin_account(profile):
+    raw_status = (profile.get('status') or 'active').strip().lower()
+    status = 'Disabled' if raw_status in ('disabled', 'inactive') else 'Active'
+    role = profile.get('role') or 'Admin'
+
+    return {
+        "id": profile.get('id'),
+        "username": profile.get('username') or '',
+        "first_name": profile.get('first_name') or '',
+        "last_name": profile.get('last_name') or '',
+        "contact_number": profile.get('contact_number') or '',
+        "email": profile.get('email') or '',
+        "role": role,
+        "status": status,
+        "employee_image": profile.get('employee_image'),
+        "created_at": profile.get('created_at'),
+        "is_initial_login": bool(profile.get('is_initial_login')),
+    }
+
+
 # -----------------------------------------------
 # HELPER — send OTP email via Gmail SMTP
 # -----------------------------------------------
 def send_otp_email(to_email, otp, subject='Your OTP Code', purpose='verification'):
-    smtp_email = os.environ.get('SMTP_EMAIL')
-    smtp_pass  = os.environ.get('SMTP_PASSWORD')
-
-    msg            = MIMEMultipart('alternative')
-    msg['Subject'] = subject
-    msg['From']    = smtp_email
-    msg['To']      = to_email
-
     html = f"""
         <h2>OTP Verification</h2>
         <p>Your OTP for <strong>{purpose}</strong> is:</p>
@@ -322,11 +331,7 @@ def send_otp_email(to_email, otp, subject='Your OTP Code', purpose='verification
         <p>This OTP expires in 10 minutes.</p>
         <p>If you did not request this, please ignore this email.</p>
     """
-    msg.attach(MIMEText(html, 'html'))
-
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-        server.login(smtp_email, smtp_pass)
-        server.sendmail(smtp_email, to_email, msg.as_string())
+    return send_html_email(to_email, subject, html)
 
 
 # -----------------------------------------------
@@ -901,9 +906,138 @@ def get_branches():
 def get_accounts():
     try:
         res = supabase_admin.table('employee_accounts').select('*').execute()
-        return jsonify(res.data or []), 200
+        accounts = [normalize_employee_admin_account(item) for item in (res.data or [])]
+        return jsonify(accounts), 200
     except Exception as e:
         print("Fetch accounts error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/accounts', methods=['POST'])
+def create_employee_account():
+    data = request.get_json() or {}
+
+    first_name = (data.get('first_name') or '').strip()
+    last_name = (data.get('last_name') or '').strip()
+    contact_number = (data.get('contact_number') or '').strip()
+    email = (data.get('email') or '').strip().lower()
+    role = (data.get('role') or 'Admin').strip()
+    status_value = (data.get('status') or 'Active').strip().lower()
+    employee_image = data.get('employee_image')
+
+    if not all([first_name, last_name, contact_number, email]):
+        return jsonify({"error": "first_name, last_name, contact_number, and email are required"}), 400
+
+    try:
+        existing_email = supabase_admin.table('employee_accounts').select('id').eq('email', email).execute()
+        if existing_email.data:
+            return jsonify({"error": "An employee account with this email already exists."}), 400
+
+        username_seed = f"{first_name}.{last_name}".lower().replace(" ", "")
+        if not username_seed.strip('.'):
+            username_seed = email.split('@')[0] or 'employee'
+
+        username = username_seed
+        suffix = 1
+        while get_single_row('employee_accounts', 'username', username):
+            username = f"{username_seed}{suffix}"
+            suffix += 1
+
+        temp_password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+        auth_user = supabase_admin.auth.admin.create_user({
+            "email": email,
+            "password": temp_password,
+            "email_confirm": True,
+        })
+
+        user = getattr(auth_user, 'user', None)
+        if not user:
+            return jsonify({"error": "Failed to create auth user"}), 400
+
+        insert_response = supabase_admin.table('employee_accounts').insert({
+            "id": user.id,
+            "username": username,
+            "first_name": first_name,
+            "last_name": last_name,
+            "contact_number": contact_number,
+            "email": email,
+            "role": role,
+            "status": 'disabled' if status_value in ('disabled', 'inactive') else 'active',
+            "employee_image": employee_image,
+            "is_initial_login": True,
+        }).execute()
+
+        created = insert_response.data[0] if insert_response.data else None
+        return jsonify({
+            "message": "Employee account created successfully",
+            "account": normalize_employee_admin_account(created or {
+                "id": user.id,
+                "username": username,
+                "first_name": first_name,
+                "last_name": last_name,
+                "contact_number": contact_number,
+                "email": email,
+                "role": role,
+                "status": status_value,
+                "employee_image": employee_image,
+                "is_initial_login": True,
+            }),
+            "temporary_password": temp_password,
+        }), 200
+    except Exception as e:
+        print("Create employee account error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/accounts/<account_id>', methods=['PUT'])
+def update_employee_account(account_id):
+    data = request.get_json() or {}
+
+    try:
+        existing = get_single_row('employee_accounts', 'id', account_id)
+        if not existing:
+            return jsonify({"error": "Employee account not found"}), 404
+
+        update_data = {}
+        auth_updates = {}
+
+        if 'username' in data:
+            update_data['username'] = data.get('username')
+        if 'first_name' in data:
+            update_data['first_name'] = data.get('first_name')
+        if 'last_name' in data:
+            update_data['last_name'] = data.get('last_name')
+        if 'contact_number' in data:
+            update_data['contact_number'] = data.get('contact_number')
+        if 'email' in data:
+            update_data['email'] = data.get('email')
+            auth_updates['email'] = data.get('email')
+        if 'role' in data:
+            update_data['role'] = data.get('role')
+        if 'status' in data:
+            raw_status = (data.get('status') or '').strip().lower()
+            update_data['status'] = 'disabled' if raw_status in ('disabled', 'inactive') else 'active'
+        if 'employee_image' in data:
+            update_data['employee_image'] = data.get('employee_image')
+
+        if not update_data:
+            return jsonify({"error": "No valid fields to update"}), 400
+
+        if auth_updates:
+            supabase_admin.auth.admin.update_user_by_id(account_id, auth_updates)
+
+        response = supabase_admin.table('employee_accounts') \
+            .update(update_data) \
+            .eq('id', account_id) \
+            .execute()
+
+        updated = response.data[0] if response.data else get_single_row('employee_accounts', 'id', account_id)
+        return jsonify({
+            "message": "Employee account updated successfully",
+            "account": normalize_employee_admin_account(updated or existing)
+        }), 200
+    except Exception as e:
+        print("Update employee account error:", str(e))
         return jsonify({"error": str(e)}), 400
 
 

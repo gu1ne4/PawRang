@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../reusable_components/NavBar';
-import { supabase } from '../supabaseClient'; 
-import { createClient } from '@supabase/supabase-js';
+import API_URL from '../API';
 
 // Icons
 import './AdminStyles.css'; 
@@ -59,7 +58,6 @@ type Status = 'Active' | 'Disabled';
 
 const AdminHome: React.FC = () => {
   const navigate = useNavigate();
-  const location = useLocation();
 
   // State
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -142,13 +140,14 @@ const AdminHome: React.FC = () => {
   const fetchAccounts = async (): Promise<void> => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('employee_accounts')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const response = await fetch(`${API_URL}/accounts`);
+      const data = await response.json().catch(() => ([]));
 
-      if (error) throw error;
-      setAccounts(data || []);
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch account data.');
+      }
+
+      setAccounts(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
       showAlert('error', 'Error', 'Failed to fetch account data.');
@@ -161,15 +160,6 @@ const AdminHome: React.FC = () => {
     fetchAccounts();
     loadCurrentUser();
   }, []);
-
-  const generateRandomPassword = (length: number = 12): string => {
-    const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
-    let retVal = "";
-    for (let i = 0, n = charset.length; i < length; ++i) {
-      retVal += charset.charAt(Math.floor(Math.random() * n));
-    }
-    return retVal;
-  };
 
   const resetForm = (): void => {
     setNewUsername('');
@@ -186,7 +176,11 @@ const AdminHome: React.FC = () => {
 
   const handleLogoutPress = (): void => {
     showAlert('confirm', 'Log Out', 'Are you sure you want to log out?', async () => {
-      await supabase.auth.signOut();
+      try {
+        await fetch(`${API_URL}/logout`, { method: 'POST' });
+      } catch (error) {
+        console.error('Logout request failed:', error);
+      }
       localStorage.removeItem('userSession');
       
       // Add { replace: true } right here!
@@ -293,48 +287,40 @@ const AdminHome: React.FC = () => {
     showAlert('confirm', 'Create Account', 'Are you sure you want to register this new employee?', async () => {
       
       // Auto-generate a dummy password and username
-      const generatedPassword = generateRandomPassword();
-      const dummyUsername = `temp_${newFirstName.toLowerCase()}${Math.floor(Math.random() * 10000)}`;
-      
       try {
-        const supabaseAdminAuth = createClient(
-          import.meta.env.VITE_SUPABASE_URL,
-          import.meta.env.VITE_SUPABASE_ANON_KEY,
-          { auth: { autoRefreshToken: false, persistSession: false } }
-        );
-
-        const { data: authData, error: authError } = await supabaseAdminAuth.auth.signUp({
-          email: newEmail,
-          password: generatedPassword,
-          options: {
-            emailRedirectTo: `${window.location.origin}/update-account` 
-          }
-        });
-
-        if (authError) throw authError;
-
-        const { error: dbError } = await supabase
-          .from('employee_accounts')
-          .insert([{
-            id: authData.user?.id, 
-            username: dummyUsername, // Saving the dummy username
-            first_name: newFirstName.trim(), 
-            last_name: newLastName.trim(),   
+        const response = await fetch(`${API_URL}/accounts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            first_name: newFirstName.trim(),
+            last_name: newLastName.trim(),
             contact_number: newContact,
             email: newEmail,
             role: newRole,
             status: newStatus,
             employee_image: userImageBase64,
-            is_initial_login: true
-          }]);
+          }),
+        });
 
-        if (dbError) throw dbError;
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Failed to create account.');
 
         setAddAccountVisible(false);
-        showAlert('success', 'Success', 'Account Created! A setup link has been emailed to the employee to configure their username and password.', () => {
-          fetchAccounts();
-          resetForm();
-        });
+        showAlert(
+          'success',
+          'Success',
+          <span>
+            Account created successfully.
+            <br />
+            Username: <strong>{result.account?.username}</strong>
+            <br />
+            Temporary Password: <strong>{result.temporary_password}</strong>
+          </span>,
+          () => {
+            fetchAccounts();
+            resetForm();
+          }
+        );
 
       } catch (error: any) {
         showAlert('error', 'Registration Failed', error.message || 'Failed to create account.');
@@ -365,12 +351,14 @@ const AdminHome: React.FC = () => {
           updateData.employee_image = userImageBase64;
         }
 
-        const { error } = await supabase
-          .from('employee_accounts')
-          .update(updateData)
-          .eq('id', editingId);
+        const response = await fetch(`${API_URL}/accounts/${editingId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updateData),
+        });
 
-        if (error) throw error;
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Failed to update account information.');
 
         setEditAccountVisible(false);
         showAlert('success', 'Success', 'Account Updated Successfully!', () => {

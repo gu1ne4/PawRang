@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import './UserStyles.css';
@@ -131,6 +130,8 @@ const services: Service[] = [
 
 const DEFAULT_PET_IMG = 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400';
 const getToken = () => localStorage.getItem('access_token') ?? '';
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -196,9 +197,14 @@ const UserAppointmentBook: React.FC = () => {
   useEffect(() => {
     if (!currentUser?.id) return;
     setLoadingPets(true);
-    axios
-      .get(`${API_URL}/pets/user/${currentUser.id}`, { headers: { Authorization: `Bearer ${getToken()}` } })
-      .then(res => setPets(res.data.pets ?? []))
+    fetch(`${API_URL}/pets/user/${currentUser.id}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+      .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch pets');
+        setPets(data.pets ?? []);
+      })
       .catch(err => console.error('Failed to fetch pets:', err))
       .finally(() => setLoadingPets(false));
   }, [currentUser?.id]);
@@ -206,9 +212,14 @@ const UserAppointmentBook: React.FC = () => {
   // ── Fetch branches ────────────────────────────────────────────────────────
   useEffect(() => {
     setLoadingBranches(true);
-    axios
-      .get(`${API_URL}/branches`, { headers: { Authorization: `Bearer ${getToken()}` } })
-      .then(res => setBranches(res.data.branches ?? []))
+    fetch(`${API_URL}/branches`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    })
+      .then(async res => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch branches');
+        setBranches(data.branches ?? []);
+      })
       .catch(err => console.error('Failed to fetch branches:', err))
       .finally(() => setLoadingBranches(false));
   }, []);
@@ -399,71 +410,102 @@ const UserAppointmentBook: React.FC = () => {
         typeLabel = `Pet Grooming (${selectedGroomingOptions.map(o => o.name).join(', ')})`;
       if (selectedService.id === 8 && selectedLabOptions.length)
         typeLabel = `Laboratory Tests (${selectedLabOptions.map(o => o.name).join(', ')})`;
-      
-      // appointments POST — cast ids to Number
-      const apptRes = await axios.post(
-        `${API_URL}/appointments`,
-        {
-          owner_id:         currentUser.id,
-          pet_id:           Number(selectedPet.pet_id),       // ← fix bigint error
+
+      const apptRes = await fetch(`${API_URL}/appointments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({
+          owner_id: currentUser.id,
+          pet_id: Number(selectedPet.pet_id),
           appointment_type: typeLabel,
           appointment_date: selectedDate.toISOString().split('T')[0],
           appointment_time: toDbTime(selectedTime),
-          branch_id:        Number(selectedBranch.branch_id), // ← fix bigint error
-          patient_reason:   additionalNotes,
-        },
-        { headers: { Authorization: `Bearer ${getToken()}` } },
-      );
-          const appointmentId: number = apptRes.data.appointment_id;  // ← declared inside try
+          branch_id: Number(selectedBranch.branch_id),
+          patient_reason: additionalNotes,
+        }),
+      });
+      const apptData = await apptRes.json().catch(() => ({}));
+      if (!apptRes.ok) throw new Error(apptData.error || 'Failed to create appointment');
+      const appointmentId: number = apptData.appointment_id;
 
-      // medical-information POST — add the three NOT NULL fields
-      await axios.post(
-        `${API_URL}/medical-information`,
-        {
-          appointment_id:       appointmentId,
-          on_medication:        medicalAnswers.medications72h  ?? false,
-          medication_details:   medicationDetails,
-          flea_tick_prevention: medicalAnswers.fleaPrevention  ?? false,
-          is_vaccinated:        medicalAnswers.catVaccinations ?? false,
-          is_pregnant:          !(medicalAnswers.notPregnant   ?? true),
-          additional_notes:     additionalNotes,
-          has_allergies:        false,       // ← fix NOT NULL constraint
-          has_skin_condition:   false,       // ← fix NOT NULL constraint
-          been_groomed_before:  false,       // ← fix NOT NULL constraint
+      const medicalRes = await fetch(`${API_URL}/medical-information`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getToken()}`,
         },
-        { headers: { Authorization: `Bearer ${getToken()}` } },
-      );
+        body: JSON.stringify({
+          appointment_id: appointmentId,
+          on_medication: medicalAnswers.medications72h ?? false,
+          medication_details: medicationDetails,
+          flea_tick_prevention: medicalAnswers.fleaPrevention ?? false,
+          is_vaccinated: medicalAnswers.catVaccinations ?? false,
+          is_pregnant: !(medicalAnswers.notPregnant ?? true),
+          additional_notes: additionalNotes,
+          has_allergies: false,
+          has_skin_condition: false,
+          been_groomed_before: false,
+        }),
+      });
+      const medicalData = await medicalRes.json().catch(() => ({}));
+      if (!medicalRes.ok) throw new Error(medicalData.error || 'Failed to save medical information');
 
       if (selectedService.id === 1 && selectedHaircutStyle) {
         let referenceUrl: string | undefined;
         if (haircutImageBase64) {
           try {
-            const upRes = await axios.post(
-              `${API_URL}/upload-pet-photo`,
-              { file: haircutImageBase64, file_name: `haircut_ref_${appointmentId}.jpg`, mime_type: haircutImageMime },
-              { headers: { Authorization: `Bearer ${getToken()}` } },
-            );
-            referenceUrl = upRes.data.photoUrl;
-          } catch { /* non-fatal */ }
+            const uploadRes = await fetch(`${API_URL}/upload-pet-photo`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${getToken()}`,
+              },
+              body: JSON.stringify({
+                file: haircutImageBase64,
+                file_name: `haircut_ref_${appointmentId}.jpg`,
+                mime_type: haircutImageMime,
+              }),
+            });
+            const uploadData = await uploadRes.json().catch(() => ({}));
+            if (!uploadRes.ok) throw new Error(uploadData.error || 'Failed to upload haircut reference');
+            referenceUrl = uploadData.photoUrl;
+          } catch {
+            referenceUrl = undefined;
+          }
         }
         const styleName = haircutStyles.find(h => h.id === selectedHaircutStyle)?.name ?? selectedHaircutStyle;
-        await axios.post(
-          `${API_URL}/grooming-details`,
-          { appointment_id: appointmentId, haircut_style: styleName, haircut_description: customHaircutDescription || undefined, haircut_reference_url: referenceUrl },
-          { headers: { Authorization: `Bearer ${getToken()}` } },
-        );
+        const groomingRes = await fetch(`${API_URL}/grooming-details`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${getToken()}`,
+          },
+          body: JSON.stringify({
+            appointment_id: appointmentId,
+            haircut_style: styleName,
+            haircut_description: customHaircutDescription || undefined,
+            haircut_reference_url: referenceUrl,
+          }),
+        });
+        const groomingData = await groomingRes.json().catch(() => ({}));
+        if (!groomingRes.ok) throw new Error(groomingData.error || 'Failed to save grooming details');
       }
 
       setIsSubmitting(false);
       setConfirmModalVisible(false);
-      showAlert('success','Appointment Submitted!',
+      showAlert(
+        'success',
+        'Appointment Submitted!',
         'Your appointment is under review. You will receive an email once it is confirmed.',
         () => navigate('/user/home'),
       );
-    } catch (err: any) {
+    } catch (err) {
       setIsSubmitting(false);
-      showAlert('error','Booking Failed', err.response?.data?.error ?? 'Something went wrong. Please try again.');
-      console.log(err)
+      showAlert('error', 'Booking Failed', getErrorMessage(err, 'Something went wrong. Please try again.'));
+      console.log(err);
     }
   };
 

@@ -1,68 +1,64 @@
-import React, { useState } from 'react';
+import React, { useState } from 'react'
 import './UserAuthStylesheet.css'
-import { Mail } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import API_URL from '../API';
+import { Mail } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import API_URL from '../API'
 
 export default function ResetPasswordPage1() {
-    const nav = useNavigate();
-    const [getEmail, setEmail] = useState('');
-    const [emailError, setEmailError] = useState('');
-    const [serverError, setServerError] = useState('');
-    const [serverSuccess, setServerSuccess] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
+    const nav = useNavigate()
+    const [getEmail, setEmail] = useState('')
+    const [emailError, setEmailError] = useState('')
+    const [serverError, setServerError] = useState('')
+    const [serverSuccess, setServerSuccess] = useState('')
+    const [isLoading, setIsLoading] = useState(false)
 
     function handleEmailChange(value: string) {
-        setEmail(value);
-        if (value.trim() === '') {
-            setEmailError('Email is required.');
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-            setEmailError('Please enter a valid email.');
-        } else {
-            setEmailError('');
-        }
+        setEmail(value)
+        if (value.trim() === '') setEmailError('Email is required.')
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) setEmailError('Please enter a valid email.')
+        else setEmailError('')
     }
 
     function validateAll() {
-        handleEmailChange(getEmail);
-        return (
-            getEmail.trim() !== '' &&
-            /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(getEmail)
-        );
+        handleEmailChange(getEmail)
+        return getEmail.trim() !== '' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(getEmail)
     }
 
-    function forgotPasswordHandler() {
-        setServerError('');
-        setServerSuccess('');
+    async function forgotPasswordHandler() {
+        setServerError('')
+        setServerSuccess('')
 
-        if (!validateAll()) return;
+        if (!validateAll()) return
 
-        setIsLoading(true);
+        setIsLoading(true)
 
-        axios
-            .post(`${API_URL}/forgot-password`, {
-                "email": getEmail
+        try {
+            const response = await fetch(`${API_URL}/forgot-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: getEmail }),
             })
-            .then((response: any) => {
-                setServerSuccess(response.data.message);
-                setIsLoading(false);
-                setTimeout(() => {
-                    // ← pass email to next page via router state
-                    nav('/confirmOTP', { state: { email: getEmail } });
-                }, 1500);
-            })
-            .catch((error: any) => {
-                const message = error.response?.data?.error || 'Something went wrong. Please try again.';
-                setServerError(message);
-                setIsLoading(false);
-            });
+            const data = await response.json().catch(() => ({}))
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Something went wrong. Please try again.')
+            }
+
+            setServerSuccess(data.message)
+            setIsLoading(false)
+            setTimeout(() => {
+                nav('/confirmOTP', { state: { email: getEmail } })
+            }, 1500)
+        } catch (error: any) {
+            const message = error.message || 'Something went wrong. Please try again.'
+            setServerError(message)
+            setIsLoading(false)
+        }
     }
 
     return (
         <div className='resetMain'>
             <div className='resetCard'>
-
                 <div className='resetHeader'>
                     <div className='resetIconWrapper'>
                         <Mail size={28} color='#2619e2' />
@@ -71,16 +67,8 @@ export default function ResetPasswordPage1() {
                     <p>Enter your email address and we'll send you a one-time password (OTP) to reset your password.</p>
                 </div>
 
-                {serverError && (
-                    <div className='resetServerError'>
-                        <p>{serverError}</p>
-                    </div>
-                )}
-                {serverSuccess && (
-                    <div className='resetServerSuccess'>
-                        <p>{serverSuccess}</p>
-                    </div>
-                )}
+                {serverError && <div className='resetServerError'><p>{serverError}</p></div>}
+                {serverSuccess && <div className='resetServerSuccess'><p>{serverSuccess}</p></div>}
 
                 <div className='resetInputContainer'>
                     <p className={emailError ? 'resetInputLabel errorLabel' : 'resetInputLabel'}>
@@ -88,28 +76,19 @@ export default function ResetPasswordPage1() {
                     </p>
                     <div className='resetInputFieldContainer'>
                         <Mail className='resetInputIcon' />
-                        <input
-                            className={emailError ? 'resetInputField errorField' : 'resetInputField'}
-                            type="text"
-                            placeholder="Enter your email"
-                            onChange={(e) => handleEmailChange(e.target.value)}
-                        />
+                        <input className={emailError ? 'resetInputField errorField' : 'resetInputField'} type="text" placeholder="Enter your email" onChange={(e) => handleEmailChange(e.target.value)} />
                     </div>
                     {emailError && <p className='errorMessage'>{emailError}</p>}
                 </div>
 
-                <button
-                    className='resetButton'
-                    onClick={forgotPasswordHandler}
-                    disabled={isLoading}>
+                <button className='resetButton' onClick={forgotPasswordHandler} disabled={isLoading}>
                     {isLoading ? 'Sending OTP...' : 'Send OTP'}
                 </button>
 
                 <button className='resetPageNavigator' onClick={() => nav('/login')}>
                     Back to <strong style={{ color: '#2619e2' }}>Login</strong>
                 </button>
-
             </div>
         </div>
-    );
+    )
 }

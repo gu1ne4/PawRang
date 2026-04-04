@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import axios from 'axios';
 import './UserStyles.css';
 import API_URL from '../API';
 
@@ -62,12 +61,15 @@ const UserHome: React.FC = () => {
   useEffect(() => {
     if (!currentUser?.id) return;
     const token = localStorage.getItem('access_token');
-    axios
-      .get(`${API_URL}/profile/${currentUser.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      .then(res => {
-        const updated = { ...currentUser, ...res.data.user };
+    fetch(`${API_URL}/profile/${currentUser.id}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to refresh profile.');
+        }
+        const updated = { ...currentUser, ...data.user };
         setCurrentUser(updated);
         localStorage.setItem('userSession', JSON.stringify(updated));
       })

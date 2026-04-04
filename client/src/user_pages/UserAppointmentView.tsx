@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import API_URL from '../API';
 import ClientNavBar from '../reusable_components/ClientNavBar';
 import {
@@ -143,10 +142,12 @@ const UserAppointmentView: React.FC = () => {
     if (!currentUser?.id) return;
     setLoadingAppts(true);
     try {
-      const res = await axios.get(`${API_URL}/appointments/user/${currentUser.id}`, {
+      const response = await fetch(`${API_URL}/appointments/user/${currentUser.id}`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
-      setAppointments(res.data.appointments ?? []);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Failed to fetch appointments');
+      setAppointments(data.appointments ?? []);
     } catch (err) {
       console.error('Failed to fetch appointments:', err);
     } finally {
@@ -234,17 +235,22 @@ const UserAppointmentView: React.FC = () => {
     if (!cancelTarget) return;
     setIsMutating(true);
     try {
-      await axios.patch(
-        `${API_URL}/appointments/${cancelTarget.appointment_id}/cancel`,
-        { cancel_reason: cancelReason },
-        { headers: { Authorization: `Bearer ${getToken()}` } },
-      );
+      const response = await fetch(`${API_URL}/appointments/${cancelTarget.appointment_id}/cancel`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({ cancel_reason: cancelReason }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Failed to cancel appointment');
       await fetchAppointments();
       if (selectedForDetails?.appointment_id === cancelTarget.appointment_id)
         setSelectedForDetails(prev => prev ? { ...prev, status: 'cancelled' } : prev);
       showAlert('success','Cancelled','Appointment cancelled successfully');
     } catch (err: any) {
-      showAlert('error','Error', err.response?.data?.error ?? 'Failed to cancel appointment');
+      showAlert('error','Error', err.message ?? 'Failed to cancel appointment');
     } finally {
       setIsMutating(false); setCancelModalVisible(false); setCancelTarget(null);
     }
@@ -276,17 +282,22 @@ const UserAppointmentView: React.FC = () => {
     if (!rescheduleTarget || !newDate || !newTime) return;
     setIsMutating(true);
     try {
-      await axios.patch(
-        `${API_URL}/appointments/${rescheduleTarget.appointment_id}/reschedule`,
-        { new_date: newDate, new_time: newTime, reschedule_reason: rescheduleReason },
-        { headers: { Authorization: `Bearer ${getToken()}` } },
-      );
+      const response = await fetch(`${API_URL}/appointments/${rescheduleTarget.appointment_id}/reschedule`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({ new_date: newDate, new_time: newTime, reschedule_reason: rescheduleReason }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Failed to reschedule');
       await fetchAppointments();
       if (selectedForDetails?.appointment_id === rescheduleTarget.appointment_id)
         setSelectedForDetails(prev => prev ? { ...prev, appointment_date: newDate, appointment_time: newTime, status: 'pending' } : prev);
       showAlert('success','Submitted','Reschedule request submitted for review');
     } catch (err: any) {
-      showAlert('error','Error', err.response?.data?.error ?? 'Failed to reschedule');
+      showAlert('error','Error', err.message ?? 'Failed to reschedule');
     } finally {
       setIsMutating(false); setRescheduleModalVisible(false); setRescheduleTarget(null);
     }

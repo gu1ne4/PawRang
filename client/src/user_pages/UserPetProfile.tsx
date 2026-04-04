@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import API_URL from '../API';
 import profileHeader from '../assets/ProfileHeader.png';
 import petsPeeking from '../assets/PetsPeeking.png';
@@ -108,6 +107,8 @@ const pickFile = (
 };
 
 const getToken = () => localStorage.getItem('access_token') ?? '';
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -190,10 +191,12 @@ const UserPetProfile: React.FC = () => {
   const fetchPets = useCallback(async (userId: string): Promise<Pet[]> => {
     setLoadingPets(true);
     try {
-      const res = await axios.get(`${API_URL}/pets/user/${userId}`, {
+      const res = await fetch(`${API_URL}/pets/user/${userId}`, {
         headers: { Authorization: `Bearer ${getToken()}` },
       });
-      const list: Pet[] = res.data.pets ?? [];
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch pets');
+      const list: Pet[] = data.pets ?? [];
       setPets(list);
       return list;
     } catch (err) {
@@ -207,12 +210,17 @@ const UserPetProfile: React.FC = () => {
   const uploadFile = useCallback(async (
     base64: string, fileName: string, mime: string,
   ): Promise<string> => {
-    const res = await axios.post(
-      `${API_URL}/upload-pet-photo`,
-      { file: base64, file_name: fileName, mime_type: mime },
-      { headers: { Authorization: `Bearer ${getToken()}` } },
-    );
-    return res.data.photoUrl as string;
+    const res = await fetch(`${API_URL}/upload-pet-photo`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${getToken()}`,
+      },
+      body: JSON.stringify({ file: base64, file_name: fileName, mime_type: mime }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Failed to upload file');
+    return data.photoUrl as string;
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -268,31 +276,36 @@ const UserPetProfile: React.FC = () => {
         }
       }
 
-      await axios.post(
-        `${API_URL}/pets`,
-        {
-          owner_id:         currentUser.id,
-          pet_name:         addForm.petName,
-          pet_type:         addForm.petType,
-          breed:            addForm.breed,
-          pet_size:         addForm.breedSize,
-          gender:           addForm.gender,
-          birthday:         addForm.birthday || undefined,
-          age:              addForm.ageUnknown    ? undefined : addForm.age    || undefined,
-          weight_kg:        addForm.weightUnknown ? undefined : addForm.weight || undefined,
-          pet_photo_url:    photoUrl,
-          vaccination_urls: vaccUrls.length ? vaccUrls : undefined,
+      const createRes = await fetch(`${API_URL}/pets`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getToken()}`,
         },
-        { headers: { Authorization: `Bearer ${getToken()}` } },
-      );
+        body: JSON.stringify({
+          owner_id: currentUser.id,
+          pet_name: addForm.petName,
+          pet_type: addForm.petType,
+          breed: addForm.breed,
+          pet_size: addForm.breedSize,
+          gender: addForm.gender,
+          birthday: addForm.birthday || undefined,
+          age: addForm.ageUnknown ? undefined : addForm.age || undefined,
+          weight_kg: addForm.weightUnknown ? undefined : addForm.weight || undefined,
+          pet_photo_url: photoUrl,
+          vaccination_urls: vaccUrls.length ? vaccUrls : undefined,
+        }),
+      });
+      const createData = await createRes.json().catch(() => ({}));
+      if (!createRes.ok) throw new Error(createData.error || 'Failed to add pet');
 
       await fetchPets(currentUser.id);
       setAddModalOpen(false);
       resetAddForm();
       showAlert('success', 'Pet Added!', `${addForm.petName} has been added to your profile.`);
-    } catch (err: any) {
+    } catch (err) {
       console.error('handleAddPet error:', err);
-      showAlert('error', 'Error', err.response?.data?.error ?? 'Failed to add pet. Please try again.');
+      showAlert('error', 'Error', getErrorMessage(err, 'Failed to add pet. Please try again.'));
     } finally {
       setIsSaving(false);
     }
@@ -309,9 +322,9 @@ const UserPetProfile: React.FC = () => {
     setAddErrors({});
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
   // Edit pet
-  // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
 
   const openEditModal = (pet: Pet) => {
     setEditPet({ ...pet });
@@ -332,39 +345,44 @@ const UserPetProfile: React.FC = () => {
         );
       }
 
-      await axios.patch(
-        `${API_URL}/pets/${editPet.pet_id}`,
-        {
-          pet_name:      editPet.pet_name,
-          pet_species:   editPet.pet_species,
-          pet_breed:     editPet.pet_breed,
-          pet_gender:    editPet.pet_gender,
-          pet_size:      editPet.pet_size,
-          birthday:      editPet.birthday  ?? undefined,
-          age:           editPet.age       ?? undefined,
-          weight_kg:     editPet.weight_kg ?? undefined,
-          pet_photo_url: photoUrl          ?? undefined,
+      const updateRes = await fetch(`${API_URL}/pets/${editPet.pet_id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getToken()}`,
         },
-        { headers: { Authorization: `Bearer ${getToken()}` } },
-      );
+        body: JSON.stringify({
+          pet_name: editPet.pet_name,
+          pet_species: editPet.pet_species,
+          pet_breed: editPet.pet_breed,
+          pet_gender: editPet.pet_gender,
+          pet_size: editPet.pet_size,
+          birthday: editPet.birthday ?? undefined,
+          age: editPet.age ?? undefined,
+          weight_kg: editPet.weight_kg ?? undefined,
+          pet_photo_url: photoUrl ?? undefined,
+        }),
+      });
+      const updateData = await updateRes.json().catch(() => ({}));
+      if (!updateRes.ok) throw new Error(updateData.error || 'Failed to save changes');
 
       const freshPets = await fetchPets(currentUser.id);
-      const updated   = freshPets.find(p => p.pet_id === editPet.pet_id);
+      const updated = freshPets.find(p => p.pet_id === editPet.pet_id);
       if (updated) setSelectedPet(updated);
 
       setEditModalOpen(false);
       showAlert('success', 'Saved!', 'Pet profile updated successfully.');
-    } catch (err: any) {
+    } catch (err) {
       console.error('handleSavePet error:', err);
-      showAlert('error', 'Error', err.response?.data?.error ?? 'Failed to save changes.');
+      showAlert('error', 'Error', getErrorMessage(err, 'Failed to save changes.'));
     } finally {
       setIsSaving(false);
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
   // Delete pet
-  // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
 
   const handleDeletePet = (pet: Pet) => {
     showAlert(
@@ -372,14 +390,17 @@ const UserPetProfile: React.FC = () => {
       `Are you sure you want to delete ${pet.pet_name}'s profile? This cannot be undone.`,
       async () => {
         try {
-          await axios.delete(`${API_URL}/pets/${pet.pet_id}`, {
+          const res = await fetch(`${API_URL}/pets/${pet.pet_id}`, {
+            method: 'DELETE',
             headers: { Authorization: `Bearer ${getToken()}` },
           });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || 'Failed to delete pet');
           if (currentUser?.id) await fetchPets(currentUser.id);
           if (selectedPet?.pet_id === pet.pet_id) setSelectedPet(null);
           showAlert('success', 'Deleted', `${pet.pet_name}'s profile has been removed.`);
-        } catch (err: any) {
-          showAlert('error', 'Error', err.response?.data?.error ?? 'Failed to delete pet.');
+        } catch (err) {
+          showAlert('error', 'Error', getErrorMessage(err, 'Failed to delete pet.'));
         }
       },
       true, 'Delete',
