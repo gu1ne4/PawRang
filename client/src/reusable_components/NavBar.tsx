@@ -42,9 +42,12 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
   const isActive = (path: string): boolean => location.pathname === path;
   const isAppointmentsSection = ['/admin/schedule', '/admin/availability', '/admin/history'].includes(location.pathname);
   const isAccountsSection = ['/admin/home', '/admin/users'].includes(location.pathname);
+  const inventoryPaths = ['/inventory', '/inventory-in', '/inventory-out', '/inventory-logs', '/inventory-archive'];
+  const isInventorySection = inventoryPaths.includes(location.pathname);
   
   const [showAccountDropdown, setShowAccountDropdown] = useState<boolean>(isAccountsSection);
   const [showAppointmentsDropdown, setShowAppointmentsDropdown] = useState<boolean>(isAppointmentsSection);
+  const [showInventoryDropdown, setShowInventoryDropdown] = useState<boolean>(isInventorySection);
 
   return (
     <div className="navbarContainer">
@@ -171,13 +174,48 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
 
             {/* Inventory - New Section */}
             <div className="navMenuSection">
-              <button 
-                className={`navBtn ${isActive('/inventory') ? 'active' : ''}`}
-                onClick={() => navigate('/inventory')}
-              >
-                <IoLayersOutline size={15} />
-                <span>Inventory</span>
-              </button>
+              <div className={isInventorySection ? 'selectedGlass' : ''}>
+                <button className="navBtn" onClick={() => setShowInventoryDropdown(!showInventoryDropdown)}>
+                  <IoLayersOutline size={15} />
+                  <span>Inventory</span>
+                  {showInventoryDropdown ? <IoChevronUpOutline size={14} /> : <IoChevronDownOutline size={14} />}
+                </button>
+              </div>
+
+              {showInventoryDropdown && (
+                <div className="navSubMenu">
+                  <div className={isActive('/inventory') ? 'subSelectedGlass' : ''}>
+                    <button className="navBtn subNavBtn" onClick={() => navigate('/inventory')}>
+                      <IoLayersOutline size={14} />
+                      <span>Overview</span>
+                    </button>
+                  </div>
+                  <div className={isActive('/inventory-in') ? 'subSelectedGlass' : ''}>
+                    <button className="navBtn subNavBtn" onClick={() => navigate('/inventory-in')}>
+                      <IoLayersOutline size={14} />
+                      <span>Stock In</span>
+                    </button>
+                  </div>
+                  <div className={isActive('/inventory-out') ? 'subSelectedGlass' : ''}>
+                    <button className="navBtn subNavBtn" onClick={() => navigate('/inventory-out')}>
+                      <IoLayersOutline size={14} />
+                      <span>Stock Out</span>
+                    </button>
+                  </div>
+                  <div className={isActive('/inventory-logs') ? 'subSelectedGlass' : ''}>
+                    <button className="navBtn subNavBtn" onClick={() => navigate('/inventory-logs')}>
+                      <IoLayersOutline size={14} />
+                      <span>Logs</span>
+                    </button>
+                  </div>
+                  <div className={isActive('/inventory-archive') ? 'subSelectedGlass' : ''}>
+                    <button className="navBtn subNavBtn" onClick={() => navigate('/inventory-archive')}>
+                      <IoLayersOutline size={14} />
+                      <span>Archive</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="navMenuSection">

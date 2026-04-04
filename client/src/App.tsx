@@ -22,6 +22,10 @@ import ResetPasswordPage2 from './global_pages/ResetPasswordPage2'
 import GlobalLogin from './global_pages/GlobalLogin'
 import UserProfile from './user_pages/UserProfile'
 import GlobalInventory from './global_pages/GlobalInventory'
+import GlobalInventoryIN from './global_pages/GlobalInventoryIN'
+import GlobalInventoryOUT from './global_pages/GlobalInventoryOUT'
+import GlobalInventoryLogs from './global_pages/GlobalInventoryLogs'
+import GlobalInventoryArchive from './global_pages/GlobalInventoryArchive'
 import GlobalEMR from './global_pages/GlobalEMR'
 
 function App() {
@@ -85,6 +89,10 @@ function App() {
         <Route path="/user/appointment-view" element={<Navigate to="/user/appointments" replace />} />
 
         <Route path="/inventory" element={<GlobalInventory />} />
+        <Route path="/inventory-in" element={<GlobalInventoryIN />} />
+        <Route path="/inventory-out" element={<GlobalInventoryOUT />} />
+        <Route path="/inventory-logs" element={<GlobalInventoryLogs />} />
+        <Route path="/inventory-archive" element={<GlobalInventoryArchive />} />
         <Route path="/patient-records" element={<GlobalEMR />} />
       </Routes>
     </BrowserRouter>

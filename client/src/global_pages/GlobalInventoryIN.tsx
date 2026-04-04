@@ -1,33 +1,37 @@
-import React from 'react';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../reusable_components/NavBar';
-import './GlobalInventoryStyles.css';
 import Notifications from '../reusable_components/Notifications';
-import { CiBoxes } from "react-icons/ci";
-import { downloadInventoryTemplate } from './pdf_generation/InventoryExcel';
 import ImportButton from '../reusable_components/ImportBtn';
 import ExportButton  from '../reusable_components/ExportBtn';
-import { RiListSettingsLine } from "react-icons/ri";
+import { downloadInventoryTemplate } from './pdf_generation/InventoryExcel';
 
+import './GlobalInventoryStyles2.css';
 import { 
   IoSearchSharp,
   IoFilterSharp,
-  IoPencilSharp,
+  IoAdd,
   IoCheckmarkCircleOutline,
   IoCloseCircleOutline,
   IoAlertCircleOutline,
-  IoCashOutline,
-  IoCartOutline,
-  IoWarningOutline,
-  IoRemoveCircleOutline,
-  IoAddCircleOutline,
-  IoCalendarOutline,
   IoArrowBackOutline,
   IoDownloadOutline,
   IoCloudUploadOutline,
-  IoArchiveOutline
+  IoArrowDownOutline,
+  IoRemoveCircleOutline,
+  IoAddCircleOutline,
+  IoCloseOutline
 } from 'react-icons/io5';
+import { RiListSettingsLine } from "react-icons/ri";
+
+interface CurrentUser {
+  id?: number;
+  pk?: number;
+  username: string;
+  fullName?: string;
+  role: string;
+  userImage?: string;
+}
 
 interface Product {
   id?: number;
@@ -45,16 +49,20 @@ interface Product {
   maxQuantity?: number;
   useMaxQuantity?: boolean;
   criticalStockLevel?: number;
-  isArchived?: boolean;
 }
 
-interface CurrentUser {
-  id?: number;
-  pk?: number;
-  username: string;
-  fullName?: string;
-  role: string;
-  userImage?: string;
+interface InventoryTransaction {
+  id: number;
+  productCode: string;
+  productName: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+  dateReceived: string;
+  supplier: string;
+  receivedBy: string;
+  referenceNumber: string;
+  notes?: string;
 }
 
 interface ModalConfig {
@@ -67,17 +75,26 @@ interface ModalConfig {
 }
 
 interface FormErrors {
-  code?: string;
   item?: string;
   basePrice?: string;
   sellingPrice?: string;
   expirationDate?: string;
   category?: string;
+  criticalStockLevel?: string;
 }
 
+interface BulkItem {
+  productId: number;
+  productCode: string;
+  productName: string;
+  quantity: number;
+  unitCost: number;
+  availableStock: number;
+}
+
+type SortOption = 'stockLowToHigh' | 'stockHighToLow' | 'expirationEarliest' | 'expirationLatest' | 'alphabeticalAZ' | 'alphabeticalZA';
 type ViewMode = 'list' | 'add' | 'edit';
 type Category = 'Pet Supplies' | 'Deworming' | 'Vitamins' | 'Food' | 'Accessories' | 'Medication';
-type SortOption = 'stockLowToHigh' | 'stockHighToLow' | 'expirationEarliest' | 'expirationLatest' | 'alphabeticalAZ' | 'alphabeticalZA';
 
 const SORT_OPTIONS = [
   { value: 'stockLowToHigh', label: 'Lowest to Highest Stock' },
@@ -88,44 +105,49 @@ const SORT_OPTIONS = [
   { value: 'alphabeticalZA', label: 'Alphabetical Z-A' }
 ];
 
-const API_URL = 'http://localhost:3000';
 const CATEGORIES: Category[] = ['Pet Supplies', 'Deworming', 'Vitamins', 'Food', 'Accessories', 'Medication'];
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
+
+// Generate a unique product code
+const generateProductCode = (): string => {
+  const prefix = 'PRD';
+  const timestamp = Date.now().toString().slice(-6);
+  const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+  return `${prefix}-${timestamp}-${random}`;
+};
 
 const MOCK_PRODUCTS: Product[] = [
   {
     id: 1,
-    code: 'DOG-FD-001',
+    code: 'PRD-123456-001',
     item: 'Premium Dog Food Adult 5kg',
     category: 'Food',
     basePrice: 850.00,
     sellingPrice: 999.00,
     stockCount: 45,
     stockStatus: 'Average Stock',
-    expirationDate: '12/2025',
+    expirationDate: '12/25/2025',
     expirationNA: false,
     dateAdded: '01/15/2024',
-    criticalStockLevel: 10,
-    isArchived: false
+    criticalStockLevel: 10
   },
   {
     id: 2,
-    code: 'CAT-FD-002',
+    code: 'PRD-123457-002',
     item: 'Gourmet Cat Food Fish Flavor 2kg',
     category: 'Food',
     basePrice: 420.00,
     sellingPrice: 549.00,
-    stockCount: 0,
+    stockCount: 12,
     stockStatus: 'Low Stock',
-    expirationDate: '03/2024',
+    expirationDate: '03/15/2024',
     expirationNA: false,
     dateAdded: '02/03/2024',
-    criticalStockLevel: 10,
-    isArchived: false
+    criticalStockLevel: 10
   },
   {
     id: 3,
-    code: 'SUP-TOY-023',
+    code: 'PRD-123458-003',
     item: 'Interactive Feather Cat Toy',
     category: 'Pet Supplies',
     basePrice: 85.00,
@@ -135,42 +157,39 @@ const MOCK_PRODUCTS: Product[] = [
     expirationDate: 'N/A',
     expirationNA: true,
     dateAdded: '01/20/2024',
-    criticalStockLevel: 10,
-    isArchived: false
+    criticalStockLevel: 10
   },
   {
     id: 4,
-    code: 'DEW-PP-056',
+    code: 'PRD-123459-004',
     item: 'Praziquantel Dewormer for Dogs (4 tabs)',
     category: 'Deworming',
     basePrice: 180.00,
     sellingPrice: 249.00,
     stockCount: 34,
     stockStatus: 'Average Stock',
-    expirationDate: '08/2024',
+    expirationDate: '08/15/2024',
     expirationNA: false,
     dateAdded: '02/10/2024',
-    criticalStockLevel: 10,
-    isArchived: false
+    criticalStockLevel: 10
   },
   {
     id: 5,
-    code: 'VIT-DG-089',
+    code: 'PRD-123460-005',
     item: 'Multivitamin Paste for Dogs 100g',
     category: 'Vitamins',
     basePrice: 320.00,
     sellingPrice: 399.00,
     stockCount: 8,
     stockStatus: 'Critical Stock',
-    expirationDate: '05/2024',
+    expirationDate: '05/20/2024',
     expirationNA: false,
     dateAdded: '01/28/2024',
-    criticalStockLevel: 10,
-    isArchived: false
+    criticalStockLevel: 10
   },
   {
     id: 6,
-    code: 'ACC-BED-112',
+    code: 'PRD-123461-006',
     item: 'Orthopedic Dog Bed Medium Size',
     category: 'Accessories',
     basePrice: 1250.00,
@@ -180,42 +199,39 @@ const MOCK_PRODUCTS: Product[] = [
     expirationDate: 'N/A',
     expirationNA: true,
     dateAdded: '02/05/2024',
-    criticalStockLevel: 10,
-    isArchived: false
+    criticalStockLevel: 10
   },
   {
     id: 7,
-    code: 'MED-FL-067',
+    code: 'PRD-123462-007',
     item: 'Flea and Tick Treatment for Cats',
     category: 'Medication',
     basePrice: 450.00,
     sellingPrice: 599.00,
     stockCount: 23,
     stockStatus: 'Average Stock',
-    expirationDate: '11/2024',
+    expirationDate: '11/10/2024',
     expirationNA: false,
     dateAdded: '01/12/2024',
-    criticalStockLevel: 10,
-    isArchived: false
+    criticalStockLevel: 10
   },
   {
     id: 8,
-    code: 'DOG-FD-089',
+    code: 'PRD-123463-008',
     item: 'Puppy Formula Dog Food 3kg',
     category: 'Food',
     basePrice: 680.00,
     sellingPrice: 799.00,
     stockCount: 52,
     stockStatus: 'High Stock',
-    expirationDate: '09/2024',
+    expirationDate: '09/05/2024',
     expirationNA: false,
     dateAdded: '02/18/2024',
-    criticalStockLevel: 10,
-    isArchived: false
+    criticalStockLevel: 10
   },
   {
     id: 9,
-    code: 'SUP-GRM-034',
+    code: 'PRD-123464-009',
     item: 'Professional Dog Grooming Kit',
     category: 'Pet Supplies',
     basePrice: 1250.00,
@@ -225,42 +241,39 @@ const MOCK_PRODUCTS: Product[] = [
     expirationDate: 'N/A',
     expirationNA: true,
     dateAdded: '01/30/2024',
-    criticalStockLevel: 10,
-    isArchived: false
+    criticalStockLevel: 10
   },
   {
     id: 10,
-    code: 'DEW-CT-078',
+    code: 'PRD-123465-010',
     item: 'Broad Spectrum Dewormer for Cats',
     category: 'Deworming',
     basePrice: 210.00,
     sellingPrice: 289.00,
     stockCount: 41,
     stockStatus: 'Average Stock',
-    expirationDate: '04/2024',
+    expirationDate: '04/12/2024',
     expirationNA: false,
     dateAdded: '02/08/2024',
-    criticalStockLevel: 10,
-    isArchived: false
+    criticalStockLevel: 10
   },
   {
     id: 11,
-    code: 'VIT-FS-045',
+    code: 'PRD-123466-011',
     item: 'Fish Oil Supplement for Pets 250ml',
     category: 'Vitamins',
     basePrice: 550.00,
     sellingPrice: 699.00,
     stockCount: 18,
     stockStatus: 'Low Stock',
-    expirationDate: '06/2024',
+    expirationDate: '06/30/2024',
     expirationNA: false,
     dateAdded: '01/22/2024',
-    criticalStockLevel: 10,
-    isArchived: false
+    criticalStockLevel: 10
   },
   {
     id: 12,
-    code: 'ACC-CRG-156',
+    code: 'PRD-123467-012',
     item: 'Adjustable Pet Carrier Bag',
     category: 'Accessories',
     basePrice: 890.00,
@@ -270,80 +283,80 @@ const MOCK_PRODUCTS: Product[] = [
     expirationDate: 'N/A',
     expirationNA: true,
     dateAdded: '02/12/2024',
-    criticalStockLevel: 10,
-    isArchived: false
-  },
-  {
-    id: 13,
-    code: 'MED-AB-092',
-    item: 'Antibiotic Ointment for Pets 50g',
-    category: 'Medication',
-    basePrice: 280.00,
-    sellingPrice: 349.00,
-    stockCount: 63,
-    stockStatus: 'High Stock',
-    expirationDate: '07/2024',
-    expirationNA: false,
-    dateAdded: '01/18/2024',
-    criticalStockLevel: 10,
-    isArchived: false
-  },
-  {
-    id: 14,
-    code: 'DOG-FD-234',
-    item: 'Grain-Free Dog Food 2kg',
-    category: 'Food',
-    basePrice: 720.00,
-    sellingPrice: 899.00,
-    stockCount: 5,
-    stockStatus: 'Critical Stock',
-    expirationDate: '02/2024',
-    expirationNA: false,
-    dateAdded: '02/20/2024',
-    criticalStockLevel: 10,
-    isArchived: false
-  },
-  {
-    id: 15,
-    code: 'SUP-LTR-067',
-    item: 'Self-Cleaning Litter Box',
-    category: 'Pet Supplies',
-    basePrice: 2150.00,
-    sellingPrice: 2499.00,
-    stockCount: 11,
-    stockStatus: 'Low Stock',
-    expirationDate: 'N/A',
-    expirationNA: true,
-    dateAdded: '01/25/2024',
-    criticalStockLevel: 10,
-    isArchived: false
+    criticalStockLevel: 10
   }
 ];
 
-const GlobalInventory: React.FC = () => {
+const GlobalInventoryIN: React.FC = () => {
   const navigate = useNavigate();
+  
   // State
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
+  const [transactions, setTransactions] = useState<InventoryTransaction[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   
   // UI State
   const [searchVisible, setSearchVisible] = useState<boolean>(false);
   const [filterVisible, setFilterVisible] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
   const [searchHovered, setSearchHovered] = useState<boolean>(false);
   const [filterHovered, setFilterHovered] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
-  const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
-  const [showLowStockSidebar, setShowLowStockSidebar] = useState<boolean>(false);
-  const [showExpiringSidebar, setShowExpiringSidebar] = useState<boolean>(false);
   const [activeFilter, setActiveFilter] = useState<string>('');
   const [showImportModal, setShowImportModal] = useState<boolean>(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [rowsPerPage, setRowsPerPage] = useState<number>(8);
   const [showExportDropdown, setShowExportDropdown] = useState<boolean>(false);
   const [sortOption, setSortOption] = useState<SortOption>('stockLowToHigh');
   const [showSettingsDropdown, setShowSettingsDropdown] = useState<boolean>(false);
+  
+  // Checkbox selection state for products
+  const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
+  const [selectAll, setSelectAll] = useState<boolean>(false);
+  
+  
+  // Transaction modal state
+  const [showTransactionModal, setShowTransactionModal] = useState<boolean>(false);
+  const [transactionItems, setTransactionItems] = useState<BulkItem[]>([]);
+  const [transactionReferenceNumber, setTransactionReferenceNumber] = useState<string>('');
+  const [transactionSupplier, setTransactionSupplier] = useState<string>('');
+  const [transactionNotes, setTransactionNotes] = useState<string>('');
+
+  // Filter States
+  const [categoryFilter, setCategoryFilter] = useState<string>("defaultCategory");
+  const [stockStatusFilter, setStockStatusFilter] = useState<string>("defaultStatus");
+
+  // Pagination
+  const [page, setPage] = useState<number>(0);
+  const [rowsPerPage, setRowsPerPage] = useState<number>(8);
+  const itemsPerPage = rowsPerPage;
+
+  const [selectedBranch, setSelectedBranch] = useState<string>('All');
+
+  // Form States for Product
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [formItem, setFormItem] = useState<string>('');
+  const [formCategory, setFormCategory] = useState<Category | ''>('');
+  const [formBasePrice, setFormBasePrice] = useState<string>('');
+  const [formSellingPrice, setFormSellingPrice] = useState<string>('');
+  const [formExpirationDate, setFormExpirationDate] = useState<string>('');
+  const [formExpirationNA, setFormExpirationNA] = useState<boolean>(false);
+  const [formCriticalStockLevel, setFormCriticalStockLevel] = useState<string>('10');
+  const [formUseCriticalStock, setFormUseCriticalStock] = useState<boolean>(false);
+
+  // Add these with your other state variables
+  const [supplierError, setSupplierError] = useState<string>('');
+  const [quantityErrors, setQuantityErrors] = useState<Record<number, string>>({});
+  const [missingQuantityCount, setMissingQuantityCount] = useState<number>(0);
+
+  // Character counts
+  const [charCounts, setCharCounts] = useState({
+    item: 0
+  });
+
+  // Form Errors
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
 
   // Modal States
   const [modalVisible, setModalVisible] = useState<boolean>(false);
@@ -352,66 +365,6 @@ const GlobalInventory: React.FC = () => {
     title: '',
     message: '',
     showCancel: false
-  });
-
-  // Filter States
-  const [categoryFilter, setCategoryFilter] = useState<string>("defaultCategory");
-  const [stockStatusFilter, setStockStatusFilter] = useState<string>("defaultStatus");
-
-  // Pagination
-  const [page, setPage] = useState<number>(0);
-  const itemsPerPage = rowsPerPage;
-
-  // Form States
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [formCode, setFormCode] = useState<string>('');
-  const [formItem, setFormItem] = useState<string>('');
-  const [formCategory, setFormCategory] = useState<Category | ''>('');
-  const [formBasePrice, setFormBasePrice] = useState<string>('');
-  const [formSellingPrice, setFormSellingPrice] = useState<string>('');
-  const [formExpirationDate, setFormExpirationDate] = useState<string>('');
-  const [formExpirationNA, setFormExpirationNA] = useState<boolean>(false);
-  const [formUseMaxQuantity, setFormUseMaxQuantity] = useState<boolean>(false);
-  const [formMaxQuantity, setFormMaxQuantity] = useState<string>('');
-  const [formCriticalStockLevel, setFormCriticalStockLevel] = useState<string>('10');
-  const [formUseCriticalStock, setFormUseCriticalStock] = useState<boolean>(false);
-
-  const [selectedBranch, setSelectedBranch] = useState<string>('All');
-  const [userRole, setUserRole] = useState<string>('');
-
-  const [formStockCount, setFormStockCount] = useState<string>('');
-
-  const handleStockChange = (delta: number) => {
-    if (formUseMaxQuantity) return;
-    const currentValue = parseInt(formStockCount) || 0;
-    const newValue = Math.max(0, currentValue + delta);
-    setFormStockCount(Math.min(newValue, 999999).toString());
-  };
-
-  const handleCriticalStockChange = (delta: number) => {
-    const currentValue = parseInt(formCriticalStockLevel) || 10;
-    const newValue = Math.max(1, currentValue + delta);
-    setFormCriticalStockLevel(Math.min(newValue, 999999).toString());
-  };
-  
-  // Character counts
-  const [charCounts, setCharCounts] = useState({
-    code: 0,
-    item: 0
-  });
-
-  // Form Errors
-  const [formErrors, setFormErrors] = useState<FormErrors>({});
-
-  // Analytics
-  const [analytics, setAnalytics] = useState({
-    totalProducts: 0,
-    lowStockCount: 0,
-    criticalStockCount: 0,
-    expiringCount: 0,
-    expiredCount: 0,
-    totalValue: 0,
-    totalRevenue: 0
   });
 
   // Helper Functions
@@ -433,28 +386,23 @@ const GlobalInventory: React.FC = () => {
       if (session) {
         const user = JSON.parse(session);
         setCurrentUser(user);
-        setUserRole(user.role || '');
       }
     } catch (error) {
       console.log('Error loading user session', error);
     }
   };
 
-  // Fetch products (using mock data for now)
-  const fetchProducts = async (): Promise<void> => {
-    setLoading(true);
-    try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setProducts(MOCK_PRODUCTS);
-      calculateAnalytics(MOCK_PRODUCTS);
-    } catch (error) {
-      console.error(error);
-      showAlert('error', 'Error', 'Failed to fetch inventory data.');
-    } finally {
-      setLoading(false);
-    }
+  // Generate random reference number
+  const generateReferenceNumber = (): string => {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    return `GRN-${year}${month}${day}-${random}`;
   };
 
+  // Check if date is expired
   const isExpired = (expirationDate?: string, expirationNA?: boolean): boolean => {
     if (expirationNA || !expirationDate || expirationDate === 'N/A') return false;
     
@@ -466,6 +414,7 @@ const GlobalInventory: React.FC = () => {
     return expDate < today;
   };
 
+  // Check if date is expiring within a month
   const isExpiringSoon = (expirationDate?: string, expirationNA?: boolean): boolean => {
     if (expirationNA || !expirationDate || expirationDate === 'N/A') return false;
     if (isExpired(expirationDate, expirationNA)) return false;
@@ -480,32 +429,52 @@ const GlobalInventory: React.FC = () => {
     return expDate <= oneMonthFromNow;
   };
 
-  // Calculate analytics
-  const calculateAnalytics = (productList: Product[]) => {
-    const activeProducts = productList.filter(p => !p.isArchived);
-    const totalProducts = activeProducts.length;
-    const lowStockCount = activeProducts.filter(p => p.stockStatus === 'Low Stock' || p.stockStatus === 'Critical Stock').length;
-    const criticalStockCount = activeProducts.filter(p => p.stockStatus === 'Critical Stock').length;
-    const expiredCount = activeProducts.filter(p => isExpired(p.expirationDate, p.expirationNA)).length;
-    const expiringCount = activeProducts.filter(p => isExpiringSoon(p.expirationDate, p.expirationNA)).length;
-    const totalValue = activeProducts.reduce((sum, p) => sum + (p.basePrice * p.stockCount), 0);
-    const totalRevenue = activeProducts.reduce((sum, p) => sum + (p.sellingPrice * p.stockCount), 0);
-    
-    setAnalytics({ 
-      totalProducts, 
-      lowStockCount, 
-      criticalStockCount,
-      expiringCount,
-      expiredCount,
-      totalValue, 
-      totalRevenue 
-    });
+  // Format date for display
+  const formatExpirationDate = (dateString?: string): string => {
+    if (!dateString || dateString === 'N/A') return 'N/A';
+    const [month, day, year] = dateString.split('/');
+    return `${month}/${day}/${year}`;
+  };
+
+      const handleImport = async (file: File) => {
+    console.log('Importing file:', file.name);
+
+    showAlert('info', 'Processing', `Importing ${file.name}...`);
+  
+    setTimeout(() => {
+      showAlert('success', 'Import Successful', 'Inventory data has been imported successfully!');
+      fetchProducts(); 
+    }, 1500);
+  };
+
+  const handleDownloadTemplate = () => {
+    downloadInventoryTemplate();
+  };
+
+  // Fetch products
+  const fetchProducts = async (): Promise<void> => {
+    setLoading(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 800));
+      setProducts(MOCK_PRODUCTS);
+    } catch (error) {
+      console.error(error);
+      showAlert('error', 'Error', 'Failed to fetch inventory data.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     fetchProducts();
     loadCurrentUser();
   }, []);
+
+
+useEffect(() => {
+  const count = transactionItems.filter(item => item.quantity <= 0).length;
+  setMissingQuantityCount(count);
+}, [transactionItems]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -521,16 +490,215 @@ const GlobalInventory: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showExportDropdown, showSettingsDropdown]);
 
-  const determineStockStatus = (count: number, criticalLevel?: number): 'High Stock' | 'Average Stock' | 'Low Stock' | 'Critical Stock' => {
-    const critical = Math.max(1, criticalLevel || 10);
+  // Clear all filters
+  const handleReturnToList = () => {
+    setCategoryFilter("defaultCategory");
+    setStockStatusFilter("defaultStatus");
+    setSearchQuery("");
+    setActiveFilter("");
+    setPage(0);
+    setSelectedProducts(new Set());
+    setSelectAll(false);
+  };
+
+  // Clear filters function
+  const clearFilters = () => {
+    setCategoryFilter("defaultCategory");
+    setStockStatusFilter("defaultStatus");
+    setSearchQuery("");
+    setActiveFilter("");
+    setPage(0);
+    setFilterVisible(false);
+    setSelectedProducts(new Set());
+    setSelectAll(false);
+  };
+
+  // Logout Handler
+  const handleLogoutPress = (): void => {
+    showAlert('confirm', 'Log Out', 'Are you sure you want to log out?', async () => {
+      localStorage.removeItem('userSession');
+      navigate('/login');
+    }, undefined, true);
+  };
+
+  // Handle checkbox selection
+  const handleSelectProduct = (productId: number) => {
+    const newSelected = new Set(selectedProducts);
+    if (newSelected.has(productId)) {
+      newSelected.delete(productId);
+    } else {
+      newSelected.add(productId);
+    }
+    setSelectedProducts(newSelected);
     
-    if (count === 0) return 'Critical Stock';
-    if (count <= critical) return 'Critical Stock';
-    if (count <= critical + 10) return 'Low Stock';
+    const enabledProducts = products.filter(p => p.stockCount >= 0);
+    const allEnabledSelected = enabledProducts.length > 0 && 
+      enabledProducts.every(p => newSelected.has(p.id || p.pk || 0));
+    setSelectAll(allEnabledSelected);
+  };
+
+  const handleSelectAll = () => {
+    if (selectAll) {
+      setSelectedProducts(new Set());
+      setSelectAll(false);
+    } else {
+      const allIds = products.map(p => p.id || p.pk || 0);
+      setSelectedProducts(new Set(allIds));
+      setSelectAll(true);
+    }
+  };
+
+  // Open transaction modal
+  const openReceiveStockModal = () => {
+    if (selectedProducts.size === 0) {
+      showAlert('error', 'No Selection', 'Please select at least one product to receive stock.');
+      return;
+    }
+    
+    const items: BulkItem[] = Array.from(selectedProducts).map(id => {
+      const product = products.find(p => (p.id || p.pk || 0) === id);
+      return {
+        productId: id,
+        productCode: product?.code || '',
+        productName: product?.item || '',
+        quantity: 0,
+        unitCost: product?.basePrice || 0,
+        availableStock: product?.stockCount || 0
+      };
+    });
+    
+    setTransactionItems(items);
+    setTransactionReferenceNumber(generateReferenceNumber());
+    setTransactionSupplier('');
+    setTransactionNotes('');
+    setShowTransactionModal(true);
+  };
+
+  // Handle quick add for transaction modal
+  const handleModalQuickAdd = (index: number, amount: number) => {
+    const newItems = [...transactionItems];
+    const item = newItems[index];
+    const newQuantity = item.quantity + amount;
+    if (newQuantity <= 999999 && newQuantity >= 0) {
+      item.quantity = newQuantity;
+      setTransactionItems(newItems);
+    }
+  };
+
+  // Handle quantity change in modal
+  const handleModalQuantityChange = (index: number, value: number) => {
+    const newItems = [...transactionItems];
+    const newQty = Math.min(Math.max(0, value), 999999);
+    newItems[index].quantity = newQty;
+    setTransactionItems(newItems);
+  };
+
+const saveTransaction = () => {
+  let hasError = false;
+  
+  // Validate supplier
+  if (!transactionSupplier.trim()) {
+    setSupplierError('Supplier name is required');
+    hasError = true;
+  } else if (transactionSupplier.length > 50) {
+    setSupplierError('Supplier name must not exceed 50 characters');
+    hasError = true;
+  } else {
+    setSupplierError('');
+  }
+  
+  if (transactionItems.length === 0) {
+    showAlert('error', 'No Items', 'No items to process.');
+    return;
+  }
+  
+  // Validate quantities for each item
+  const newQuantityErrors: Record<number, string> = {};
+  let hasQuantityError = false;
+  
+  transactionItems.forEach((item, index) => {
+    if (item.quantity <= 0) {
+      newQuantityErrors[index] = 'Quantity is required';
+      hasQuantityError = true;
+    } else if (item.quantity > 999999) {
+      newQuantityErrors[index] = 'Quantity cannot exceed 999,999';
+      hasQuantityError = true;
+    }
+  });
+  
+  setQuantityErrors(newQuantityErrors);
+  
+  if (hasQuantityError) {
+    hasError = true;
+  }
+  
+  if (hasError) {
+    // Scroll to the first error
+    const firstError = document.querySelector('.invErrorText');
+    if (firstError) {
+      firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    return;
+  }
+  
+  // Update product stocks
+  let updatedProducts = [...products];
+  const newTransactions: InventoryTransaction[] = [];
+  
+  for (const item of transactionItems) {
+    const product = products.find(p => (p.id || p.pk || 0) === item.productId);
+    if (product) {
+      const newStockCount = product.stockCount + item.quantity;
+      const newStockStatus = determineStockStatus(newStockCount, product.criticalStockLevel || 10);
+      
+      updatedProducts = updatedProducts.map(p => {
+        if ((p.id || p.pk || 0) === item.productId) {
+          return { ...p, stockCount: newStockCount, stockStatus: newStockStatus };
+        }
+        return p;
+      });
+      
+      // Create transaction record
+      newTransactions.push({
+        id: transactions.length + newTransactions.length + 1,
+        productCode: product.code,
+        productName: product.item,
+        quantity: item.quantity,
+        unitCost: item.unitCost,
+        totalCost: item.quantity * item.unitCost,
+        dateReceived: new Date().toISOString().split('T')[0],
+        supplier: transactionSupplier,
+        receivedBy: currentUser?.username || 'Unknown',
+        referenceNumber: transactionReferenceNumber,
+        notes: transactionNotes
+      });
+    }
+  }
+  
+  setProducts(updatedProducts);
+  setTransactions([...newTransactions, ...transactions]);
+  
+  // Clear selections
+  setSelectedProducts(new Set());
+  setSelectAll(false);
+  
+  setShowTransactionModal(false);
+  setModalSearchQuery('');
+  setSupplierError('');
+  setQuantityErrors({});
+  
+  showAlert('success', 'Stock Received', 
+    `Successfully received ${transactionItems.length} item(s). Reference: ${transactionReferenceNumber}`);
+};
+  // Determine stock status
+  const determineStockStatus = (count: number, criticalLevel: number): 'High Stock' | 'Average Stock' | 'Low Stock' | 'Critical Stock' => {
+    if (count <= criticalLevel) return 'Critical Stock';
+    if (count <= criticalLevel + 10) return 'Low Stock';
     if (count >= 50) return 'High Stock';
     return 'Average Stock';
   };
 
+  // Format price input
   const formatPriceInput = (value: string): string => {
     let cleaned = value.replace(/[^\d.]/g, '');
     const parts = cleaned.split('.');
@@ -547,85 +715,27 @@ const GlobalInventory: React.FC = () => {
     return cleaned;
   };
 
-  const resetForm = (): void => {
-    setFormCode('');
+  // Reset product form
+  const resetProductForm = (): void => {
     setFormItem('');
-    setFormStockCount('');
     setFormCategory('');
     setFormBasePrice('');
     setFormSellingPrice('');
     setFormExpirationDate('');
     setFormExpirationNA(false);
-    setFormUseMaxQuantity(false);
-    setFormMaxQuantity('');
     setFormCriticalStockLevel('10');
     setFormUseCriticalStock(false);
     setEditingId(null);
-    setCharCounts({ code: 0, item: 0 });
+    setCharCounts({ item: 0 });
     setFormErrors({});
   };
 
-  // Clear all filters and return to full list
-  const handleReturnToList = () => {
-    setCategoryFilter("defaultCategory");
-    setStockStatusFilter("defaultStatus");
-    setSearchQuery("");
-    setActiveFilter("");
-    setPage(0);
-    setSelectedProducts(new Set());
-  };
-
-  // Clear filters function
-  const clearFilters = () => {
-    setCategoryFilter("defaultCategory");
-    setStockStatusFilter("defaultStatus");
-    setSearchQuery("");
-    setActiveFilter("");
-    setPage(0);
-    setFilterVisible(false);
-    setSelectedProducts(new Set());
-  };
-
-  // Filter by specific product
-  const filterByProduct = (productCode: string) => {
-    setSearchQuery(productCode);
-    setActiveFilter('product');
-    setCategoryFilter("defaultCategory");
-    setStockStatusFilter("defaultStatus");
-    setPage(0);
-  };
-
-  // Logout Handler
-  const handleLogoutPress = (): void => {
-    showAlert('confirm', 'Log Out', 'Are you sure you want to log out?', async () => {
-      try {
-        if (currentUser && (currentUser.id || currentUser.pk)) {
-          await fetch(`${API_URL}/logout`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: currentUser.id || currentUser.pk,
-              userType: 'EMPLOYEE',
-              username: currentUser.username || currentUser.fullName,
-              role: currentUser.role
-            })
-          });
-        }
-      } catch (error) {
-        console.log("Logout audit failed:", error);
-      }
-
-      localStorage.removeItem('userSession');
-      navigate('/login');
-    }, undefined, true);
-  };
-
-  // Cancel Handler
+  // Cancel Handler for product form
   const handleCancel = (): void => {
     let hasUnsavedChanges = false;
     
     if (viewMode === 'add') {
-      hasUnsavedChanges = !!(formCode || formItem || formBasePrice || formSellingPrice || formExpirationDate || formCategory);
+      hasUnsavedChanges = !!(formItem || formBasePrice || formSellingPrice || formExpirationDate || formCategory);
     } else if (viewMode === 'edit') {
       const original = products.find(p => p.id === editingId || p.pk === editingId);
       if (original) {
@@ -643,51 +753,18 @@ const GlobalInventory: React.FC = () => {
     if (hasUnsavedChanges) {
       showAlert('confirm', 'Unsaved Changes', 'You have unsaved changes. Are you sure you want to discard them?', () => {
         setViewMode('list');
-        resetForm();
+        resetProductForm();
       }, undefined, true);
     } else {
       setViewMode('list');
-      resetForm();
+      resetProductForm();
     }
   };
 
-  // Open Edit Form
-  const openEditForm = (product: Product): void => {
-    setEditingId(product.id || product.pk || null);
-    setFormCode(product.code);
-    setFormItem(product.item);
-    setFormCategory(product.category as Category);
-    setFormBasePrice(product.basePrice.toString());
-    setFormSellingPrice(product.sellingPrice.toString());
-    setFormExpirationDate(product.expirationDate || '');
-    setFormExpirationNA(product.expirationNA || false);
-    setFormUseMaxQuantity(product.useMaxQuantity || false);
-    setFormMaxQuantity(product.maxQuantity?.toString() || '');
-    setFormCriticalStockLevel(product.criticalStockLevel?.toString() || '10');
-    setFormUseCriticalStock(!!product.criticalStockLevel && product.criticalStockLevel !== 10);
-    
-    setCharCounts({
-      code: product.code.length,
-      item: product.item.length
-    });
-    setFormErrors({});
-    setViewMode('edit');
-  };
 
-  // Validation functions
+  // Validation functions for product
   const validateField = (field: string, value: string): string => {
     switch(field) {
-      case 'code':
-        if (!value.trim()) return 'Product code is required';
-        if (value.length < 3) return 'Product code must be at least 3 characters';
-        if (value.length > 20) return 'Product code must not exceed 20 characters';
-        const isDuplicate = products.some(p => 
-          p.code.toLowerCase() === value.toLowerCase() && 
-          (viewMode === 'edit' ? (p.id !== editingId && p.pk !== editingId) : true)
-        );
-        if (isDuplicate) return 'Product code already exists';
-        return '';
-        
       case 'item':
         if (!value.trim()) return 'Item name is required';
         if (value.length < 3) return 'Item name must be at least 3 characters';
@@ -720,37 +797,47 @@ const GlobalInventory: React.FC = () => {
           return 'Expiration date is required (or check "Not Applicable")';
         }
         if (!formExpirationNA && value) {
-          const dateRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])\/\d{4}$/;
-          if (!dateRegex.test(value)) return 'Invalid date format. Use MM/DD/YYYY';
+          const parts = value.split('/');
+          if (parts.length !== 3) return 'Invalid date format';
+          const month = parseInt(parts[0]);
+          const day = parseInt(parts[1]);
+          const year = parseInt(parts[2]);
+          if (isNaN(month) || isNaN(day) || isNaN(year)) return 'Invalid date';
+          if (month < 1 || month > 12) return 'Month must be between 01 and 12';
+          if (day < 1 || day > 31) return 'Day must be between 01 and 31';
+          if (year < 2024 || year > 2100) return 'Year must be between 2024 and 2100';
           
-          const [month, day, year] = value.split('/').map(Number);
-          const date = new Date(year, month - 1, day);
-          
-          if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+          // Check if date is valid (e.g., not Feb 30)
+          const testDate = new Date(year, month - 1, day);
+          if (testDate.getMonth() !== month - 1 || testDate.getDate() !== day) {
             return 'Invalid date (e.g., February 30 is not valid)';
           }
-          
-          if (year < 2024 || year > 2100) return 'Year must be between 2024 and 2100';
         }
         return '';
-
+        
+      case 'criticalStockLevel':
+        const level = parseInt(value);
+        if (isNaN(level) || level < 1) return 'Critical stock level must be at least 1';
+        if (level > 999999) return 'Critical stock level cannot exceed 999,999';
+        return '';
+        
       default:
         return '';
     }
   };
 
-  const validateForm = (): boolean => {
+  const validateProductForm = (): boolean => {
     const errors: FormErrors = {};
     
-    if (viewMode === 'add') {
-      errors.code = validateField('code', formCode);
-    }
     errors.item = validateField('item', formItem);
     errors.category = validateField('category', formCategory as string);
     errors.basePrice = validateField('basePrice', formBasePrice);
     errors.sellingPrice = validateField('sellingPrice', formSellingPrice);
     if (!formExpirationNA) {
       errors.expirationDate = validateField('expirationDate', formExpirationDate);
+    }
+    if (formUseCriticalStock) {
+      errors.criticalStockLevel = validateField('criticalStockLevel', formCriticalStockLevel);
     }
     
     setFormErrors(errors);
@@ -760,17 +847,17 @@ const GlobalInventory: React.FC = () => {
 
   // Save Product
   const handleSaveProduct = async (): Promise<void> => {
-    if (!validateForm()) {
+    if (!validateProductForm()) {
       return;
     }
 
     const existingProduct = viewMode === 'edit' ? products.find(p => p.id === editingId || p.pk === editingId) : null;
     const criticalLevel = formUseCriticalStock ? parseInt(formCriticalStockLevel) : 10;
-    const stockCount = viewMode === 'add' ? (parseInt(formStockCount) || 0) : (existingProduct?.stockCount || 0);
+    const stockCount = existingProduct?.stockCount || 0;
     const stockStatus = determineStockStatus(stockCount, criticalLevel);
     
     const productData = {
-      code: viewMode === 'add' ? formCode : (existingProduct?.code || formCode),
+      code: viewMode === 'add' ? generateProductCode() : (existingProduct?.code || ''),
       item: formItem,
       category: formCategory as Category,
       basePrice: parseFloat(formBasePrice),
@@ -780,10 +867,7 @@ const GlobalInventory: React.FC = () => {
       expirationDate: formExpirationNA ? 'N/A' : formExpirationDate,
       expirationNA: formExpirationNA,
       dateAdded: existingProduct?.dateAdded || new Date().toLocaleDateString(),
-      useMaxQuantity: formUseMaxQuantity,
-      maxQuantity: formUseMaxQuantity ? parseInt(formMaxQuantity) : undefined,
-      criticalStockLevel: criticalLevel,
-      isArchived: existingProduct?.isArchived || false
+      criticalStockLevel: criticalLevel
     };
 
     showAlert('confirm', viewMode === 'add' ? 'Add Product' : 'Save Changes', 
@@ -799,86 +883,74 @@ const GlobalInventory: React.FC = () => {
               id: Math.max(...products.map(p => p.id || 0), 0) + 1
             };
             updatedProducts = [...products, newProduct];
+            showAlert('success', 'Product Added', `Product "${formItem}" has been added successfully! Product Code: ${newProduct.code}`);
           } else {
             updatedProducts = products.map(p => 
               (p.id === editingId || p.pk === editingId) 
                 ? { ...p, ...productData }
                 : p
             );
+            showAlert('success', 'Success', 'Product updated successfully!');
           }
           
           setProducts(updatedProducts);
-          calculateAnalytics(updatedProducts);
-          
           setViewMode('list');
-          showAlert('success', 'Success', 
-            viewMode === 'add' ? 'Product added successfully!' : 'Product updated successfully!', 
-            () => {
-              resetForm();
-            });
+          resetProductForm();
         } catch (error) {
           showAlert('error', 'Error', 'Failed to save product information.');
         }
       }, undefined, true);
   };
 
-  // Archive selected products
-  const handleArchiveSelected = (): void => {
-    if (selectedProducts.size === 0) {
-      showAlert('error', 'No Selection', 'Please select products to archive.');
+  const handleCriticalStockChange = (delta: number) => {
+    const currentValue = parseInt(formCriticalStockLevel) || 10;
+    const newValue = Math.max(1, currentValue + delta);
+    setFormCriticalStockLevel(Math.min(newValue, 999999).toString());
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+    }
+  };
+
+  const handleImportSubmit = () => {
+    if (!selectedFile) {
+      showAlert('error', 'No File', 'Please select a file to import.');
       return;
     }
-
-    showAlert('confirm', 'Archive Products', 
-      `Are you sure you want to archive ${selectedProducts.size} selected product(s)?`, 
-      async () => {
-        try {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          const updatedProducts = products.map(p => {
-            const productId = p.id || p.pk || 0;
-            if (selectedProducts.has(productId)) {
-              return { ...p, isArchived: true };
-            }
-            return p;
-          });
-          
-          setProducts(updatedProducts);
-          setSelectedProducts(new Set());
-          calculateAnalytics(updatedProducts);
-          
-          showAlert('success', 'Success', 'Products archived successfully!');
-        } catch (error) {
-          showAlert('error', 'Error', 'Failed to archive products.');
-        }
+    
+    showAlert('confirm', 'Import Inventory', 
+      `Are you sure you want to import data from "${selectedFile.name}"?`, 
+      () => {
+        setTimeout(() => {
+          showAlert('success', 'Import Successful', 'Inventory data has been imported successfully!');
+          setShowImportModal(false);
+          setSelectedFile(null);
+          fetchProducts();
+        }, 1500);
       }, undefined, true);
   };
 
-  // Toggle product selection
-  const toggleProductSelection = (id: number) => {
-    const newSelected = new Set(selectedProducts);
-    if (newSelected.has(id)) {
-      newSelected.delete(id);
-    } else {
-      newSelected.add(id);
-    }
-    setSelectedProducts(newSelected);
-  };
-
-  // Toggle all products
-  const toggleAllProducts = () => {
-    if (selectedProducts.size === paginatedProducts.length) {
-      setSelectedProducts(new Set());
-    } else {
-      const allIds = paginatedProducts.map(p => p.id || p.pk || 0).filter(id => id !== 0);
-      setSelectedProducts(new Set(allIds));
-    }
-  };
-
-  // Handle rows per page change
-  const handleRowsPerPageChange = (newRowsPerPage: number) => {
-    setRowsPerPage(newRowsPerPage);
-    setPage(0);
+  const downloadTemplate = () => {
+    const headers = ['Item', 'Category', 'Base Price', 'Selling Price', 'Critical Stock Level', 'Expiration Date (MM/DD/YYYY)'];
+    const sampleData = [
+      ['Premium Dog Food Adult 5kg', 'Food', '850', '999', '10', '12/25/2025'],
+      ['Gourmet Cat Food Fish Flavor 2kg', 'Food', '420', '549', '10', '03/15/2024'],
+      ['Interactive Feather Cat Toy', 'Pet Supplies', '85', '149', '10', 'N/A']
+    ];
+    
+    const csvContent = [headers, ...sampleData].map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'inventory_import_template.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   // Sort products
@@ -904,10 +976,10 @@ const GlobalInventory: React.FC = () => {
           if (!aDate) return 1;
           if (!bDate) return -1;
           
-          const [aMonth, aYear] = aDate.split('/');
-          const [bMonth, bYear] = bDate.split('/');
-          const aTime = new Date(parseInt(aYear), parseInt(aMonth) - 1).getTime();
-          const bTime = new Date(parseInt(bYear), parseInt(bMonth) - 1).getTime();
+          const [aMonth, aDay, aYear] = aDate.split('/');
+          const [bMonth, bDay, bYear] = bDate.split('/');
+          const aTime = new Date(parseInt(aYear), parseInt(aMonth) - 1, parseInt(aDay)).getTime();
+          const bTime = new Date(parseInt(bYear), parseInt(bMonth) - 1, parseInt(bDay)).getTime();
           return aTime - bTime;
         });
       case 'expirationLatest':
@@ -919,10 +991,10 @@ const GlobalInventory: React.FC = () => {
           if (!aDate) return 1;
           if (!bDate) return -1;
           
-          const [aMonth, aYear] = aDate.split('/');
-          const [bMonth, bYear] = bDate.split('/');
-          const aTime = new Date(parseInt(aYear), parseInt(aMonth) - 1).getTime();
-          const bTime = new Date(parseInt(bYear), parseInt(bMonth) - 1).getTime();
+          const [aMonth, aDay, aYear] = aDate.split('/');
+          const [bMonth, bDay, bYear] = bDate.split('/');
+          const aTime = new Date(parseInt(aYear), parseInt(aMonth) - 1, parseInt(aDay)).getTime();
+          const bTime = new Date(parseInt(bYear), parseInt(bMonth) - 1, parseInt(bDay)).getTime();
           return bTime - aTime;
         });
       case 'alphabeticalAZ':
@@ -934,57 +1006,8 @@ const GlobalInventory: React.FC = () => {
     }
   };
 
-    const handleImport = async (file: File) => {
-    console.log('Importing file:', file.name);
-
-    showAlert('info', 'Processing', `Importing ${file.name}...`);
-  
-    setTimeout(() => {
-      showAlert('success', 'Import Successful', 'Inventory data has been imported successfully!');
-      fetchProducts(); 
-    }, 1500);
-  };
-
-  const handleDownloadTemplate = () => {
-    downloadInventoryTemplate();
-  };
-
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-    }
-  };
-
-  const handleImportSubmit = () => {
-    if (!selectedFile) {
-      showAlert('error', 'No File', 'Please select a file to import.');
-      return;
-    }
-    
-    showAlert('confirm', 'Import Inventory', 
-      `Are you sure you want to import data from "${selectedFile.name}"? This may update existing products.`, 
-      () => {
-        setTimeout(() => {
-          showAlert('success', 'Import Successful', 'Inventory data has been imported successfully!');
-          setShowImportModal(false);
-          setSelectedFile(null);
-          fetchProducts();
-        }, 1500);
-      }, undefined, true);
-  };
-
-  const downloadTemplate = () => {
-    downloadInventoryTemplate().catch(error => {
-      console.error('Error generating template:', error);
-      showAlert('error', 'Error', 'Failed to generate Excel template. Please try again.');
-    });
-  };
-
   // Filter Logic
   const filteredProducts = products.filter(product => {
-    if (product.isArchived) return false;
-    
     const searchLower = searchQuery.toLowerCase();
     const matchesSearch = 
       product.code.toLowerCase().includes(searchLower) ||
@@ -1001,37 +1024,6 @@ const GlobalInventory: React.FC = () => {
   const paginatedProducts = sortedProducts.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
   const totalPages = Math.ceil(sortedProducts.length / itemsPerPage);
 
-  // Low stock products
-  const lowStockProducts = products
-    .filter(p => !p.isArchived && (p.stockStatus === 'Low Stock' || p.stockStatus === 'Critical Stock'))
-    .sort((a, b) => {
-      if (a.stockCount <= (a.criticalStockLevel || 10) && b.stockCount > (b.criticalStockLevel || 10)) return -1;
-      if (a.stockCount > (a.criticalStockLevel || 10) && b.stockCount <= (b.criticalStockLevel || 10)) return 1;
-      return a.stockCount - b.stockCount;
-    });
-
-  // Expiration products
-  const expirationProducts = products
-    .filter(p => !p.isArchived && !p.expirationNA && p.expirationDate && p.expirationDate !== 'N/A')
-    .filter(p => isExpired(p.expirationDate, p.expirationNA) || isExpiringSoon(p.expirationDate, p.expirationNA))
-    .sort((a, b) => {
-      const aExpired = isExpired(a.expirationDate, a.expirationNA);
-      const bExpired = isExpired(b.expirationDate, b.expirationNA);
-      
-      if (aExpired && !bExpired) return -1;
-      if (!aExpired && bExpired) return 1;
-      
-      if (!a.expirationDate || a.expirationDate === 'N/A') return 1;
-      if (!b.expirationDate || b.expirationDate === 'N/A') return -1;
-      
-      const [aMonth, aYear] = a.expirationDate.split('/');
-      const [bMonth, bYear] = b.expirationDate.split('/');
-      const aDate = new Date(parseInt(aYear), parseInt(aMonth) - 1);
-      const bDate = new Date(parseInt(bYear), parseInt(bMonth) - 1);
-      
-      return aDate.getTime() - bDate.getTime();
-    });
-
   return (
     <div className="invContainer">
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
@@ -1040,8 +1032,8 @@ const GlobalInventory: React.FC = () => {
         <div className="invTopContainer">
           <div className="invSubTopContainer" style={{paddingLeft: '30px'}}>
             <div className="invSubTopLeft">
-              <CiBoxes  size={23} className="invBlueIcon" />
-              <span className="invBlueText">Item Catalog</span>
+              <IoArrowDownOutline size={23} className="invBlueIcon" />
+              <span className="invBlueText">Inventory IN</span>
             </div>
             
             <div className="invBranchSelector">
@@ -1057,7 +1049,7 @@ const GlobalInventory: React.FC = () => {
               </select>
             </div>
 
-              <ImportButton 
+            <ImportButton 
                 onImport={handleImport}
                 onDownloadTemplate={handleDownloadTemplate}
                 buttonClassName="invImportBtn"
@@ -1072,80 +1064,20 @@ const GlobalInventory: React.FC = () => {
             <Notifications 
               buttonClassName="invIconButton"
               iconClassName="invBlueIcon"
-              onViewAll={() => {
-                console.log('View all notifications');
-              }}
-              onNotificationClick={(notification) => {
-                if (notification.link) {
-                  navigate(notification.link);
-                }
-              }}
+              onViewAll={() => {}}
+              onNotificationClick={() => {}}
             />
           </div>
         </div>
 
-        {/* Analytics Cards */}
-        <div className="invAnalyticsContainer">
-          <div className="invAnalyticsCard">
-            <div className="invAnalyticsIcon invBlueBg">
-              <IoCartOutline size={24} color="white" />
-            </div>
-            <div className="invAnalyticsContent">
-              <span className="invAnalyticsLabel">Total Products</span>
-              <span className="invAnalyticsValue">{analytics.totalProducts}</span>
-            </div>
-          </div>
-
-          <div className="invAnalyticsCard invClickable" onClick={() => setShowLowStockSidebar(true)}>
-            <div className="invAnalyticsIcon invRedBg">
-              <IoWarningOutline size={24} color="white" />
-            </div>
-            <div className="invAnalyticsContent">
-              <span className="invAnalyticsLabel">Low Stock Items</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span className="invAnalyticsValue">{analytics.lowStockCount}</span>
-                {analytics.criticalStockCount > 0 && (
-                  <span className="invCriticalBadge">⚠️ {analytics.criticalStockCount} critical</span>
-                )}
-              </div>
-            </div>
-            <span className="invViewDetails">Click to view →</span>
-          </div>
-
-          <div className="invAnalyticsCard invClickable" onClick={() => setShowExpiringSidebar(true)}>
-            <div className="invAnalyticsIcon invOrangeBg">
-              <IoCalendarOutline size={24} color="white" />
-            </div>
-            <div className="invAnalyticsContent">
-              <span className="invAnalyticsLabel">Expiration Alert</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span className="invAnalyticsValue">{analytics.expiringCount + analytics.expiredCount}</span>
-                {analytics.expiredCount > 0 && (
-                  <span className="invExpiredBadge">⚠️ {analytics.expiredCount} expired</span>
-                )}
-              </div>
-            </div>
-            <span className="invViewDetails">Click to view →</span>
-          </div>
-
-          <div className="invAnalyticsCard">
-            <div className="invAnalyticsIcon invGreenBg">
-              <IoCashOutline size={24} color="white" />
-            </div>
-            <div className="invAnalyticsContent">
-              <span className="invAnalyticsLabel">Inventory Value</span>
-              <span className="invAnalyticsValue">₱{analytics.totalValue.toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-
         {/* Main Content */}
-        <div className="invTableContainer">
+        <div className="invTableContainerOUT">
           {viewMode === 'list' ? (
             <>
               {/* Table Toolbar */}
               <div className="invTableToolbar">
                 <div className="invSearchFilterSection">
+                  {/* Search */}
                   <div className="invToolbarItem">
                     <button 
                       className="invIconButton"
@@ -1169,6 +1101,7 @@ const GlobalInventory: React.FC = () => {
                     />
                   )}
 
+                  {/* Filter */}
                   <div className="invToolbarItem">
                     <button 
                       className="invIconButton"
@@ -1242,7 +1175,7 @@ const GlobalInventory: React.FC = () => {
                           <label>Rows Per Page</label>
                           <select 
                             value={rowsPerPage}
-                            onChange={(e) => handleRowsPerPageChange(parseInt(e.target.value))}
+                            onChange={(e) => setRowsPerPage(parseInt(e.target.value))}
                             className="invSettingsSelect"
                           >
                             {ROWS_PER_PAGE_OPTIONS.map(option => (
@@ -1256,17 +1189,24 @@ const GlobalInventory: React.FC = () => {
                 </div>
 
                 <div className="invActionSection">
-                  {selectedProducts.size > 0 && (
-                    <button className="invArchiveBtn" onClick={handleArchiveSelected}>
-                      <IoArchiveOutline /> Archive Selected ({selectedProducts.size})
-                    </button>
-                  )}
                   {activeFilter && (
                     <button className="invReturnBtn" onClick={handleReturnToList}>
                       <IoArrowBackOutline /> Return to Full List
                     </button>
                   )}
-                
+                  {/* Receive Stock Button */}
+                  <button 
+                    className="invRecordTransactionBtn"
+                    onClick={openReceiveStockModal}
+                    disabled={selectedProducts.size === 0}
+                  >
+                    <IoAdd /> Receive Stock ({selectedProducts.size} item{selectedProducts.size !== 1 ? 's' : ''} selected)
+                  </button>
+                  
+                  {/* Add Product Button */}
+                  <button className="invBlackBtn" onClick={() => { resetProductForm(); setViewMode('add'); }}>
+                    <IoAdd /> Add Product
+                  </button>
                 </div>
               </div>
 
@@ -1283,20 +1223,19 @@ const GlobalInventory: React.FC = () => {
                         <th style={{ width: '40px' }}>
                           <input
                             type="checkbox"
-                            checked={selectedProducts.size === paginatedProducts.length && paginatedProducts.length > 0}
-                            onChange={toggleAllProducts}
+                            checked={selectAll && paginatedProducts.length > 0}
+                            onChange={handleSelectAll}
                             className="invCheckbox"
                           />
                         </th>
-                        <th>Code</th>
+                        <th style={{ width: '150px' }}>Code</th>
                         <th>Item</th>
                         <th>Category</th>
                         <th>Base Price</th>
                         <th>Selling Price</th>
-                        <th>Stock</th>
+                        <th>Current Stock</th>
                         <th>Expiration</th>
                         <th>Status</th>
-                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1311,7 +1250,7 @@ const GlobalInventory: React.FC = () => {
                           
                           const isExpiredProduct = isExpired(product.expirationDate, product.expirationNA);
                           const isExpiringProduct = isExpiringSoon(product.expirationDate, product.expirationNA);
-                          const isOutOfStock = product.stockCount === 0;
+                          const isSelected = selectedProducts.has(productId);
 
                           return (
                             <tr 
@@ -1319,40 +1258,37 @@ const GlobalInventory: React.FC = () => {
                               className={`
                                 ${isExpiredProduct ? 'invExpiredRow' : ''} 
                                 ${isExpiringProduct ? 'invExpiringRow' : ''}
-                                ${isOutOfStock ? 'invZeroStockRow' : ''}
+                                ${isSelected ? 'invSelectedRow' : ''}
                               `}
                             >
                               <td>
                                 <input
                                   type="checkbox"
-                                  checked={selectedProducts.has(productId)}
-                                  onChange={() => toggleProductSelection(productId)}
+                                  checked={isSelected}
+                                  onChange={() => handleSelectProduct(productId)}
                                   className="invCheckbox"
                                 />
                               </td>
                               <td>{product.code}</td>
-                              <td>
-                                {product.item}
-                                {isOutOfStock && <span className="invOutOfStockTag">OUT OF STOCK</span>}
-                              </td>
+                              <td>{product.item}</td>
                               <td>{product.category}</td>
                               <td>₱{product.basePrice.toLocaleString()}</td>
                               <td>₱{product.sellingPrice.toLocaleString()}</td>
-                              <td className={isOutOfStock ? 'invCriticalStockCell' : ''}>
+                              <td className={product.stockCount <= (product.criticalStockLevel || 10) ? 'invCriticalStockCell' : ''}>
                                 {product.stockCount}
-                              </td>
+                               </td>
                               <td>
                                 <span className={`invExpirationDate ${
                                   isExpiredProduct ? 'invExpired' : 
                                   isExpiringProduct ? 'invExpiring' : ''
                                 }`}>
-                                  {product.expirationDate || 'N/A'}
+                                  {formatExpirationDate(product.expirationDate)}
                                   {isExpiredProduct && <span className="invExpiredIndicator">!</span>}
                                   {isExpiringProduct && !isExpiredProduct && (
                                     <span className="invExpiringIndicator">!</span>
                                   )}
                                 </span>
-                              </td>
+                               </td>
                               <td>
                                 <span className={`invStockBadge ${stockStatusClass}`}>
                                   {product.stockStatus}
@@ -1360,21 +1296,13 @@ const GlobalInventory: React.FC = () => {
                                     <span className="invCriticalIndicator">!</span>
                                   )}
                                 </span>
-                              </td>
-                              <td>
-                                <button 
-                                  className="invIconButton"
-                                  onClick={() => openEditForm(product)}
-                                >
-                                  <IoPencilSharp size={15} className="invBlueIcon" />
-                                </button>
-                              </td>
-                            </tr>
+                               </td>
+                             </tr>
                           );
                         })
                       ) : (
                         <tr>
-                          <td colSpan={10} className="invNoData">
+                          <td colSpan={9} className="invNoData">
                             No products found
                           </td>
                         </tr>
@@ -1406,7 +1334,7 @@ const GlobalInventory: React.FC = () => {
               )}
             </>
           ) : (
-            /* Add/Edit Product Form */
+            /* Add/Edit Product Form - New Layout */
             <div className="invFormContainer">
               <div className="invFormHeader">
                 <h2>{viewMode === 'add' ? 'Add New Product' : 'Edit Product'}</h2>
@@ -1414,30 +1342,8 @@ const GlobalInventory: React.FC = () => {
               </div>
 
               <div className="invFormContent">
+                {/* Row 1: Item Name | Category */}
                 <div className="invFormRow">
-                  <div className="invFormGroup">
-                    <label>Product Code {viewMode === 'add' && <span className="invRequired">*</span>}</label>
-                    <input 
-                      type="text"
-                      value={formCode}
-                      onChange={(e) => {
-                        setFormCode(e.target.value);
-                        setCharCounts({...charCounts, code: e.target.value.length});
-                        setFormErrors({...formErrors, code: validateField('code', e.target.value)});
-                      }}
-                      disabled={viewMode === 'edit'}
-                      maxLength={20}
-                      placeholder="Enter product code"
-                      className={`invFormInput ${formErrors.code ? 'invError' : ''} ${viewMode === 'edit' ? 'invDisabled' : ''}`}
-                    />
-                    {viewMode === 'add' && (
-                      <>
-                        <div className="invCharCount">{charCounts.code}/20</div>
-                        {formErrors.code && <div className="invErrorText">{formErrors.code}</div>}
-                      </>
-                    )}
-                  </div>
-
                   <div className="invFormGroup">
                     <label>Item Name <span className="invRequired">*</span></label>
                     <input 
@@ -1455,9 +1361,7 @@ const GlobalInventory: React.FC = () => {
                     <div className="invCharCount">{charCounts.item}/50</div>
                     {formErrors.item && <div className="invErrorText">{formErrors.item}</div>}
                   </div>
-                </div>
 
-                <div className="invFormRow">
                   <div className="invFormGroup">
                     <label>Category <span className="invRequired">*</span></label>
                     <select 
@@ -1475,51 +1379,9 @@ const GlobalInventory: React.FC = () => {
                     </select>
                     {formErrors.category && <div className="invErrorText">{formErrors.category}</div>}
                   </div>
-
-                  <div className="invFormGroup">
-                    <label>Expiration Date <span className="invRequired">*</span></label>
-                    <input 
-                      type="date"
-                      value={formExpirationDate ? (() => {
-                        const [month, day, year] = formExpirationDate.split('/');
-                        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-                      })() : ''}
-                      onChange={(e) => {
-                        const date = e.target.value;
-                        if (date) {
-                          const [year, month, day] = date.split('-');
-                          // Store as MM/DD/YYYY
-                          const formattedDate = `${month}/${day}/${year}`;
-                          setFormExpirationDate(formattedDate);
-                          setFormErrors({...formErrors, expirationDate: validateField('expirationDate', formattedDate)});
-                        } else {
-                          setFormExpirationDate('');
-                          setFormErrors({...formErrors, expirationDate: validateField('expirationDate', '')});
-                        }
-                      }}
-                      disabled={formExpirationNA}
-                      className={`invFormInput ${formErrors.expirationDate ? 'invError' : ''} ${formExpirationNA ? 'invDisabled' : ''}`}
-                    />
-                    <div className="invCheckboxGroup">
-                      <label className="invCheckboxLabel">
-                        <input
-                          type="checkbox"
-                          checked={formExpirationNA}
-                          onChange={(e) => {
-                            setFormExpirationNA(e.target.checked);
-                            if (e.target.checked) {
-                              setFormExpirationDate('');
-                              setFormErrors({...formErrors, expirationDate: ''});
-                            }
-                          }}
-                        />
-                        Not Applicable (No Expiration)
-                      </label>
-                    </div>
-                    {formErrors.expirationDate && <div className="invErrorText">{formErrors.expirationDate}</div>}
-                  </div>
                 </div>
 
+                {/* Row 2: Base Price | Selling Price */}
                 <div className="invFormRow">
                   <div className="invFormGroup">
                     <label>Base Price (₱) <span className="invRequired">*</span></label>
@@ -1562,7 +1424,7 @@ const GlobalInventory: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Critical Stock Level Field */}
+                {/* Row 3: Critical Stock Level | Expiration Date */}
                 <div className="invFormRow">
                   <div className="invFormGroup">
                     <label>Critical Stock Level</label>
@@ -1581,10 +1443,11 @@ const GlobalInventory: React.FC = () => {
                         onChange={(e) => {
                           const value = e.target.value.replace(/[^\d]/g, '').slice(0, 6);
                           setFormCriticalStockLevel(value);
+                          setFormErrors({...formErrors, criticalStockLevel: validateField('criticalStockLevel', value)});
                         }}
                         disabled={!formUseCriticalStock}
                         placeholder="10"
-                        className={`invStockInput ${!formUseCriticalStock ? 'invDisabled' : ''}`}
+                        className={`invStockInput ${!formUseCriticalStock ? 'invDisabled' : ''} ${formErrors.criticalStockLevel ? 'invError' : ''}`}
                         maxLength={6}
                       />
                       <button 
@@ -1606,70 +1469,62 @@ const GlobalInventory: React.FC = () => {
                             setFormUseCriticalStock(checked);
                             if (!checked) {
                               setFormCriticalStockLevel('10');
+                              setFormErrors({...formErrors, criticalStockLevel: ''});
                             }
                           }}
                         />
                         Enable custom critical stock level (Default Level: 10)
                       </label>
                     </div>
+                    {formErrors.criticalStockLevel && <div className="invErrorText">{formErrors.criticalStockLevel}</div>}
+                  </div>
+
+                  <div className="invFormGroup">
+                    <label>Expiration Date <span className="invRequired">*</span></label>
+                    <input 
+                      type="date"
+                      value={formExpirationDate ? (() => {
+                        // Convert MM/DD/YYYY to YYYY-MM-DD for date input
+                        const parts = formExpirationDate.split('/');
+                        if (parts.length === 3) {
+                          return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+                        }
+                        return '';
+                      })() : ''}
+                      onChange={(e) => {
+                        const date = e.target.value;
+                        if (date) {
+                          const [year, month, day] = date.split('-');
+                          const formattedDate = `${month}/${day}/${year}`;
+                          setFormExpirationDate(formattedDate);
+                          setFormErrors({...formErrors, expirationDate: validateField('expirationDate', formattedDate)});
+                        } else {
+                          setFormExpirationDate('');
+                          setFormErrors({...formErrors, expirationDate: validateField('expirationDate', '')});
+                        }
+                      }}
+                      disabled={formExpirationNA}
+                      className={`invFormInput ${formErrors.expirationDate ? 'invError' : ''} ${formExpirationNA ? 'invDisabled' : ''}`}
+                    />
+                    <div className="invCheckboxGroup">
+                      <label className="invCheckboxLabel">
+                        <input
+                          type="checkbox"
+                          checked={formExpirationNA}
+                          onChange={(e) => {
+                            setFormExpirationNA(e.target.checked);
+                            if (e.target.checked) {
+                              setFormExpirationDate('');
+                              setFormErrors({...formErrors, expirationDate: ''});
+                            }
+                          }}
+                        />
+                        Not Applicable (No Expiration)
+                      </label>
+                    </div>
+                    {formErrors.expirationDate && <div className="invErrorText">{formErrors.expirationDate}</div>}
                   </div>
                 </div>
-
-                {viewMode === 'add' && (
-                  <div className="invFormRow">
-                    <div className="invFormGroup">
-                      <label>Initial Stock Quantity</label>
-                      <div className="invStockControl">
-                        <button 
-                          type="button"
-                          className="invStockBtn"
-                          onClick={() => handleStockChange(-1)}
-                          disabled={formUseMaxQuantity}
-                        >
-                          <IoRemoveCircleOutline />
-                        </button>
-                        <input 
-                          type="text"
-                          value={formStockCount}
-                          onChange={(e) => {
-                            const value = e.target.value.replace(/[^\d]/g, '').slice(0, 6);
-                            setFormStockCount(value);
-                          }}
-                          disabled={formUseMaxQuantity}
-                          placeholder="0"
-                          maxLength={6}
-                          className={`invStockInput ${formUseMaxQuantity ? 'invDisabled' : ''}`}
-                        />
-                        <button 
-                          type="button"
-                          className="invStockBtn"
-                          onClick={() => handleStockChange(1)}
-                          disabled={formUseMaxQuantity}
-                        >
-                          <IoAddCircleOutline />
-                        </button>
-                      </div>
-                      <div className="invCheckboxGroup">
-                        <label className="invCheckboxLabel">
-                          <input
-                            type="checkbox"
-                            checked={formUseMaxQuantity}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              setFormUseMaxQuantity(checked);
-                              if (checked) {
-                                setFormStockCount('999999');
-                              } else {
-                                setFormStockCount('');
-                              }
-                            }}
-                          />
-                          Set as maximum quantity (999,999)
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 <div className="invFormActions">
                   <button className="invCancelBtn" onClick={handleCancel}>
@@ -1684,114 +1539,235 @@ const GlobalInventory: React.FC = () => {
           )}
         </div>
       </div>
-
-      {/* Low Stock Sidebar */}
-      {showLowStockSidebar && (
-        <div className="invSidebarOverlay" onClick={() => setShowLowStockSidebar(false)}>
-          <div className="invSidebar" onClick={e => e.stopPropagation()}>
-            <div className="invSidebarHeader">
-              <div className="invSidebarTitle">
-                <IoWarningOutline size={24} color="#ff0000" />
-                <h2>Low Stock Items ({lowStockProducts.length})</h2>
-              </div>
-              <button className="invSidebarClose" onClick={() => setShowLowStockSidebar(false)}>×</button>
-            </div>
-            
-            <div className="invSidebarContent">
-              {lowStockProducts.length > 0 ? (
-                lowStockProducts.map(product => (
-                  <div 
-                    key={product.id || product.pk} 
-                    className={`invSidebarItem ${product.stockCount <= (product.criticalStockLevel || 10) ? 'invCriticalItem' : ''}`}
-                    onClick={() => {
-                      setShowLowStockSidebar(false);
-                      filterByProduct(product.code);
-                    }}
-                  >
-                    <div className="invSidebarItemInfo">
-                      <span className="invSidebarItemName">
-                        {product.item}
-                        {product.stockCount <= (product.criticalStockLevel || 10) && (
-                          <span className="invCriticalTag">CRITICAL</span>
-                        )}
-                      </span>
-                      <span className="invSidebarItemCode">{product.code}</span>
-                    </div>
-                    <div className="invSidebarItemStock">
-                      <span className={`invSidebarStockCount ${product.stockCount <= (product.criticalStockLevel || 10) ? 'invCriticalCount' : ''}`}>
-                        {product.stockCount}
-                      </span>
-                      <span className="invSidebarStockLabel">units left</span>
-                    </div>
-                    <div className="invSidebarItemArrow">→</div>
-                  </div>
-                ))
-              ) : (
-                <div className="invSidebarEmpty">
-                  <p>No low stock items</p>
-                </div>
-              )}
-            </div>
+{/* Receive Stock Modal */}
+{showTransactionModal && (
+  <div className="invModalOverlay" onClick={() => setShowTransactionModal(false)}>
+    <div className="invBulkModal" onClick={e => e.stopPropagation()}>
+      <div className="invModalHeader">
+        <h2>Receive Stock</h2>
+        <button className="invModalClose" onClick={() => setShowTransactionModal(false)}>×</button>
+      </div>
+      
+      <div className="invModalContent">
+        <div className="invFormRow">
+          <div className="invFormGroup">
+            <label>Reference Number</label>
+            <input
+              type="text"
+              value={transactionReferenceNumber}
+              disabled
+              className="invFormInput invDisabledInput"
+            />
           </div>
         </div>
-      )}
 
-      {/* Expiration Sidebar */}
-      {showExpiringSidebar && (
-        <div className="invSidebarOverlay" onClick={() => setShowExpiringSidebar(false)}>
-          <div className="invSidebar" onClick={e => e.stopPropagation()}>
-            <div className="invSidebarHeader">
-              <div className="invSidebarTitle">
-                <IoCalendarOutline size={24} color="#f57c00" />
-                <h2>Expiration Alert ({expirationProducts.length})</h2>
-              </div>
-              <button className="invSidebarClose" onClick={() => setShowExpiringSidebar(false)}>×</button>
+        <div className="invFormRow">
+          <div className="invFormGroup">
+            <label>Supplier / Received From <span className="invRequired">*</span></label>
+            <div className="invInputWrapper">
+              <input
+                type="text"
+                value={transactionSupplier}
+                onChange={(e) => {
+                  setTransactionSupplier(e.target.value);
+                  if (supplierError) setSupplierError('');
+                }}
+                placeholder="Enter supplier name (Max 50 chars)"
+                maxLength={50}
+                className={`invInputWithCounter ${supplierError ? 'invError' : ''}`}
+              />
+              <span className={`invCharCounterInside ${
+                transactionSupplier.length >= 45 ? 'invCharCounterInsideNearLimit' : ''
+              } ${transactionSupplier.length === 50 ? 'invCharCounterInsideAtLimit' : ''}`}>
+                {transactionSupplier.length}/50
+              </span>
             </div>
-            
-            <div className="invSidebarContent">
-              {expirationProducts.length > 0 ? (
-                expirationProducts.map(product => {
-                  const isExpiredProduct = isExpired(product.expirationDate, product.expirationNA);
-                  
-                  return (
-                    <div 
-                      key={product.id || product.pk} 
-                      className={`invSidebarItem ${isExpiredProduct ? 'invExpiredSidebarItem' : 'invExpiringSidebarItem'}`}
-                      onClick={() => {
-                        setShowExpiringSidebar(false);
-                        filterByProduct(product.code);
-                      }}
-                    >
-                      <div className="invSidebarItemInfo">
-                        <span className="invSidebarItemName">
-                          {product.item}
-                          {isExpiredProduct && (
-                            <span className="invExpiredTag">EXPIRED</span>
+            {supplierError && <div className="invErrorText">{supplierError}</div>}
+          </div>
+        </div>
+
+        {/* Search Bar */}
+        <div className="invModalSearchBar">
+          <div className="invSearchInputWrapper">
+            <IoSearchSharp size={18} className="invSearchIcon" />
+            <input
+              type="text"
+              placeholder="Search by product code or name..."
+              value={modalSearchQuery}
+              onChange={(e) => setModalSearchQuery(e.target.value)}
+              className="invModalSearchInput"
+            />
+            {modalSearchQuery && (
+              <button 
+                className="invClearSearchBtn"
+                onClick={() => setModalSearchQuery('')}
+              >
+                <IoCloseOutline size={16} />
+              </button>
+            )}
+          </div>
+          <div className="invMissingAlert">
+            {missingQuantityCount > 0 && (
+              <span className="invMissingWarning">
+                ⚠️ {missingQuantityCount} item(s) missing quantity
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="invBulkItemsSection">
+          <label>Items to Receive (Enter quantities below)</label>
+          <div className="invBulkItemsTable">
+            <table className="invBulkItemsTableInner">
+              <thead>
+                <tr>
+                  <th style={{ width: '40px' }}></th>
+                  <th>Product Code</th>
+                  <th>Product Name</th>
+                  <th>Unit Cost</th>
+                  <th>Current Stock</th>
+                  <th>Quantity to Receive</th>
+                  <th>Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transactionItems
+                  .filter(item => 
+                    modalSearchQuery === '' || 
+                    item.productCode.toLowerCase().includes(modalSearchQuery.toLowerCase()) ||
+                    item.productName.toLowerCase().includes(modalSearchQuery.toLowerCase())
+                  )
+                  .map((item, index) => {
+                    const originalIndex = transactionItems.findIndex(i => i.productId === item.productId);
+                    const hasMissingQuantity = item.quantity <= 0;
+                    
+                    return (
+                      <tr key={index} className={hasMissingQuantity ? 'invMissingRow' : ''}>
+                        <td className="invRemoveCell">
+                          <button 
+                            className="invRemoveRowBtn"
+                            onClick={() => {
+                              const newItems = [...transactionItems];
+                              newItems.splice(originalIndex, 1);
+                              setTransactionItems(newItems);
+                            }}
+                            title="Remove item"
+                          >
+                            <IoCloseOutline size={18} />
+                          </button>
+                        </td>
+                        <td>{item.productCode}</td>
+                        <td>{item.productName}</td>
+                        <td>₱{item.unitCost.toLocaleString()}</td>
+                        <td>{item.availableStock}</td>
+                        <td>
+                          <div className="invModalQuantityControls">
+                            <input
+                              type="number"
+                              className={`invBulkQtyInput ${hasMissingQuantity ? 'invMissingInput' : ''}`}
+                              value={item.quantity || ''}
+                              onChange={(e) => {
+                                handleModalQuantityChange(originalIndex, parseInt(e.target.value) || 0);
+                                // Clear error when user starts typing
+                                if (quantityErrors[originalIndex]) {
+                                  setQuantityErrors(prev => ({ ...prev, [originalIndex]: '' }));
+                                }
+                              }}
+                              min="0"
+                              max="999999"
+                              placeholder="0"
+                            />
+                            <button 
+                              className="invQtyBtn invQtyBtnSmall invQtyAddBtn"
+                              onClick={() => {
+                                handleModalQuickAdd(originalIndex, 5);
+                                if (quantityErrors[originalIndex]) {
+                                  setQuantityErrors(prev => ({ ...prev, [originalIndex]: '' }));
+                                }
+                              }}
+                            >
+                              +5
+                            </button>
+                            <button 
+                              className="invQtyBtn invQtyBtnSmall invQtyAddBtn"
+                              onClick={() => {
+                                handleModalQuickAdd(originalIndex, 10);
+                                if (quantityErrors[originalIndex]) {
+                                  setQuantityErrors(prev => ({ ...prev, [originalIndex]: '' }));
+                                }
+                              }}
+                            >
+                              +10
+                            </button>
+                          </div>
+                          {quantityErrors[originalIndex] && (
+                            <div className="invErrorText invQuantityError">{quantityErrors[originalIndex]}</div>
                           )}
-                        </span>
-                        <span className="invSidebarItemCode">{product.code}</span>
-                      </div>
-                      <div className="invSidebarItemStock">
-                        <span className={`invSidebarStockCount ${isExpiredProduct ? 'invExpiredCount' : 'invExpiringCount'}`}>
-                          {product.expirationDate}
-                        </span>
-                        <span className="invSidebarStockLabel">
-                          {isExpiredProduct ? 'expired' : 'expires'}
-                        </span>
-                      </div>
-                      <div className="invSidebarItemArrow">→</div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="invSidebarEmpty">
-                  <p>No items expiring soon</p>
-                </div>
-              )}
-            </div>
+                        </td>
+                        <td>₱{(item.quantity * item.unitCost).toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
+                {transactionItems.filter(item => 
+                  modalSearchQuery === '' || 
+                  item.productCode.toLowerCase().includes(modalSearchQuery.toLowerCase()) ||
+                  item.productName.toLowerCase().includes(modalSearchQuery.toLowerCase())
+                ).length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="invNoSearchResults">
+                      No products found matching "{modalSearchQuery}"
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={6} className="invBulkTotalLabel">Total:</td>
+                  <td className="invBulkTotalValue">
+                    ₱{transactionItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0).toLocaleString()}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
         </div>
-      )}
+
+        <div className="invFormGroup">
+          <label>Notes</label>
+          <div className="invTextareaWrapper">
+            <textarea
+              value={transactionNotes}
+              onChange={(e) => setTransactionNotes(e.target.value)}
+              placeholder="Optional notes for this transaction..."
+              className="invTextareaWithCounter"
+              rows={3}
+              maxLength={200}
+            />
+            <span className={`invTextareaCounterInside ${
+              transactionNotes.length >= 180 ? 'invCharCounterInsideNearLimit' : ''
+            } ${transactionNotes.length === 200 ? 'invCharCounterInsideAtLimit' : ''}`}>
+              {transactionNotes.length}/200
+            </span>
+          </div>
+        </div>
+      </div>
+      
+      <div className="invModalFooter">
+        <button className="invCancelBtn" onClick={() => {
+          setShowTransactionModal(false);
+          setModalSearchQuery('');
+          setSupplierError('');
+          setQuantityErrors({});
+        }}>
+          Cancel
+        </button>
+        <button className="invSubmitBtn" onClick={saveTransaction}>
+          Process Receipt
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* Import Modal */}
       {showImportModal && (
@@ -1812,9 +1788,8 @@ const GlobalInventory: React.FC = () => {
                     <li><strong>Category</strong> - Category (required)</li>
                     <li><strong>Base Price</strong> - Base price (required)</li>
                     <li><strong>Selling Price</strong> - Selling price (required)</li>
-                    <li><strong>Stock Count</strong> - Initial stock (optional)</li>
                     <li><strong>Critical Stock Level</strong> - Low stock threshold (optional)</li>
-                    <li><strong>Expiration Date</strong> - MM/YYYY or "N/A" (optional)</li>
+                    <li><strong>Expiration Date</strong> - MM/DD/YYYY or "N/A" (optional)</li>
                   </ul>
                 </div>
               </div>
@@ -1903,6 +1878,4 @@ const GlobalInventory: React.FC = () => {
   );
 };
 
-export { MOCK_PRODUCTS };
-
-export default GlobalInventory;
+export default GlobalInventoryIN;
