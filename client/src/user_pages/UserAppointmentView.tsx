@@ -28,6 +28,7 @@ interface Pet {
   pet_id: number;
   pet_name: string;
   pet_photo_url: string | null;
+  pet_breed?: string;
 }
 
 interface Appointment {
@@ -53,6 +54,8 @@ interface AlertConfig {
   confirmText: string;
 }
 
+type AppointmentModalLayer = 'details' | 'cancel' | 'reschedule';
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const clinicHours: Record<string, string[]> = {
@@ -67,6 +70,8 @@ const clinicHours: Record<string, string[]> = {
 const MIN_REASON_CHARS = 10;
 const DEFAULT_PET_IMG  = 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400';
 const getToken         = () => localStorage.getItem('access_token') ?? '';
+const isMobileViewport = () =>
+  typeof window !== 'undefined' && window.innerWidth <= 768;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -92,6 +97,9 @@ const UserAppointmentView: React.FC = () => {
   const [activeFilter,       setActiveFilter]       = useState<'All' | 'Active' | 'Pending'>('Active');
   const [searchQuery,        setSearchQuery]        = useState('');
   const [currentPage,        setCurrentPage]        = useState(1);
+  const [isMobileView,       setIsMobileView]       = useState(isMobileViewport);
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [alertRestoreModal, setAlertRestoreModal] = useState<AppointmentModalLayer | null>(null);
   const itemsPerPage = 5;
 
   // ── Cancel modal ──────────────────────────────────────────────────────────
@@ -101,6 +109,7 @@ const UserAppointmentView: React.FC = () => {
   const [cancelUnderstoodChecked,  setCancelUnderstoodChecked]  = useState(false);
   const [cancelReasonError,        setCancelReasonError]        = useState('');
   const [cancelTarget,             setCancelTarget]             = useState<Appointment | null>(null);
+  const [cancelParentModal,        setCancelParentModal]        = useState<AppointmentModalLayer | null>(null);
 
   // ── Reschedule modal ──────────────────────────────────────────────────────
   const [rescheduleModalVisible,        setRescheduleModalVisible]        = useState(false);
@@ -111,6 +120,7 @@ const UserAppointmentView: React.FC = () => {
   const [rescheduleUnderstoodChecked,   setRescheduleUnderstoodChecked]   = useState(false);
   const [rescheduleReasonError,         setRescheduleReasonError]         = useState('');
   const [rescheduleTarget,              setRescheduleTarget]              = useState<Appointment | null>(null);
+  const [rescheduleParentModal,         setRescheduleParentModal]         = useState<AppointmentModalLayer | null>(null);
 
   // ── Shared ────────────────────────────────────────────────────────────────
   const [isMutating,    setIsMutating]    = useState(false);
@@ -123,6 +133,29 @@ const UserAppointmentView: React.FC = () => {
   // Alert
   // ─────────────────────────────────────────────────────────────────────────
 
+  const setAppointmentModalVisible = useCallback((
+    modal: AppointmentModalLayer,
+    visible: boolean,
+  ) => {
+    if (modal === 'details') setDetailsModalVisible(visible);
+    if (modal === 'cancel') setCancelModalVisible(visible);
+    if (modal === 'reschedule') setRescheduleModalVisible(visible);
+  }, []);
+
+  const restoreAppointmentModal = useCallback((modal: AppointmentModalLayer | null) => {
+    if (!modal) return;
+    if (modal === 'details' && selectedForDetails && isMobileView) setDetailsModalVisible(true);
+    if (modal === 'cancel' && cancelTarget) setCancelModalVisible(true);
+    if (modal === 'reschedule' && rescheduleTarget) setRescheduleModalVisible(true);
+  }, [cancelTarget, isMobileView, rescheduleTarget, selectedForDetails]);
+
+  const getActiveAppointmentModal = useCallback((): AppointmentModalLayer | null => {
+    if (rescheduleModalVisible) return 'reschedule';
+    if (cancelModalVisible) return 'cancel';
+    if (detailsModalVisible) return 'details';
+    return null;
+  }, [cancelModalVisible, detailsModalVisible, rescheduleModalVisible]);
+
   const showAlert = useCallback((
     type: AlertConfig['type'],
     title: string,
@@ -130,10 +163,30 @@ const UserAppointmentView: React.FC = () => {
     onConfirm: (() => void) | null = null,
     showCancel = false,
     confirmText = 'OK',
+    options?: {
+      hideModal?: AppointmentModalLayer | null;
+      restoreModal?: AppointmentModalLayer | null;
+    },
   ) => {
+    const modalToHide = options?.hideModal === undefined
+      ? getActiveAppointmentModal()
+      : options.hideModal;
+    const modalToRestore = options?.restoreModal === undefined
+      ? modalToHide
+      : options.restoreModal;
+
+    if (modalToHide) setAppointmentModalVisible(modalToHide, false);
+    setAlertRestoreModal(modalToRestore ?? null);
     setAlertConfig({ type, title, message, onConfirm, showCancel, confirmText });
     setAlertVisible(true);
-  }, []);
+  }, [getActiveAppointmentModal, setAppointmentModalVisible]);
+
+  const closeAlert = useCallback((restoreParent = true) => {
+    setAlertVisible(false);
+    const modalToRestore = alertRestoreModal;
+    setAlertRestoreModal(null);
+    if (restoreParent) restoreAppointmentModal(modalToRestore);
+  }, [alertRestoreModal, restoreAppointmentModal]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Fetch appointments — returns fresh list
@@ -156,20 +209,54 @@ const UserAppointmentView: React.FC = () => {
 
   useEffect(() => { fetchAppointments(); }, [fetchAppointments]);
 
+  useEffect(() => {
+    const handleResize = () => setIsMobileView(isMobileViewport());
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileView) setDetailsModalVisible(false);
+  }, [isMobileView]);
+
+  useEffect(() => {
+    if (!isMobileView) {
+      setCancelParentModal(null);
+      setRescheduleParentModal(null);
+      setAlertRestoreModal(null);
+    }
+  }, [isMobileView]);
+
   // ─────────────────────────────────────────────────────────────────────────
   // Helpers
   // ─────────────────────────────────────────────────────────────────────────
 
   const handleLogout = () => {
-    showAlert('confirm','Log Out','Are you sure you want to log out?', () => {
-      localStorage.removeItem('userSession');
-      localStorage.removeItem('access_token');
-      navigate('/login');
-    }, true, 'Log Out');
+    localStorage.removeItem('userSession');
+    localStorage.removeItem('access_token');
+    navigate('/login');
   };
 
   const formatDate = (s: string) =>
     new Date(s).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+
+  const formatTime = (value: string) => {
+    if (!value) return '';
+
+    const normalized = value.trim().toUpperCase();
+    if (normalized.includes('AM') || normalized.includes('PM')) return value;
+
+    const match = normalized.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+    if (!match) return value;
+
+    const [, rawHour, minute] = match;
+    const hour24 = Number(rawHour);
+    if (Number.isNaN(hour24)) return value;
+
+    const period = hour24 >= 12 ? 'PM' : 'AM';
+    const hour12 = hour24 % 12 || 12;
+    return `${hour12}:${minute} ${period}`;
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -191,6 +278,14 @@ const UserAppointmentView: React.FC = () => {
 
   const getTimeSlotsForDate = (date: string) =>
     date ? clinicHours[getDayName(date)] ?? [] : [];
+
+  const openAppointmentDetails = (appointment: Appointment) => {
+    setSelectedForDetails(appointment);
+
+    if (isMobileView) {
+      setDetailsModalVisible(true);
+    }
+  };
 
   // ─────────────────────────────────────────────────────────────────────────
   // Filtering & pagination
@@ -218,9 +313,26 @@ const UserAppointmentView: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   const openCancel = (appt: Appointment) => {
+    if (detailsModalVisible) {
+      setDetailsModalVisible(false);
+      setCancelParentModal('details');
+    } else {
+      setCancelParentModal(null);
+    }
     setCancelTarget(appt); setCancelStep(1); setCancelReason('');
     setCancelUnderstoodChecked(false); setCancelReasonError('');
     setCancelModalVisible(true);
+  };
+
+  const closeCancelModal = (restoreParent = true) => {
+    setCancelModalVisible(false);
+    setCancelTarget(null);
+
+    if (restoreParent && cancelParentModal === 'details' && selectedForDetails && isMobileView) {
+      setDetailsModalVisible(true);
+    }
+
+    setCancelParentModal(null);
   };
 
   const handleCancelNext = () => {
@@ -233,6 +345,7 @@ const UserAppointmentView: React.FC = () => {
   const confirmCancel = async () => {
     if (!cancelTarget) return;
     setIsMutating(true);
+    const restoreModal = cancelParentModal;
     try {
       await axios.patch(
         `${API_URL}/appointments/${cancelTarget.appointment_id}/cancel`,
@@ -242,11 +355,30 @@ const UserAppointmentView: React.FC = () => {
       await fetchAppointments();
       if (selectedForDetails?.appointment_id === cancelTarget.appointment_id)
         setSelectedForDetails(prev => prev ? { ...prev, status: 'cancelled' } : prev);
-      showAlert('success','Cancelled','Appointment cancelled successfully');
+      showAlert(
+        'success',
+        'Cancelled',
+        'Appointment cancelled successfully',
+        null,
+        false,
+        'OK',
+        { restoreModal },
+      );
     } catch (err: any) {
-      showAlert('error','Error', err.response?.data?.error ?? 'Failed to cancel appointment');
+      showAlert(
+        'error',
+        'Error',
+        err.response?.data?.error ?? 'Failed to cancel appointment',
+        null,
+        false,
+        'OK',
+        { restoreModal },
+      );
     } finally {
-      setIsMutating(false); setCancelModalVisible(false); setCancelTarget(null);
+      setIsMutating(false);
+      setCancelModalVisible(false);
+      setCancelTarget(null);
+      setCancelParentModal(null);
     }
   };
 
@@ -255,14 +387,34 @@ const UserAppointmentView: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   const openReschedule = (appt: Appointment) => {
+    if (detailsModalVisible) {
+      setDetailsModalVisible(false);
+      setRescheduleParentModal('details');
+    } else {
+      setRescheduleParentModal(null);
+    }
     setRescheduleTarget(appt); setRescheduleStep(1); setNewDate(''); setNewTime('');
     setRescheduleReason(''); setRescheduleUnderstoodChecked(false); setRescheduleReasonError('');
     setRescheduleModalVisible(true);
   };
 
+  const closeRescheduleModal = (restoreParent = true) => {
+    setRescheduleModalVisible(false);
+    setRescheduleTarget(null);
+
+    if (restoreParent && rescheduleParentModal === 'details' && selectedForDetails && isMobileView) {
+      setDetailsModalVisible(true);
+    }
+
+    setRescheduleParentModal(null);
+  };
+
   const handleRescheduleNext = () => {
     if (rescheduleStep === 1) {
-      if (!newDate || !newTime) { showAlert('info','Incomplete','Please select both date and time'); return; }
+      if (!newDate || !newTime) {
+        showAlert('info','Incomplete','Please select both date and time');
+        return;
+      }
       setRescheduleStep(2);
     } else if (rescheduleStep === 2) {
       if (rescheduleReason.trim().length < MIN_REASON_CHARS) {
@@ -275,6 +427,7 @@ const UserAppointmentView: React.FC = () => {
   const confirmReschedule = async () => {
     if (!rescheduleTarget || !newDate || !newTime) return;
     setIsMutating(true);
+    const restoreModal = rescheduleParentModal;
     try {
       await axios.patch(
         `${API_URL}/appointments/${rescheduleTarget.appointment_id}/reschedule`,
@@ -284,15 +437,86 @@ const UserAppointmentView: React.FC = () => {
       await fetchAppointments();
       if (selectedForDetails?.appointment_id === rescheduleTarget.appointment_id)
         setSelectedForDetails(prev => prev ? { ...prev, appointment_date: newDate, appointment_time: newTime, status: 'pending' } : prev);
-      showAlert('success','Submitted','Reschedule request submitted for review');
+      showAlert(
+        'success',
+        'Submitted',
+        'Reschedule request submitted for review',
+        null,
+        false,
+        'OK',
+        { restoreModal },
+      );
     } catch (err: any) {
-      showAlert('error','Error', err.response?.data?.error ?? 'Failed to reschedule');
+      showAlert(
+        'error',
+        'Error',
+        err.response?.data?.error ?? 'Failed to reschedule',
+        null,
+        false,
+        'OK',
+        { restoreModal },
+      );
     } finally {
-      setIsMutating(false); setRescheduleModalVisible(false); setRescheduleTarget(null);
+      setIsMutating(false);
+      setRescheduleModalVisible(false);
+      setRescheduleTarget(null);
+      setRescheduleParentModal(null);
     }
   };
 
   const timeSlots = getTimeSlotsForDate(newDate);
+
+  const renderAppointmentDetailsContent = (appointment: Appointment) => (
+    <>
+      <div className="app-pet-summary">
+        <img
+          src={appointment.pet_profile?.pet_photo_url ?? DEFAULT_PET_IMG}
+          alt={appointment.pet_profile?.pet_name}
+          className="app-pet-thumb"
+        />
+        <div className="app-pet-name-badge">
+          <h4>{appointment.pet_profile?.pet_name ?? 'Unknown Pet'}</h4>
+          <p>{appointment.appointment_type}</p>
+        </div>
+      </div>
+
+      <div className="app-info-row">
+        <IoCutOutline size={18} color="#3d67ee" />
+        <span className="app-info-label">Service:</span>
+        <span className="app-info-value">{appointment.appointment_type}</span>
+      </div>
+      <div className="app-info-row">
+        <IoCalendar size={18} color="#3d67ee" />
+        <span className="app-info-label">Date:</span>
+        <span className="app-info-value">{formatDate(appointment.appointment_date)}</span>
+      </div>
+      <div className="app-info-row">
+        <IoTimeOutline size={18} color="#3d67ee" />
+        <span className="app-info-label">Time:</span>
+        <span className="app-info-value">{formatTime(appointment.appointment_time)}</span>
+      </div>
+      <div className="app-info-row">
+        <IoEllipse size={18} color={getStatusColor(appointment.status)} />
+        <span className="app-info-label">Status:</span>
+        <span
+          className="app-status-pill"
+          style={{
+            backgroundColor: `${getStatusColor(appointment.status)}20`,
+            color: getStatusColor(appointment.status),
+          }}
+        >
+          {capitalize(appointment.status)}
+        </span>
+      </div>
+
+      {appointment.patient_reason && (
+        <div className="app-notes-block">
+          <h4>Notes</h4>
+          <p>{appointment.patient_reason}</p>
+        </div>
+      )}
+    </>
+  );
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -303,7 +527,7 @@ const UserAppointmentView: React.FC = () => {
 
       {/* ── Alert ── */}
       {alertVisible && (
-        <div className="app-modal-overlay" onClick={() => setAlertVisible(false)}>
+        <div className="app-modal-overlay" onClick={() => closeAlert()}>
           <div className="app-modal-base" onClick={e => e.stopPropagation()}>
             {alertConfig.type === 'success' ? <IoCheckmarkCircleOutline size={55} color="#2e9e0c" />
               : alertConfig.type === 'error' ? <IoCloseCircleOutline size={55} color="#d93025" />
@@ -314,11 +538,15 @@ const UserAppointmentView: React.FC = () => {
               : <div className="app-modal-message">{alertConfig.message}</div>}
             <div className="app-modal-actions">
               {alertConfig.showCancel && (
-                <button className="app-modal-btn app-modal-btn-cancel" onClick={() => setAlertVisible(false)}>Cancel</button>
+                <button className="app-modal-btn app-modal-btn-cancel" onClick={() => closeAlert()}>Cancel</button>
               )}
               <button
                 className={`app-modal-btn app-modal-btn-confirm ${alertConfig.type === 'error' ? 'app-modal-btn-error' : ''}`}
-                onClick={() => { setAlertVisible(false); alertConfig.onConfirm?.(); }}
+                onClick={() => {
+                  const hasConfirmAction = Boolean(alertConfig.onConfirm);
+                  closeAlert(!hasConfirmAction);
+                  alertConfig.onConfirm?.();
+                }}
               >
                 {alertConfig.confirmText}
               </button>
@@ -383,13 +611,25 @@ const UserAppointmentView: React.FC = () => {
                 <div
                   key={item.appointment_id}
                   className={`app-table-row ${selectedForDetails?.appointment_id === item.appointment_id ? 'selected' : ''}`}
-                  onClick={() => setSelectedForDetails(item)}
+                  onClick={() => openAppointmentDetails(item)}
                 >
-                  <div className="app-table-cell" style={{flex:1.2}} title={item.appointment_type}>{item.appointment_type}</div>
-                  <div className="app-table-cell" style={{flex:1}}>{item.pet_profile?.pet_name ?? 'N/A'}</div>
-                  <div className="app-table-cell" style={{flex:1.5}}>
-                    <div>{formatDate(item.appointment_date)}</div>
-                    <div className="app-time-cell">{item.appointment_time}</div>
+                  <div className="app-table-cell app-service-cell" style={{flex:1.2}} title={item.appointment_type}>
+                    {item.appointment_type}
+                  </div>
+                  <div className="app-table-cell app-pet-cell" style={{flex:1}}>
+                    <img
+                      src={item.pet_profile?.pet_photo_url ?? DEFAULT_PET_IMG}
+                      alt={item.pet_profile?.pet_name ?? 'Pet'}
+                      className="app-pet-card-thumb"
+                    />
+                    <div className="app-pet-card-copy">
+                      <div className="app-pet-card-name">{item.pet_profile?.pet_name ?? 'N/A'}</div>
+                      <div className="app-pet-card-breed">{item.pet_profile?.pet_breed ?? 'Breed not available'}</div>
+                    </div>
+                  </div>
+                  <div className="app-table-cell app-schedule-cell" style={{flex:1.5}}>
+                    <div className="app-schedule-date">{formatDate(item.appointment_date)}</div>
+                    <div className="app-time-cell">{formatTime(item.appointment_time)}</div>
                   </div>
                   <div className="app-table-cell" style={{flex:0.9}}>
                     <span className="app-status-pill" style={{ backgroundColor: getStatusColor(item.status)+'20', color: getStatusColor(item.status) }}>
@@ -441,7 +681,7 @@ const UserAppointmentView: React.FC = () => {
 
                 <div className="app-info-row"><IoCutOutline size={18} color="#3d67ee" /><span className="app-info-label">Service:</span><span className="app-info-value">{selectedForDetails.appointment_type}</span></div>
                 <div className="app-info-row"><IoCalendar size={18} color="#3d67ee" /><span className="app-info-label">Date:</span><span className="app-info-value">{formatDate(selectedForDetails.appointment_date)}</span></div>
-                <div className="app-info-row"><IoTimeOutline size={18} color="#3d67ee" /><span className="app-info-label">Time:</span><span className="app-info-value">{selectedForDetails.appointment_time}</span></div>
+                <div className="app-info-row"><IoTimeOutline size={18} color="#3d67ee" /><span className="app-info-label">Time:</span><span className="app-info-value">{formatTime(selectedForDetails.appointment_time)}</span></div>
                 <div className="app-info-row">
                   <IoEllipse size={18} color={getStatusColor(selectedForDetails.status)} />
                   <span className="app-info-label">Status:</span>
@@ -481,10 +721,38 @@ const UserAppointmentView: React.FC = () => {
       {/* ════════════════════════════════════════════
           CANCEL MODAL
       ════════════════════════════════════════════ */}
+      {detailsModalVisible && selectedForDetails && (
+        <div className="app-modal-overlay app-details-modal-overlay" onClick={() => setDetailsModalVisible(false)}>
+          <div className="app-modal-base app-modal-wide app-details-modal" onClick={e => e.stopPropagation()}>
+            <button className="app-modal-close" onClick={() => setDetailsModalVisible(false)}>
+              <IoClose size={24} color="#999" />
+            </button>
+            <div className="app-details-modal-header">
+              <h3>Appointment Details</h3>
+            </div>
+            <div className="app-details-modal-body">
+              {renderAppointmentDetailsContent(selectedForDetails)}
+            </div>
+            {isActionable(selectedForDetails.status) && (
+              <div className="app-action-bar app-action-bar-modal">
+                <button className="app-action-btn cancel" onClick={() => openCancel(selectedForDetails)} disabled={isMutating}>
+                  <IoClose size={18} color="white" />
+                  <span>Cancel</span>
+                </button>
+                <button className="app-action-btn reschedule" onClick={() => openReschedule(selectedForDetails)} disabled={isMutating}>
+                  <IoCalendar size={18} color="white" />
+                  <span>Reschedule</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {cancelModalVisible && cancelTarget && (
-        <div className="app-modal-overlay" onClick={() => setCancelModalVisible(false)}>
+        <div className="app-modal-overlay" onClick={() => closeCancelModal()}>
           <div className="app-modal-base app-modal-wide app-cancel-modal" onClick={e => e.stopPropagation()}>
-            <button className="app-modal-close" onClick={() => setCancelModalVisible(false)}><IoClose size={24} color="#999" /></button>
+            <button className="app-modal-close" onClick={() => closeCancelModal()}><IoClose size={24} color="#999" /></button>
             <div className="app-cancel-header">
               <div className="app-cancel-icon"><IoCloseCircleOutline size={40} color="#ee3d5a" /></div>
               <h2>Cancel Appointment</h2>
@@ -520,7 +788,7 @@ const UserAppointmentView: React.FC = () => {
                       <div className="app-summary-line"><span className="app-summary-tag">Pet:</span><span className="app-summary-data">{cancelTarget.pet_profile?.pet_name ?? 'N/A'}</span></div>
                       <div className="app-summary-line"><span className="app-summary-tag">Service:</span><span className="app-summary-data">{cancelTarget.appointment_type}</span></div>
                       <div className="app-summary-line"><span className="app-summary-tag">Date:</span><span className="app-summary-data">{formatDate(cancelTarget.appointment_date)}</span></div>
-                      <div className="app-summary-line"><span className="app-summary-tag">Time:</span><span className="app-summary-data">{cancelTarget.appointment_time}</span></div>
+                      <div className="app-summary-line"><span className="app-summary-tag">Time:</span><span className="app-summary-data">{formatTime(cancelTarget.appointment_time)}</span></div>
                     </div>
                   </div>
                   {cancelReason && (
@@ -544,7 +812,7 @@ const UserAppointmentView: React.FC = () => {
               <div className="app-modal-footer-actions">
                 {cancelStep > 1
                   ? <button className="app-btn-outline" onClick={() => setCancelStep(1)}>Back</button>
-                  : <button className="app-btn-outline" onClick={() => setCancelModalVisible(false)}><IoClose size={16} /> Close</button>}
+                  : <button className="app-btn-outline" onClick={() => closeCancelModal()}><IoClose size={16} /> Close</button>}
                 {cancelStep < 2
                   ? <button className="app-btn-primary cancel" onClick={handleCancelNext} disabled={cancelReason.length < MIN_REASON_CHARS}>Next</button>
                   : <button className={`app-btn-primary cancel ${!cancelUnderstoodChecked ? 'disabled' : ''}`} onClick={confirmCancel} disabled={!cancelUnderstoodChecked || isMutating}>
@@ -560,9 +828,9 @@ const UserAppointmentView: React.FC = () => {
           RESCHEDULE MODAL
       ════════════════════════════════════════════ */}
       {rescheduleModalVisible && rescheduleTarget && (
-        <div className="app-modal-overlay" onClick={() => setRescheduleModalVisible(false)}>
+        <div className="app-modal-overlay" onClick={() => closeRescheduleModal()}>
           <div className="app-modal-base app-modal-wide app-reschedule-modal" onClick={e => e.stopPropagation()}>
-            <button className="app-modal-close" onClick={() => setRescheduleModalVisible(false)}><IoClose size={24} color="#999" /></button>
+            <button className="app-modal-close" onClick={() => closeRescheduleModal()}><IoClose size={24} color="#999" /></button>
             <div className="app-reschedule-header">
               <div className="app-reschedule-icon"><IoCalendar size={40} color="#3d67ee" /></div>
               <h2>Reschedule Appointment</h2>
@@ -626,14 +894,14 @@ const UserAppointmentView: React.FC = () => {
                     <div className="app-card-header"><IoCalendar size={18} color="#ee3d5a" /><h4>Original Schedule</h4></div>
                     <div className="app-card-body">
                       <div className="app-summary-line"><span className="app-summary-tag">Date:</span><span className="app-summary-data">{formatDate(rescheduleTarget.appointment_date)}</span></div>
-                      <div className="app-summary-line"><span className="app-summary-tag">Time:</span><span className="app-summary-data">{rescheduleTarget.appointment_time}</span></div>
+                      <div className="app-summary-line"><span className="app-summary-tag">Time:</span><span className="app-summary-data">{formatTime(rescheduleTarget.appointment_time)}</span></div>
                     </div>
                   </div>
                   <div className="app-summary-card new">
                     <div className="app-card-header"><IoCalendar size={18} color="#00aa00" /><h4>Requested Schedule</h4></div>
                     <div className="app-card-body">
                       <div className="app-summary-line"><span className="app-summary-tag">Date:</span><span className="app-summary-data highlight">{formatDate(newDate)}</span></div>
-                      <div className="app-summary-line"><span className="app-summary-tag">Time:</span><span className="app-summary-data highlight">{newTime}</span></div>
+                      <div className="app-summary-line"><span className="app-summary-tag">Time:</span><span className="app-summary-data highlight">{formatTime(newTime)}</span></div>
                     </div>
                     {rescheduleTarget.status === 'confirmed' && (
                       <div className="app-status-note"><IoInformationCircleOutline size={16} /><span>This appointment will be set back to Pending for re-approval</span></div>
@@ -654,7 +922,7 @@ const UserAppointmentView: React.FC = () => {
               <div className="app-modal-footer-actions">
                 {rescheduleStep > 1
                   ? <button className="app-btn-outline" onClick={() => setRescheduleStep(p => p-1)}>Back</button>
-                  : <button className="app-btn-outline" onClick={() => setRescheduleModalVisible(false)}><IoClose size={16} /> Cancel</button>}
+                  : <button className="app-btn-outline" onClick={() => closeRescheduleModal()}><IoClose size={16} /> Cancel</button>}
                 {rescheduleStep < 3
                   ? <button className="app-btn-primary" onClick={handleRescheduleNext} disabled={rescheduleStep===1 ? (!newDate||!newTime) : rescheduleReason.length < MIN_REASON_CHARS}>
                       Next

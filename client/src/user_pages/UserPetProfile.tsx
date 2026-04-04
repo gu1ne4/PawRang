@@ -52,6 +52,8 @@ interface AlertConfig {
   confirmText: string;
 }
 
+type PetModalLayer = 'pet' | 'add' | 'edit';
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const DEFAULT_ALERT: AlertConfig = {
@@ -72,6 +74,9 @@ const CAT_BREEDS = [
 
 const DEFAULT_PET_IMG =
   'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400';
+
+const isMobileViewport = () =>
+  typeof window !== 'undefined' && window.innerWidth <= 768;
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 
@@ -133,6 +138,9 @@ const UserPetProfile: React.FC = () => {
   const [selectedPet, setSelectedPet] = useState<Pet | null>(null);
   // ── Only profile and records tabs (appointments tab removed) ──────────────
   const [activeTab, setActiveTab]     = useState<'profile' | 'records'>('profile');
+  const [isMobileView, setIsMobileView] = useState(isMobileViewport);
+  const [mobilePetModalOpen, setMobilePetModalOpen] = useState(false);
+  const [alertRestoreModal, setAlertRestoreModal] = useState<PetModalLayer | null>(null);
 
   // ── Add modal ─────────────────────────────────────────────────────────────
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -159,6 +167,7 @@ const UserPetProfile: React.FC = () => {
   const [editPet, setEditPet]             = useState<Partial<Pet>>({});
   const [editImage, setEditImage] =
     useState<{ preview: string; base64: string | null; mime: string } | null>(null);
+  const [editParentModal, setEditParentModal] = useState<PetModalLayer | null>(null);
 
   // ── Shared UI ─────────────────────────────────────────────────────────────
   const [isSaving,     setIsSaving]     = useState(false);
@@ -169,6 +178,26 @@ const UserPetProfile: React.FC = () => {
   // Alert
   // ─────────────────────────────────────────────────────────────────────────
 
+  const setPetModalVisible = useCallback((modal: PetModalLayer, visible: boolean) => {
+    if (modal === 'pet') setMobilePetModalOpen(visible);
+    if (modal === 'add') setAddModalOpen(visible);
+    if (modal === 'edit') setEditModalOpen(visible);
+  }, []);
+
+  const restorePetModal = useCallback((modal: PetModalLayer | null) => {
+    if (!modal) return;
+    if (modal === 'pet' && selectedPet && isMobileView) setMobilePetModalOpen(true);
+    if (modal === 'add') setAddModalOpen(true);
+    if (modal === 'edit' && editPet.pet_id) setEditModalOpen(true);
+  }, [editPet.pet_id, isMobileView, selectedPet]);
+
+  const getActivePetModal = useCallback((): PetModalLayer | null => {
+    if (editModalOpen) return 'edit';
+    if (addModalOpen) return 'add';
+    if (mobilePetModalOpen) return 'pet';
+    return null;
+  }, [addModalOpen, editModalOpen, mobilePetModalOpen]);
+
   const showAlert = useCallback((
     type: AlertConfig['type'],
     title: string,
@@ -176,12 +205,30 @@ const UserPetProfile: React.FC = () => {
     onConfirm: (() => void) | null = null,
     showCancel = false,
     confirmText = 'OK',
+    options?: {
+      hideModal?: PetModalLayer | null;
+      restoreModal?: PetModalLayer | null;
+    },
   ) => {
+    const modalToHide = options?.hideModal === undefined
+      ? getActivePetModal()
+      : options.hideModal;
+    const modalToRestore = options?.restoreModal === undefined
+      ? modalToHide
+      : options.restoreModal;
+
+    if (modalToHide) setPetModalVisible(modalToHide, false);
+    setAlertRestoreModal(modalToRestore ?? null);
     setAlertConfig({ type, title, message, onConfirm, showCancel, confirmText });
     setAlertVisible(true);
-  }, []);
+  }, [getActivePetModal, setPetModalVisible]);
 
-  const closeAlert = () => setAlertVisible(false);
+  const closeAlert = useCallback((restoreParent = true) => {
+    setAlertVisible(false);
+    const modalToRestore = alertRestoreModal;
+    setAlertRestoreModal(null);
+    if (restoreParent) restorePetModal(modalToRestore);
+  }, [alertRestoreModal, restorePetModal]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // API helpers
@@ -222,6 +269,23 @@ const UserPetProfile: React.FC = () => {
   useEffect(() => {
     if (currentUser?.id) fetchPets(currentUser.id);
   }, [currentUser?.id, fetchPets]);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobileView(isMobileViewport());
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileView) setMobilePetModalOpen(false);
+  }, [isMobileView]);
+
+  useEffect(() => {
+    if (!isMobileView) {
+      setEditParentModal(null);
+      setAlertRestoreModal(null);
+    }
+  }, [isMobileView]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Add pet
@@ -316,7 +380,23 @@ const UserPetProfile: React.FC = () => {
   const openEditModal = (pet: Pet) => {
     setEditPet({ ...pet });
     setEditImage({ preview: pet.pet_photo_url ?? DEFAULT_PET_IMG, base64: null, mime: 'image/jpeg' });
+    if (mobilePetModalOpen && isMobileView) {
+      setMobilePetModalOpen(false);
+      setEditParentModal('pet');
+    } else {
+      setEditParentModal(null);
+    }
     setEditModalOpen(true);
+  };
+
+  const closeEditModal = (restoreParent = true) => {
+    setEditModalOpen(false);
+
+    if (restoreParent && editParentModal === 'pet' && selectedPet && isMobileView) {
+      setMobilePetModalOpen(true);
+    }
+
+    setEditParentModal(null);
   };
 
   const handleSavePet = async () => {
@@ -352,8 +432,18 @@ const UserPetProfile: React.FC = () => {
       const updated   = freshPets.find(p => p.pet_id === editPet.pet_id);
       if (updated) setSelectedPet(updated);
 
+      const restoreModal = editParentModal === 'pet' ? 'pet' : null;
       setEditModalOpen(false);
-      showAlert('success', 'Saved!', 'Pet profile updated successfully.');
+      setEditParentModal(null);
+      showAlert(
+        'success',
+        'Saved!',
+        'Pet profile updated successfully.',
+        null,
+        false,
+        'OK',
+        { restoreModal },
+      );
     } catch (err: any) {
       console.error('handleSavePet error:', err);
       showAlert('error', 'Error', err.response?.data?.error ?? 'Failed to save changes.');
@@ -376,15 +466,179 @@ const UserPetProfile: React.FC = () => {
             headers: { Authorization: `Bearer ${getToken()}` },
           });
           if (currentUser?.id) await fetchPets(currentUser.id);
-          if (selectedPet?.pet_id === pet.pet_id) setSelectedPet(null);
-          showAlert('success', 'Deleted', `${pet.pet_name}'s profile has been removed.`);
+          if (selectedPet?.pet_id === pet.pet_id) {
+            setSelectedPet(null);
+            setMobilePetModalOpen(false);
+          }
+          showAlert(
+            'success',
+            'Deleted',
+            `${pet.pet_name}'s profile has been removed.`,
+            null,
+            false,
+            'OK',
+            { restoreModal: null },
+          );
         } catch (err: any) {
-          showAlert('error', 'Error', err.response?.data?.error ?? 'Failed to delete pet.');
+          showAlert(
+            'error',
+            'Error',
+            err.response?.data?.error ?? 'Failed to delete pet.',
+            null,
+            false,
+            'OK',
+            { restoreModal: 'pet' },
+          );
         }
       },
       true, 'Delete',
     );
   };
+
+  const handlePetSelect = (pet: Pet) => {
+    setSelectedPet(pet);
+    setActiveTab('profile');
+
+    if (isMobileView) {
+      setMobilePetModalOpen(true);
+    }
+  };
+
+  const renderPetDetails = (pet: Pet, isModal = false) => (
+    <div className={`pet-details-content${isModal ? ' pet-details-content-modal' : ''}`}>
+      <div className="pet-profile-header">
+        <img src={profileHeader} alt="Header" className="profile-header-bg" />
+        <div className="profile-header-overlay">
+          <div className="profile-picture-wrapper">
+            <img
+              src={pet.pet_photo_url ?? DEFAULT_PET_IMG}
+              alt={pet.pet_name}
+              className="profile-picture"
+            />
+          </div>
+          <div className="profile-header-info">
+            <h1>{pet.pet_name}</h1>
+            <div className="profile-header-meta">
+              <span>@{pet.pet_name.toLowerCase()}</span>
+              <span>•</span>
+              <span>{pet.pet_breed}</span>
+            </div>
+            <p>Added {formatDate(pet.created_at)}</p>
+          </div>
+        </div>
+        <button className="edit-profile-btn" onClick={() => openEditModal(pet)}>
+          <IoPencil size={15} color="#ffffff" />
+        </button>
+      </div>
+
+      <div className="profile-tabs">
+        {(['profile', 'records'] as const).map(tab => (
+          <button
+            key={tab}
+            className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab)}
+          >
+            {tab === 'records' ? 'Records (VET EMR)' : 'Profile'}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'profile' && (
+        <div className="profile-tab-content">
+          <div className="info-section">
+            <div className="section-header">
+              <IoInformationCircleOutline size={25} color="#3d67ee" />
+              <h3>Pet Information</h3>
+            </div>
+            <div className="info-grid">
+              {([
+                ['Name',     pet.pet_name],
+                ['Species',  pet.pet_species],
+                ['Breed',    pet.pet_breed],
+                ['Size',     pet.pet_size],
+                ['Birthday', pet.birthday ? formatDate(pet.birthday) : 'Unknown'],
+                ['Age',      pet.age ? `${pet.age} years` : 'Unknown'],
+                ['Weight',   pet.weight_kg ? `${pet.weight_kg} kg` : 'Unknown'],
+                ['Gender',   pet.pet_gender],
+              ] as [string, string][]).map(([label, value]) => (
+                <div key={label} className="info-row">
+                  <span className="info-label">{label}:</span>
+                  <span className="info-value">{value}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="vaccinations-section" style={{ marginTop: 25 }}>
+              <div className="section-header">
+                <IoMedicalOutline size={22} color="#3d67ee" />
+                <h4>Vaccination Records</h4>
+              </div>
+              {pet.vaccination_urls?.length ? (
+                <div className="vaccinations-list">
+                  {pet.vaccination_urls.map((url, i) => (
+                    <div key={i} className="vaccination-card">
+                      <div className="vaccination-title">
+                        <IoMedical size={20} color="#3d67ee" />
+                        <span>Vaccination {i + 1}</span>
+                      </div>
+                      <button
+                        className="view-doc-btn"
+                        onClick={() => window.open(url, '_blank')}
+                      >
+                        <IoEyeOutline size={18} />
+                        <span>View Document</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ color: '#999', fontSize: 14, fontStyle: 'italic' }}>
+                  No vaccination records uploaded.
+                </p>
+              )}
+            </div>
+
+            <div style={{ marginTop: 30, paddingTop: 20, borderTop: '1px solid #ffcccc', display: 'flex', justifyContent: 'center' }}>
+              <button
+                onClick={() => handleDeletePet(pet)}
+                style={{
+                  background: '#ffeeee',
+                  border: '1px solid #ee3d5a',
+                  borderRadius: 8,
+                  padding: '10px 20px',
+                  color: '#ee3d5a',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <IoTrashOutline size={18} /> Remove Pet Profile
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'records' && (
+        <div className="records-tab-content">
+          <div className="section-header">
+            <IoFolderOutline size={22} color="#3d67ee" />
+            <h3>Electronic Medical Records</h3>
+          </div>
+          <p className="records-note">
+            These records are added by PetShield veterinarians and are view-only.
+          </p>
+          <div style={{ color: '#999', textAlign: 'center', padding: 40 }}>
+            <IoDocumentText size={50} color="#ccc" />
+            <p style={{ marginTop: 10 }}>
+              Medical records will appear here once added by your vet.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -395,7 +649,7 @@ const UserPetProfile: React.FC = () => {
 
       {/* ── Alert Modal ── */}
       {alertVisible && (
-        <div className="modal-overlay" onClick={closeAlert}>
+        <div className="modal-overlay" onClick={() => closeAlert()}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
             {alertConfig.type === 'success'
               ? <IoCheckmarkCircleOutline size={55} color="#2e9e0c" />
@@ -408,11 +662,15 @@ const UserPetProfile: React.FC = () => {
               : <div className="modal-message">{alertConfig.message}</div>}
             <div className="modal-actions">
               {alertConfig.showCancel && (
-                <button className="modal-btn modal-btn-cancel" onClick={closeAlert}>Cancel</button>
+                <button className="modal-btn modal-btn-cancel" onClick={() => closeAlert()}>Cancel</button>
               )}
               <button
                 className={`modal-btn modal-btn-confirm ${alertConfig.type === 'error' ? 'error-btn' : ''}`}
-                onClick={() => { closeAlert(); alertConfig.onConfirm?.(); }}
+                onClick={() => {
+                  const hasConfirmAction = Boolean(alertConfig.onConfirm);
+                  closeAlert(!hasConfirmAction);
+                  alertConfig.onConfirm?.();
+                }}
               >
                 {alertConfig.confirmText}
               </button>
@@ -423,17 +681,11 @@ const UserPetProfile: React.FC = () => {
 
       <ClientNavBar
         currentUser={currentUser}
-        onLogout={() =>
-          showAlert(
-            'confirm', 'Log Out', 'Are you sure you want to log out?',
-            () => {
-              localStorage.removeItem('userSession');
-              localStorage.removeItem('access_token');
-              navigate('/login');
-            },
-            true, 'Log Out',
-          )
-        }
+        onLogout={() => {
+          localStorage.removeItem('userSession');
+          localStorage.removeItem('access_token');
+          navigate('/login');
+        }}
         onViewProfile={() => navigate('/user/home')}
         onMyPets={() => navigate('/user/pet-profile')}
         showAlert={showAlert}
@@ -471,7 +723,7 @@ const UserPetProfile: React.FC = () => {
                 <div
                   key={pet.pet_id}
                   className={`pet-list-item ${selectedPet?.pet_id === pet.pet_id ? 'selected' : ''}`}
-                  onClick={() => { setSelectedPet(pet); setActiveTab('profile'); }}
+                  onClick={() => handlePetSelect(pet)}
                 >
                   <img
                     src={pet.pet_photo_url ?? DEFAULT_PET_IMG}
@@ -639,6 +891,22 @@ const UserPetProfile: React.FC = () => {
       {/* ════════════════════════════════════════════
           ADD PET MODAL
       ════════════════════════════════════════════ */}
+      {mobilePetModalOpen && selectedPet && (
+        <div className="modal-overlay pet-profile-modal-overlay" onClick={() => setMobilePetModalOpen(false)}>
+          <div className="modal-content wide pet-profile-view-modal" onClick={e => e.stopPropagation()}>
+            <div className="pet-profile-modal-scroll">
+              {renderPetDetails(selectedPet, true)}
+            </div>
+            <button
+              className="modal-close-btn pet-profile-view-close"
+              onClick={() => setMobilePetModalOpen(false)}
+            >
+              <IoClose size={24} color="#666" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {addModalOpen && (
         <div className="modal-overlay" onClick={() => { setAddModalOpen(false); resetAddForm(); }}>
           <div className="modal-content wide" onClick={e => e.stopPropagation()}>
@@ -878,11 +1146,11 @@ const UserPetProfile: React.FC = () => {
           EDIT PET MODAL
       ════════════════════════════════════════════ */}
       {editModalOpen && (
-        <div className="modal-overlay" onClick={() => setEditModalOpen(false)}>
+        <div className="modal-overlay" onClick={() => closeEditModal()}>
           <div className="modal-content wide" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Edit Pet Information 🐈</h2>
-              <button className="modal-close-btn" onClick={() => setEditModalOpen(false)}>
+              <button className="modal-close-btn" onClick={() => closeEditModal()}>
                 <IoClose size={24} color="#666" />
               </button>
             </div>
@@ -976,7 +1244,7 @@ const UserPetProfile: React.FC = () => {
               </select>
 
               <div className="modal-actions-row">
-                <button className="btn-secondary" onClick={() => setEditModalOpen(false)}>
+                <button className="btn-secondary" onClick={() => closeEditModal()}>
                   Cancel
                 </button>
                 <button className="btn-primary" onClick={handleSavePet} disabled={isSaving}>

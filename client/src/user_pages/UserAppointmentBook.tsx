@@ -66,7 +66,7 @@ interface ServiceOption {
 interface AlertConfig {
   type: 'info' | 'success' | 'error' | 'confirm';
   title: string;
-  message: string;
+  message: string | React.ReactNode;
   onConfirm?: () => void;
   showCancel: boolean;
   confirmText: string;
@@ -131,11 +131,16 @@ const services: Service[] = [
 
 const DEFAULT_PET_IMG = 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400';
 const getToken = () => localStorage.getItem('access_token') ?? '';
+const isMobileViewport = () =>
+  typeof window !== 'undefined' && window.innerWidth <= 768;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const UserAppointmentBook: React.FC = () => {
   const navigate = useNavigate();
+  const [isMobileCarousel, setIsMobileCarousel] = useState(isMobileViewport);
+  const pageContainerRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
 
   // ── Session — read once, no redirect ─────────────────────────────────────
   const [currentUser] = useState<User | null>(() => {
@@ -182,8 +187,8 @@ const UserAppointmentBook: React.FC = () => {
   // ── Carousel ──────────────────────────────────────────────────────────────
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [expandedService,  setExpandedService]  = useState<number | null>(null);
-  const cardRef    = useRef<HTMLDivElement | null>(null);
-  const panelWidth = 280;
+  const touchStartX = useRef<number | null>(null);
+  const touchCurrentX = useRef<number | null>(null);
 
   // ── Modals ────────────────────────────────────────────────────────────────
   const [alertVisible,        setAlertVisible]        = useState(false);
@@ -213,6 +218,20 @@ const UserAppointmentBook: React.FC = () => {
       .finally(() => setLoadingBranches(false));
   }, []);
 
+  useEffect(() => {
+    const handleResize = () => setIsMobileCarousel(isMobileViewport());
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    pageContainerRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    contentRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [step]);
+
   // ─────────────────────────────────────────────────────────────────────────
   // Helpers
   // ─────────────────────────────────────────────────────────────────────────
@@ -228,7 +247,7 @@ const UserAppointmentBook: React.FC = () => {
   };
 
   const showAlert = (
-    type: AlertConfig['type'], title: string, message: string,
+    type: AlertConfig['type'], title: string, message: string | React.ReactNode,
     onConfirm?: () => void, showCancel = false, confirmText = 'OK',
   ) => {
     setAlertConfig({ type, title, message, onConfirm, showCancel, confirmText });
@@ -236,11 +255,9 @@ const UserAppointmentBook: React.FC = () => {
   };
 
   const handleLogout = () => {
-    showAlert('confirm', 'Log Out', 'Are you sure you want to log out?', () => {
-      localStorage.removeItem('userSession');
-      localStorage.removeItem('access_token');
-      navigate('/login');
-    }, true, 'Log Out');
+    localStorage.removeItem('userSession');
+    localStorage.removeItem('access_token');
+    navigate('/login');
   };
 
   const getDayName = (date: Date | null) => {
@@ -309,13 +326,38 @@ const UserAppointmentBook: React.FC = () => {
     }
   };
 
-  const getVisibleCards = () => {
-    const cards: { service: Service; position: number }[] = [];
-    for (let i = -1; i <= 1; i++) {
-      const idx = currentCardIndex + i;
-      if (idx >= 0 && idx < services.length) cards.push({ service: services[idx], position: i });
-    }
-    return cards;
+  const goToPreviousService = () => {
+    if (currentCardIndex === 0) return;
+    setCurrentCardIndex(prev => prev - 1);
+    setExpandedService(null);
+  };
+
+  const goToNextService = () => {
+    if (currentCardIndex === services.length - 1) return;
+    setCurrentCardIndex(prev => prev + 1);
+    setExpandedService(null);
+  };
+
+  const handleCarouselTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    touchStartX.current = event.touches[0].clientX;
+    touchCurrentX.current = event.touches[0].clientX;
+  };
+
+  const handleCarouselTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    touchCurrentX.current = event.touches[0].clientX;
+  };
+
+  const handleCarouselTouchEnd = () => {
+    if (touchStartX.current === null || touchCurrentX.current === null) return;
+
+    const deltaX = touchStartX.current - touchCurrentX.current;
+    const swipeThreshold = 45;
+
+    if (deltaX > swipeThreshold) goToNextService();
+    if (deltaX < -swipeThreshold) goToPreviousService();
+
+    touchStartX.current = null;
+    touchCurrentX.current = null;
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -501,7 +543,7 @@ const UserAppointmentBook: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="user-appointment-container">
+    <div className="user-appointment-container" ref={pageContainerRef}>
 
       {/* ── Alert Modal ── */}
       {alertVisible && (
@@ -513,7 +555,11 @@ const UserAppointmentBook: React.FC = () => {
               {!['success','error'].includes(alertConfig.type) && <IoInformationCircleOutline size={55} color="#3d67ee" />}
             </div>
             <h3 className="modal-title">{alertConfig.title}</h3>
-            <div className="modal-message"><p>{alertConfig.message}</p></div>
+            <div className="modal-message">
+              {typeof alertConfig.message === 'string'
+                ? <p>{alertConfig.message}</p>
+                : alertConfig.message}
+            </div>
             <div className="modal-actions">
               {alertConfig.showCancel && (
                 <button className="modal-btn modal-btn-cancel" onClick={() => setAlertVisible(false)}>Cancel</button>
@@ -577,7 +623,7 @@ const UserAppointmentBook: React.FC = () => {
         showAlert={showAlert}
       />
 
-      <div className="appointment-content">
+      <div className="appointment-content" ref={contentRef}>
 
         {/* Progress bar */}
         <div className="progress-container">
@@ -599,79 +645,95 @@ const UserAppointmentBook: React.FC = () => {
         {/* ══ STEP 1 — Service ══ */}
         {step === 1 && (
           <div className="step-content">
-            <div className="service-carousel">
-              <div className="carousel-controls">
-                <button className="carousel-arrow" onClick={() => { if (currentCardIndex > 0) { setCurrentCardIndex(c => c-1); setExpandedService(null); }}} disabled={currentCardIndex === 0}>
+            <p className="service-instruction">Click to select an appointment.</p>
+
+            <div className="service-carousel-shell">
+              <div
+                className="service-carousel"
+                onTouchStart={handleCarouselTouchStart}
+                onTouchMove={handleCarouselTouchMove}
+                onTouchEnd={handleCarouselTouchEnd}
+              >
+                <div className="carousel-viewport">
+                  <div
+                    className="carousel-track"
+                    style={{
+                      transform: `translateX(calc(50% - ${isMobileCarousel ? 143 : 130}px - ${currentCardIndex * (isMobileCarousel ? 304 : 288)}px))`,
+                    }}
+                  >
+                    {services.map((service, index) => {
+                      const isSelected = selectedService?.id === service.id;
+                      const isActive = currentCardIndex === index;
+
+                      return (
+                        <div
+                          key={service.id}
+                          className={`service-card-wrapper ${isActive ? 'center-card' : ''}`}
+                          aria-hidden={!isActive}
+                        >
+                          <button
+                            className={`service-card ${isSelected ? 'selected' : ''} ${isActive ? 'active' : 'inactive'}`}
+                            onClick={() => handleServiceSelect(service)}
+                            disabled={!isActive}
+                          >
+                            <div className="service-icon">{getIconComponent(service.icon)}</div>
+                            <h3 className="service-name">{service.name}</h3>
+                            <div className="service-description">{service.description.map((l,i) => <p key={i}>{l}</p>)}</div>
+                            {service.basePrice && <p className="service-price">{service.basePrice}</p>}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="service-carousel-nav">
+                <button className="carousel-arrow" onClick={goToPreviousService} disabled={currentCardIndex === 0} aria-label="Previous service">
                   <IoChevronBackCircle size={50} color={currentCardIndex === 0 ? '#ccc' : '#3d67ee'} />
                 </button>
-              </div>
-
-              <div className="carousel-cards">
-                {getVisibleCards().map(({ service, position }) => {
-                  const isSelected = selectedService?.id === service.id;
-                  return (
-                    <div
-                      key={service.id}
-                      className={`service-card-wrapper ${position === 0 ? 'center-card' : ''}`}
-                      style={{ transform:`scale(${position===0?1:0.85})`, opacity:position===0?1:0.5, zIndex:position===0?30:position===-1?20:10 }}
-                      ref={position === 0 ? cardRef : null}
-                    >
-                      <button
-                        className={`service-card ${isSelected ? 'selected' : ''}`}
-                        onClick={() => handleServiceSelect(service)}
-                        disabled={position !== 0}
-                      >
-                        <div className="service-icon">{getIconComponent(service.icon)}</div>
-                        <h3 className="service-name">{service.name}</h3>
-                        <div className="service-description">{service.description.map((l,i) => <p key={i}>{l}</p>)}</div>
-                        {service.basePrice && <p className="service-price">{service.basePrice}</p>}
-                      </button>
-
-                      {position === 0 && service.hasOptions && expandedService === service.id && (
-                        <div className="options-panel" style={{ left:210, top:0, width:panelWidth }}>
-                          <h3 className="options-title">{service.id === 1 ? 'Grooming Options' : 'Lab Options'}</h3>
-                          <div className="options-list">
-                            {(service.id === 1 ? groomingOptions : laboratoryOptions).map(opt => {
-                              const isSel = service.id === 1
-                                ? selectedGroomingOptions.some(o => o.id === opt.id)
-                                : selectedLabOptions.some(o => o.id === opt.id);
-                              return (
-                                <button
-                                  key={opt.id}
-                                  className={`option-item ${isSel ? 'selected' : ''}`}
-                                  onClick={() => {
-                                    if (service.id === 1) {
-                                      setSelectedGroomingOptions(prev => prev.some(o => o.id === opt.id) ? prev.filter(o => o.id !== opt.id) : [...prev, opt]);
-                                    } else {
-                                      setSelectedLabOptions(prev => {
-                                        if (prev.some(o => o.id === opt.id)) return prev.filter(o => o.id !== opt.id);
-                                        if (prev.length >= 3) { showAlert('info','Max 3','You can only select up to 3 lab tests'); return prev; }
-                                        return [...prev, opt];
-                                      });
-                                    }
-                                  }}
-                                >
-                                  <h4 className="option-name">{opt.name}</h4>
-                                  <p className="option-description">{opt.description}</p>
-                                  <p className="option-price">{opt.price}</p>
-                                </button>
-                              );
-                            })}
-                          </div>
-                          {service.id === 8 && <p className="lab-limit-note">Select up to 3 tests</p>}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="carousel-controls">
-                <button className="carousel-arrow" onClick={() => { if (currentCardIndex < services.length-1) { setCurrentCardIndex(c => c+1); setExpandedService(null); }}} disabled={currentCardIndex === services.length-1}>
+                <button className="carousel-arrow" onClick={goToNextService} disabled={currentCardIndex === services.length-1} aria-label="Next service">
                   <IoChevronForwardCircle size={50} color={currentCardIndex === services.length-1 ? '#ccc' : '#3d67ee'} />
                 </button>
               </div>
             </div>
+
+            {selectedService?.hasOptions && expandedService === selectedService.id && (
+              <div className="options-panel service-options-panel">
+                <h3 className="options-title">{selectedService.id === 1 ? 'Grooming Options' : 'Lab Options'}</h3>
+                <div className="options-list">
+                  {(selectedService.id === 1 ? groomingOptions : laboratoryOptions).map(opt => {
+                    const isSel = selectedService.id === 1
+                      ? selectedGroomingOptions.some(o => o.id === opt.id)
+                      : selectedLabOptions.some(o => o.id === opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        className={`option-item ${isSel ? 'selected' : ''}`}
+                        onClick={() => {
+                          if (selectedService.id === 1) {
+                            setSelectedGroomingOptions(prev =>
+                              prev.some(o => o.id === opt.id) ? [] : [opt],
+                            );
+                          } else {
+                            setSelectedLabOptions(prev => {
+                              if (prev.some(o => o.id === opt.id)) return prev.filter(o => o.id !== opt.id);
+                              if (prev.length >= 3) { showAlert('info','Max 3','You can only select up to 3 lab tests'); return prev; }
+                              return [...prev, opt];
+                            });
+                          }
+                        }}
+                      >
+                        <h4 className="option-name">{opt.name}</h4>
+                        <p className="option-description">{opt.description}</p>
+                        <p className="option-price">{opt.price}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedService.id === 8 && <p className="lab-limit-note">Select up to 3 tests</p>}
+              </div>
+            )}
 
             {selectedService && (
               <div className="selected-services">

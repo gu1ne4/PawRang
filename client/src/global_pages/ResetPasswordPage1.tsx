@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import './UserAuthStylesheet.css'
 import { Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';

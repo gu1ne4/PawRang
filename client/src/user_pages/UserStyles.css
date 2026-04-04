@@ -535,63 +535,81 @@
 }
 
 /* Service Carousel */
+.service-instruction {
+    margin: -6px 0 24px;
+    font-size: 16px;
+    text-align: center;
+    color: #232323;
+}
+
+.service-carousel-shell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 30px;
+}
+
 .service-carousel {
+    width: 100%;
     display: flex;
     justify-content: center;
-    align-items: center;
-    margin-bottom: 30px;
-    gap: 20px;
 }
 
-.carousel-controls {
+.carousel-viewport {
+    width: min(100%, 960px);
+    overflow: hidden;
+    padding: 10px 0 14px;
+}
+
+.carousel-track {
     display: flex;
-    align-items: center;
-    height: 300px;
-}
-
-.carousel-arrow {
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0;
-}
-
-.carousel-arrow:disabled {
-    cursor: not-allowed;
-}
-
-.carousel-cards {
-    display: flex;
-    align-items: center;
-    height: 350px;
-    margin: 0 10px;
-    gap: 20px;
-    position: relative;
+    align-items: stretch;
+    gap: 28px;
+    transition: transform 0.35s ease;
+    will-change: transform;
 }
 
 .service-card-wrapper {
-    transition: all 0.3s ease;
-    position: relative;
+    flex: 0 0 260px;
+    display: flex;
+    justify-content: center;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.service-card-wrapper.center-card {
+    transform: scale(1);
 }
 
 .service-card {
-    width: 220px;
-    height: 300px;
+    width: 260px;
+    min-height: 320px;
     background-color: #ffffff;
-    border-radius: 15px;
-    padding: 20px;
-    border: 1px solid #3d67ee;
+    border-radius: 22px;
+    padding: 28px 24px;
+    border: 2px solid rgba(61, 103, 238, 0.65);
     cursor: pointer;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, opacity 0.25s ease, border-color 0.25s ease;
+    box-shadow: 0 6px 16px rgba(28, 46, 115, 0.08);
+}
+
+.service-card.active {
+    transform: scale(1);
+    opacity: 1;
+}
+
+.service-card.inactive {
+    transform: scale(0.9);
+    opacity: 0.42;
 }
 
 .service-card.selected {
     background: linear-gradient(135deg, #3dcbee, #3db6ee, #3d67ee, #2565db, #3dcbee);
     border: 2px solid #2565db;
+    box-shadow: 0 8px 20px rgba(61, 103, 238, 0.14);
 }
 
 .service-card.selected .service-name,
@@ -609,10 +627,14 @@
     opacity: 0.7;
 }
 
+.service-card:hover {
+    box-shadow: 0 8px 18px rgba(28, 46, 115, 0.1);
+}
+
 .service-icon {
     display: flex;
     justify-content: center;
-    margin-top: 8px;
+    margin-top: 6px;
 }
 
 .service-icon svg {
@@ -624,14 +646,14 @@
     font-weight: bold;
     text-align: center;
     color: #3d67ee;
-    margin: 10px 0;
+    margin: 14px 0 10px;
 }
 
 .service-description p {
-    font-size: 13px;
+    font-size: 14px;
     color: #444;
     text-align: center;
-    margin: 2px 0;
+    margin: 4px 0;
 }
 
 .service-price {
@@ -639,6 +661,40 @@
     font-weight: bold;
     text-align: center;
     color: #3d67ee;
+    margin-top: 18px;
+}
+
+.service-carousel-nav {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+}
+
+.carousel-arrow {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.carousel-arrow:disabled {
+    cursor: not-allowed;
+}
+
+.service-options-panel {
+    position: static;
+    width: min(100%, 640px);
+    height: auto;
+    max-height: 320px;
+    margin: 8px auto 24px;
+    border-radius: 18px;
+    border-left: 2px solid #3d67ee;
+    border-top-left-radius: 18px;
+    border-bottom-left-radius: 18px;
+    box-shadow: 0 8px 20px rgba(61, 103, 238, 0.12);
 }
 
 /* Options Panel */
@@ -655,6 +711,23 @@
     box-shadow: 4px 2px 8px rgba(0, 0, 0, 0.25);
     height: 300px;
     overflow-y: auto;
+}
+
+.options-panel.service-options-panel {
+    position: static;
+    left: auto;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    width: min(100%, 640px);
+    height: auto;
+    max-height: 320px;
+    margin: 8px auto 24px;
+    border: 2px solid #3d67ee;
+    border-left: 2px solid #3d67ee;
+    border-radius: 18px;
+    box-shadow: 0 8px 20px rgba(61, 103, 238, 0.12);
+    z-index: auto;
 }
 
 .options-panel::-webkit-scrollbar {
@@ -2628,12 +2701,13 @@
 
 @media (max-width: 480px) {
     .haircut-styles-grid {
-        grid-template-columns: 1fr;
-        max-width: 200px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        max-width: 340px;
+        gap: 10px;
     }
     
     .haircut-style-card {
-        width: 160px;
+        width: 100%;
     }
     
     .haircut-name-overlay {
@@ -2832,5 +2906,390 @@
     .add-pet-card {
         width: 100%;
         max-width: 250px;
+    }
+}
+
+.pet-profile-view-modal {
+    max-width: 980px;
+    width: 92%;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    overflow: hidden;
+    border-radius: 22px;
+}
+
+.pet-profile-modal-scroll {
+    width: 100%;
+    max-height: calc(100dvh - 56px);
+    overflow-y: auto;
+    padding: 22px;
+}
+
+.pet-profile-view-close {
+    position: static;
+    align-self: center;
+    margin: 0 0 18px;
+    background: rgba(255, 255, 255, 0.94);
+    border-radius: 999px;
+    border: 1px solid rgba(61, 103, 238, 0.18);
+    box-shadow: 0 4px 12px rgba(28, 46, 115, 0.1);
+    padding: 8px;
+}
+
+.pet-details-content-modal {
+    width: 100%;
+}
+
+.pet-details-content-modal .profile-tab-content,
+.pet-details-content-modal .records-tab-content {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+@media (max-width: 768px) {
+    .user-appointment-container {
+        min-height: 100dvh;
+        height: 100dvh;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .appointment-content {
+        padding: 16px 14px 96px;
+        min-height: auto;
+    }
+
+    .progress-container {
+        margin-top: 18px;
+    }
+
+    .progress-steps {
+        justify-content: flex-start;
+        min-width: max-content;
+        padding: 0 4px;
+    }
+
+    .step-title {
+        margin-top: 22px;
+        margin-bottom: 16px;
+        font-size: 30px;
+    }
+
+    .service-instruction {
+        margin: -4px 0 18px;
+        font-size: 15px;
+    }
+
+    .service-carousel-shell {
+        gap: 12px;
+    }
+
+    .service-carousel {
+        width: 100%;
+    }
+
+    .carousel-viewport {
+        width: 100%;
+        padding: 8px 0 10px;
+    }
+
+    .carousel-track {
+        gap: 18px;
+    }
+
+    .service-card-wrapper {
+        flex-basis: 286px;
+    }
+
+    .service-card {
+        width: 286px;
+        min-height: 286px;
+        padding: 24px 20px;
+    }
+
+    .service-card.inactive {
+        opacity: 0.3;
+        transform: scale(0.88);
+    }
+
+    .service-carousel-nav {
+        gap: 10px;
+    }
+
+    .carousel-arrow svg {
+        width: 44px;
+        height: 44px;
+    }
+
+    .service-options-panel,
+    .options-panel.service-options-panel {
+        width: 100%;
+        max-height: 260px;
+        margin-top: 10px;
+        position: static;
+        left: auto;
+        top: auto;
+        border: 2px solid #3d67ee;
+        border-radius: 16px;
+        box-shadow: 0 6px 16px rgba(61, 103, 238, 0.12);
+    }
+
+    .selected-services {
+        max-width: 100%;
+    }
+
+    .step-content {
+        width: 100%;
+    }
+
+    .datetime-container {
+        padding: 0;
+        gap: 16px;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .calendar-wrapper,
+    .time-slots-wrapper,
+    .selected-datetime-badge {
+        width: min(100%, 360px);
+    }
+
+    .medical-questionnaire {
+        padding: 0 4px;
+    }
+
+    .question-options {
+        flex-wrap: wrap;
+        gap: 14px;
+    }
+
+    .medication-details {
+        margin-left: 0;
+    }
+
+    .confirmation-details {
+        padding: 0;
+        margin-top: 24px;
+        gap: 16px;
+    }
+
+    .confirmation-card {
+        padding: 18px;
+    }
+
+    .action-buttons,
+    .action-buttons-row {
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .action-buttons .btn-primary,
+    .action-buttons-row .btn-primary,
+    .action-buttons-row .btn-secondary {
+        width: min(100%, 320px);
+    }
+
+    .action-buttons {
+        margin-top: 24px;
+        margin-bottom: 0;
+    }
+
+    .action-buttons-row {
+        margin-bottom: 0;
+        padding-bottom: 12px;
+    }
+
+    .pets-grid {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        width: 100%;
+        max-width: 100%;
+        padding: 12px 0 0;
+    }
+
+    .pet-card {
+        width: 100%;
+        max-width: 100%;
+        height: auto;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 72px minmax(0, 1fr);
+        grid-template-areas:
+            "image name"
+            "image detail1"
+            "image detail2";
+        align-items: center;
+        justify-items: start;
+        gap: 4px 12px;
+        text-align: left;
+        padding: 14px;
+    }
+
+    .pet-image {
+        grid-area: image;
+        width: 64px;
+        height: 64px;
+        margin-bottom: 0;
+    }
+
+    .pet-name {
+        grid-area: name;
+        margin: 0;
+        font-size: 16px;
+    }
+
+    .pet-card .pet-details:first-of-type {
+        grid-area: detail1;
+    }
+
+    .pet-card .pet-details:last-of-type {
+        grid-area: detail2;
+    }
+
+    .pet-details {
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.35;
+    }
+
+    .add-pet-card {
+        width: 100%;
+        max-width: 100%;
+        min-height: 88px;
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: 12px;
+        padding: 12px;
+    }
+
+    .add-pet-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 24px;
+        margin-bottom: 0;
+        flex-shrink: 0;
+    }
+
+    .add-pet-icon svg {
+        width: 24px;
+        height: 24px;
+    }
+
+    .add-pet-text {
+        font-size: 14px;
+    }
+
+    .branches-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 12px 0 0;
+        max-width: 100%;
+    }
+
+    .branch-card {
+        width: 100%;
+        max-width: 100%;
+        height: auto;
+        min-height: 132px;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 16px;
+    }
+
+    .branch-name {
+        font-size: 15px;
+    }
+
+    .branch-address {
+        font-size: 12px;
+    }
+
+    .pets-main-content {
+        height: auto;
+        min-height: calc(100dvh - 86px);
+        overflow: visible;
+        padding: 16px 12px 24px;
+    }
+
+    .pets-sidebar {
+        width: 100%;
+        height: auto;
+        padding: 16px 12px 8px;
+        border-right: none;
+        border-bottom: none;
+        margin-bottom: 0;
+    }
+
+    .pets-details {
+        display: none;
+    }
+
+    .pets-list-header {
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: stretch;
+    }
+
+    .pets-list-header h3 {
+        margin: 0;
+    }
+
+    .add-pet-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .pets-list {
+        height: min(48dvh, calc(100dvh - 270px));
+        min-height: 260px;
+        padding: 8px 2px 14px;
+    }
+
+    .pet-list-item {
+        padding: 14px;
+    }
+
+    .pet-profile-modal-overlay {
+        align-items: center;
+        overflow-y: auto;
+        padding: 12px;
+        z-index: 1950;
+    }
+
+    .pet-profile-view-modal {
+        width: min(100%, 520px);
+        max-width: none;
+        max-height: calc(100dvh - 24px);
+    }
+
+    .pet-profile-modal-scroll {
+        max-height: calc(100dvh - 24px);
+        padding: 18px 14px 20px;
+    }
+
+    .pet-profile-view-close {
+        margin-bottom: 14px;
+    }
+
+    .pet-details-content-modal .pet-profile-header {
+        margin-bottom: 52px;
+    }
+
+    .pet-details-content-modal .profile-header-overlay {
+        left: 14px;
+        right: 14px;
+        gap: 14px;
+    }
+
+    .pet-details-content-modal .profile-header-meta {
+        flex-wrap: wrap;
     }
 }

@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './UserStyles.css';
 import API_URL from '../API';
+import ClientNavBar from '../reusable_components/ClientNavBar';
 
 import {
-  IoPersonOutline, IoPawOutline, IoCalendarOutline,
-  IoNotificationsOutline, IoLogOutOutline,
-  IoChevronDownOutline, IoChevronUpOutline,
   IoCheckmarkCircleOutline, IoCloseCircleOutline, IoAlertCircleOutline,
 } from 'react-icons/io5';
 
@@ -40,7 +38,6 @@ interface ModalConfig {
 
 const UserHome: React.FC = () => {
   const navigate = useNavigate();
-  const location = useLocation();
 
   // ── Session — read once, no redirect ─────────────────────────────────────
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -52,7 +49,6 @@ const UserHome: React.FC = () => {
     }
   });
 
-  const [dropdownVisible, setDropdownVisible] = useState(false);
   const [modalVisible,    setModalVisible]    = useState(false);
   const [modalConfig,     setModalConfig]     = useState<ModalConfig>({
     type: 'info', title: '', message: '', showCancel: false, confirmText: 'OK',
@@ -76,8 +72,6 @@ const UserHome: React.FC = () => {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  const isActive = (path: string) => location.pathname === path;
-
   const showAlert = (
     type: ModalConfig['type'],
     title: string,
@@ -91,30 +85,11 @@ const UserHome: React.FC = () => {
   };
 
   const handleLogout = () => {
-    setDropdownVisible(false);
-    showAlert(
-      'confirm', 'Log Out', 'Are you sure you want to log out?',
-      () => {
-        localStorage.removeItem('userSession');
-        localStorage.removeItem('access_token');
-        setCurrentUser(null);
-        navigate('/login');
-      },
-      true, 'Log Out',
-    );
+    localStorage.removeItem('userSession');
+    localStorage.removeItem('access_token');
+    setCurrentUser(null);
+    navigate('/login');
   };
-
-  const displayName = currentUser
-  ? (
-      currentUser.fullname
-      ?? currentUser.fullName
-      ?? (`${currentUser.firstName ?? ''} ${currentUser.lastName ?? ''}`.trim()
-          || currentUser.username
-          || 'User')
-    )
-  : '';
-  
-  const getInitial = () => displayName.charAt(0).toUpperCase() || 'U';
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -122,79 +97,13 @@ const UserHome: React.FC = () => {
 
   return (
     <div className="user-container">
-
-      {/* ── Sticky Navbar ── */}
-      <div className="navbar-sticky">
-        <div className="user-navbar">
-
-          {/* Profile dropdown */}
-          <div className="profile-dropdown-container">
-            {currentUser && (
-              <button className="profile-button" onClick={() => setDropdownVisible(v => !v)}>
-                <div className="profile-section">
-                  {currentUser.userImage || currentUser.userimage ? (
-                    <img
-                      src={currentUser.userImage ?? currentUser.userimage}
-                      alt={displayName}
-                      className="profile-image"
-                    />
-                  ) : (
-                    <div className="profile-initial"><span>{getInitial()}</span></div>
-                  )}
-                  <div className="profile-info">
-                    <span className="profile-name">{displayName}</span>
-                  </div>
-                  {dropdownVisible
-                    ? <IoChevronUpOutline   size={18} color="#3d67ee" />
-                    : <IoChevronDownOutline size={18} color="#3d67ee" />}
-                </div>
-              </button>
-            )}
-
-            {dropdownVisible && currentUser && (
-              <div className="dropdown-menu">
-                <button className="dropdown-item" onClick={() => { setDropdownVisible(false); navigate('/user/profile'); }}>
-                  <IoPersonOutline size={18} color="#3d67ee" /><span>View Profile</span>
-                </button>
-                <button className="dropdown-item" onClick={() => { setDropdownVisible(false); navigate('/user/pet-profile'); }}>
-                  <IoPawOutline size={18} color="#3d67ee" /><span>My Pets</span>
-                </button>
-                <button className="dropdown-item logout-item" onClick={handleLogout}>
-                  <IoLogOutOutline size={18} color="#ee3d5a" />
-                  <span style={{ color: '#ee3d5a' }}>Logout</span>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Center nav */}
-          <div className="nav-center">
-            <div className="nav-links">
-              <button className={`nav-link ${isActive('/user/home') ? 'active' : ''}`} onClick={() => navigate('/user/home')}>
-                Home
-              </button>
-              <button className="nav-link">About Us</button>
-              <button className="nav-link">Our Services</button>
-              <button className="nav-link" onClick={() => navigate('/user/book-appointment')}>
-                Book an Appointment
-              </button>
-            </div>
-          </div>
-
-          {/* Right icons */}
-          <div className="nav-icons">
-            <button className="icon-button" onClick={() => navigate('/user/pet-profile')}>
-              <IoPawOutline size={21} color="#3d67ee" />
-            </button>
-            <button className="icon-button" onClick={() => navigate('/user/appointments')}>
-              <IoCalendarOutline size={21} color="#3d67ee" />
-            </button>
-            <button className="icon-button" onClick={() => console.log('Notifications')}>
-              <IoNotificationsOutline size={21} color="#3d67ee" />
-            </button>
-          </div>
-        </div>
-      </div>
+      <ClientNavBar
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        onViewProfile={() => navigate('/user/profile')}
+        onMyPets={() => navigate('/user/pet-profile')}
+        showAlert={showAlert}
+      />
 
       {/* ── Main content ── */}
       <div className="user-content">
