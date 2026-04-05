@@ -12,8 +12,6 @@ import AdminAuditPage from './admin_pages/AdminAuditPage';
 // Admin Appointment Module
 import AdminSchedule from './admin_pages/AdminSchedule';
 import AdminAvailSettings from './admin_pages/AdminAvailSettings';
-import AdminCancelAppointmentModal from './admin_pages/AdminCancelAppointmentModal';
-import AdminRescheduleModal from './admin_pages/AdminRescheduleModal';
 
 // Global / Login Pages
 import LoginPage from './global_pages/LoginPage';
@@ -40,6 +38,7 @@ import GlobalInventory from './global_pages/GlobalInventory'
 import GlobalEMR from './global_pages/GlobalEMR'
 import GlobalInventoryLogs from './global_pages/GlobalInventoryLogs';
 import GlobalInventoryArchive from './global_pages/GlobalInventoryArchive';
+import AdminAnalytics from './admin_pages/AdminAnalytics';
 
 function App() {
   return (
@@ -65,7 +64,7 @@ function App() {
         <Route path="/audit" element={<AdminAuditPage />} />
         <Route path="/settings" element={<AdminSettingsPage />} />
         <Route path="/history" element={<AdminHistory/>} />
-
+        <Route path="/analytics" element={<AdminAnalytics />} />
 
 
         <Route path="/UserHome" element={<UserHome/>} />
@@ -75,7 +74,6 @@ function App() {
         <Route path="/user/profile" element={<UserProfile/>} />
 
         <Route path="/Login" element={<GlobalLogin/>} />
-
         
         <Route path="/inventory" element={<GlobalInventory/>} />
         <Route path="/patient-records" element={<GlobalEMR/>} />

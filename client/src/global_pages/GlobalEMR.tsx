@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Navbar from '../reusable_components/NavBar';
 import Notifications from '../reusable_components/Notifications';
 import { HiOutlineClipboardDocumentList } from "react-icons/hi2";
@@ -66,6 +66,10 @@ interface MedicalRecord {
   deceased?: boolean;
   visitHistory?: VisitHistory[];
   petDetails?: PetDetails;
+}
+
+interface GlobalEMRProps {
+  autoOpenAddMode?: boolean;
 }
 
 interface LabResult {
@@ -471,8 +475,11 @@ const MOCK_RECORDS: MedicalRecord[] = [
   }
 ];
 
-const GlobalEMR: React.FC = () => {
+
+const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const locationState = location.state as { autoOpenAddMode?: boolean } | null;
 
   // State
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -638,6 +645,8 @@ const GlobalEMR: React.FC = () => {
       setFilteredMedications(otherMeds);
     }
   };
+
+
 
   const addPrescriptionFromTemplate = (medication: MedicationTemplate) => {
     if (medication.id === 'other') {
@@ -1078,6 +1087,7 @@ const GlobalEMR: React.FC = () => {
     loadCurrentUser();
   }, []);
 
+
   const resetForm = (): void => {
     setPatientId('');
     setPetName('');
@@ -1113,6 +1123,18 @@ const GlobalEMR: React.FC = () => {
     setLastWeight(null);
     setExpandedVisitId(null);
   };
+
+  useEffect(() => {
+    const shouldOpenAddMode = autoOpenAddMode || locationState?.autoOpenAddMode;
+    if (shouldOpenAddMode) {
+      const timer = setTimeout(() => {
+        resetForm();
+        setViewMode('add');
+        setShowModeOverlay(true);
+      }, 200);
+      return () => clearTimeout(timer);
+    }
+  }, [autoOpenAddMode, locationState?.autoOpenAddMode]);
 
   const handleReturnToList = () => {
     clearFilters();

@@ -18,12 +18,27 @@
 .rightContainer {
     padding-top: 10px;
     padding-bottom: 10px;
+    padding-right: 10px;
     flex: 0.5;
     display: flex;
     flex-direction: column;
     gap: 10px;
 }
 
+/* Responsive heading for upcoming events */
+.upcoming-events-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    margin: 0;
+    color: #1e293b;
+}
+
+.rightContainer::-webkit-scrollbar,
+.leftContainer::-webkit-scrollbar {
+    width: 4px;
+}
 /* Profile Card */
 .profileCard {
     border-radius: 12px;
@@ -151,7 +166,8 @@
     padding: 20px;
     padding-bottom: 25px;
     border-radius: 12px;
-    box-shadow: 0 0 18px rgba(0, 0, 0, 0.15);
+    border: 1px solid #e0e0e0;
+    box-shadow: 0 0 5px rgba(42, 5, 255, 0.15);
 }
 
 .reportHeader {
@@ -211,13 +227,11 @@
     color: #7d2e2e;
 }
 
-/* Quick Actions */
 .quickActions {
     display: flex;
     flex-direction: row;
-    margin-top: 20px;
+    margin-top: 15px;
     justify-content: space-between;
-    gap: 10px;
     flex-wrap: wrap;
 }
 
@@ -227,13 +241,15 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     padding: 12px;
     border-radius: 10px;
     border-width: 1px;
     border-style: solid;
     background-color: transparent;
+    justify-content: center;
     cursor: pointer;
+    height: 60px;
     transition: all 0.2s ease;
 }
 
@@ -490,7 +506,7 @@
     border-radius: 12px;
     padding: 20px;
     flex: 1.5;
-    height: 200px;           /* Fixed height on the card */
+    height: 200px;     
     display: flex;
     flex-direction: column;
     box-shadow: 0 0 18px rgba(0, 0, 0, 0.15);
@@ -503,7 +519,7 @@
     align-items: center;
     margin-bottom: 15px;
     gap: 70px;
-    flex-shrink: 0;           /* Prevent header from shrinking */
+    flex-shrink: 0;         
 }
 
 .notificationsTitle {
@@ -525,15 +541,14 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    overflow-y: auto;         /* Move overflow here */
+    overflow-y: auto;       
     overflow-x: hidden;
-    flex: 1;                   /* Take remaining space */
-    padding-right: 5px;        /* Space for scrollbar */
+    flex: 1;                  
+    padding-right: 5px;        
 }
 
-/* Remove the blue background - this was just for debugging */
 .notificationsList {
-    background-color: transparent;  /* Changed from #0e82f5 */
+    background-color: transparent;  
 }
 
 .notificationItem {
@@ -551,7 +566,7 @@
 
 /* Style the scrollbar */
 .notificationsList::-webkit-scrollbar {
-    width: 6px;
+    width: 0px;
 }
 
 .notificationsList::-webkit-scrollbar-track {
@@ -610,7 +625,7 @@
 .calendarCard {
     border-radius: 16px;
     margin-top: 20px;
-    flex: 2;
+    height: 400px;
     box-shadow: 0 0 18px rgba(0, 0, 0, 0.15);
 }
 
@@ -694,29 +709,6 @@
     font-weight: 700;
 }
 
-/* Scrollbar Styling */
-.leftContainer::-webkit-scrollbar,
-.rightContainer::-webkit-scrollbar {
-    width: 6px;
-}
-
-.leftContainer::-webkit-scrollbar-track,
-.rightContainer::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 10px;
-}
-
-.leftContainer::-webkit-scrollbar-thumb,
-.rightContainer::-webkit-scrollbar-thumb {
-    background: #b9b7b7;
-    border-radius: 10px;
-}
-
-.leftContainer::-webkit-scrollbar-thumb:hover,
-.rightContainer::-webkit-scrollbar-thumb:hover {
-    background: #e2e2e2;
-}
-
 /* Text Utilities */
 .text-center {
     text-align: center;
@@ -728,6 +720,7 @@
     border: none !important;
     width: 100% !important;
     font-family: inherit !important;
+    font-size: 2px !important;
 }
 
 .calendarCard .react-calendar__navigation {
@@ -739,7 +732,7 @@
 .calendarCard .react-calendar__navigation button {
     color: white !important;
     background: transparent !important;
-    font-size: 16px !important;
+    font-size: 15px !important;
     min-width: 30px !important;
 }
 
@@ -756,7 +749,7 @@
 .calendarCard .react-calendar__month-view__weekdays {
     color: white !important;
     font-weight: 600 !important;
-    font-size: 12px !important;
+    font-size: 10px !important;
     text-transform: none !important;
     text-decoration: none !important;
 }
@@ -796,8 +789,8 @@
 
 /* Disable clicking on month/year label */
 .calendarCard .react-calendar__navigation__label {
-    pointer-events: none !important;  /* ← This prevents clicking */
-    cursor: default !important;       /* ← Changes cursor to default instead of pointer */
+    pointer-events: none !important; 
+    cursor: default !important;      
 }
 
 /* Optional: Keep the style but remove the hover effect */
