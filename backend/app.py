@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 import os
 import random
 import string
+import secrets
+import hashlib
 from datetime import datetime, timedelta
 import resend
 
@@ -185,6 +187,7 @@ SUPABASE_KEY         = os.environ.get('SUPABASE_KEY')
 SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY')
 RESEND_API_KEY       = os.environ.get('RESEND_API_KEY')
 RESEND_FROM_EMAIL    = os.environ.get('RESEND_FROM_EMAIL', 'onboarding@resend.dev')
+EMPLOYEE_SETUP_URL_BASE = os.environ.get('EMPLOYEE_SETUP_URL_BASE', 'http://localhost:5173/employee/setup-account')
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise ValueError("Missing Supabase credentials in .env")
@@ -197,6 +200,23 @@ resend.api_key = RESEND_API_KEY
 
 otp_store = {}
 RESEND_COOLDOWN_SECONDS = 60
+INVENTORY_CATEGORIES = {
+    "Pet Supplies",
+    "Deworming",
+    "Vitamins",
+    "Food",
+    "Accessories",
+    "Medication",
+}
+INVENTORY_CATEGORY_CODES = {
+    "Pet Supplies": "PS",
+    "Deworming": "DEW",
+    "Vitamins": "VIT",
+    "Food": "FD",
+    "Accessories": "ACC",
+    "Medication": "MED",
+}
+INVENTORY_ITEM_STOP_WORDS = {"and", "for", "of", "the", "with", "to", "a", "an"}
 
 
 def get_single_row(table_name, column, value):
@@ -318,6 +338,575 @@ def normalize_employee_admin_account(profile):
         "created_at": profile.get('created_at'),
         "is_initial_login": bool(profile.get('is_initial_login')),
     }
+
+
+def parse_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+
+
+def coerce_int(value, field_name, minimum=None, maximum=None, default=None, allow_none=False):
+    if value in (None, ''):
+        if allow_none:
+            return None
+        if default is not None:
+            return default
+        raise ValueError(f"{field_name} is required")
+
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} must be a whole number")
+
+    if minimum is not None and parsed < minimum:
+        raise ValueError(f"{field_name} must be at least {minimum}")
+    if maximum is not None and parsed > maximum:
+        raise ValueError(f"{field_name} must be at most {maximum}")
+    return parsed
+
+
+def coerce_number(value, field_name, minimum=None, maximum=None, default=None, allow_none=False):
+    if value in (None, ''):
+        if allow_none:
+            return None
+        if default is not None:
+            return default
+        raise ValueError(f"{field_name} is required")
+
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{field_name} must be a valid number")
+
+    if minimum is not None and parsed < minimum:
+        raise ValueError(f"{field_name} must be at least {minimum}")
+    if maximum is not None and parsed > maximum:
+        raise ValueError(f"{field_name} must be at most {maximum}")
+    return round(parsed, 2)
+
+
+def parse_inventory_expiration_date(value, no_expiration=False):
+    if no_expiration or not value or str(value).strip().upper() == 'N/A':
+        return None
+
+    raw = str(value).strip()
+    for fmt in ('%Y-%m-%d', '%m/%d/%Y'):
+        try:
+            return datetime.strptime(raw, fmt).strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+
+    raise ValueError('expirationDate must be YYYY-MM-DD or MM/DD/YYYY')
+
+
+def format_inventory_expiration_date(value, no_expiration=False):
+    if no_expiration or not value:
+        return 'N/A'
+
+    raw = str(value).strip()
+    for fmt in ('%Y-%m-%d', '%m/%d/%Y'):
+        try:
+            return datetime.strptime(raw[:10] if fmt == '%Y-%m-%d' else raw, fmt).strftime('%m/%d/%Y')
+        except ValueError:
+            continue
+    return raw
+
+
+def format_inventory_created_date(value):
+    if not value:
+        return ''
+    raw = str(value).strip()
+    for fmt in ('%Y-%m-%dT%H:%M:%S.%f%z', '%Y-%m-%dT%H:%M:%S%z', '%Y-%m-%dT%H:%M:%S.%f', '%Y-%m-%dT%H:%M:%S'):
+        try:
+            return datetime.strptime(raw, fmt).strftime('%m/%d/%Y')
+        except ValueError:
+            continue
+    return raw[:10] if len(raw) >= 10 else raw
+
+
+def abbreviate_inventory_item_name(item_name):
+    words = []
+    for raw_word in str(item_name or '').replace('-', ' ').split():
+        cleaned = ''.join(ch for ch in raw_word if ch.isalnum())
+        if not cleaned:
+            continue
+        if cleaned.lower() in INVENTORY_ITEM_STOP_WORDS:
+            continue
+        words.append(cleaned)
+
+    if not words:
+        return 'ITEM'
+
+    abbreviation = ''.join(word[0].upper() for word in words[:6])
+    return abbreviation or 'ITEM'
+
+
+def inventory_code_exists(branch_id, code, exclude_item_id=None):
+    response = supabase_admin.table('inventory_items') \
+        .select('inventory_item_id') \
+        .eq('branch_id', branch_id) \
+        .eq('item_code', code) \
+        .execute()
+
+    for row in (response.data or []):
+        if exclude_item_id is None or int(row.get('inventory_item_id')) != int(exclude_item_id):
+            return True
+    return False
+
+
+def generate_inventory_item_code(branch_id, category, item_name, exclude_item_id=None):
+    category_code = INVENTORY_CATEGORY_CODES.get(category, 'GEN')
+    item_code = abbreviate_inventory_item_name(item_name)
+
+    for _ in range(30):
+        suffix = ''.join(random.choices(string.digits, k=3))
+        code = f"{category_code}-{item_code}-{suffix}"
+        if not inventory_code_exists(branch_id, code, exclude_item_id=exclude_item_id):
+            return code
+
+    raise ValueError('Unable to generate a unique inventory item code')
+
+
+def inventory_transaction_reference_exists(branch_id, reference_number):
+    response = supabase_admin.table('inventory_transactions') \
+        .select('inventory_transaction_id') \
+        .eq('branch_id', branch_id) \
+        .eq('reference_number', reference_number) \
+        .execute()
+    return bool(response.data)
+
+
+def generate_inventory_transaction_reference(branch_id, transaction_type):
+    prefix = 'GRN' if transaction_type == 'IN' else 'SOT'
+    timestamp = datetime.utcnow().strftime('%Y%m%d-%H%M%S')
+
+    for _ in range(50):
+        suffix = ''.join(random.choices(string.digits, k=4))
+        reference_number = f'{prefix}-{timestamp}-{suffix}'
+        if not inventory_transaction_reference_exists(branch_id, reference_number):
+            return reference_number
+
+    raise ValueError('Unable to generate a unique transaction reference number')
+
+
+def normalize_inventory_name_for_compare(item_name):
+    return ' '.join(str(item_name or '').strip().lower().split())
+
+
+def find_inventory_duplicate(payload, exclude_item_id=None, include_archived=False):
+    query = supabase_admin.table('inventory_items').select(
+        'inventory_item_id,item_name,category,no_expiration,expiration_date,is_archived'
+    ).eq('branch_id', payload['branch_id']).eq('category', payload['category'])
+
+    if not include_archived:
+        query = query.eq('is_archived', False)
+
+    response = query.execute()
+    target_name = normalize_inventory_name_for_compare(payload['item_name'])
+
+    for row in (response.data or []):
+        row_id = row.get('inventory_item_id')
+        if exclude_item_id is not None and str(row_id) == str(exclude_item_id):
+            continue
+
+        if normalize_inventory_name_for_compare(row.get('item_name')) != target_name:
+            continue
+
+        row_no_expiration = bool(row.get('no_expiration'))
+        payload_no_expiration = bool(payload['no_expiration'])
+        if row_no_expiration != payload_no_expiration:
+            continue
+
+        if payload_no_expiration:
+            return row
+
+        if row.get('expiration_date') == payload['expiration_date']:
+            return row
+
+    return None
+
+
+def ensure_inventory_item_is_unique(payload, exclude_item_id=None):
+    duplicate = find_inventory_duplicate(payload, exclude_item_id=exclude_item_id, include_archived=False)
+    if duplicate:
+        raise ValueError('Product already exists with the same expiration date')
+
+
+def build_inventory_item_payload(data, existing=None):
+    item_name = (data.get('item') or data.get('item_name') or (existing or {}).get('item_name') or '').strip()
+    category = (data.get('category') or (existing or {}).get('category') or '').strip()
+    if not item_name:
+        raise ValueError('item is required')
+    if category not in INVENTORY_CATEGORIES:
+        raise ValueError('category is invalid')
+
+    branch_id = coerce_int(data.get('branch_id', data.get('branchId', (existing or {}).get('branch_id'))), 'branch_id', minimum=1)
+    provided_code = (data.get('code') or data.get('item_code') or '').strip()
+    existing_code = ((existing or {}).get('item_code') or '').strip()
+    if existing:
+        code = provided_code or existing_code
+        if not code:
+            code = generate_inventory_item_code(branch_id, category, item_name, exclude_item_id=existing.get('inventory_item_id'))
+    else:
+        code = provided_code or generate_inventory_item_code(branch_id, category, item_name)
+
+    base_price = coerce_number(data.get('basePrice', data.get('base_price', (existing or {}).get('base_price'))), 'basePrice', minimum=0.01, maximum=999999)
+    selling_price = coerce_number(data.get('sellingPrice', data.get('selling_price', (existing or {}).get('selling_price'))), 'sellingPrice', minimum=0.01, maximum=999999)
+    if selling_price < base_price:
+        raise ValueError('sellingPrice cannot be less than basePrice')
+
+    no_expiration = parse_bool(data.get('expirationNA', data.get('no_expiration', (existing or {}).get('no_expiration', False))))
+    use_max_quantity = parse_bool(data.get('useMaxQuantity', data.get('use_max_quantity', (existing or {}).get('use_max_quantity', False))))
+    max_quantity = coerce_int(data.get('maxQuantity', data.get('max_quantity', (existing or {}).get('max_quantity'))), 'maxQuantity', minimum=1, maximum=999999, allow_none=True)
+    if use_max_quantity and max_quantity is None:
+        raise ValueError('maxQuantity is required when useMaxQuantity is enabled')
+
+    current_stock = coerce_int(data.get('stockCount', data.get('current_stock', (existing or {}).get('current_stock', 0))), 'stockCount', minimum=0, maximum=999999, default=0)
+    critical_stock_level = coerce_int(data.get('criticalStockLevel', data.get('critical_stock_level', (existing or {}).get('critical_stock_level', 10))), 'criticalStockLevel', minimum=1, maximum=999999, default=10)
+    if use_max_quantity and max_quantity is not None and current_stock > max_quantity:
+        raise ValueError('stockCount cannot exceed maxQuantity')
+
+    payload = {
+        'branch_id': branch_id,
+        'item_code': code,
+        'item_name': item_name,
+        'category': category,
+        'base_price': base_price,
+        'selling_price': selling_price,
+        'current_stock': current_stock,
+        'critical_stock_level': critical_stock_level,
+        'no_expiration': no_expiration,
+        'use_max_quantity': use_max_quantity,
+        'max_quantity': max_quantity if use_max_quantity else None,
+        'expiration_date': parse_inventory_expiration_date(data.get('expirationDate', data.get('expiration_date', (existing or {}).get('expiration_date'))), no_expiration=no_expiration),
+    }
+
+    actor_id = data.get('userId') or data.get('processedBy') or data.get('processed_by')
+    if actor_id:
+        payload['updated_by'] = actor_id
+        if not existing:
+            payload['created_by'] = actor_id
+
+    return payload
+
+
+def normalize_inventory_item(record):
+    expiration_na = bool(record.get('no_expiration'))
+    return {
+        'id': record.get('inventory_item_id'),
+        'pk': record.get('inventory_item_id'),
+        'inventory_item_id': record.get('inventory_item_id'),
+        'branchId': record.get('branch_id'),
+        'branch_id': record.get('branch_id'),
+        'code': record.get('item_code') or '',
+        'item': record.get('item_name') or '',
+        'category': record.get('category') or '',
+        'basePrice': float(record.get('base_price') or 0),
+        'sellingPrice': float(record.get('selling_price') or 0),
+        'stockCount': int(record.get('current_stock') or 0),
+        'stockStatus': record.get('stock_status') or 'Average Stock',
+        'expirationDate': format_inventory_expiration_date(record.get('expiration_date'), expiration_na),
+        'expirationNA': expiration_na,
+        'dateAdded': format_inventory_created_date(record.get('created_at')),
+        'maxQuantity': record.get('max_quantity'),
+        'useMaxQuantity': bool(record.get('use_max_quantity')),
+        'criticalStockLevel': int(record.get('critical_stock_level') or 10),
+        'isArchived': bool(record.get('is_archived')),
+        'archivedDate': record.get('archived_at'),
+        'archivedBy': record.get('archived_by'),
+        'archiveReason': record.get('archive_reason') or '',
+    }
+
+
+def normalize_inventory_log(record):
+    return {
+        'id': record.get('id'),
+        'date': record.get('date'),
+        'time': record.get('time'),
+        'productCode': record.get('productCode'),
+        'productName': record.get('productName'),
+        'type': record.get('type'),
+        'quantity': int(record.get('quantity') or 0),
+        'referenceNumber': record.get('referenceNumber'),
+        'reason': record.get('reason'),
+        'supplierOrIssuedTo': record.get('supplierOrIssuedTo'),
+        'user': record.get('user'),
+        'notes': record.get('notes') or '',
+        'unitCost': float(record.get('unitCost') or 0),
+        'totalCost': float(record.get('totalCost') or 0),
+        'branchId': record.get('branch_id'),
+        'inventoryItemId': record.get('inventory_item_id'),
+    }
+
+
+def get_inventory_item_or_404(item_id):
+    item = get_single_row('inventory_items', 'inventory_item_id', item_id)
+    if not item:
+        return None, (jsonify({'error': 'Inventory item not found'}), 404)
+    return item, None
+
+
+def build_inventory_transaction_payload(data, transaction_type):
+    branch_id = coerce_int(data.get('branch_id', data.get('branchId')), 'branch_id', minimum=1)
+    processed_by = data.get('processed_by') or data.get('processedBy') or data.get('userId')
+    reference_number = (data.get('reference_number') or data.get('referenceNumber') or '').strip()
+    if not reference_number or inventory_transaction_reference_exists(branch_id, reference_number):
+        reference_number = generate_inventory_transaction_reference(branch_id, transaction_type)
+
+    reason_default = 'Stock Replenishment' if transaction_type == 'IN' else 'Sale'
+    reason = (data.get('reason') or reason_default).strip()
+    notes = (data.get('notes') or '').strip() or None
+    counterparty_name = (data.get('counterparty_name') or data.get('counterpartyName') or data.get('supplier') or data.get('issuedTo') or data.get('supplierOrIssuedTo') or '').strip() or None
+
+    raw_items = data.get('items') or []
+    if not isinstance(raw_items, list) or not raw_items:
+        raise ValueError('items must contain at least one entry')
+
+    prepared_items = []
+    total_amount = 0.0
+
+    for raw_item in raw_items:
+        item_id = raw_item.get('inventory_item_id') or raw_item.get('inventoryItemId') or raw_item.get('productId') or raw_item.get('id')
+        inventory_item = get_single_row('inventory_items', 'inventory_item_id', item_id)
+        if not inventory_item:
+            raise ValueError(f'Inventory item {item_id} was not found')
+        if inventory_item.get('branch_id') != branch_id:
+            raise ValueError(f'Inventory item {item_id} does not belong to branch {branch_id}')
+        if inventory_item.get('is_archived'):
+            raise ValueError(f"Inventory item {inventory_item.get('item_name')} is archived")
+
+        quantity = coerce_int(raw_item.get('quantity'), 'quantity', minimum=1, maximum=999999)
+        current_stock = int(inventory_item.get('current_stock') or 0)
+        max_quantity = inventory_item.get('max_quantity')
+
+        if transaction_type == 'IN':
+            unit_cost = coerce_number(raw_item.get('unitCost', raw_item.get('unit_cost', inventory_item.get('base_price'))), 'unitCost', minimum=0, maximum=999999)
+            if inventory_item.get('use_max_quantity') and max_quantity is not None and current_stock + quantity > int(max_quantity):
+                raise ValueError(f"{inventory_item.get('item_name')} would exceed its max quantity")
+            new_stock = current_stock + quantity
+            line_total = quantity * unit_cost
+            prepared_items.append({
+                'inventory_item_id': inventory_item.get('inventory_item_id'),
+                'quantity': quantity,
+                'unit_cost': unit_cost,
+                'unit_price': None,
+                'new_stock': new_stock,
+            })
+        else:
+            unit_price = coerce_number(raw_item.get('unitPrice', raw_item.get('unit_price', inventory_item.get('selling_price'))), 'unitPrice', minimum=0, maximum=999999)
+            if quantity > current_stock:
+                raise ValueError(f"{inventory_item.get('item_name')} only has {current_stock} units available")
+            new_stock = current_stock - quantity
+            line_total = quantity * unit_price
+            prepared_items.append({
+                'inventory_item_id': inventory_item.get('inventory_item_id'),
+                'quantity': quantity,
+                'unit_cost': None,
+                'unit_price': unit_price,
+                'new_stock': new_stock,
+            })
+
+        total_amount += line_total
+
+    return {
+        'branch_id': branch_id,
+        'transaction_type': transaction_type,
+        'reference_number': reference_number,
+        'reason': reason,
+        'counterparty_name': counterparty_name,
+        'notes': notes,
+        'processed_by': processed_by,
+        'items': prepared_items,
+        'total_amount': round(total_amount, 2),
+    }
+
+
+def persist_inventory_transaction(payload):
+    header_response = supabase_admin.table('inventory_transactions').insert({
+        'branch_id': payload['branch_id'],
+        'transaction_type': payload['transaction_type'],
+        'reference_number': payload['reference_number'],
+        'reason': payload['reason'],
+        'counterparty_name': payload['counterparty_name'],
+        'notes': payload['notes'],
+        'processed_by': payload['processed_by'],
+        'total_amount': payload['total_amount'],
+    }).execute()
+
+    transaction = header_response.data[0] if header_response.data else None
+    if not transaction:
+        raise ValueError('Failed to create inventory transaction')
+
+    transaction_id = transaction.get('inventory_transaction_id')
+    line_rows = []
+
+    for item in payload['items']:
+        line_rows.append({
+            'inventory_transaction_id': transaction_id,
+            'inventory_item_id': item['inventory_item_id'],
+            'quantity': item['quantity'],
+            'unit_cost': item['unit_cost'],
+            'unit_price': item['unit_price'],
+        })
+
+        supabase_admin.table('inventory_items') \
+            .update({
+                'current_stock': item['new_stock'],
+                'updated_by': payload['processed_by'],
+            }) \
+            .eq('inventory_item_id', item['inventory_item_id']) \
+            .execute()
+
+    line_response = supabase_admin.table('inventory_transaction_items').insert(line_rows).execute()
+
+    return {
+        'transaction': transaction,
+        'lineItems': line_response.data or [],
+    }
+
+
+def normalize_employee_setup_token(record):
+    return {
+        'setup_token_id': record.get('setup_token_id'),
+        'employee_id': record.get('employee_id'),
+        'email': record.get('email'),
+        'expires_at': record.get('expires_at'),
+        'used_at': record.get('used_at'),
+        'created_at': record.get('created_at'),
+        'created_by': record.get('created_by'),
+    }
+
+
+def generate_employee_setup_token():
+    return secrets.token_urlsafe(32)
+
+
+def hash_employee_setup_token(token):
+    return hashlib.sha256((token or '').encode('utf-8')).hexdigest()
+
+
+def build_employee_setup_link(token):
+    separator = '&' if '?' in EMPLOYEE_SETUP_URL_BASE else '?'
+    return f"{EMPLOYEE_SETUP_URL_BASE}{separator}token={token}"
+
+
+def get_employee_setup_token_record(raw_token):
+    token_hash = hash_employee_setup_token(raw_token)
+    response = supabase_admin.table('employee_setup_tokens') \
+        .select('*') \
+        .eq('token_hash', token_hash) \
+        .execute()
+
+    rows = response.data or []
+    if len(rows) > 1:
+        raise ValueError('Multiple employee setup tokens found for the same token hash')
+    return rows[0] if rows else None
+
+
+def validate_employee_setup_token(raw_token):
+    if not raw_token:
+        raise ValueError('token is required')
+
+    token_record = get_employee_setup_token_record(raw_token)
+    if not token_record:
+        raise ValueError('Invalid or unknown setup token')
+    if token_record.get('used_at'):
+        raise ValueError('This setup link has already been used')
+
+    expires_at_raw = token_record.get('expires_at')
+    if not expires_at_raw:
+        raise ValueError('This setup link is invalid')
+
+    expires_at = datetime.fromisoformat(str(expires_at_raw).replace('Z', '+00:00'))
+    if datetime.utcnow().replace(tzinfo=expires_at.tzinfo) > expires_at:
+        raise ValueError('This setup link has expired')
+
+    employee = get_single_row('employee_accounts', 'id', token_record.get('employee_id'))
+    if not employee:
+        raise ValueError('Employee account linked to this setup token was not found')
+
+    return token_record, employee
+
+
+def invalidate_previous_employee_setup_tokens(employee_id):
+    existing = supabase_admin.table('employee_setup_tokens') \
+        .select('setup_token_id') \
+        .eq('employee_id', employee_id) \
+        .is_('used_at', 'null') \
+        .execute()
+
+    token_ids = [row.get('setup_token_id') for row in (existing.data or []) if row.get('setup_token_id')]
+    if token_ids:
+        supabase_admin.table('employee_setup_tokens') \
+            .update({'used_at': datetime.utcnow().isoformat()}) \
+            .in_('setup_token_id', token_ids) \
+            .execute()
+
+
+def issue_employee_setup_token(employee_id, email, created_by=None, expires_in_hours=24):
+    invalidate_previous_employee_setup_tokens(employee_id)
+    raw_token = generate_employee_setup_token()
+    expires_at = datetime.utcnow() + timedelta(hours=expires_in_hours)
+
+    response = supabase_admin.table('employee_setup_tokens').insert({
+        'employee_id': employee_id,
+        'email': email,
+        'token_hash': hash_employee_setup_token(raw_token),
+        'expires_at': expires_at.isoformat(),
+        'created_by': created_by,
+    }).execute()
+
+    created = response.data[0] if response.data else None
+    if not created:
+        raise ValueError('Failed to create employee setup token')
+
+    return raw_token, created
+
+
+def send_employee_setup_email(to_email, employee_name, setup_link):
+    safe_name = employee_name or 'there'
+    html = f"""
+        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
+            <h2>Set Up Your PawRang Employee Account</h2>
+            <p>Hello {safe_name},</p>
+            <p>Your employee account has been created. Please click the button below to set your username and password.</p>
+            <p style="margin: 24px 0;">
+                <a href="{setup_link}" style="background:#3d67ee;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;">
+                    Set Up My Account
+                </a>
+            </p>
+            <p>If the button does not work, copy and paste this link into your browser:</p>
+            <p style="word-break: break-all;">{setup_link}</p>
+            <p>This link will expire in 24 hours and can only be used once.</p>
+            <p>Thank you,<br/>PawRang Veterinary Clinic</p>
+        </div>
+    """
+    return send_html_email(to_email, 'Set Up Your PawRang Employee Account', html)
+
+
+def is_username_taken(username, exclude_employee_id=None):
+    username = (username or '').strip()
+    if not username:
+        return False
+
+    employee_match = supabase_admin.table('employee_accounts') \
+        .select('id') \
+        .eq('username', username) \
+        .execute()
+    for row in (employee_match.data or []):
+        if str(row.get('id')) != str(exclude_employee_id):
+            return True
+
+    patient_match = supabase_admin.table('patient_account') \
+        .select('id') \
+        .eq('username', username) \
+        .execute()
+    return bool(patient_match.data)
 
 
 # -----------------------------------------------
@@ -462,6 +1051,11 @@ def login():
         fresh_profile, fresh_source_table = find_account_by_user_id(user.id)
         if not fresh_profile:
             return jsonify({"error": "Authenticated user profile was not found."}), 404
+
+        if fresh_source_table == 'employee_accounts' and fresh_profile.get('is_initial_login'):
+            return jsonify({
+                "error": "Please finish setting up your employee account using the link sent to your email before logging in."
+            }), 403
 
         return jsonify({
             "message":      "Login successful!",
@@ -933,16 +1527,6 @@ def create_employee_account():
         if existing_email.data:
             return jsonify({"error": "An employee account with this email already exists."}), 400
 
-        username_seed = f"{first_name}.{last_name}".lower().replace(" ", "")
-        if not username_seed.strip('.'):
-            username_seed = email.split('@')[0] or 'employee'
-
-        username = username_seed
-        suffix = 1
-        while get_single_row('employee_accounts', 'username', username):
-            username = f"{username_seed}{suffix}"
-            suffix += 1
-
         temp_password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
         auth_user = supabase_admin.auth.admin.create_user({
             "email": email,
@@ -956,7 +1540,7 @@ def create_employee_account():
 
         insert_response = supabase_admin.table('employee_accounts').insert({
             "id": user.id,
-            "username": username,
+            "username": None,
             "first_name": first_name,
             "last_name": last_name,
             "contact_number": contact_number,
@@ -968,11 +1552,20 @@ def create_employee_account():
         }).execute()
 
         created = insert_response.data[0] if insert_response.data else None
+        employee_name = f"{first_name} {last_name}".strip()
+        setup_token, _ = issue_employee_setup_token(user.id, email, created_by=data.get('created_by') or data.get('userId'))
+        email_sent = False
+        try:
+            send_employee_setup_email(email, employee_name, build_employee_setup_link(setup_token))
+            email_sent = True
+        except Exception as mail_error:
+            print("Employee setup email error:", str(mail_error))
+
         return jsonify({
             "message": "Employee account created successfully",
             "account": normalize_employee_admin_account(created or {
                 "id": user.id,
-                "username": username,
+                "username": '',
                 "first_name": first_name,
                 "last_name": last_name,
                 "contact_number": contact_number,
@@ -982,7 +1575,7 @@ def create_employee_account():
                 "employee_image": employee_image,
                 "is_initial_login": True,
             }),
-            "temporary_password": temp_password,
+            "setup_email_sent": email_sent,
         }), 200
     except Exception as e:
         print("Create employee account error:", str(e))
@@ -1038,6 +1631,98 @@ def update_employee_account(account_id):
         }), 200
     except Exception as e:
         print("Update employee account error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/accounts/<account_id>/send-setup-link', methods=['POST'])
+def resend_employee_setup_link(account_id):
+    data = request.get_json() or {}
+    try:
+        employee = get_single_row('employee_accounts', 'id', account_id)
+        if not employee:
+            return jsonify({"error": "Employee account not found"}), 404
+
+        raw_token, token_record = issue_employee_setup_token(
+            employee.get('id'),
+            employee.get('email'),
+            created_by=data.get('created_by') or data.get('userId')
+        )
+        send_employee_setup_email(
+            employee.get('email'),
+            f"{employee.get('first_name') or ''} {employee.get('last_name') or ''}".strip(),
+            build_employee_setup_link(raw_token)
+        )
+
+        return jsonify({
+            "message": "Employee setup link sent successfully",
+            "token": normalize_employee_setup_token(token_record),
+        }), 200
+    except Exception as e:
+        print("Resend employee setup link error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/employee-setup/validate', methods=['GET'])
+def validate_employee_setup():
+    raw_token = (request.args.get('token') or '').strip()
+    try:
+        token_record, employee = validate_employee_setup_token(raw_token)
+        return jsonify({
+            "message": "Setup token is valid",
+            "token": normalize_employee_setup_token(token_record),
+            "employee": {
+                "id": employee.get('id'),
+                "email": employee.get('email'),
+                "first_name": employee.get('first_name'),
+                "last_name": employee.get('last_name'),
+                "username": employee.get('username'),
+                "is_initial_login": bool(employee.get('is_initial_login')),
+            }
+        }), 200
+    except Exception as e:
+        print("Validate employee setup token error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/employee-setup/complete', methods=['POST'])
+def complete_employee_setup():
+    data = request.get_json() or {}
+    raw_token = (data.get('token') or '').strip()
+    username = (data.get('username') or '').strip()
+    password = data.get('password')
+
+    if not raw_token or not username or not password:
+        return jsonify({"error": "token, username, and password are required"}), 400
+    if len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters long"}), 400
+
+    try:
+        token_record, employee = validate_employee_setup_token(raw_token)
+
+        if is_username_taken(username, exclude_employee_id=employee.get('id')):
+            return jsonify({"error": "This username is already taken"}), 400
+
+        supabase_admin.auth.admin.update_user_by_id(employee.get('id'), {"password": password})
+        supabase_admin.table('employee_accounts') \
+            .update({
+                'username': username,
+                'is_initial_login': False,
+            }) \
+            .eq('id', employee.get('id')) \
+            .execute()
+
+        supabase_admin.table('employee_setup_tokens') \
+            .update({'used_at': datetime.utcnow().isoformat()}) \
+            .eq('setup_token_id', token_record.get('setup_token_id')) \
+            .execute()
+
+        updated = get_single_row('employee_accounts', 'id', employee.get('id')) or employee
+        return jsonify({
+            "message": "Employee credentials set successfully",
+            "employee": normalize_employee_admin_account(updated),
+        }), 200
+    except Exception as e:
+        print("Complete employee setup error:", str(e))
         return jsonify({"error": str(e)}), 400
 
 
@@ -1172,6 +1857,223 @@ def patient_register():
 @app.route('/logout', methods=['POST'])
 def logout():
     return jsonify({"message": "Logout acknowledged"}), 200
+
+
+@app.route('/api/inventory/items', methods=['GET'])
+def get_inventory_items():
+    try:
+        branch_id = request.args.get('branch_id', request.args.get('branchId'))
+        archived_raw = request.args.get('archived')
+        category = (request.args.get('category') or '').strip()
+        stock_status = (request.args.get('stock_status', request.args.get('stockStatus')) or '').strip()
+        search = (request.args.get('search') or '').strip()
+
+        query = supabase_admin.table('inventory_items').select('*')
+        if branch_id:
+            query = query.eq('branch_id', coerce_int(branch_id, 'branch_id', minimum=1))
+        if archived_raw is None:
+            query = query.eq('is_archived', False)
+        else:
+            query = query.eq('is_archived', parse_bool(archived_raw))
+        if category:
+            query = query.eq('category', category)
+        if stock_status:
+            query = query.eq('stock_status', stock_status)
+        if search:
+            escaped = search.replace(',', '\\,')
+            query = query.or_(f"item_name.ilike.%{escaped}%,item_code.ilike.%{escaped}%")
+
+        response = query.order('item_name').execute()
+        items = [normalize_inventory_item(item) for item in (response.data or [])]
+        return jsonify({'items': items}), 200
+    except Exception as e:
+        print("Fetch inventory items error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/inventory/items/<int:item_id>', methods=['GET'])
+def get_inventory_item(item_id):
+    try:
+        item, error_response = get_inventory_item_or_404(item_id)
+        if error_response:
+            return error_response
+        return jsonify({'item': normalize_inventory_item(item)}), 200
+    except Exception as e:
+        print("Fetch inventory item error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/inventory/items', methods=['POST'])
+def create_inventory_item():
+    data = request.get_json() or {}
+    try:
+        payload = build_inventory_item_payload(data)
+        ensure_inventory_item_is_unique(payload)
+        response = supabase_admin.table('inventory_items').insert(payload).execute()
+        created = response.data[0] if response.data else None
+        return jsonify({
+            'message': 'Inventory item created successfully',
+            'item': normalize_inventory_item(created or payload)
+        }), 201
+    except Exception as e:
+        print("Create inventory item error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/inventory/items/<int:item_id>', methods=['PUT'])
+def update_inventory_item(item_id):
+    data = request.get_json() or {}
+    try:
+        existing, error_response = get_inventory_item_or_404(item_id)
+        if error_response:
+            return error_response
+
+        payload = build_inventory_item_payload(data, existing=existing)
+        ensure_inventory_item_is_unique(payload, exclude_item_id=item_id)
+        response = supabase_admin.table('inventory_items') \
+            .update(payload) \
+            .eq('inventory_item_id', item_id) \
+            .execute()
+        updated = response.data[0] if response.data else get_single_row('inventory_items', 'inventory_item_id', item_id)
+        return jsonify({
+            'message': 'Inventory item updated successfully',
+            'item': normalize_inventory_item(updated or existing)
+        }), 200
+    except Exception as e:
+        print("Update inventory item error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/inventory/items/<int:item_id>/archive', methods=['POST'])
+def archive_inventory_item(item_id):
+    data = request.get_json() or {}
+    try:
+        item, error_response = get_inventory_item_or_404(item_id)
+        if error_response:
+            return error_response
+
+        if item.get('is_archived'):
+            return jsonify({'message': 'Inventory item is already archived', 'item': normalize_inventory_item(item)}), 200
+
+        update_data = {
+            'is_archived': True,
+            'archived_at': datetime.utcnow().isoformat(),
+            'archived_by': data.get('userId') or data.get('processedBy') or data.get('processed_by'),
+            'archive_reason': (data.get('reason') or data.get('archiveReason') or '').strip() or None,
+            'updated_by': data.get('userId') or data.get('processedBy') or data.get('processed_by'),
+        }
+        response = supabase_admin.table('inventory_items') \
+            .update(update_data) \
+            .eq('inventory_item_id', item_id) \
+            .execute()
+        archived = response.data[0] if response.data else get_single_row('inventory_items', 'inventory_item_id', item_id)
+        return jsonify({'message': 'Inventory item archived successfully', 'item': normalize_inventory_item(archived)}), 200
+    except Exception as e:
+        print("Archive inventory item error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/inventory/items/<int:item_id>/restore', methods=['POST'])
+def restore_inventory_item(item_id):
+    data = request.get_json() or {}
+    try:
+        item, error_response = get_inventory_item_or_404(item_id)
+        if error_response:
+            return error_response
+
+        duplicate_payload = {
+            'branch_id': item.get('branch_id'),
+            'item_name': item.get('item_name'),
+            'category': item.get('category'),
+            'no_expiration': bool(item.get('no_expiration')),
+            'expiration_date': item.get('expiration_date'),
+        }
+        duplicate = find_inventory_duplicate(duplicate_payload, exclude_item_id=item_id, include_archived=False)
+        if duplicate:
+            return jsonify({'error': 'Cannot restore product because an active product with the same expiration date already exists'}), 400
+
+        response = supabase_admin.table('inventory_items') \
+            .update({
+                'is_archived': False,
+                'archived_at': None,
+                'archived_by': None,
+                'archive_reason': None,
+                'updated_by': data.get('userId') or data.get('processedBy') or data.get('processed_by'),
+            }) \
+            .eq('inventory_item_id', item_id) \
+            .execute()
+        restored = response.data[0] if response.data else get_single_row('inventory_items', 'inventory_item_id', item_id)
+        return jsonify({'message': 'Inventory item restored successfully', 'item': normalize_inventory_item(restored)}), 200
+    except Exception as e:
+        print("Restore inventory item error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/inventory/stock-in', methods=['POST'])
+def create_inventory_stock_in():
+    data = request.get_json() or {}
+    try:
+        payload = build_inventory_transaction_payload(data, 'IN')
+        result = persist_inventory_transaction(payload)
+        return jsonify({
+            'message': 'Stock received successfully',
+            'transaction': result['transaction'],
+            'lineItems': result['lineItems'],
+        }), 201
+    except Exception as e:
+        print("Inventory stock-in error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/inventory/stock-out', methods=['POST'])
+def create_inventory_stock_out():
+    data = request.get_json() or {}
+    try:
+        payload = build_inventory_transaction_payload(data, 'OUT')
+        result = persist_inventory_transaction(payload)
+        return jsonify({
+            'message': 'Stock out recorded successfully',
+            'transaction': result['transaction'],
+            'lineItems': result['lineItems'],
+        }), 201
+    except Exception as e:
+        print("Inventory stock-out error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/inventory/logs', methods=['GET'])
+def get_inventory_logs():
+    try:
+        branch_id = request.args.get('branch_id', request.args.get('branchId'))
+        log_type = (request.args.get('type') or '').strip()
+        product_name = (request.args.get('product') or request.args.get('productName') or '').strip()
+        search = (request.args.get('search') or '').strip()
+        start_date = (request.args.get('start_date') or request.args.get('startDate') or '').strip()
+        end_date = (request.args.get('end_date') or request.args.get('endDate') or '').strip()
+
+        query = supabase_admin.table('inventory_logs_view').select('*')
+        if branch_id:
+            query = query.eq('branch_id', coerce_int(branch_id, 'branch_id', minimum=1))
+        if log_type:
+            query = query.eq('type', log_type)
+        if product_name:
+            query = query.eq('productName', product_name)
+        if start_date:
+            query = query.gte('date', start_date)
+        if end_date:
+            query = query.lte('date', end_date)
+        if search:
+            escaped = search.replace(',', '\\,')
+            query = query.or_(
+                f"productCode.ilike.%{escaped}%,productName.ilike.%{escaped}%,referenceNumber.ilike.%{escaped}%,user.ilike.%{escaped}%"
+            )
+
+        response = query.order('id', desc=True).execute()
+        logs = [normalize_inventory_log(item) for item in (response.data or [])]
+        return jsonify({'logs': logs}), 200
+    except Exception as e:
+        print("Fetch inventory logs error:", str(e))
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route('/api/day-availability', methods=['GET'])

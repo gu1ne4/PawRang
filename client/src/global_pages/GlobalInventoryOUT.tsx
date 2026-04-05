@@ -22,8 +22,8 @@ import {
 import { RiListSettingsLine } from "react-icons/ri";
 
 interface CurrentUser {
-  id?: number;
-  pk?: number;
+  id?: string | number;
+  pk?: string | number;
   username: string;
   fullName?: string;
   role: string;
@@ -33,6 +33,7 @@ interface CurrentUser {
 interface Product {
   id?: number;
   pk?: number;
+  branchId?: number;
   code: string;
   item: string;
   category: string;
@@ -57,6 +58,7 @@ interface ModalConfig {
 
 interface BulkItem {
   productId: number;
+  branchId?: number;
   productCode: string;
   productName: string;
   quantity: number;
@@ -76,219 +78,11 @@ const SORT_OPTIONS = [
 ];
 
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
-
-const MOCK_PRODUCTS: Product[] = [
-  {
-    id: 1,
-    code: 'DOG-FD-001',
-    item: 'Premium Dog Food Adult 5kg',
-    category: 'Food',
-    basePrice: 850.00,
-    sellingPrice: 999.00,
-    stockCount: 45,
-    stockStatus: 'Average Stock',
-    expirationDate: '12/2025',
-    expirationNA: false,
-    dateAdded: '01/15/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 2,
-    code: 'CAT-FD-002',
-    item: 'Gourmet Cat Food Fish Flavor 2kg',
-    category: 'Food',
-    basePrice: 420.00,
-    sellingPrice: 549.00,
-    stockCount: 50,
-    stockStatus: 'Low Stock',
-    expirationDate: '03/2024',
-    expirationNA: false,
-    dateAdded: '02/03/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 3,
-    code: 'SUP-TOY-023',
-    item: 'Interactive Feather Cat Toy',
-    category: 'Pet Supplies',
-    basePrice: 85.00,
-    sellingPrice: 149.00,
-    stockCount: 78,
-    stockStatus: 'High Stock',
-    expirationDate: 'N/A',
-    expirationNA: true,
-    dateAdded: '01/20/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 4,
-    code: 'DEW-PP-056',
-    item: 'Praziquantel Dewormer for Dogs (4 tabs)',
-    category: 'Deworming',
-    basePrice: 180.00,
-    sellingPrice: 249.00,
-    stockCount: 34,
-    stockStatus: 'Average Stock',
-    expirationDate: '08/2024',
-    expirationNA: false,
-    dateAdded: '02/10/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 5,
-    code: 'VIT-DG-089',
-    item: 'Multivitamin Paste for Dogs 100g',
-    category: 'Vitamins',
-    basePrice: 320.00,
-    sellingPrice: 399.00,
-    stockCount: 30,
-    stockStatus: 'Critical Stock',
-    expirationDate: '05/2024',
-    expirationNA: false,
-    dateAdded: '01/28/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 6,
-    code: 'ACC-BED-112',
-    item: 'Orthopedic Dog Bed Medium Size',
-    category: 'Accessories',
-    basePrice: 1250.00,
-    sellingPrice: 1599.00,
-    stockCount: 29,
-    stockStatus: 'Low Stock',
-    expirationDate: 'N/A',
-    expirationNA: true,
-    dateAdded: '02/05/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 7,
-    code: 'MED-FL-067',
-    item: 'Flea and Tick Treatment for Cats',
-    category: 'Medication',
-    basePrice: 450.00,
-    sellingPrice: 599.00,
-    stockCount: 23,
-    stockStatus: 'Average Stock',
-    expirationDate: '11/2024',
-    expirationNA: false,
-    dateAdded: '01/12/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 8,
-    code: 'DOG-FD-089',
-    item: 'Puppy Formula Dog Food 3kg',
-    category: 'Food',
-    basePrice: 680.00,
-    sellingPrice: 799.00,
-    stockCount: 52,
-    stockStatus: 'High Stock',
-    expirationDate: '09/2024',
-    expirationNA: false,
-    dateAdded: '02/18/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 9,
-    code: 'SUP-GRM-034',
-    item: 'Professional Dog Grooming Kit',
-    category: 'Pet Supplies',
-    basePrice: 1250.00,
-    sellingPrice: 1499.00,
-    stockCount: 9,
-    stockStatus: 'Critical Stock',
-    expirationDate: 'N/A',
-    expirationNA: true,
-    dateAdded: '01/30/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 10,
-    code: 'DEW-CT-078',
-    item: 'Broad Spectrum Dewormer for Cats',
-    category: 'Deworming',
-    basePrice: 210.00,
-    sellingPrice: 289.00,
-    stockCount: 41,
-    stockStatus: 'Average Stock',
-    expirationDate: '04/2024',
-    expirationNA: false,
-    dateAdded: '02/08/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 11,
-    code: 'VIT-FS-045',
-    item: 'Fish Oil Supplement for Pets 250ml',
-    category: 'Vitamins',
-    basePrice: 550.00,
-    sellingPrice: 699.00,
-    stockCount: 18,
-    stockStatus: 'Low Stock',
-    expirationDate: '06/2024',
-    expirationNA: false,
-    dateAdded: '01/22/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 12,
-    code: 'ACC-CRG-156',
-    item: 'Adjustable Pet Carrier Bag',
-    category: 'Accessories',
-    basePrice: 890.00,
-    sellingPrice: 1099.00,
-    stockCount: 27,
-    stockStatus: 'Average Stock',
-    expirationDate: 'N/A',
-    expirationNA: true,
-    dateAdded: '02/12/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 13,
-    code: 'MED-AB-092',
-    item: 'Antibiotic Ointment for Pets 50g',
-    category: 'Medication',
-    basePrice: 280.00,
-    sellingPrice: 349.00,
-    stockCount: 63,
-    stockStatus: 'High Stock',
-    expirationDate: '07/2024',
-    expirationNA: false,
-    dateAdded: '01/18/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 14,
-    code: 'DOG-FD-234',
-    item: 'Grain-Free Dog Food 2kg',
-    category: 'Food',
-    basePrice: 720.00,
-    sellingPrice: 899.00,
-    stockCount: 5,
-    stockStatus: 'Critical Stock',
-    expirationDate: '02/2024',
-    expirationNA: false,
-    dateAdded: '02/20/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 15,
-    code: 'SUP-LTR-067',
-    item: 'Self-Cleaning Litter Box',
-    category: 'Pet Supplies',
-    basePrice: 2150.00,
-    sellingPrice: 2499.00,
-    stockCount: 11,
-    stockStatus: 'Low Stock',
-    expirationDate: 'N/A',
-    expirationNA: true,
-    dateAdded: '01/25/2024',
-    criticalStockLevel: 10
-  }
-];
+const API_URL = 'http://localhost:5000';
+const BRANCH_ID_BY_NAME: Record<string, number> = {
+  Taguig: 1,
+  'Las Pinas': 2,
+};
 
 const GlobalInventoryOUT: React.FC = () => {
   const navigate = useNavigate();
@@ -377,6 +171,18 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
     }
   };
 
+  const generateReferenceNumber = (): string => {
+    const date = new Date();
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    return `SOT-${year}${month}${day}-${hours}${minutes}${seconds}-${random}`;
+  };
+
   // Check if date is expired
   const isExpired = (expirationDate?: string, expirationNA?: boolean): boolean => {
     if (expirationNA || !expirationDate || expirationDate === 'N/A') return false;
@@ -406,8 +212,18 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
   const fetchProducts = async (): Promise<void> => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setProducts(MOCK_PRODUCTS);
+      const branchId = BRANCH_ID_BY_NAME[selectedBranch];
+      const endpoint = branchId
+        ? `${API_URL}/api/inventory/items?branch_id=${branchId}`
+        : `${API_URL}/api/inventory/items`;
+      const response = await fetch(endpoint);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch inventory data (${response.status})`);
+      }
+
+      const data = await response.json();
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setProducts(items);
     } catch (error) {
       console.error(error);
       showAlert('error', 'Error', 'Failed to fetch inventory data.');
@@ -418,6 +234,9 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
 
   useEffect(() => {
     fetchProducts();
+  }, [selectedBranch]);
+
+  useEffect(() => {
     loadCurrentUser();
   }, []);
 
@@ -525,6 +344,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
       const currentQty = quantityMods[id] || 0;
       return {
         productId: id,
+        branchId: product?.branchId,
         productCode: product?.code || '',
         productName: product?.item || '',
         quantity: currentQty,
@@ -532,9 +352,15 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
         availableStock: product?.stockCount || 0
       };
     });
+
+    const branchIds = Array.from(new Set(items.map(item => item.branchId).filter((value): value is number => typeof value === 'number')));
+    if (branchIds.length > 1) {
+      showAlert('error', 'Multiple Branches Selected', 'Please select products from only one branch when recording stock out.');
+      return;
+    }
     
     setTransactionItems(items);
-    setTransactionReferenceNumber(`TRX-${Date.now()}-${Math.floor(Math.random() * 1000)}`);
+    setTransactionReferenceNumber(generateReferenceNumber());
     setTransactionIssuedTo('Customer');
     setTransactionReason('Sale');
     setTransactionOtherReason('');
@@ -595,7 +421,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
     }
   };
 
-  const saveTransaction = () => {
+  const saveTransaction = async () => {
     let hasError = false;
     
     if (transactionReason === 'Others') {
@@ -644,36 +470,60 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
       }
     }
     
-    // Update product stocks
-    let updatedProducts = [...products];
-    for (const item of transactionItems) {
-      updatedProducts = updatedProducts.map(p => {
-        if ((p.id || p.pk || 0) === item.productId) {
-          const newStockCount = p.stockCount - item.quantity;
-          const newStockStatus = determineStockStatus(newStockCount, p.criticalStockLevel || 10);
-          return { ...p, stockCount: newStockCount, stockStatus: newStockStatus };
-        }
-        return p;
+    try {
+      const selectedBranchId = BRANCH_ID_BY_NAME[selectedBranch];
+      const itemBranchId = transactionItems[0]?.branchId;
+      const branchId = selectedBranchId ?? itemBranchId ?? 1;
+
+      const response = await fetch(`${API_URL}/api/inventory/stock-out`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          branch_id: branchId,
+          referenceNumber: transactionReferenceNumber,
+          issuedTo: transactionIssuedTo.trim(),
+          reason: transactionReason === 'Others' ? transactionOtherReason.trim() : transactionReason,
+          notes: transactionNotes.trim(),
+          processedBy: currentUser?.id || currentUser?.pk,
+          items: transactionItems.map(item => ({
+            productId: item.productId,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+          })),
+        }),
       });
+
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to record stock out.');
+      }
+
+      await fetchProducts();
+      const processedIds = transactionItems.map(item => item.productId);
+      setQuantityMods(prev => {
+        const newMods = { ...prev };
+        processedIds.forEach(id => delete newMods[id]);
+        return newMods;
+      });
+      setSelectedProducts(new Set());
+      setSelectAll(false);
+      setShowTransactionModal(false);
+      setModalSearchQuery('');
+      setTransactionItems([]);
+      setIssuedToError('');
+      setOtherReasonError('');
+
+      const savedReferenceNumber = result?.transaction?.reference_number || transactionReferenceNumber;
+
+      showAlert(
+        'success',
+        'Transaction Complete',
+        `Successfully processed ${transactionItems.length} item(s). Reference: ${savedReferenceNumber}`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to record stock out.';
+      showAlert('error', 'Error', message);
     }
-    
-    setProducts(updatedProducts);
-    
-    // Clear quantity mods for processed items
-    const processedIds = transactionItems.map(i => i.productId);
-    setQuantityMods(prev => {
-      const newMods = { ...prev };
-      processedIds.forEach(id => delete newMods[id]);
-      return newMods;
-    });
-    
-    // Clear selections
-    setSelectedProducts(new Set());
-    setSelectAll(false);
-    
-    setShowTransactionModal(false);
-    showAlert('success', 'Transaction Complete', 
-      `Successfully processed ${transactionItems.length} items. Reference: ${transactionReferenceNumber}`);
   };
 
   // Determine stock status

@@ -187,31 +187,31 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
                   <div className={isActive('/inventory') ? 'subSelectedGlass' : ''}>
                     <button className="navBtn subNavBtn" onClick={() => navigate('/inventory')}>
                       <IoLayersOutline size={14} />
-                      <span>Overview</span>
+                      <span>Item Catalog</span>
                     </button>
                   </div>
                   <div className={isActive('/inventory-in') ? 'subSelectedGlass' : ''}>
                     <button className="navBtn subNavBtn" onClick={() => navigate('/inventory-in')}>
                       <IoLayersOutline size={14} />
-                      <span>Stock In</span>
+                      <span>Inventory IN</span>
                     </button>
                   </div>
                   <div className={isActive('/inventory-out') ? 'subSelectedGlass' : ''}>
                     <button className="navBtn subNavBtn" onClick={() => navigate('/inventory-out')}>
                       <IoLayersOutline size={14} />
-                      <span>Stock Out</span>
+                      <span>Inventory OUT</span>
                     </button>
                   </div>
                   <div className={isActive('/inventory-logs') ? 'subSelectedGlass' : ''}>
                     <button className="navBtn subNavBtn" onClick={() => navigate('/inventory-logs')}>
                       <IoLayersOutline size={14} />
-                      <span>Logs</span>
+                      <span>Movement Logs</span>
                     </button>
                   </div>
                   <div className={isActive('/inventory-archive') ? 'subSelectedGlass' : ''}>
                     <button className="navBtn subNavBtn" onClick={() => navigate('/inventory-archive')}>
                       <IoLayersOutline size={14} />
-                      <span>Archive</span>
+                      <span>Archived Items</span>
                     </button>
                   </div>
                 </div>

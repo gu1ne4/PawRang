@@ -88,9 +88,14 @@ const SORT_OPTIONS = [
   { value: 'alphabeticalZA', label: 'Alphabetical Z-A' }
 ];
 
-const API_URL = 'http://localhost:3000';
+const API_URL = 'http://localhost:5000';
 const CATEGORIES: Category[] = ['Pet Supplies', 'Deworming', 'Vitamins', 'Food', 'Accessories', 'Medication'];
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
+const BRANCH_ID_BY_NAME: Record<string, number> = {
+  All: 1,
+  Taguig: 1,
+  'Las Pinas': 2,
+};
 
 const MOCK_PRODUCTS: Product[] = [
   {
@@ -342,7 +347,7 @@ const GlobalInventory: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [rowsPerPage, setRowsPerPage] = useState<number>(8);
   const [showExportDropdown, setShowExportDropdown] = useState<boolean>(false);
-  const [sortOption, setSortOption] = useState<SortOption>('stockLowToHigh');
+  const [sortOption, setSortOption] = useState<SortOption>('expirationEarliest');
   const [showSettingsDropdown, setShowSettingsDropdown] = useState<boolean>(false);
 
   // Modal States
@@ -440,13 +445,19 @@ const GlobalInventory: React.FC = () => {
     }
   };
 
-  // Fetch products (using mock data for now)
+  // Fetch products from the Flask inventory API.
   const fetchProducts = async (): Promise<void> => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setProducts(MOCK_PRODUCTS);
-      calculateAnalytics(MOCK_PRODUCTS);
+      const response = await fetch(`${API_URL}/api/inventory/items`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch inventory data (${response.status})`);
+      }
+
+      const data = await response.json();
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setProducts(items);
+      calculateAnalytics(items);
     } catch (error) {
       console.error(error);
       showAlert('error', 'Error', 'Failed to fetch inventory data.');
@@ -767,49 +778,53 @@ const GlobalInventory: React.FC = () => {
     const existingProduct = viewMode === 'edit' ? products.find(p => p.id === editingId || p.pk === editingId) : null;
     const criticalLevel = formUseCriticalStock ? parseInt(formCriticalStockLevel) : 10;
     const stockCount = viewMode === 'add' ? (parseInt(formStockCount) || 0) : (existingProduct?.stockCount || 0);
-    const stockStatus = determineStockStatus(stockCount, criticalLevel);
+    const branchId = BRANCH_ID_BY_NAME[selectedBranch] ?? 1;
     
     const productData = {
-      code: viewMode === 'add' ? formCode : (existingProduct?.code || formCode),
+      branch_id: branchId,
+      code: viewMode === 'add' ? formCode.trim() : (existingProduct?.code || formCode).trim(),
       item: formItem,
       category: formCategory as Category,
       basePrice: parseFloat(formBasePrice),
       sellingPrice: parseFloat(formSellingPrice),
       stockCount: stockCount,
-      stockStatus: stockStatus,
-      expirationDate: formExpirationNA ? 'N/A' : formExpirationDate,
+      expirationDate: formExpirationNA ? '' : formExpirationDate,
       expirationNA: formExpirationNA,
-      dateAdded: existingProduct?.dateAdded || new Date().toLocaleDateString(),
       useMaxQuantity: formUseMaxQuantity,
       maxQuantity: formUseMaxQuantity ? parseInt(formMaxQuantity) : undefined,
       criticalStockLevel: criticalLevel,
-      isArchived: existingProduct?.isArchived || false
+      userId: currentUser?.id || currentUser?.pk,
     };
 
     showAlert('confirm', viewMode === 'add' ? 'Add Product' : 'Save Changes', 
       `Are you sure you want to ${viewMode === 'add' ? 'add this product' : 'save changes to this product'}?`, 
       async () => {
         try {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          let updatedProducts;
           if (viewMode === 'add') {
-            const newProduct = {
-              ...productData,
-              id: Math.max(...products.map(p => p.id || 0), 0) + 1
-            };
-            updatedProducts = [...products, newProduct];
+            const response = await fetch(`${API_URL}/api/inventory/items`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(productData),
+            });
+
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(result.error || 'Failed to create inventory item.');
+            }
           } else {
-            updatedProducts = products.map(p => 
-              (p.id === editingId || p.pk === editingId) 
-                ? { ...p, ...productData }
-                : p
-            );
+            const response = await fetch(`${API_URL}/api/inventory/items/${editingId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(productData),
+            });
+
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(result.error || 'Failed to update inventory item.');
+            }
           }
-          
-          setProducts(updatedProducts);
-          calculateAnalytics(updatedProducts);
-          
+
+          await fetchProducts();
           setViewMode('list');
           showAlert('success', 'Success', 
             viewMode === 'add' ? 'Product added successfully!' : 'Product updated successfully!', 
@@ -817,7 +832,8 @@ const GlobalInventory: React.FC = () => {
               resetForm();
             });
         } catch (error) {
-          showAlert('error', 'Error', 'Failed to save product information.');
+          const message = error instanceof Error ? error.message : 'Failed to save product information.';
+          showAlert('error', 'Error', message);
         }
       }, undefined, true);
   };
@@ -833,23 +849,32 @@ const GlobalInventory: React.FC = () => {
       `Are you sure you want to archive ${selectedProducts.size} selected product(s)?`, 
       async () => {
         try {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          const updatedProducts = products.map(p => {
-            const productId = p.id || p.pk || 0;
-            if (selectedProducts.has(productId)) {
-              return { ...p, isArchived: true };
+          const productIds = Array.from(selectedProducts);
+          const actorId = currentUser?.id || currentUser?.pk;
+
+          for (const productId of productIds) {
+            const response = await fetch(`${API_URL}/api/inventory/items/${productId}/archive`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                processedBy: actorId,
+                userId: actorId,
+              }),
+            });
+
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(result.error || `Failed to archive item ${productId}.`);
             }
-            return p;
-          });
-          
-          setProducts(updatedProducts);
+          }
+
+          await fetchProducts();
           setSelectedProducts(new Set());
-          calculateAnalytics(updatedProducts);
-          
+
           showAlert('success', 'Success', 'Products archived successfully!');
         } catch (error) {
-          showAlert('error', 'Error', 'Failed to archive products.');
+          const message = error instanceof Error ? error.message : 'Failed to archive products.';
+          showAlert('error', 'Error', message);
         }
       }, undefined, true);
   };
@@ -884,6 +909,22 @@ const GlobalInventory: React.FC = () => {
   // Sort products
   const sortProducts = (productsToSort: Product[]): Product[] => {
     const sorted = [...productsToSort];
+    const getExpirationTime = (product: Product) => {
+      if (product.expirationNA || !product.expirationDate || product.expirationDate === 'N/A') {
+        return null;
+      }
+
+      const parts = product.expirationDate.split('/');
+      if (parts.length === 3) {
+        const [month, day, year] = parts;
+        return new Date(parseInt(year), parseInt(month) - 1, parseInt(day)).getTime();
+      }
+      if (parts.length === 2) {
+        const [month, year] = parts;
+        return new Date(parseInt(year), parseInt(month) - 1, 1).getTime();
+      }
+      return null;
+    };
     
     switch (sortOption) {
       case 'stockLowToHigh':
@@ -897,32 +938,22 @@ const GlobalInventory: React.FC = () => {
           if (aExpired && !bExpired) return -1;
           if (!aExpired && bExpired) return 1;
           
-          const aDate = a.expirationNA || a.expirationDate === 'N/A' ? null : a.expirationDate;
-          const bDate = b.expirationNA || b.expirationDate === 'N/A' ? null : b.expirationDate;
+          const aTime = getExpirationTime(a);
+          const bTime = getExpirationTime(b);
           
-          if (!aDate && !bDate) return 0;
-          if (!aDate) return 1;
-          if (!bDate) return -1;
-          
-          const [aMonth, aYear] = aDate.split('/');
-          const [bMonth, bYear] = bDate.split('/');
-          const aTime = new Date(parseInt(aYear), parseInt(aMonth) - 1).getTime();
-          const bTime = new Date(parseInt(bYear), parseInt(bMonth) - 1).getTime();
+          if (aTime === null && bTime === null) return 0;
+          if (aTime === null) return 1;
+          if (bTime === null) return -1;
           return aTime - bTime;
         });
       case 'expirationLatest':
         return sorted.sort((a, b) => {
-          const aDate = a.expirationNA || a.expirationDate === 'N/A' ? null : a.expirationDate;
-          const bDate = b.expirationNA || b.expirationDate === 'N/A' ? null : b.expirationDate;
+          const aTime = getExpirationTime(a);
+          const bTime = getExpirationTime(b);
           
-          if (!aDate && !bDate) return 0;
-          if (!aDate) return 1;
-          if (!bDate) return -1;
-          
-          const [aMonth, aYear] = aDate.split('/');
-          const [bMonth, bYear] = bDate.split('/');
-          const aTime = new Date(parseInt(aYear), parseInt(aMonth) - 1).getTime();
-          const bTime = new Date(parseInt(bYear), parseInt(bMonth) - 1).getTime();
+          if (aTime === null && bTime === null) return 0;
+          if (aTime === null) return 1;
+          if (bTime === null) return -1;
           return bTime - aTime;
         });
       case 'alphabeticalAZ':

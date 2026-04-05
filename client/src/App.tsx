@@ -20,6 +20,7 @@ import ResetPasswordPage1 from './global_pages/ResetPasswordPage1'
 import ConfirmOTP from './global_pages/ConfirmOTP'
 import ResetPasswordPage2 from './global_pages/ResetPasswordPage2'
 import GlobalLogin from './global_pages/GlobalLogin'
+import ChangeCreds from './global_pages/ChangeCreds'
 import UserProfile from './user_pages/UserProfile'
 import GlobalInventory from './global_pages/GlobalInventory'
 import GlobalInventoryIN from './global_pages/GlobalInventoryIN'
@@ -83,6 +84,7 @@ function App() {
         <Route path="/ConfirmOTP" element={<ConfirmOTP />} />
         <Route path="/change-password" element={<ResetPasswordPage2 />} />
         <Route path="/ChangePassword" element={<ResetPasswordPage2 />} />
+        <Route path="/employee/setup-account" element={<ChangeCreds />} />
 
         <Route path="/UserHome" element={<Navigate to="/user/home" replace />} />
         <Route path="/user/appointment-book" element={<Navigate to="/user/book-appointment" replace />} />

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../reusable_components/NavBar';
 import Notifications from '../reusable_components/Notifications';
-import { MOCK_LOGS } from '../mock_data/InventoryLogs';
 import ImportButton from '../reusable_components/ImportBtn';
 import ExportButton  from '../reusable_components/ExportBtn';
 import './GlobalInventoryStyles2.css';
@@ -23,8 +22,8 @@ import { RiListSettingsLine } from "react-icons/ri";
 import { downloadInventoryTemplate } from './pdf_generation/InventoryExcel';
 
 interface CurrentUser {
-  id?: number;
-  pk?: number;
+  id?: string | number;
+  pk?: string | number;
   username: string;
   fullName?: string;
   role: string;
@@ -34,6 +33,7 @@ interface CurrentUser {
 interface Product {
   id?: number;
   pk?: number;
+  branchId?: number;
   code: string;
   item: string;
   category: string;
@@ -88,177 +88,11 @@ const SORT_OPTIONS = [
 
 
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
-const MOCK_PRODUCTS: Product[] = [
-  {
-    id: 1,
-    code: 'PRD-123456-001',
-    item: 'Premium Dog Food Adult 5kg',
-    category: 'Food',
-    basePrice: 850.00,
-    sellingPrice: 999.00,
-    stockCount: 45,
-    stockStatus: 'Average Stock',
-    expirationDate: '12/25/2025',
-    expirationNA: false,
-    dateAdded: '01/15/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 2,
-    code: 'PRD-123457-002',
-    item: 'Gourmet Cat Food Fish Flavor 2kg',
-    category: 'Food',
-    basePrice: 420.00,
-    sellingPrice: 549.00,
-    stockCount: 12,
-    stockStatus: 'Low Stock',
-    expirationDate: '03/15/2024',
-    expirationNA: false,
-    dateAdded: '02/03/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 3,
-    code: 'PRD-123458-003',
-    item: 'Interactive Feather Cat Toy',
-    category: 'Pet Supplies',
-    basePrice: 85.00,
-    sellingPrice: 149.00,
-    stockCount: 78,
-    stockStatus: 'High Stock',
-    expirationDate: 'N/A',
-    expirationNA: true,
-    dateAdded: '01/20/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 4,
-    code: 'PRD-123459-004',
-    item: 'Praziquantel Dewormer for Dogs (4 tabs)',
-    category: 'Deworming',
-    basePrice: 180.00,
-    sellingPrice: 249.00,
-    stockCount: 34,
-    stockStatus: 'Average Stock',
-    expirationDate: '08/15/2024',
-    expirationNA: false,
-    dateAdded: '02/10/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 5,
-    code: 'PRD-123460-005',
-    item: 'Multivitamin Paste for Dogs 100g',
-    category: 'Vitamins',
-    basePrice: 320.00,
-    sellingPrice: 399.00,
-    stockCount: 8,
-    stockStatus: 'Critical Stock',
-    expirationDate: '05/20/2024',
-    expirationNA: false,
-    dateAdded: '01/28/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 6,
-    code: 'PRD-123461-006',
-    item: 'Orthopedic Dog Bed Medium Size',
-    category: 'Accessories',
-    basePrice: 1250.00,
-    sellingPrice: 1599.00,
-    stockCount: 15,
-    stockStatus: 'Low Stock',
-    expirationDate: 'N/A',
-    expirationNA: true,
-    dateAdded: '02/05/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 7,
-    code: 'PRD-123462-007',
-    item: 'Flea and Tick Treatment for Cats',
-    category: 'Medication',
-    basePrice: 450.00,
-    sellingPrice: 599.00,
-    stockCount: 23,
-    stockStatus: 'Average Stock',
-    expirationDate: '11/10/2024',
-    expirationNA: false,
-    dateAdded: '01/12/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 8,
-    code: 'PRD-123463-008',
-    item: 'Puppy Formula Dog Food 3kg',
-    category: 'Food',
-    basePrice: 680.00,
-    sellingPrice: 799.00,
-    stockCount: 52,
-    stockStatus: 'High Stock',
-    expirationDate: '09/05/2024',
-    expirationNA: false,
-    dateAdded: '02/18/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 9,
-    code: 'PRD-123464-009',
-    item: 'Professional Dog Grooming Kit',
-    category: 'Pet Supplies',
-    basePrice: 1250.00,
-    sellingPrice: 1499.00,
-    stockCount: 9,
-    stockStatus: 'Critical Stock',
-    expirationDate: 'N/A',
-    expirationNA: true,
-    dateAdded: '01/30/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 10,
-    code: 'PRD-123465-010',
-    item: 'Broad Spectrum Dewormer for Cats',
-    category: 'Deworming',
-    basePrice: 210.00,
-    sellingPrice: 289.00,
-    stockCount: 41,
-    stockStatus: 'Average Stock',
-    expirationDate: '04/12/2024',
-    expirationNA: false,
-    dateAdded: '02/08/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 11,
-    code: 'PRD-123466-011',
-    item: 'Fish Oil Supplement for Pets 250ml',
-    category: 'Vitamins',
-    basePrice: 550.00,
-    sellingPrice: 699.00,
-    stockCount: 18,
-    stockStatus: 'Low Stock',
-    expirationDate: '06/30/2024',
-    expirationNA: false,
-    dateAdded: '01/22/2024',
-    criticalStockLevel: 10
-  },
-  {
-    id: 12,
-    code: 'PRD-123467-012',
-    item: 'Adjustable Pet Carrier Bag',
-    category: 'Accessories',
-    basePrice: 890.00,
-    sellingPrice: 1099.00,
-    stockCount: 27,
-    stockStatus: 'Average Stock',
-    expirationDate: 'N/A',
-    expirationNA: true,
-    dateAdded: '02/12/2024',
-    criticalStockLevel: 10
-  }
-];
-
+const API_URL = 'http://localhost:5000';
+const BRANCH_ID_BY_NAME: Record<string, number> = {
+  Taguig: 1,
+  'Las Pinas': 2,
+};
 
 
 const GlobalInventoryLogs: React.FC = () => {
@@ -335,8 +169,18 @@ const GlobalInventoryLogs: React.FC = () => {
   const fetchLogs = async (): Promise<void> => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setLogs(MOCK_LOGS);
+      const branchId = BRANCH_ID_BY_NAME[selectedBranch];
+      const endpoint = branchId
+        ? `${API_URL}/api/inventory/logs?branch_id=${branchId}`
+        : `${API_URL}/api/inventory/logs`;
+      const response = await fetch(endpoint);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch inventory logs (${response.status})`);
+      }
+
+      const data = await response.json();
+      const items = Array.isArray(data?.logs) ? data.logs : [];
+      setLogs(items);
     } catch (error) {
       console.error(error);
       showAlert('error', 'Error', 'Failed to fetch inventory logs.');
@@ -347,21 +191,35 @@ const GlobalInventoryLogs: React.FC = () => {
 
   useEffect(() => {
     fetchLogs();
+  }, [selectedBranch]);
+
+  useEffect(() => {
     loadCurrentUser();
   }, []);
 
     const fetchProducts = async (): Promise<void> => {
-    setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setProducts(MOCK_PRODUCTS);
+      const branchId = BRANCH_ID_BY_NAME[selectedBranch];
+      const endpoint = branchId
+        ? `${API_URL}/api/inventory/items?branch_id=${branchId}`
+        : `${API_URL}/api/inventory/items`;
+      const response = await fetch(endpoint);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch inventory data (${response.status})`);
+      }
+
+      const data = await response.json();
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setProducts(items);
     } catch (error) {
       console.error(error);
       showAlert('error', 'Error', 'Failed to fetch inventory data.');
-    } finally {
-      setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchProducts();
+  }, [selectedBranch]);
 
       const handleImport = async (file: File) => {
     console.log('Importing file:', file.name);
@@ -959,7 +817,5 @@ const GlobalInventoryLogs: React.FC = () => {
     </div>
   );
 };
-
-export { MOCK_LOGS}
 
 export default GlobalInventoryLogs;

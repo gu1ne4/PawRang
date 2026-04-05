@@ -312,9 +312,9 @@ const AdminHome: React.FC = () => {
           <span>
             Account created successfully.
             <br />
-            Username: <strong>{result.account?.username}</strong>
+            A setup link has been sent to <strong>{result.account?.email}</strong>.
             <br />
-            Temporary Password: <strong>{result.temporary_password}</strong>
+            The employee must use that email link to create their username and password before they can log in.
           </span>,
           () => {
             fetchAccounts();

@@ -33,7 +33,7 @@ html, body {
 }
 
 .navbarContainer {
-  width: 16%;
+  width: 280px;
   padding: 30px;
   padding-top: 36px;
   padding-right: 15px;
@@ -41,8 +41,9 @@ html, body {
 }
 
 .navbarContainer.collapsed {
-  flex: 0.3;
+  width: 120px;
   min-width: 80px;
+  flex: none;
 }
 
 .navBody {
@@ -55,7 +56,6 @@ html, body {
   background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9, #0f3bca);
 }
 
-/* Logo container styles */
 .navTitle {
   width: 100%;
   padding: 15px 20px;
@@ -70,7 +70,7 @@ html, body {
   position: relative;
 }
 
-/* Collapsed state - everything centered */
+
 .navbarContainer.collapsed .navTitle {
   justify-content: center;
   padding: 15px 10px;
@@ -92,7 +92,7 @@ html, body {
 .navbarContainer.collapsed .navLogoContainer {
   justify-content: center;
   position: relative;
-  min-height: 48px; /* Fixed height to prevent layout shift */
+  min-height: 48px; 
   width: 100%;
 }
 
@@ -105,13 +105,11 @@ html, body {
   z-index: 1;
 }
 
-/* Make logo bigger when collapsed */
 .navbarContainer.collapsed .navLogo {
   width: 36px;
   height: 36px;
 }
 
-/* Hide logo when hovering in collapsed mode */
 .navbarContainer.collapsed .navTitle:hover .navLogo {
   opacity: 0;
   visibility: hidden;
@@ -325,6 +323,7 @@ html, body {
 .navbarContainer.collapsed .navMenuSection {
   display: flex;
   flex-direction: column;
+  margin-left: 5px;
   align-items: center;
   position: relative;
 }
@@ -381,7 +380,10 @@ html, body {
 }
 
 .navBtn.active {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
   font-weight: 500;
 }
 
@@ -389,6 +391,16 @@ html, body {
   justify-content: center;
   padding: 8px;
   margin-bottom: 4px;
+  width: 40px;
+  height: 40px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.navbarContainer.collapsed .navBtn:hover {
+  transform: none; 
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
 }
 
 .navbarContainer.collapsed .navBtn span {
@@ -402,6 +414,7 @@ html, body {
 .subNavBtn {
   font-size: 12px;
   margin-left: 28px;
+  width: calc(100% - 28px) !important; 
   padding: 5px 10px;
   gap: 8px;
 }
@@ -1323,3 +1336,4 @@ input:checked + .slider:before {
   font-family: 'Segoe UI', sans-serif;
   margin-bottom: 5px;
 }
+

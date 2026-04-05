@@ -107,13 +107,10 @@ const SORT_OPTIONS = [
 
 const CATEGORIES: Category[] = ['Pet Supplies', 'Deworming', 'Vitamins', 'Food', 'Accessories', 'Medication'];
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
-
-// Generate a unique product code
-const generateProductCode = (): string => {
-  const prefix = 'PRD';
-  const timestamp = Date.now().toString().slice(-6);
-  const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-  return `${prefix}-${timestamp}-${random}`;
+const API_URL = 'http://localhost:5000';
+const BRANCH_ID_BY_NAME: Record<string, number> = {
+  Taguig: 1,
+  'Las Pinas': 2,
 };
 
 const MOCK_PRODUCTS: Product[] = [
@@ -398,8 +395,11 @@ const GlobalInventoryIN: React.FC = () => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
     const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    return `GRN-${year}${month}${day}-${random}`;
+    return `GRN-${year}${month}${day}-${hours}${minutes}${seconds}-${random}`;
   };
 
   // Check if date is expired
@@ -455,8 +455,18 @@ const GlobalInventoryIN: React.FC = () => {
   const fetchProducts = async (): Promise<void> => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setProducts(MOCK_PRODUCTS);
+      const branchId = BRANCH_ID_BY_NAME[selectedBranch];
+      const endpoint = branchId
+        ? `${API_URL}/api/inventory/items?branch_id=${branchId}`
+        : `${API_URL}/api/inventory/items`;
+      const response = await fetch(endpoint);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch inventory data (${response.status})`);
+      }
+
+      const data = await response.json();
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setProducts(items);
     } catch (error) {
       console.error(error);
       showAlert('error', 'Error', 'Failed to fetch inventory data.');
@@ -467,6 +477,9 @@ const GlobalInventoryIN: React.FC = () => {
 
   useEffect(() => {
     fetchProducts();
+  }, [selectedBranch]);
+
+  useEffect(() => {
     loadCurrentUser();
   }, []);
 
@@ -593,7 +606,7 @@ useEffect(() => {
     setTransactionItems(newItems);
   };
 
-const saveTransaction = () => {
+const saveTransaction = async () => {
   let hasError = false;
   
   // Validate supplier
@@ -641,54 +654,51 @@ const saveTransaction = () => {
     return;
   }
   
-  // Update product stocks
-  let updatedProducts = [...products];
-  const newTransactions: InventoryTransaction[] = [];
-  
-  for (const item of transactionItems) {
-    const product = products.find(p => (p.id || p.pk || 0) === item.productId);
-    if (product) {
-      const newStockCount = product.stockCount + item.quantity;
-      const newStockStatus = determineStockStatus(newStockCount, product.criticalStockLevel || 10);
-      
-      updatedProducts = updatedProducts.map(p => {
-        if ((p.id || p.pk || 0) === item.productId) {
-          return { ...p, stockCount: newStockCount, stockStatus: newStockStatus };
-        }
-        return p;
-      });
-      
-      // Create transaction record
-      newTransactions.push({
-        id: transactions.length + newTransactions.length + 1,
-        productCode: product.code,
-        productName: product.item,
-        quantity: item.quantity,
-        unitCost: item.unitCost,
-        totalCost: item.quantity * item.unitCost,
-        dateReceived: new Date().toISOString().split('T')[0],
-        supplier: transactionSupplier,
-        receivedBy: currentUser?.username || 'Unknown',
+  try {
+    const branchId = BRANCH_ID_BY_NAME[selectedBranch] ?? 1;
+    const response = await fetch(`${API_URL}/api/inventory/stock-in`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        branch_id: branchId,
         referenceNumber: transactionReferenceNumber,
-        notes: transactionNotes
-      });
+        supplier: transactionSupplier.trim(),
+        notes: transactionNotes.trim(),
+        processedBy: currentUser?.id || currentUser?.pk,
+        items: transactionItems.map(item => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          unitCost: item.unitCost,
+        })),
+      }),
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to record stock receipt.');
     }
+
+    await fetchProducts();
+    setTransactions([]);
+    setSelectedProducts(new Set());
+    setSelectAll(false);
+    setShowTransactionModal(false);
+    setModalSearchQuery('');
+    setSupplierError('');
+    setQuantityErrors({});
+    setTransactionItems([]);
+
+    const savedReferenceNumber = result?.transaction?.reference_number || transactionReferenceNumber;
+
+    showAlert(
+      'success',
+      'Stock Received',
+      `Successfully received ${transactionItems.length} item(s). Reference: ${savedReferenceNumber}`
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to record stock receipt.'
+    showAlert('error', 'Error', message)
   }
-  
-  setProducts(updatedProducts);
-  setTransactions([...newTransactions, ...transactions]);
-  
-  // Clear selections
-  setSelectedProducts(new Set());
-  setSelectAll(false);
-  
-  setShowTransactionModal(false);
-  setModalSearchQuery('');
-  setSupplierError('');
-  setQuantityErrors({});
-  
-  showAlert('success', 'Stock Received', 
-    `Successfully received ${transactionItems.length} item(s). Reference: ${transactionReferenceNumber}`);
 };
   // Determine stock status
   const determineStockStatus = (count: number, criticalLevel: number): 'High Stock' | 'Average Stock' | 'Low Stock' | 'Critical Stock' => {
@@ -854,50 +864,62 @@ const saveTransaction = () => {
     const existingProduct = viewMode === 'edit' ? products.find(p => p.id === editingId || p.pk === editingId) : null;
     const criticalLevel = formUseCriticalStock ? parseInt(formCriticalStockLevel) : 10;
     const stockCount = existingProduct?.stockCount || 0;
-    const stockStatus = determineStockStatus(stockCount, criticalLevel);
+    const branchId = BRANCH_ID_BY_NAME[selectedBranch] ?? 1;
     
     const productData = {
-      code: viewMode === 'add' ? generateProductCode() : (existingProduct?.code || ''),
+      branch_id: branchId,
+      code: viewMode === 'add' ? '' : (existingProduct?.code || ''),
       item: formItem,
       category: formCategory as Category,
       basePrice: parseFloat(formBasePrice),
       sellingPrice: parseFloat(formSellingPrice),
       stockCount: stockCount,
-      stockStatus: stockStatus,
-      expirationDate: formExpirationNA ? 'N/A' : formExpirationDate,
+      expirationDate: formExpirationNA ? '' : formExpirationDate,
       expirationNA: formExpirationNA,
-      dateAdded: existingProduct?.dateAdded || new Date().toLocaleDateString(),
-      criticalStockLevel: criticalLevel
+      criticalStockLevel: criticalLevel,
+      userId: currentUser?.id || currentUser?.pk,
     };
 
     showAlert('confirm', viewMode === 'add' ? 'Add Product' : 'Save Changes', 
       `Are you sure you want to ${viewMode === 'add' ? 'add this product' : 'save changes to this product'}?`, 
       async () => {
         try {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          let updatedProducts;
           if (viewMode === 'add') {
-            const newProduct = {
-              ...productData,
-              id: Math.max(...products.map(p => p.id || 0), 0) + 1
-            };
-            updatedProducts = [...products, newProduct];
-            showAlert('success', 'Product Added', `Product "${formItem}" has been added successfully! Product Code: ${newProduct.code}`);
+            const response = await fetch(`${API_URL}/api/inventory/items`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(productData),
+            });
+
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(result.error || 'Failed to create inventory item.');
+            }
+
+            await fetchProducts();
+            setViewMode('list');
+            resetProductForm();
+            showAlert('success', 'Product Added', `Product "${formItem}" has been added successfully and is ready for stock-in recording.`);
           } else {
-            updatedProducts = products.map(p => 
-              (p.id === editingId || p.pk === editingId) 
-                ? { ...p, ...productData }
-                : p
-            );
+            const response = await fetch(`${API_URL}/api/inventory/items/${editingId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(productData),
+            });
+
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(result.error || 'Failed to update inventory item.');
+            }
+
+            await fetchProducts();
+            setViewMode('list');
+            resetProductForm();
             showAlert('success', 'Success', 'Product updated successfully!');
           }
-          
-          setProducts(updatedProducts);
-          setViewMode('list');
-          resetProductForm();
         } catch (error) {
-          showAlert('error', 'Error', 'Failed to save product information.');
+          const message = error instanceof Error ? error.message : 'Failed to save product information.';
+          showAlert('error', 'Error', message);
         }
       }, undefined, true);
   };

@@ -17,8 +17,8 @@ import {
 import { RiListSettingsLine } from "react-icons/ri";
 
 interface CurrentUser {
-  id?: number;
-  pk?: number;
+  id?: string | number;
+  pk?: string | number;
   username: string;
   fullName?: string;
   role: string;
@@ -62,66 +62,11 @@ const SORT_OPTIONS = [
 
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
 const CATEGORIES = ['Pet Supplies', 'Deworming', 'Vitamins', 'Food', 'Accessories', 'Medication'];
-
-// Mock archived products
-const MOCK_ARCHIVED_PRODUCTS: ArchivedProduct[] = [
-  {
-    id: 1,
-    code: 'PRD-123456-001',
-    item: 'Premium Dog Food Adult 5kg',
-    category: 'Food',
-    basePrice: 850.00,
-    sellingPrice: 999.00,
-    expirationDate: '12/25/2025',
-    archivedDate: '2024-03-15 09:30:00',
-    archivedBy: 'John Doe',
-    originalStockCount: 45,
-    originalStockStatus: 'Average Stock',
-    criticalStockLevel: 10
-  },
-  {
-    id: 2,
-    code: 'PRD-123457-002',
-    item: 'Gourmet Cat Food Fish Flavor 2kg',
-    category: 'Food',
-    basePrice: 420.00,
-    sellingPrice: 549.00,
-    expirationDate: '03/15/2024',
-    archivedDate: '2024-03-14 14:45:22',
-    archivedBy: 'Jane Smith',
-    originalStockCount: 12,
-    originalStockStatus: 'Low Stock',
-    criticalStockLevel: 10
-  },
-  {
-    id: 3,
-    code: 'PRD-123460-005',
-    item: 'Multivitamin Paste for Dogs 100g',
-    category: 'Vitamins',
-    basePrice: 320.00,
-    sellingPrice: 399.00,
-    expirationDate: '05/20/2024',
-    archivedDate: '2024-03-13 11:20:05',
-    archivedBy: 'Mike Johnson',
-    originalStockCount: 8,
-    originalStockStatus: 'Critical Stock',
-    criticalStockLevel: 10
-  },
-  {
-    id: 4,
-    code: 'PRD-123464-009',
-    item: 'Professional Dog Grooming Kit',
-    category: 'Pet Supplies',
-    basePrice: 1250.00,
-    sellingPrice: 1499.00,
-    expirationDate: 'N/A',
-    archivedDate: '2024-03-12 16:10:33',
-    archivedBy: 'Sarah Lee',
-    originalStockCount: 9,
-    originalStockStatus: 'Critical Stock',
-    criticalStockLevel: 10
-  }
-];
+const API_URL = 'http://localhost:5000';
+const BRANCH_ID_BY_NAME: Record<string, number> = {
+  Taguig: 1,
+  'Las Pinas': 2,
+};
 
 const GlobalInventoryArchive: React.FC = () => {
   const navigate = useNavigate();
@@ -190,8 +135,32 @@ const GlobalInventoryArchive: React.FC = () => {
   const fetchArchivedProducts = async (): Promise<void> => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setArchivedProducts(MOCK_ARCHIVED_PRODUCTS);
+      const branchId = BRANCH_ID_BY_NAME[selectedBranch];
+      const endpoint = branchId
+        ? `${API_URL}/api/inventory/items?archived=true&branch_id=${branchId}`
+        : `${API_URL}/api/inventory/items?archived=true`;
+      const response = await fetch(endpoint);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch archived products (${response.status})`);
+      }
+
+      const data = await response.json();
+      const items = Array.isArray(data?.items) ? data.items : [];
+      const normalized: ArchivedProduct[] = items.map((item: any) => ({
+        id: item.id || item.pk || item.inventory_item_id,
+        code: item.code || '',
+        item: item.item || '',
+        category: item.category || '',
+        basePrice: Number(item.basePrice || 0),
+        sellingPrice: Number(item.sellingPrice || 0),
+        expirationDate: item.expirationDate || 'N/A',
+        archivedDate: item.archivedDate || '',
+        archivedBy: item.archivedBy ? String(item.archivedBy) : 'Unknown',
+        originalStockCount: Number(item.stockCount || 0),
+        originalStockStatus: item.stockStatus || 'Average Stock',
+        criticalStockLevel: Number(item.criticalStockLevel || 10),
+      }));
+      setArchivedProducts(normalized);
     } catch (error) {
       console.error(error);
       showAlert('error', 'Error', 'Failed to fetch archived products.');
@@ -202,6 +171,9 @@ const GlobalInventoryArchive: React.FC = () => {
 
   useEffect(() => {
     fetchArchivedProducts();
+  }, [selectedBranch]);
+
+  useEffect(() => {
     loadCurrentUser();
   }, []);
 
@@ -238,16 +210,30 @@ const GlobalInventoryArchive: React.FC = () => {
     setProductToRestore(product);
     showAlert('confirm', 'Restore Product', 
       `Are you sure you want to restore "${product.item}" back to the active inventory?`,
-      () => {
-        // Remove from archived list
-        const updatedArchived = archivedProducts.filter(p => p.id !== product.id);
-        setArchivedProducts(updatedArchived);
-        
-        // Here you would also add the product back to the main products list
-        // This would be handled by your main inventory component via state management or API
-        
-        showAlert('success', 'Restored', `"${product.item}" has been restored to active inventory.`);
-        setProductToRestore(null);
+      async () => {
+        try {
+          const actorId = currentUser?.id || currentUser?.pk;
+          const response = await fetch(`${API_URL}/api/inventory/items/${product.id}/restore`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              processedBy: actorId,
+              userId: actorId,
+            }),
+          });
+
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(result.error || 'Failed to restore archived product.');
+          }
+
+          await fetchArchivedProducts();
+          showAlert('success', 'Restored', `"${product.item}" has been restored to active inventory.`);
+          setProductToRestore(null);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Failed to restore archived product.';
+          showAlert('error', 'Error', message);
+        }
       },
       () => {
         setProductToRestore(null);
@@ -296,7 +282,9 @@ const GlobalInventoryArchive: React.FC = () => {
 
   // Format date
   const formatDate = (dateString: string): string => {
+    if (!dateString) return 'N/A';
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return dateString;
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
   };
 
