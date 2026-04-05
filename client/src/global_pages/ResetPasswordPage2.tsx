@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import './UserAuthStylesheet.css'
 import { Lock } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import axios from 'axios';
+
 import API_URL from '../API';
 
 export default function ResetPasswordPage2() {
@@ -70,23 +70,37 @@ export default function ResetPasswordPage2() {
 
         setIsLoading(true);
 
-        axios
-            .post(`${API_URL}/change-password`, {
+        // 🟢 FIX: We replaced Axios with the built-in Javascript 'fetch' API!
+        fetch(`${API_URL}/change-password`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
                 "email": email,
-                "new_password": getPassword  // ← matches app.py's data.get('new_password')
+                "new_password": getPassword
             })
-            .then((response: any) => {
-                setServerSuccess(response.data.message);
-                setIsLoading(false);
-                setTimeout(() => {
-                    nav('/login');
-                }, 2000);
-            })
-            .catch((error: any) => {
-                const message = error.response?.data?.error || 'Something went wrong. Please try again.';
-                setServerError(message);
-                setIsLoading(false);
-            });
+        })
+        .then(async (response) => {
+            // Convert the response to JSON
+            const data = await response.json().catch(() => ({})); 
+            
+            if (!response.ok) {
+                // If the server sends an error (like a 400 or 500 status)
+                throw new Error(data.error || 'Something went wrong. Please try again.');
+            }
+            
+            // If successful!
+            setServerSuccess(data.message);
+            setIsLoading(false);
+            setTimeout(() => {
+                nav('/login');
+            }, 2000);
+        })
+        .catch((error: any) => {
+            setServerError(error.message);
+            setIsLoading(false);
+        });
     }
 
     return (

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '../reusable_components/NavBar';
-import { supabase } from '../supabaseClient'; 
+import { supabase, supabaseKey, supabaseUrl } from '../supabaseClient'; 
 import { createClient } from '@supabase/supabase-js';
 
 // Icons
@@ -171,6 +171,86 @@ const AdminHome: React.FC = () => {
     return retVal;
   };
 
+  const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+
+  const getEmailUsage = async (
+    email: string,
+    excludeEmployeeId?: string | null
+  ): Promise<'employee' | 'patient' | null> => {
+    const normalizedEmail = normalizeEmail(email);
+
+    let employeeQuery = supabase
+      .from('employee_accounts')
+      .select('id')
+      .ilike('email', normalizedEmail)
+      .limit(1);
+
+    if (excludeEmployeeId) {
+      employeeQuery = employeeQuery.neq('id', excludeEmployeeId);
+    }
+
+    const patientQuery = supabase
+      .from('patient_account')
+      .select('id')
+      .ilike('email', normalizedEmail)
+      .limit(1);
+
+    const [
+      { data: employeeData, error: employeeError },
+      { data: patientData, error: patientError }
+    ] = await Promise.all([employeeQuery, patientQuery]);
+
+    if (employeeError) throw employeeError;
+    if (patientError) throw patientError;
+
+    if ((employeeData?.length || 0) > 0) {
+      return 'employee';
+    }
+
+    if ((patientData?.length || 0) > 0) {
+      return 'patient';
+    }
+
+    return null;
+  };
+
+  const getCreateEmailConflictMessage = (usage: 'employee' | 'patient'): string =>
+    usage === 'patient'
+      ? 'This email is already used by a patient account. Please use a different work email for this employee.'
+      : 'This email is already registered for an employee account. Please use a different email.';
+
+  const getUpdateEmailConflictMessage = (usage: 'employee' | 'patient'): string =>
+    usage === 'patient'
+      ? 'This email is already used by a patient account. Please use a different email for this employee.'
+      : 'This email is already used by another employee account. Please use a different email.';
+
+  const getEmployeeAccountErrorMessage = (error: any, mode: 'create' | 'update'): string => {
+    const rawMessage = String(error?.message || '').toLowerCase();
+
+    if (
+      rawMessage.includes('employee_accounts_email_key') ||
+      rawMessage.includes('duplicate key value') ||
+      rawMessage.includes('user already registered') ||
+      rawMessage.includes('already registered')
+    ) {
+      return mode === 'create'
+        ? 'This email is already used by an existing account in the system. Please use a different work email for this employee.'
+        : 'This email is already used by another account in the system. Please use a different email.';
+    }
+
+    if (rawMessage.includes('invalid email')) {
+      return 'Please enter a valid email address.';
+    }
+
+    if (rawMessage.includes('supabaseurl is required')) {
+      return 'Account registration is temporarily unavailable because the email service is not configured correctly.';
+    }
+
+    return mode === 'create'
+      ? 'Failed to create account. Please try again.'
+      : 'Failed to update account information. Please try again.';
+  };
+
   const resetForm = (): void => {
     setNewUsername('');
     setNewFirstName('');
@@ -295,16 +375,23 @@ const AdminHome: React.FC = () => {
       // Auto-generate a dummy password and username
       const generatedPassword = generateRandomPassword();
       const dummyUsername = `temp_${newFirstName.toLowerCase()}${Math.floor(Math.random() * 10000)}`;
+      const normalizedEmail = normalizeEmail(newEmail);
       
       try {
+        const emailUsage = await getEmailUsage(normalizedEmail);
+        if (emailUsage) {
+          showAlert('error', 'Email Already Used', getCreateEmailConflictMessage(emailUsage));
+          return;
+        }
+
         const supabaseAdminAuth = createClient(
-          import.meta.env.VITE_SUPABASE_URL,
-          import.meta.env.VITE_SUPABASE_ANON_KEY,
+          supabaseUrl,
+          supabaseKey,
           { auth: { autoRefreshToken: false, persistSession: false } }
         );
 
         const { data: authData, error: authError } = await supabaseAdminAuth.auth.signUp({
-          email: newEmail,
+          email: normalizedEmail,
           password: generatedPassword,
           options: {
             emailRedirectTo: `${window.location.origin}/update-account` 
@@ -321,7 +408,7 @@ const AdminHome: React.FC = () => {
             first_name: newFirstName.trim(), 
             last_name: newLastName.trim(),   
             contact_number: newContact,
-            email: newEmail,
+            email: normalizedEmail,
             role: newRole,
             status: newStatus,
             employee_image: userImageBase64,
@@ -337,7 +424,7 @@ const AdminHome: React.FC = () => {
         });
 
       } catch (error: any) {
-        showAlert('error', 'Registration Failed', error.message || 'Failed to create account.');
+        showAlert('error', 'Registration Failed', getEmployeeAccountErrorMessage(error, 'create'));
       }
     }, true);
   };
@@ -351,12 +438,20 @@ const AdminHome: React.FC = () => {
 
     showAlert('confirm', 'Save Changes', 'Are you sure you want to save changes to this account?', async () => {
       try {
+        const normalizedEmail = normalizeEmail(newEmail);
+        const emailUsage = await getEmailUsage(normalizedEmail, editingId);
+
+        if (emailUsage) {
+          showAlert('error', 'Email Already Used', getUpdateEmailConflictMessage(emailUsage));
+          return;
+        }
+
         const updateData: any = {
           username: newUsername,
           first_name: newFirstName.trim(), 
           last_name: newLastName.trim(),   
           contact_number: newContact,
-          email: newEmail,
+          email: normalizedEmail,
           role: newRole,
           status: newStatus,
         };
@@ -378,7 +473,7 @@ const AdminHome: React.FC = () => {
           resetForm();
         });
       } catch (error: any) {
-        showAlert('error', 'Update Failed', error.message || 'Failed to update account information.');
+        showAlert('error', 'Update Failed', getEmployeeAccountErrorMessage(error, 'update'));
       }
     }, true);
   };

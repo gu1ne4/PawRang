@@ -198,6 +198,66 @@ export const availabilityService = {
     }
   },
 
+  async saveMedicalInformation(appointmentId: string | number, medicalData: any, recordType: 'appointment' | 'walkin' = 'appointment'): Promise<any> {
+    try {
+      const response = await fetch(`${API_URL}/api/medical-information`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          record_type: recordType,
+          appointment_id: recordType === 'appointment' ? appointmentId : null,
+          walkin_id: recordType === 'walkin' ? appointmentId : null,
+          ...medicalData
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save medical information');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error saving medical information:', error);
+      throw error;
+    }
+  },
+
+  async getMedicalInformationList(appointmentIds?: Array<string | number>): Promise<any[]> {
+    try {
+      const params = new URLSearchParams();
+      if (appointmentIds && appointmentIds.length > 0) {
+        params.set('appointmentIds', appointmentIds.map(String).join(','));
+      }
+
+      const query = params.toString();
+      const response = await fetch(`${API_URL}/api/medical-information${query ? `?${query}` : ''}`);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to load medical information');
+      }
+
+      const data = await response.json();
+      return data.medicalInformation || [];
+    } catch (error) {
+      console.error('Error loading medical information list:', error);
+      return [];
+    }
+  },
+
+  async getMedicalInformation(appointmentId: string | number): Promise<any | null> {
+    try {
+      const response = await fetch(`${API_URL}/api/medical-information/${appointmentId}`);
+      if (!response.ok) throw new Error('Failed to load medical information');
+      const data = await response.json();
+      return data.medicalInformation || null;
+    } catch (error) {
+      console.error('Error loading medical information:', error);
+      return null;
+    }
+  },
+
   // Get all appointments for the schedule table
   async getAppointmentsForTable(): Promise<any[]> {
     try {
@@ -229,14 +289,17 @@ export const availabilityService = {
   },
 
   // Cancel appointment with reason and email
-  async cancelAppointmentWithReason(appointmentId: string | number, cancellationData: any): Promise<any> {
+  async cancelAppointmentWithReason(appointmentId: string | number, cancellationData: any, recordType?: string): Promise<any> {
     try {
       console.log('Cancelling appointment with reason:', { appointmentId, cancellationData });
       
       const response = await fetch(`${API_URL}/api/appointments/${appointmentId}/cancel-with-reason`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cancellationData)
+        body: JSON.stringify({
+          ...cancellationData,
+          recordType
+        })
       });
       
       if (!response.ok) {
@@ -254,14 +317,17 @@ export const availabilityService = {
   },
 
   // Create reschedule request
-  async createRescheduleRequest(appointmentId: string | number, rescheduleData: any): Promise<any> {
+  async createRescheduleRequest(appointmentId: string | number, rescheduleData: any, recordType?: string): Promise<any> {
     try {
       console.log('Creating reschedule request:', { appointmentId, rescheduleData });
       
       const response = await fetch(`${API_URL}/api/appointments/${appointmentId}/reschedule`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rescheduleData)
+        body: JSON.stringify({
+          ...rescheduleData,
+          recordType
+        })
       });
       
       if (!response.ok) {
@@ -274,6 +340,48 @@ export const availabilityService = {
       return data;
     } catch (error) {
       console.error('Error creating reschedule request:', error);
+      throw error;
+    }
+  },
+
+  async getRescheduleRequests(targetType?: string, targetId?: string | number): Promise<any[]> {
+    try {
+      const params = new URLSearchParams();
+      if (targetType) params.set('targetType', targetType);
+      if (targetId !== undefined && targetId !== null) params.set('targetId', String(targetId));
+
+      const query = params.toString();
+      const response = await fetch(`${API_URL}/api/reschedule-requests${query ? `?${query}` : ''}`);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to load reschedule requests');
+      }
+
+      const data = await response.json();
+      return data.requests || [];
+    } catch (error) {
+      console.error('Error loading reschedule requests:', error);
+      return [];
+    }
+  },
+
+  async reviewRescheduleRequest(requestId: string | number, action: 'accept' | 'decline', note?: string): Promise<any> {
+    try {
+      const response = await fetch(`${API_URL}/api/reschedule-requests/${requestId}/review`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, note })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to review reschedule request');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error reviewing reschedule request:', error);
       throw error;
     }
   },
@@ -292,12 +400,12 @@ export const availabilityService = {
   },
 
   // Assign doctor to appointment
-  async assignDoctor(appointmentId: string | number, doctorId: string | number): Promise<any> {
+  async assignDoctor(appointmentId: string | number, doctorId: string | number, recordType?: string): Promise<any> {
     try {
       const response = await fetch(`${API_URL}/api/appointments/${appointmentId}/assign-doctor`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ doctorId })
+        body: JSON.stringify({ doctorId, recordType })
       });
       
       if (!response.ok) {
@@ -377,12 +485,12 @@ export const availabilityService = {
   },
 
   // Update appointment status (complete or cancel)
-  async updateAppointmentStatus(appointmentId: string | number, status: string): Promise<any> {
+  async updateAppointmentStatus(appointmentId: string | number, status: string, recordType?: string): Promise<any> {
     try {
       const response = await fetch(`${API_URL}/api/appointments/${appointmentId}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status })
+        body: JSON.stringify({ status, recordType })
       });
       
       if (!response.ok) {

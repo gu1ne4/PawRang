@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import axios from 'axios';
+// 🟢 Notice: Axios import has been removed
 import API_URL from '../API';
 import './UserAuthStylesheet.css'
 import { Mail, User, Lock } from 'lucide-react';
@@ -76,54 +76,65 @@ export default function Login() {
 
         setButtonState('loading');
 
-        axios
-            .post(`${API_URL}/login`, {
-                identifier: getIdentifier,
+        fetch(`${API_URL}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                email: getIdentifier,   // ← rename identifier → email
                 password: getPassword,
             })
-            .then((response: any) => {
-                const { access_token, user } = response.data;
-
-                localStorage.setItem('access_token', access_token);
-                localStorage.setItem('userSession', JSON.stringify(user));
-
-                setServerSuccess(response.data.message);
-                setButtonState('success');
-
-                setTimeout(() => {
-                    const normalizedRole = (user?.role || '').toLowerCase();
-
-                    if (normalizedRole === 'admin') {
-                        nav('/admin/home');
-                    } else if (
-                        normalizedRole === 'vet' ||
-                        normalizedRole === 'doctor' ||
-                        normalizedRole === 'veterinarian'
-                    ) {
-                        nav('/doctor/home');
-                    } else {
-                        nav('/user/home');
-                    }
-                }, 1500);
             })
-            .catch((error: any) => {
-                console.error('Login error:', error);
+        .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
 
-                if (error.response?.status === 403) {
-                    nav('/ConfirmOTP', {
-                        state: {
-                            email: error.response?.data?.email ?? getIdentifier,
-                            mode: 'emailConfirmation'
-                        }
-                    });
-                    return;
+            if (!response.ok) {
+                // We format the error to perfectly match how your old Axios code expected it
+                throw { response: { status: response.status, data: data } };
+            }
+
+            // Success Block (Using 'data' instead of 'response.data')
+            const { access_token, user } = data;
+
+            localStorage.setItem('access_token', access_token);
+            localStorage.setItem('userSession', JSON.stringify(user));
+
+            setServerSuccess(data.message);
+            setButtonState('success');
+
+            setTimeout(() => {
+                const normalizedRole = (user?.role || '').toLowerCase();
+
+                if (normalizedRole === 'admin') {
+                    nav('/admin/home');
+                } else if (
+                    normalizedRole === 'vet' ||
+                    normalizedRole === 'doctor' ||
+                    normalizedRole === 'veterinarian'
+                ) {
+                    nav('/doctor/home');
+                } else {
+                    nav('/user/home');
                 }
+            }, 1500);
+        })
+        .catch((error: any) => {
+            console.error('Login error:', error);
 
-                const message = error.response?.data?.error || 'Something went wrong. Please try again.';
-                setServerError(message);
-                setButtonState('error');
-                setTimeout(() => setButtonState('default'), 600);
-            });
+            if (error.response?.status === 403) {
+                nav('/ConfirmOTP', {
+                    state: {
+                        email: error.response?.data?.email ?? getIdentifier,
+                        mode: 'emailConfirmation'
+                    }
+                });
+                return;
+            }
+
+            const message = error.response?.data?.error || 'Something went wrong. Please try again.';
+            setServerError(message);
+            setButtonState('error');
+            setTimeout(() => setButtonState('default'), 600);
+        });
     }
 
     const isDisabled = buttonState === 'loading' || buttonState === 'success';

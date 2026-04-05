@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import './UserAuthStylesheet.css'
 import { Mail } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+// 🟢 Notice: Axios import has been removed
 import API_URL from '../API';
 
 export default function ResetPasswordPage1() {
@@ -39,24 +39,40 @@ export default function ResetPasswordPage1() {
         if (!validateAll()) return;
 
         setIsLoading(true);
+        const normalizedEmail = getEmail.trim().toLowerCase();
 
-        axios
-            .post(`${API_URL}/forgot-password`, {
-                "email": getEmail
+        // 🟢 FIX: Replaced Axios with native 'fetch'
+        fetch(`${API_URL}/forgot-password`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                "email": normalizedEmail
             })
-            .then((response: any) => {
-                setServerSuccess(response.data.message);
-                setIsLoading(false);
-                setTimeout(() => {
-                    // ← pass email to next page via router state
-                    nav('/confirmOTP', { state: { email: getEmail } });
-                }, 1500);
-            })
-            .catch((error: any) => {
-                const message = error.response?.data?.error || 'Something went wrong. Please try again.';
-                setServerError(message);
-                setIsLoading(false);
-            });
+        })
+        .then(async (response) => {
+            // Convert the response to JSON
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                // If the server sends an error (like a 400 or 500 status)
+                throw new Error(data.error || 'Something went wrong. Please try again.');
+            }
+
+            // If successful!
+            setServerSuccess(data.message);
+            setIsLoading(false);
+            if (!data.otpSent) return;
+            setTimeout(() => {
+                // ← pass email to next page via router state
+                nav('/confirmOTP', { state: { email: normalizedEmail, mode: 'passwordReset' } });
+            }, 1500);
+        })
+        .catch((error: any) => {
+            setServerError(error.message);
+            setIsLoading(false);
+        });
     }
 
     return (

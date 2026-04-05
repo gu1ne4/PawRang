@@ -46,6 +46,37 @@ interface Branch {
   address: string;
 }
 
+interface DayAvailabilityMap {
+  [key: string]: boolean;
+}
+
+interface TimeSlotRecord {
+  id: number | string;
+  start_time: string;
+  end_time: string;
+  is_available?: boolean;
+}
+
+interface SpecialDateRecord {
+  event_date?: string;
+}
+
+const normalizeBranches = (payload: any): Branch[] => {
+  const rawBranches = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.branches)
+      ? payload.branches
+      : [];
+
+  return rawBranches
+    .map((branch: any) => ({
+      branch_id: Number(branch?.branch_id ?? branch?.id ?? 0),
+      branch_name: String(branch?.branch_name ?? branch?.name ?? '').trim(),
+      address: String(branch?.address ?? '').trim(),
+    }))
+    .filter((branch: Branch) => branch.branch_id > 0 && branch.branch_name !== '');
+};
+
 interface Service {
   id: number;
   name: string;
@@ -73,16 +104,6 @@ interface AlertConfig {
 }
 
 // ─── Static data ──────────────────────────────────────────────────────────────
-
-const clinicHours: Record<string, string[]> = {
-  Monday:    ['8:00AM - 9:00AM','9:00AM - 10:00AM','10:00AM - 11:00AM','11:00AM - 12:00PM','1:00PM - 2:00PM','2:00PM - 3:00PM','3:00PM - 4:00PM','4:00PM - 5:00PM'],
-  Tuesday:   ['8:00AM - 9:00AM','9:00AM - 10:00AM','10:00AM - 11:00AM','11:00AM - 12:00PM','1:00PM - 2:00PM','2:00PM - 3:00PM','3:00PM - 4:00PM','4:00PM - 5:00PM'],
-  Wednesday: ['8:00AM - 9:00AM','9:00AM - 10:00AM','10:00AM - 11:00AM','11:00AM - 12:00PM','1:00PM - 2:00PM','2:00PM - 3:00PM','3:00PM - 4:00PM','4:00PM - 5:00PM'],
-  Thursday:  ['8:00AM - 9:00AM','9:00AM - 10:00AM','10:00AM - 11:00AM','11:00AM - 12:00PM','1:00PM - 2:00PM','2:00PM - 3:00PM','3:00PM - 4:00PM','4:00PM - 5:00PM'],
-  Friday:    ['8:00AM - 9:00AM','9:00AM - 10:00AM','10:00AM - 11:00AM','11:00AM - 12:00PM','1:00PM - 2:00PM','2:00PM - 3:00PM','3:00PM - 4:00PM','4:00PM - 5:00PM'],
-  Saturday:  [],
-  Sunday:    [],
-};
 
 const groomingOptions: ServiceOption[] = [
   { id:'g1', name:'Basic Grooming',  price:'₱500',  description:'Bath, brush, nail trim' },
@@ -164,6 +185,11 @@ const UserAppointmentBook: React.FC = () => {
   const [selectedBranch,          setSelectedBranch]          = useState<Branch | null>(null);
   const [selectedDate,            setSelectedDate]            = useState<Date | null>(null);
   const [selectedTime,            setSelectedTime]            = useState<string | null>(null);
+  const [dayAvailability,         setDayAvailability]         = useState<DayAvailabilityMap>({});
+  const [specialDates,            setSpecialDates]            = useState<string[]>([]);
+  const [dayTimeSlots,            setDayTimeSlots]            = useState<string[]>([]);
+  const [loadingAvailability,     setLoadingAvailability]     = useState(false);
+  const [loadingTimeSlots,        setLoadingTimeSlots]        = useState(false);
 
   // ── Grooming prefs ────────────────────────────────────────────────────────
   const [selectedHaircutStyle,     setSelectedHaircutStyle]     = useState<string | null>(null);
@@ -208,10 +234,70 @@ const UserAppointmentBook: React.FC = () => {
     setLoadingBranches(true);
     axios
       .get(`${API_URL}/branches`, { headers: { Authorization: `Bearer ${getToken()}` } })
-      .then(res => setBranches(res.data.branches ?? []))
+      .then(res => setBranches(normalizeBranches(res.data)))
       .catch(err => console.error('Failed to fetch branches:', err))
       .finally(() => setLoadingBranches(false));
   }, []);
+
+  useEffect(() => {
+    setLoadingAvailability(true);
+    Promise.all([
+      axios.get(`${API_URL}/api/day-availability`),
+      axios.get(`${API_URL}/api/special-dates`),
+    ])
+      .then(([availabilityRes, specialDatesRes]) => {
+        const rawAvailability = Array.isArray(availabilityRes.data) ? availabilityRes.data : [];
+        const nextAvailability: DayAvailabilityMap = {};
+
+        rawAvailability.forEach((day: any) => {
+          const key = String(day?.day_of_week ?? '').trim().toLowerCase();
+          if (key) nextAvailability[key] = Boolean(day?.is_available);
+        });
+
+        const nextSpecialDates = Array.isArray(specialDatesRes.data?.specialDates)
+          ? specialDatesRes.data.specialDates
+              .map((event: SpecialDateRecord) => String(event?.event_date ?? '').trim())
+              .filter(Boolean)
+          : [];
+
+        setDayAvailability(nextAvailability);
+        setSpecialDates(nextSpecialDates);
+      })
+      .catch(err => console.error('Failed to fetch clinic availability:', err))
+      .finally(() => setLoadingAvailability(false));
+  }, []);
+
+  useEffect(() => {
+    if (!selectedDate) {
+      setDayTimeSlots([]);
+      return;
+    }
+
+    const dayName = getDayName(selectedDate);
+    if (!dayName || !dayAvailability[dayName.toLowerCase()]) {
+      setDayTimeSlots([]);
+      return;
+    }
+
+    setLoadingTimeSlots(true);
+    axios
+      .get(`${API_URL}/api/time-slots/${dayName.toLowerCase()}`)
+      .then(res => {
+        const rawSlots = Array.isArray(res.data?.timeSlots) ? res.data.timeSlots : [];
+        const formattedSlots = rawSlots
+          .filter((slot: TimeSlotRecord) => slot?.start_time && slot?.end_time && slot?.is_available !== false)
+          .map((slot: TimeSlotRecord) => `${formatSlotTime(slot.start_time)} - ${formatSlotTime(slot.end_time)}`);
+
+        setDayTimeSlots(formattedSlots);
+        setSelectedTime(prev => (prev && formattedSlots.includes(prev) ? prev : null));
+      })
+      .catch(err => {
+        console.error('Failed to fetch time slots:', err);
+        setDayTimeSlots([]);
+        setSelectedTime(null);
+      })
+      .finally(() => setLoadingTimeSlots(false));
+  }, [selectedDate, dayAvailability]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Helpers
@@ -248,9 +334,24 @@ const UserAppointmentBook: React.FC = () => {
     return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][date.getDay()];
   };
 
-  const getTimeSlots = () => {
-    const d = getDayName(selectedDate);
-    return d ? clinicHours[d] ?? [] : [];
+  const toDateKey = (date: Date | null) => {
+    if (!date) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatSlotTime = (timeStr: string) => {
+    const [rawHours, rawMinutes] = String(timeStr ?? '').split(':');
+    const hours = Number(rawHours);
+    const minutes = rawMinutes ?? '00';
+
+    if (Number.isNaN(hours)) return timeStr;
+
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHour = hours % 12 || 12;
+    return `${displayHour}:${minutes} ${period}`;
   };
 
   const formatDate = (date: Date | null) => {
@@ -414,7 +515,8 @@ const UserAppointmentBook: React.FC = () => {
         },
         { headers: { Authorization: `Bearer ${getToken()}` } },
       );
-          const appointmentId: number = apptRes.data.appointment_id;  // ← declared inside try
+      const appointmentId: number = apptRes.data.appointment_id;
+      const bookingEmailSent = apptRes.data?.emailSent !== false;
 
       // medical-information POST — add the three NOT NULL fields
       await axios.post(
@@ -457,7 +559,9 @@ const UserAppointmentBook: React.FC = () => {
       setIsSubmitting(false);
       setConfirmModalVisible(false);
       showAlert('success','Appointment Submitted!',
-        'Your appointment is under review. You will receive an email once it is confirmed.',
+        bookingEmailSent
+          ? 'Your appointment is under review. A booking confirmation email has been sent, and we will email you again once it is confirmed.'
+          : 'Your appointment is under review. The request was submitted successfully, but the booking confirmation email could not be sent right now.',
         () => navigate('/user/home'),
       );
     } catch (err: any) {
@@ -494,7 +598,7 @@ const UserAppointmentBook: React.FC = () => {
       ) ?? ''
     : '';
 
-  const timeSlots = getTimeSlots();
+  const timeSlots = dayTimeSlots;
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
@@ -550,7 +654,7 @@ const UserAppointmentBook: React.FC = () => {
             <div className="confirmation-icon"><IoHourglassOutline size={70} color="#3d67ee" /></div>
             <h2 className="confirmation-title">Appointment Under Review</h2>
             <p className="confirmation-text">
-              Your appointment will be reviewed by our team. You will receive an email once it is confirmed.
+              Your appointment will be reviewed by our team. We will send a booking confirmation email after submission, and another update once it is confirmed.
             </p>
             <div className="checkbox-container">
               <label className="checkbox-label">
@@ -791,7 +895,7 @@ const UserAppointmentBook: React.FC = () => {
           <div className="step-content">
             {loadingBranches
               ? <p style={{ textAlign:'center', color:'#999', padding:40 }}>Loading branches…</p>
-              : (
+              : branches.length > 0 ? (
                 <div className="branches-grid">
                   {branches.map(branch => (
                     <button
@@ -804,6 +908,8 @@ const UserAppointmentBook: React.FC = () => {
                     </button>
                   ))}
                 </div>
+              ) : (
+                <p style={{ textAlign:'center', color:'#999', padding:40 }}>No branches available right now.</p>
               )}
             <div className="action-buttons-row">
               <button className="btn-secondary" onClick={handleBack}>Back</button>
@@ -817,7 +923,7 @@ const UserAppointmentBook: React.FC = () => {
           <div className="step-content">
             {loadingBranches
               ? <p style={{ textAlign:'center', color:'#999', padding:40 }}>Loading branches…</p>
-              : (
+              : branches.length > 0 ? (
                 <div className="branches-grid">
                   {branches.map(branch => (
                     <button
@@ -830,6 +936,8 @@ const UserAppointmentBook: React.FC = () => {
                     </button>
                   ))}
                 </div>
+              ) : (
+                <p style={{ textAlign:'center', color:'#999', padding:40 }}>No branches available right now.</p>
               )}
             <div className="action-buttons-row">
               <button className="btn-secondary" onClick={handleBack}>Back</button>
@@ -856,23 +964,32 @@ const UserAppointmentBook: React.FC = () => {
                     minDate={new Date()}
                     maxDate={(() => { const d = new Date(); d.setMonth(d.getMonth()+2); return d; })()}
                     tileDisabled={({ date, view }) => {
-                      if (view === 'month') { const d = getDayName(date); return d ? !clinicHours[d]?.length : true; }
-                      return false;
+                      if (view !== 'month') return false;
+
+                      const dayName = getDayName(date);
+                      const dateKey = toDateKey(date);
+                      const isPast = date < new Date(new Date().setHours(0, 0, 0, 0));
+                      const isEnabledDay = dayName ? Boolean(dayAvailability[dayName.toLowerCase()]) : false;
+                      const isSpecialDate = specialDates.includes(dateKey);
+
+                      return loadingAvailability || isPast || !isEnabledDay || isSpecialDate;
                     }}
                   />
                 </div>
               </div>
               <div className="time-slots-wrapper">
-                <h3 className="time-slots-title">Available Time Slots</h3>
+                <h3 className="time-slots-title">Clinic Time Slots</h3>
                 {!selectedDate
                   ? <div className="time-slots-empty"><p>Select a date first</p></div>
+                  : loadingTimeSlots
+                    ? <div className="time-slots-empty"><p>Loading time slots…</p></div>
                   : timeSlots.length > 0
                     ? <div className="time-slots-grid">
                         {timeSlots.map((t,i) => (
                           <button key={i} className={`time-slot-btn ${selectedTime===t?'selected':''}`} onClick={() => setSelectedTime(t)}>{t}</button>
                         ))}
                       </div>
-                    : <div className="time-slots-empty"><p>No slots available for this date</p></div>
+                    : <div className="time-slots-empty"><p>No configured time slots for this date</p></div>
                 }
               </div>
             </div>

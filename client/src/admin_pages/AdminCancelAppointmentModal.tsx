@@ -45,6 +45,9 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
   const [customReason, setCustomReason] = useState('');
   const [generatedExplanation, setGeneratedExplanation] = useState('');
   const [loading, setLoading] = useState(false);
+  const appointmentEmail = appointment?.patient_email || appointment?.patientEmail || appointment?.email || appointment?.walk_in_email || '';
+  const appointmentPetName = appointment?.pet_name || appointment?.petName || 'Unknown Pet';
+  const appointmentPetType = appointment?.pet_type || appointment?.petType || appointment?.type || 'Unknown';
 
   // Reset state when modal opens/closes
   useEffect(() => {
@@ -121,7 +124,7 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
 
   return (
     <div className="modalOverlay">
-      <div className="modalContainer" style={{ width: '60%', maxWidth: '600px', display: 'flex', flexDirection: 'column', padding: '30px' }}>
+      <div className="modalContainer" style={{ width: '60%', maxWidth: '600px', display: 'flex', flexDirection: 'column', padding: '30px', height: 'auto', maxHeight: '78vh' }}>
         
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -131,7 +134,7 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
           </button>
         </div>
 
-        <div style={{ overflowY: 'auto', flex: 1, paddingRight: '10px' }}>
+        <div style={{ overflowY: 'auto', flex: '0 1 auto', maxHeight: 'calc(78vh - 140px)', paddingRight: '10px' }}>
           
           {/* Appointment Summary */}
           {appointment && (
@@ -145,7 +148,7 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <span style={{ fontSize: '12px', color: '#666' }}>Email:</span>
-                <span style={{ fontSize: '12px', fontWeight: '600' }}>{appointment.patient_email}</span>
+                <span style={{ fontSize: '12px', fontWeight: '600' }}>{appointmentEmail || 'No email on record'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <span style={{ fontSize: '12px', color: '#666' }}>Service:</span>
@@ -157,7 +160,7 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: '12px', color: '#666' }}>Pet:</span>
-                <span style={{ fontSize: '12px', fontWeight: '600' }}>{appointment.pet_name} ({appointment.pet_type})</span>
+                <span style={{ fontSize: '12px', fontWeight: '600' }}>{appointmentPetName} ({appointmentPetType})</span>
               </div>
             </div>
           )}
@@ -225,7 +228,7 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
               }}>
                 <IoMailOutline size={18} color="#1976d2" />
                 <span style={{ fontSize: '12px', color: '#1976d2', fontWeight: '600' }}>
-                  Email will be sent to: {appointment?.patient_email || 'No email on record'}
+                  Email will be sent to: {appointmentEmail || 'No email on record'}
                 </span>
               </div>
             </div>

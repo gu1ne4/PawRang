@@ -23,6 +23,10 @@ html, body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
+.doctor-name-only > div + div {
+  display: none !important;
+}
+
 .biContainer {
   display: flex;
   flex-direction: row;

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import axios from 'axios';
+// 🟢 Notice: Axios import has been removed
 import API_URL from '../API';
 import './UserAuthStylesheet.css'
 import { Mail, User, Phone, Lock } from 'lucide-react';
@@ -144,8 +144,13 @@ export default function Registration() {
 
         setButtonState('loading');
 
-        axios
-            .post(`${API_URL}/signup`, {
+        // 🟢 FIX: Replaced Axios with native 'fetch'
+        fetch(`${API_URL}/signup`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
                 "email":         getEmail,
                 "password":      getPassword,
                 "firstName":     getFirstName,
@@ -153,29 +158,38 @@ export default function Registration() {
                 "username":      getUsername,
                 "contactNumber": getContactNumber,
             })
-            .then((response: any) => {
-                setServerSuccess(response.data.message);
-                setButtonState('success');
+        })
+        .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            
+            if (!response.ok) {
+                // We format the error to perfectly match how your old Axios code expected it
+                throw { response: { status: response.status, data: data } };
+            }
 
-                // Redirect to OTP confirmation page
-                setTimeout(() => {
-                    nav('/confirmOTP', { state: { email: getEmail, mode: 'emailConfirmation' } });
-                }, 1500);
-            })
-            .catch((error: any) => {
-                console.error("Error:", error);
+            // Success Block
+            setServerSuccess(data.message);
+            setButtonState('success');
 
-                // 403 = registered but email not yet confirmed — redirect to OTP page
-                if (error.response?.status === 403 && error.response?.data?.redirect === 'confirmOTP') {
-                    nav('/ConfirmOTP', { state: { email: getEmail, mode: 'emailConfirmation' } });
-                    return;
-                }
+            // Redirect to OTP confirmation page
+            setTimeout(() => {
+                nav('/confirmOTP', { state: { email: getEmail, mode: 'emailConfirmation' } });
+            }, 1500);
+        })
+        .catch((error: any) => {
+            console.error("Error:", error);
 
-                const message = error.response?.data?.error || 'Something went wrong. Please try again.';
-                setServerError(message);
-                setButtonState('error');
-                setTimeout(() => setButtonState('default'), 600);
-            });
+            // 403 = registered but email not yet confirmed — redirect to OTP page
+            if (error.response?.status === 403 && error.response?.data?.redirect === 'confirmOTP') {
+                nav('/ConfirmOTP', { state: { email: getEmail, mode: 'emailConfirmation' } });
+                return;
+            }
+
+            const message = error.response?.data?.error || 'Something went wrong. Please try again.';
+            setServerError(message);
+            setButtonState('error');
+            setTimeout(() => setButtonState('default'), 600);
+        });
     }
 
     const isDisabled = buttonState === 'loading' || buttonState === 'success';
