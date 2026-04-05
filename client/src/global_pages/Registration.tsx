@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 // 🟢 Notice: Axios import has been removed
 import API_URL from '../API';

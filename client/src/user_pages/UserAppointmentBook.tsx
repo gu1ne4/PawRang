@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import './UserStyles.css';
 import API_URL from '../API';
+import { formatPetAge } from '../utils/formatPetAge';
 
 import {
   IoPawOutline, IoCalendarOutline, IoChevronBackCircle, IoChevronForwardCircle,
@@ -37,6 +38,7 @@ interface Pet {
   pet_breed: string;
   pet_gender: string;
   age: string;
+  birthday?: string | null;
   pet_photo_url: string | null;
 }
 
@@ -97,10 +99,26 @@ interface ServiceOption {
 interface AlertConfig {
   type: 'info' | 'success' | 'error' | 'confirm';
   title: string;
-  message: string;
+  message: string | React.ReactNode;
   onConfirm?: () => void;
   showCancel: boolean;
   confirmText: string;
+}
+
+type BookingConfirmStage = 'terms' | 'submitting' | 'submitted';
+
+interface BookingDraft {
+  step: number;
+  selectedServiceId: number | null;
+  selectedGroomingOptionIds: string[];
+  selectedLabOptionIds: string[];
+  currentCardIndex: number;
+  expandedService: number | null;
+}
+
+interface BookingReturnState {
+  newPetId?: number;
+  returnFromPetCreate?: boolean;
 }
 
 // ─── Static data ──────────────────────────────────────────────────────────────
@@ -152,11 +170,21 @@ const services: Service[] = [
 
 const DEFAULT_PET_IMG = 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400';
 const getToken = () => localStorage.getItem('access_token') ?? '';
+const isMobileViewport = () =>
+  typeof window !== 'undefined' && window.innerWidth <= 768;
+const BOOKING_DRAFT_KEY = 'userAppointmentBookingDraft';
+const DEFAULT_SUBMITTED_BOOKING_MESSAGE =
+  'Your appointment is under review. You will receive an email once it is confirmed.';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const UserAppointmentBook: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [isMobileCarousel, setIsMobileCarousel] = useState(isMobileViewport);
+  const pageContainerRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const progressStepRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   // ── Session — read once, no redirect ─────────────────────────────────────
   const [currentUser] = useState<User | null>(() => {
@@ -208,15 +236,18 @@ const UserAppointmentBook: React.FC = () => {
   // ── Carousel ──────────────────────────────────────────────────────────────
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [expandedService,  setExpandedService]  = useState<number | null>(null);
-  const cardRef    = useRef<HTMLDivElement | null>(null);
-  const panelWidth = 280;
+  const touchStartX = useRef<number | null>(null);
+  const touchCurrentX = useRef<number | null>(null);
 
   // ── Modals ────────────────────────────────────────────────────────────────
   const [alertVisible,        setAlertVisible]        = useState(false);
   const [alertConfig,         setAlertConfig]         = useState<AlertConfig>({ type:'info', title:'', message:'', showCancel:false, confirmText:'OK' });
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
+  const [confirmModalStage,   setConfirmModalStage]   = useState<BookingConfirmStage>('terms');
+  const [submittedBookingMessage, setSubmittedBookingMessage] = useState(DEFAULT_SUBMITTED_BOOKING_MESSAGE);
   const [isChecked,           setIsChecked]           = useState(false);
-  const [isSubmitting,        setIsSubmitting]        = useState(false);
+  const restoredDraftRef = useRef(false);
+  const handledReturnedPetRef = useRef<number | null>(null);
 
   // ── Fetch pets ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -228,6 +259,39 @@ const UserAppointmentBook: React.FC = () => {
       .catch(err => console.error('Failed to fetch pets:', err))
       .finally(() => setLoadingPets(false));
   }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (restoredDraftRef.current) return;
+
+    const rawDraft = sessionStorage.getItem(BOOKING_DRAFT_KEY);
+    if (!rawDraft) {
+      restoredDraftRef.current = true;
+      return;
+    }
+
+    try {
+      const draft = JSON.parse(rawDraft) as BookingDraft;
+      const restoredService = services.find(service => service.id === draft.selectedServiceId) ?? null;
+      const restoredGroomingOptions = groomingOptions.filter(option =>
+        draft.selectedGroomingOptionIds.includes(option.id),
+      );
+      const restoredLabOptions = laboratoryOptions.filter(option =>
+        draft.selectedLabOptionIds.includes(option.id),
+      );
+
+      setSelectedService(restoredService);
+      setSelectedGroomingOptions(restoredGroomingOptions);
+      setSelectedLabOptions(restoredLabOptions);
+      setCurrentCardIndex(draft.currentCardIndex ?? 0);
+      setExpandedService(draft.expandedService ?? null);
+      setStep(draft.step ?? 2);
+    } catch (err) {
+      console.error('Failed to restore booking draft:', err);
+    } finally {
+      sessionStorage.removeItem(BOOKING_DRAFT_KEY);
+      restoredDraftRef.current = true;
+    }
+  }, []);
 
   // ── Fetch branches ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -299,6 +363,36 @@ const UserAppointmentBook: React.FC = () => {
       .finally(() => setLoadingTimeSlots(false));
   }, [selectedDate, dayAvailability]);
 
+  useEffect(() => {
+    const handleResize = () => setIsMobileCarousel(isMobileViewport());
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    pageContainerRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    contentRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [step]);
+
+  useEffect(() => {
+    const returnState = location.state as BookingReturnState | null;
+    const newPetId = returnState?.newPetId;
+
+    if (!returnState?.returnFromPetCreate || !newPetId || loadingPets || pets.length === 0) return;
+    if (handledReturnedPetRef.current === newPetId) return;
+
+    const createdPet = pets.find(pet => pet.pet_id === newPetId);
+    if (!createdPet) return;
+
+    handledReturnedPetRef.current = newPetId;
+    setSelectedPet(createdPet);
+    setStep(3);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [loadingPets, location.pathname, location.state, navigate, pets]);
+
   // ─────────────────────────────────────────────────────────────────────────
   // Helpers
   // ─────────────────────────────────────────────────────────────────────────
@@ -314,19 +408,52 @@ const UserAppointmentBook: React.FC = () => {
   };
 
   const showAlert = (
-    type: AlertConfig['type'], title: string, message: string,
+    type: AlertConfig['type'], title: string, message: string | React.ReactNode,
     onConfirm?: () => void, showCancel = false, confirmText = 'OK',
   ) => {
     setAlertConfig({ type, title, message, onConfirm, showCancel, confirmText });
     setAlertVisible(true);
   };
 
+  const openConfirmModal = () => {
+    setIsChecked(false);
+    setConfirmModalStage('terms');
+    setSubmittedBookingMessage(DEFAULT_SUBMITTED_BOOKING_MESSAGE);
+    setConfirmModalVisible(true);
+  };
+
+  const closeConfirmModal = () => {
+    if (confirmModalStage === 'submitting') return;
+    setConfirmModalVisible(false);
+    setConfirmModalStage('terms');
+    setSubmittedBookingMessage(DEFAULT_SUBMITTED_BOOKING_MESSAGE);
+    setIsChecked(false);
+  };
+
   const handleLogout = () => {
-    showAlert('confirm', 'Log Out', 'Are you sure you want to log out?', () => {
-      localStorage.removeItem('userSession');
-      localStorage.removeItem('access_token');
-      navigate('/login');
-    }, true, 'Log Out');
+    localStorage.removeItem('userSession');
+    localStorage.removeItem('access_token');
+    navigate('/login');
+  };
+
+  const persistBookingDraft = () => {
+    const draft: BookingDraft = {
+      step,
+      selectedServiceId: selectedService?.id ?? null,
+      selectedGroomingOptionIds: selectedGroomingOptions.map(option => option.id),
+      selectedLabOptionIds: selectedLabOptions.map(option => option.id),
+      currentCardIndex,
+      expandedService,
+    };
+
+    sessionStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify(draft));
+  };
+
+  const handleAddPetFromBooking = () => {
+    persistBookingDraft();
+    navigate('/user/pet-profile', {
+      state: { returnToBooking: true },
+    });
   };
 
   const getDayName = (date: Date | null) => {
@@ -410,13 +537,38 @@ const UserAppointmentBook: React.FC = () => {
     }
   };
 
-  const getVisibleCards = () => {
-    const cards: { service: Service; position: number }[] = [];
-    for (let i = -1; i <= 1; i++) {
-      const idx = currentCardIndex + i;
-      if (idx >= 0 && idx < services.length) cards.push({ service: services[idx], position: i });
-    }
-    return cards;
+  const goToPreviousService = () => {
+    if (currentCardIndex === 0) return;
+    setCurrentCardIndex(prev => prev - 1);
+    setExpandedService(null);
+  };
+
+  const goToNextService = () => {
+    if (currentCardIndex === services.length - 1) return;
+    setCurrentCardIndex(prev => prev + 1);
+    setExpandedService(null);
+  };
+
+  const handleCarouselTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    touchStartX.current = event.touches[0].clientX;
+    touchCurrentX.current = event.touches[0].clientX;
+  };
+
+  const handleCarouselTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    touchCurrentX.current = event.touches[0].clientX;
+  };
+
+  const handleCarouselTouchEnd = () => {
+    if (touchStartX.current === null || touchCurrentX.current === null) return;
+
+    const deltaX = touchStartX.current - touchCurrentX.current;
+    const swipeThreshold = 45;
+
+    if (deltaX > swipeThreshold) goToNextService();
+    if (deltaX < -swipeThreshold) goToPreviousService();
+
+    touchStartX.current = null;
+    touchCurrentX.current = null;
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -479,10 +631,10 @@ const UserAppointmentBook: React.FC = () => {
         if (medicalAnswers.medications72h && !medicationDetails.trim()) { showAlert('info','Incomplete','Please specify the medications given'); return; }
         setStep(7);
       } else {
-        setConfirmModalVisible(true);
+        openConfirmModal();
       }
     } else if (step === 7) {
-      setConfirmModalVisible(true);
+      openConfirmModal();
     }
   };
 
@@ -492,7 +644,7 @@ const UserAppointmentBook: React.FC = () => {
 
   const handleConfirmBooking = async () => {
     if (!currentUser || !selectedPet || !selectedDate || !selectedTime || !selectedBranch || !selectedService) return;
-    setIsSubmitting(true);
+    setConfirmModalStage('submitting');
 
     try {
       let typeLabel = selectedService.name;
@@ -556,18 +708,19 @@ const UserAppointmentBook: React.FC = () => {
         );
       }
 
-      setIsSubmitting(false);
-      setConfirmModalVisible(false);
-      showAlert('success','Appointment Submitted!',
+      setSubmittedBookingMessage(
         bookingEmailSent
           ? 'Your appointment is under review. A booking confirmation email has been sent, and we will email you again once it is confirmed.'
           : 'Your appointment is under review. The request was submitted successfully, but the booking confirmation email could not be sent right now.',
-        () => navigate('/user/home'),
       );
+      setConfirmModalStage('submitted');
+      setIsChecked(false);
     } catch (err: any) {
-      setIsSubmitting(false);
+      setConfirmModalVisible(false);
+      setConfirmModalStage('terms');
+      setSubmittedBookingMessage(DEFAULT_SUBMITTED_BOOKING_MESSAGE);
       showAlert('error','Booking Failed', err.response?.data?.error ?? 'Something went wrong. Please try again.');
-      console.log(err)
+      console.log(err);
     }
   };
 
@@ -599,13 +752,25 @@ const UserAppointmentBook: React.FC = () => {
     : '';
 
   const timeSlots = dayTimeSlots;
+  const progressSteps = getProgressSteps();
+
+  useEffect(() => {
+    const activeNode = progressStepRefs.current[step];
+    if (!activeNode) return;
+
+    activeNode.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    });
+  }, [step]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="user-appointment-container">
+    <div className="user-appointment-container" ref={pageContainerRef}>
 
       {/* ── Alert Modal ── */}
       {alertVisible && (
@@ -617,7 +782,11 @@ const UserAppointmentBook: React.FC = () => {
               {!['success','error'].includes(alertConfig.type) && <IoInformationCircleOutline size={55} color="#3d67ee" />}
             </div>
             <h3 className="modal-title">{alertConfig.title}</h3>
-            <div className="modal-message"><p>{alertConfig.message}</p></div>
+            <div className="modal-message">
+              {typeof alertConfig.message === 'string'
+                ? <p>{alertConfig.message}</p>
+                : alertConfig.message}
+            </div>
             <div className="modal-actions">
               {alertConfig.showCancel && (
                 <button className="modal-btn modal-btn-cancel" onClick={() => setAlertVisible(false)}>Cancel</button>
@@ -633,42 +802,70 @@ const UserAppointmentBook: React.FC = () => {
         </div>
       )}
 
-      {/* ── Submitting overlay ── */}
-      {isSubmitting && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <IoHourglassOutline size={55} color="#3d67ee" />
-            <h3 className="modal-title">Submitting…</h3>
-            <p className="modal-message">Please wait while we book your appointment.</p>
-          </div>
-        </div>
-      )}
-
       {/* ── Confirmation Modal ── */}
       {confirmModalVisible && (
-        <div className="modal-overlay" onClick={() => setConfirmModalVisible(false)}>
+        <div className="modal-overlay" onClick={closeConfirmModal}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="modal-close-btn" onClick={() => setConfirmModalVisible(false)}>
-              <IoClose size={24} color="#999" />
-            </button>
-            <div className="confirmation-icon"><IoHourglassOutline size={70} color="#3d67ee" /></div>
-            <h2 className="confirmation-title">Appointment Under Review</h2>
-            <p className="confirmation-text">
-              Your appointment will be reviewed by our team. We will send a booking confirmation email after submission, and another update once it is confirmed.
-            </p>
-            <div className="checkbox-container">
-              <label className="checkbox-label">
-                <input type="checkbox" checked={isChecked} onChange={e => setIsChecked(e.target.checked)} className="checkbox-input" />
-                <span className="checkbox-text">I understand</span>
-              </label>
-            </div>
-            <button
-              className={`confirmation-btn ${!isChecked ? 'disabled' : ''}`}
-              onClick={handleConfirmBooking}
-              disabled={!isChecked || isSubmitting}
-            >
-              Confirm Booking
-            </button>
+            {confirmModalStage !== 'submitting' && (
+              <button className="modal-close-btn" onClick={closeConfirmModal}>
+                <IoClose size={24} color="#999" />
+              </button>
+            )}
+
+            {confirmModalStage === 'terms' && (
+              <>
+                <div className="confirmation-icon"><IoHourglassOutline size={70} color="#3d67ee" /></div>
+                <h2 className="confirmation-title">Appointment Under Review</h2>
+                <p className="confirmation-text">
+                  Your appointment will be reviewed by our team. We will send a booking confirmation email after submission, and another update once it is confirmed.
+                </p>
+                <div className="checkbox-container">
+                  <label className="checkbox-label">
+                    <input type="checkbox" checked={isChecked} onChange={e => setIsChecked(e.target.checked)} className="checkbox-input" />
+                    <span className="checkbox-text">I understand</span>
+                  </label>
+                </div>
+                <button
+                  className={`confirmation-btn ${!isChecked ? 'disabled' : ''}`}
+                  onClick={handleConfirmBooking}
+                  disabled={!isChecked}
+                >
+                  Confirm Booking
+                </button>
+              </>
+            )}
+
+            {confirmModalStage === 'submitting' && (
+              <>
+                <div className="confirmation-icon"><IoHourglassOutline size={70} color="#3d67ee" /></div>
+                <h2 className="confirmation-title">Submitting Appointment</h2>
+                <p className="confirmation-text">
+                  Please wait while we finalize your booking.
+                </p>
+                <button className="confirmation-btn disabled" disabled>
+                  Processing...
+                </button>
+              </>
+            )}
+
+            {confirmModalStage === 'submitted' && (
+              <>
+                <div className="confirmation-icon"><IoCheckmark size={70} color="#2e9e0c" /></div>
+                <h2 className="confirmation-title">Appointment Submitted!</h2>
+                <p className="confirmation-text">
+                  {submittedBookingMessage}
+                </p>
+                <button
+                  className="confirmation-btn"
+                  onClick={() => {
+                    closeConfirmModal();
+                    navigate('/user/home');
+                  }}
+                >
+                  Go to Home
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -681,16 +878,27 @@ const UserAppointmentBook: React.FC = () => {
         showAlert={showAlert}
       />
 
-      <div className="appointment-content">
+      <div className="appointment-content" ref={contentRef}>
 
         {/* Progress bar */}
         <div className="progress-container">
           <div className="progress-steps">
-            {getProgressSteps().map((s, i, arr) => (
+            {progressSteps.map((s, i, arr) => (
               <React.Fragment key={s.n}>
-                <div className="step-item">
-                  <div className={`step-circle ${step >= s.n ? 'active' : ''}`}><span>{s.n}</span></div>
-                  <span className={`step-label ${step === s.n ? 'active' : ''}`}>{s.l}</span>
+                <div
+                  className={`progress-step-segment ${
+                    step === s.n ? 'current' : step > s.n ? 'completed' : 'upcoming'
+                  }`}
+                  ref={node => {
+                    progressStepRefs.current[s.n] = node;
+                  }}
+                >
+                  <div className={`step-item ${step === s.n ? 'current' : ''}`}>
+                    <div className="step-circle-shell">
+                      <div className={`step-circle ${step >= s.n ? 'active' : ''}`}><span>{s.n}</span></div>
+                    </div>
+                    <span className={`step-label ${step === s.n ? 'active' : ''}`}>{s.l}</span>
+                  </div>
                 </div>
                 {i < arr.length - 1 && <div className={`step-line ${step > s.n ? 'active' : ''}`} />}
               </React.Fragment>
@@ -703,79 +911,95 @@ const UserAppointmentBook: React.FC = () => {
         {/* ══ STEP 1 — Service ══ */}
         {step === 1 && (
           <div className="step-content">
-            <div className="service-carousel">
-              <div className="carousel-controls">
-                <button className="carousel-arrow" onClick={() => { if (currentCardIndex > 0) { setCurrentCardIndex(c => c-1); setExpandedService(null); }}} disabled={currentCardIndex === 0}>
+            <p className="service-instruction">Click to select an appointment.</p>
+
+            <div className="service-carousel-shell">
+              <div
+                className="service-carousel"
+                onTouchStart={handleCarouselTouchStart}
+                onTouchMove={handleCarouselTouchMove}
+                onTouchEnd={handleCarouselTouchEnd}
+              >
+                <div className="carousel-viewport">
+                  <div
+                    className="carousel-track"
+                    style={{
+                      transform: `translateX(calc(50% - ${isMobileCarousel ? 143 : 130}px - ${currentCardIndex * (isMobileCarousel ? 304 : 288)}px))`,
+                    }}
+                  >
+                    {services.map((service, index) => {
+                      const isSelected = selectedService?.id === service.id;
+                      const isActive = currentCardIndex === index;
+
+                      return (
+                        <div
+                          key={service.id}
+                          className={`service-card-wrapper ${isActive ? 'center-card' : ''}`}
+                          aria-hidden={!isActive}
+                        >
+                          <button
+                            className={`service-card ${isSelected ? 'selected' : ''} ${isActive ? 'active' : 'inactive'}`}
+                            onClick={() => handleServiceSelect(service)}
+                            disabled={!isActive}
+                          >
+                            <div className="service-icon">{getIconComponent(service.icon)}</div>
+                            <h3 className="service-name">{service.name}</h3>
+                            <div className="service-description">{service.description.map((l,i) => <p key={i}>{l}</p>)}</div>
+                            {service.basePrice && <p className="service-price">{service.basePrice}</p>}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="service-carousel-nav">
+                <button className="carousel-arrow" onClick={goToPreviousService} disabled={currentCardIndex === 0} aria-label="Previous service">
                   <IoChevronBackCircle size={50} color={currentCardIndex === 0 ? '#ccc' : '#3d67ee'} />
                 </button>
-              </div>
-
-              <div className="carousel-cards">
-                {getVisibleCards().map(({ service, position }) => {
-                  const isSelected = selectedService?.id === service.id;
-                  return (
-                    <div
-                      key={service.id}
-                      className={`service-card-wrapper ${position === 0 ? 'center-card' : ''}`}
-                      style={{ transform:`scale(${position===0?1:0.85})`, opacity:position===0?1:0.5, zIndex:position===0?30:position===-1?20:10 }}
-                      ref={position === 0 ? cardRef : null}
-                    >
-                      <button
-                        className={`service-card ${isSelected ? 'selected' : ''}`}
-                        onClick={() => handleServiceSelect(service)}
-                        disabled={position !== 0}
-                      >
-                        <div className="service-icon">{getIconComponent(service.icon)}</div>
-                        <h3 className="service-name">{service.name}</h3>
-                        <div className="service-description">{service.description.map((l,i) => <p key={i}>{l}</p>)}</div>
-                        {service.basePrice && <p className="service-price">{service.basePrice}</p>}
-                      </button>
-
-                      {position === 0 && service.hasOptions && expandedService === service.id && (
-                        <div className="options-panel" style={{ left:210, top:0, width:panelWidth }}>
-                          <h3 className="options-title">{service.id === 1 ? 'Grooming Options' : 'Lab Options'}</h3>
-                          <div className="options-list">
-                            {(service.id === 1 ? groomingOptions : laboratoryOptions).map(opt => {
-                              const isSel = service.id === 1
-                                ? selectedGroomingOptions.some(o => o.id === opt.id)
-                                : selectedLabOptions.some(o => o.id === opt.id);
-                              return (
-                                <button
-                                  key={opt.id}
-                                  className={`option-item ${isSel ? 'selected' : ''}`}
-                                  onClick={() => {
-                                    if (service.id === 1) {
-                                      setSelectedGroomingOptions(prev => prev.some(o => o.id === opt.id) ? prev.filter(o => o.id !== opt.id) : [...prev, opt]);
-                                    } else {
-                                      setSelectedLabOptions(prev => {
-                                        if (prev.some(o => o.id === opt.id)) return prev.filter(o => o.id !== opt.id);
-                                        if (prev.length >= 3) { showAlert('info','Max 3','You can only select up to 3 lab tests'); return prev; }
-                                        return [...prev, opt];
-                                      });
-                                    }
-                                  }}
-                                >
-                                  <h4 className="option-name">{opt.name}</h4>
-                                  <p className="option-description">{opt.description}</p>
-                                  <p className="option-price">{opt.price}</p>
-                                </button>
-                              );
-                            })}
-                          </div>
-                          {service.id === 8 && <p className="lab-limit-note">Select up to 3 tests</p>}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="carousel-controls">
-                <button className="carousel-arrow" onClick={() => { if (currentCardIndex < services.length-1) { setCurrentCardIndex(c => c+1); setExpandedService(null); }}} disabled={currentCardIndex === services.length-1}>
+                <button className="carousel-arrow" onClick={goToNextService} disabled={currentCardIndex === services.length-1} aria-label="Next service">
                   <IoChevronForwardCircle size={50} color={currentCardIndex === services.length-1 ? '#ccc' : '#3d67ee'} />
                 </button>
               </div>
             </div>
+
+            {selectedService?.hasOptions && expandedService === selectedService.id && (
+              <div className="options-panel service-options-panel">
+                <h3 className="options-title">{selectedService.id === 1 ? 'Grooming Options' : 'Lab Options'}</h3>
+                <div className="options-list">
+                  {(selectedService.id === 1 ? groomingOptions : laboratoryOptions).map(opt => {
+                    const isSel = selectedService.id === 1
+                      ? selectedGroomingOptions.some(o => o.id === opt.id)
+                      : selectedLabOptions.some(o => o.id === opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        className={`option-item ${isSel ? 'selected' : ''}`}
+                        onClick={() => {
+                          if (selectedService.id === 1) {
+                            setSelectedGroomingOptions(prev =>
+                              prev.some(o => o.id === opt.id) ? [] : [opt],
+                            );
+                          } else {
+                            setSelectedLabOptions(prev => {
+                              if (prev.some(o => o.id === opt.id)) return prev.filter(o => o.id !== opt.id);
+                              if (prev.length >= 3) { showAlert('info','Max 3','You can only select up to 3 lab tests'); return prev; }
+                              return [...prev, opt];
+                            });
+                          }
+                        }}
+                      >
+                        <h4 className="option-name">{opt.name}</h4>
+                        <p className="option-description">{opt.description}</p>
+                        <p className="option-price">{opt.price}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedService.id === 8 && <p className="lab-limit-note">Select up to 3 tests</p>}
+              </div>
+            )}
 
             {selectedService && (
               <div className="selected-services">
@@ -831,10 +1055,10 @@ const UserAppointmentBook: React.FC = () => {
                     <img src={pet.pet_photo_url ?? DEFAULT_PET_IMG} alt={pet.pet_name} className="pet-image" />
                     <h3 className="pet-name">{pet.pet_name}</h3>
                     <p className="pet-details">{pet.pet_species} • {pet.pet_breed}</p>
-                    <p className="pet-details">{pet.pet_gender} • {pet.age} yrs</p>
+                    <p className="pet-details">{pet.pet_gender} • {formatPetAge(pet.age, pet.birthday)}</p>
                   </button>
                 ))}
-                <button className="add-pet-card" onClick={() => navigate('/user/pet-profile')}>
+                <button className="add-pet-card" onClick={handleAddPetFromBooking}>
                   <div className="add-pet-icon"><IoAdd size={50} color="#3d67ee" /></div>
                   <span className="add-pet-text">Add Pet</span>
                 </button>
@@ -1093,17 +1317,6 @@ const UserAppointmentBook: React.FC = () => {
                 </div>
               )}
 
-              <div className="confirmation-card">
-                <div className="card-header"><IoMedicalOutline size={22} color="#3d67ee" /><h3>Medical Information</h3></div>
-                <div className="card-details">
-                  <div className="detail-row"><span className="detail-label">Medications (72h)</span><span className="detail-value">{medicalAnswers.medications72h ? `Yes — ${medicationDetails}` : 'No'}</span></div>
-                  <div className="detail-row"><span className="detail-label">Flea/Tick Prev.</span><span className="detail-value">{medicalAnswers.fleaPrevention ? 'Yes' : 'No'}</span></div>
-                  <div className="detail-row"><span className="detail-label">Vaccinations</span><span className="detail-value">{medicalAnswers.catVaccinations ? 'Yes' : 'No'}</span></div>
-                  <div className="detail-row"><span className="detail-label">Not Pregnant</span><span className="detail-value">{medicalAnswers.notPregnant ? 'Yes' : 'No'}</span></div>
-                  {additionalNotes && <div className="detail-row"><span className="detail-label">Notes</span><span className="detail-value">{additionalNotes}</span></div>}
-                </div>
-              </div>
-
               {selectedDate && selectedTime && selectedBranch && (
                 <div className="confirmation-card">
                   <div className="card-header"><IoCalendarOutline size={22} color="#3d67ee" /><h3>Appointment Details</h3></div>
@@ -1129,6 +1342,17 @@ const UserAppointmentBook: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              <div className="confirmation-card">
+                <div className="card-header"><IoMedicalOutline size={22} color="#3d67ee" /><h3>Medical Information</h3></div>
+                <div className="card-details">
+                  <div className="detail-row"><span className="detail-label">Medications (72h)</span><span className="detail-value">{medicalAnswers.medications72h ? `Yes — ${medicationDetails}` : 'No'}</span></div>
+                  <div className="detail-row"><span className="detail-label">Flea/Tick Prev.</span><span className="detail-value">{medicalAnswers.fleaPrevention ? 'Yes' : 'No'}</span></div>
+                  <div className="detail-row"><span className="detail-label">Vaccinations</span><span className="detail-value">{medicalAnswers.catVaccinations ? 'Yes' : 'No'}</span></div>
+                  <div className="detail-row"><span className="detail-label">Not Pregnant</span><span className="detail-value">{medicalAnswers.notPregnant ? 'Yes' : 'No'}</span></div>
+                  {additionalNotes && <div className="detail-row"><span className="detail-label">Notes</span><span className="detail-value">{additionalNotes}</span></div>}
+                </div>
+              </div>
             </div>
 
             <div className="action-buttons-row">

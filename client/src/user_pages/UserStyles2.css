@@ -501,6 +501,50 @@
   color: #666;
 }
 
+.app-pet-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-pet-card-thumb {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #d7e3ff;
+  flex-shrink: 0;
+}
+
+.app-pet-card-copy {
+  min-width: 0;
+}
+
+.app-pet-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #27324a;
+  line-height: 1.25;
+}
+
+.app-pet-card-breed {
+  font-size: 12px;
+  color: #72809b;
+  line-height: 1.25;
+  margin-top: 2px;
+}
+
+.app-schedule-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-schedule-date {
+  font-weight: 600;
+  color: #27324a;
+}
+
 .app-italic-text {
   font-style: italic;
 }
@@ -1620,5 +1664,269 @@
   
   .app-summary-tag {
     width: 100%;
+  }
+}
+
+.app-details-modal {
+  max-width: 560px;
+  width: 92%;
+  padding: 0;
+  align-items: stretch;
+  overflow: hidden;
+  border-radius: 18px;
+}
+
+.app-details-modal-header {
+  padding: 24px 24px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  background: linear-gradient(135deg, #f8f9fa, #ffffff);
+}
+
+.app-details-modal-header h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #3d67ee;
+  margin: 0;
+  text-align: center;
+}
+
+.app-details-modal-body {
+  padding: 22px 24px;
+  max-height: calc(100dvh - 220px);
+  overflow-y: auto;
+}
+
+.app-details-modal-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.app-details-modal-body::-webkit-scrollbar-thumb {
+  background-color: #3d67ee;
+  border-radius: 4px;
+}
+
+.app-action-bar-modal {
+  margin-top: 0;
+  padding: 16px 20px 20px;
+}
+
+@media (max-width: 768px) {
+  .app-view-root {
+    min-height: 100dvh;
+    height: 100dvh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-view-wrapper {
+    margin-top: 0;
+    padding-bottom: 18px;
+  }
+
+  .app-main-layout {
+    margin: 14px auto 0;
+    padding: 0 14px 18px;
+    height: auto;
+    min-height: 0;
+    flex: 1 0 auto;
+  }
+
+  .app-list-panel {
+    height: auto;
+    max-height: calc(100dvh - 120px);
+    overflow: hidden;
+  }
+
+  .app-list-header {
+    padding: 18px 14px 10px;
+  }
+
+  .app-search-wrapper {
+    margin: 0 14px 14px;
+  }
+
+  .app-filter-bar {
+    margin: 0 14px 14px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .app-filter-option {
+    white-space: nowrap;
+    width: 100%;
+    padding: 9px 0;
+    text-align: center;
+  }
+
+  .app-table-container {
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-height: calc(100dvh - 280px);
+    padding: 0 14px 18px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .app-table-body {
+    padding-bottom: 4px;
+  }
+
+  .app-table-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    border: 1px solid #e6eeff;
+    border-radius: 14px;
+    box-shadow: 0 10px 24px rgba(61, 103, 238, 0.09);
+    background: linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+    align-items: start;
+  }
+
+  .app-table-row .app-table-cell:first-child {
+    grid-column: 1 / 2;
+    grid-row: 1;
+    font-weight: 600;
+    color: #3d67ee;
+    font-size: 15px;
+    line-height: 1.35;
+    padding-right: 8px;
+  }
+
+  .app-table-row .app-table-cell:nth-child(4) {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    align-self: start;
+  }
+
+  .app-table-row .app-table-cell:nth-child(2),
+  .app-table-row .app-table-cell:nth-child(3) {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: #f3f7ff;
+    font-size: 13px;
+  }
+
+  .app-table-row .app-table-cell:nth-child(2)::before,
+  .app-table-row .app-table-cell:nth-child(3)::before {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #6a7fd1;
+    flex-shrink: 0;
+  }
+
+  .app-table-row .app-table-cell:nth-child(3)::before {
+    content: "Schedule";
+  }
+
+  .app-table-row .app-table-cell:nth-child(3) {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .app-table-row .app-table-cell:nth-child(3)::before {
+    margin-bottom: 2px;
+  }
+
+  .app-pet-cell {
+    gap: 12px;
+  }
+
+  .app-pet-card-thumb {
+    width: 48px;
+    height: 48px;
+  }
+
+  .app-pet-card-name {
+    font-size: 14px;
+  }
+
+  .app-pet-card-breed {
+    font-size: 12px;
+  }
+
+  .app-schedule-cell {
+    gap: 4px;
+  }
+
+  .app-schedule-date {
+    font-size: 13px;
+  }
+
+  .app-time-cell {
+    font-size: 13px;
+  }
+
+  .app-table-cell {
+    min-width: 0;
+    white-space: normal;
+  }
+
+  .app-empty-state {
+    padding: 28px 16px;
+  }
+
+  .app-pagination-bar {
+    padding: 4px 0 14px;
+  }
+
+  .app-details-panel {
+    display: none;
+  }
+
+  .app-modal-wide {
+    width: calc(100% - 24px);
+    max-width: none;
+    max-height: calc(100dvh - 24px);
+  }
+
+  .app-details-modal-overlay {
+    align-items: center;
+    overflow-y: auto;
+    padding: 12px;
+  }
+
+  .app-details-modal {
+    margin: 0;
+  }
+
+  .app-details-modal-body {
+    padding: 20px 18px;
+    max-height: calc(100dvh - 210px);
+  }
+
+  .app-action-bar-modal {
+    flex-direction: column;
+    padding: 14px 18px 18px;
+  }
+
+  .app-action-bar-modal .app-action-btn {
+    width: 100%;
+  }
+
+  .app-cancel-modal,
+  .app-reschedule-modal {
+    width: calc(100% - 24px);
+    max-width: none;
+  }
+
+  .app-modal-footer-actions {
+    flex-direction: column-reverse;
+  }
+
+  .app-modal-footer-actions > button {
+    width: 100%;
+    justify-content: center;
   }
 }

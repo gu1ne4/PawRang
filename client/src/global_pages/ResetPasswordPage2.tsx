@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import './UserAuthStylesheet.css'
 import { Lock } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
