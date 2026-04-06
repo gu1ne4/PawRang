@@ -284,15 +284,6 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
     }
   }, [selectedNotifications, onUpdateNotifications]);
 
-  const handleDeleteAll = useCallback(() => {
-    if (window.confirm('Delete all notifications?')) {
-      startTransition(() => {
-        onUpdateNotifications([]);
-        setSelectedNotifications(new Set());
-        setIsSelectionMode(false);
-      });
-    }
-  }, [onUpdateNotifications]);
 
   const handleMarkSingleAsRead = useCallback((id: string) => {
     onUpdateNotifications(prev =>
@@ -302,16 +293,6 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
     );
   }, [onUpdateNotifications]);
 
-  const handleDeleteSingle = useCallback((id: string) => {
-    if (window.confirm('Delete this notification?')) {
-      onUpdateNotifications(prev => prev.filter(notif => notif.id !== id));
-      setSelectedNotifications(prev => {
-        const newSelected = new Set(prev);
-        newSelected.delete(id);
-        return newSelected;
-      });
-    }
-  }, [onUpdateNotifications]);
 
   const exitSelectionMode = useCallback(() => {
     setIsSelectionMode(false);

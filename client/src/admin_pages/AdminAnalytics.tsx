@@ -1,31 +1,27 @@
-// AdminAnalytics.tsx (Updated with Navbar)
-import React, { useState, useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  Area
+  ComposedChart, Area
 } from 'recharts';
 import './AnalyticsStyles.css';
 import Navbar from '../reusable_components/NavBar';
 import userImg from '../assets/userAvatar.jpg';
+import NotificationsAllModal from '../reusable_components/NotificationsAllModal';
+import type { NotificationsModalRef } from '../reusable_components/NotificationsAllModal';
+import Notifications from '../reusable_components/Notifications';
 
 // Icons
 import { 
-  IoCalendarClearOutline,
-  IoNotificationsOutline,
-  IoPeopleOutline,
-  IoPawOutline,
-  IoTrendingUpOutline,
-  IoArrowUpOutline,
-  IoArrowDownOutline,
-  IoDocumentTextOutline,
-  IoLayersOutline,
-  IoCreateOutline
-} from 'react-icons/io5';
-
-import NotificationsAllModal from '../reusable_components/NotificationsAllModal';
-import type { NotificationsModalRef } from '../reusable_components/NotificationsAllModal';
+  IoArrowUpOutline, IoArrowDownOutline,
+  IoWarningOutline, IoBulbOutline, IoTrendingUpOutline,
+  IoSparkles, IoAlertCircle,
+  
+  IoWalletOutline, IoReceiptOutline, IoCalculatorOutline, IoCheckmarkDoneCircleOutline,
+  IoDiamondOutline,
+  IoDownloadOutline, IoDocumentTextOutline, IoTabletPortraitOutline,
+  IoChevronDownOutline, IoStatsChart} from 'react-icons/io5';
 
 // ==================== TYPES ====================
 interface Admin {
@@ -40,29 +36,34 @@ interface KpiCardProps {
   title: string;
   value: string | number;
   change?: number;
+  predictedChange?: number;
   prefix?: string;
   suffix?: string;
   icon?: React.ReactNode;
   iconBgColor?: string;
   iconColor?: string;
+  aiPrediction?: string;
 }
 
 interface SalesTrendData {
   day: string;
-  revenue: number;
-  appointments: number;
+  actual: number | null;
+  predicted: number;
+  appointments: number | null;
 }
 
 interface TopServiceData {
   service: string;
   revenue: number;
   count: number;
+  trend?: number;
 }
 
 interface TopProductData {
   product: string;
   quantitySold: number;
   revenue: number;
+  daysUntilOut?: number;
 }
 
 interface SalesDistributionData {
@@ -71,10 +72,11 @@ interface SalesDistributionData {
   color: string;
 }
 
-interface PeakHourData {
+interface PeakTimeData {
   hour: string;
   appointments: number;
   sales: number;
+  predicted?: number;
 }
 
 interface InventoryItem {
@@ -83,12 +85,17 @@ interface InventoryItem {
   stock: number;
   reorderPoint: number;
   movementRate: 'fast' | 'medium' | 'slow';
+  dailyUsage: number;
+  daysUntilOut: number;
+  recommendedReorder: number;
 }
 
 interface Insight {
   id: string;
   text: string;
-  type: 'positive' | 'warning' | 'neutral';
+  type: 'growth' | 'warning' | 'opportunity';
+  icon?: string;
+  action?: string;
 }
 
 // ==================== MOCK DATA ====================
@@ -100,32 +107,36 @@ const currentUser: Admin = {
   image: userImg
 };
 
+// Sales Trend with Forecast (Actual + Predicted)
 const mockSalesTrend: SalesTrendData[] = [
-  { day: 'Mon', revenue: 12500, appointments: 12 },
-  { day: 'Tue', revenue: 14800, appointments: 15 },
-  { day: 'Wed', revenue: 18200, appointments: 18 },
-  { day: 'Thu', revenue: 15900, appointments: 16 },
-  { day: 'Fri', revenue: 22500, appointments: 22 },
-  { day: 'Sat', revenue: 9800, appointments: 10 },
-  { day: 'Sun', revenue: 4500, appointments: 5 },
+  { day: 'Mon', actual: 12500, predicted: 12500, appointments: 12 },
+  { day: 'Tue', actual: 14800, predicted: 14800, appointments: 15 },
+  { day: 'Wed', actual: 18200, predicted: 18200, appointments: 18 },
+  { day: 'Thu', actual: 15900, predicted: 15900, appointments: 16 },
+  { day: 'Fri', actual: 22500, predicted: 22500, appointments: 22 },
+  { day: 'Sat', actual: 9800, predicted: 11200, appointments: 10 },
+  { day: 'Sun', actual: 4500, predicted: 6800, appointments: 5 },
+  { day: 'Mon (Fcst)', actual: null, predicted: 13500, appointments: null },
+  { day: 'Tue (Fcst)', actual: null, predicted: 15200, appointments: null },
+  { day: 'Wed (Fcst)', actual: null, predicted: 17800, appointments: null },
 ];
 
 const mockTopServices: TopServiceData[] = [
-  { service: 'Grooming', revenue: 28450, count: 142 },
-  { service: 'Vaccination', revenue: 18750, count: 125 },
-  { service: 'Dental Care', revenue: 12300, count: 41 },
-  { service: 'Check-up', revenue: 11200, count: 56 },
-  { service: 'Surgery', revenue: 8750, count: 12 },
-  { service: 'Boarding', revenue: 5600, count: 28 },
+  { service: 'Grooming', revenue: 28450, count: 142, trend: 32 },
+  { service: 'Vaccination', revenue: 18750, count: 125, trend: 8 },
+  { service: 'Dental Care', revenue: 12300, count: 41, trend: -5 },
+  { service: 'Check-up', revenue: 11200, count: 56, trend: 12 },
+  { service: 'Surgery', revenue: 8750, count: 12, trend: -2 },
+  { service: 'Boarding', revenue: 5600, count: 28, trend: 18 },
 ].sort((a, b) => b.revenue - a.revenue);
 
 const mockTopProducts: TopProductData[] = [
-  { product: 'Premium Dog Food', quantitySold: 245, revenue: 36750 },
-  { product: 'Rabies Vaccine', quantitySold: 180, revenue: 27000 },
-  { product: 'Flea Treatment', quantitySold: 156, revenue: 15600 },
-  { product: 'Pet Shampoo', quantitySold: 98, revenue: 5880 },
-  { product: 'Dental Chews', quantitySold: 87, revenue: 4350 },
-  { product: 'Cat Litter', quantitySold: 72, revenue: 5040 },
+  { product: 'Premium Dog Food', quantitySold: 245, revenue: 36750, daysUntilOut: 12 },
+  { product: 'Rabies Vaccine', quantitySold: 180, revenue: 27000, daysUntilOut: 3 },
+  { product: 'Flea Treatment', quantitySold: 156, revenue: 15600, daysUntilOut: 8 },
+  { product: 'Pet Shampoo', quantitySold: 98, revenue: 5880, daysUntilOut: 15 },
+  { product: 'Dental Chews', quantitySold: 87, revenue: 4350, daysUntilOut: 20 },
+  { product: 'Cat Litter', quantitySold: 72, revenue: 5040, daysUntilOut: 25 },
 ].sort((a, b) => b.quantitySold - a.quantitySold);
 
 const mockSalesDistribution: SalesDistributionData[] = [
@@ -133,93 +144,213 @@ const mockSalesDistribution: SalesDistributionData[] = [
   { name: 'Products', value: 31.5, color: '#10b981' },
 ];
 
-const mockPeakHours: PeakHourData[] = [
-  { hour: '9 AM', appointments: 8, sales: 4200 },
-  { hour: '10 AM', appointments: 12, sales: 6800 },
-  { hour: '11 AM', appointments: 10, sales: 5500 },
-  { hour: '12 PM', appointments: 6, sales: 3200 },
-  { hour: '1 PM', appointments: 5, sales: 2800 },
-  { hour: '2 PM', appointments: 9, sales: 4900 },
-  { hour: '3 PM', appointments: 11, sales: 6200 },
-  { hour: '4 PM', appointments: 7, sales: 3800 },
-  { hour: '5 PM', appointments: 4, sales: 2100 },
+const mockPeakHours: PeakTimeData[] = [
+  { hour: '9 AM', appointments: 8, sales: 4200, predicted: 9 },
+  { hour: '10 AM', appointments: 12, sales: 6800, predicted: 14 },
+  { hour: '11 AM', appointments: 10, sales: 5500, predicted: 11 },
+  { hour: '12 PM', appointments: 6, sales: 3200, predicted: 7 },
+  { hour: '1 PM', appointments: 5, sales: 2800, predicted: 6 },
+  { hour: '2 PM', appointments: 9, sales: 4900, predicted: 10 },
+  { hour: '3 PM', appointments: 11, sales: 6200, predicted: 12 },
+  { hour: '4 PM', appointments: 7, sales: 3800, predicted: 8 },
+  { hour: '5 PM', appointments: 4, sales: 2100, predicted: 5 },
 ];
 
 const mockInventory: InventoryItem[] = [
-  { id: '1', name: 'Rabies Vaccine', stock: 5, reorderPoint: 20, movementRate: 'fast' },
-  { id: '2', name: 'Flea Treatment', stock: 12, reorderPoint: 15, movementRate: 'fast' },
-  { id: '3', name: 'Surgical Gloves', stock: 8, reorderPoint: 25, movementRate: 'medium' },
-  { id: '4', name: 'Antibiotics', stock: 3, reorderPoint: 10, movementRate: 'fast' },
-  { id: '5', name: 'Pet Shampoo', stock: 25, reorderPoint: 20, movementRate: 'medium' },
-  { id: '6', name: 'Dental Chews', stock: 42, reorderPoint: 15, movementRate: 'fast' },
-  { id: '7', name: 'Cat Litter', stock: 18, reorderPoint: 20, movementRate: 'slow' },
-  { id: '8', name: 'Syringes', stock: 6, reorderPoint: 30, movementRate: 'medium' },
+  { id: '1', name: 'Rabies Vaccine', stock: 5, reorderPoint: 20, movementRate: 'fast', dailyUsage: 5, daysUntilOut: 1, recommendedReorder: 50 },
+  { id: '2', name: 'Flea Treatment', stock: 12, reorderPoint: 15, movementRate: 'fast', dailyUsage: 3, daysUntilOut: 4, recommendedReorder: 30 },
+  { id: '3', name: 'Surgical Gloves', stock: 8, reorderPoint: 25, movementRate: 'medium', dailyUsage: 2, daysUntilOut: 4, recommendedReorder: 40 },
+  { id: '4', name: 'Antibiotics', stock: 3, reorderPoint: 10, movementRate: 'fast', dailyUsage: 2, daysUntilOut: 1.5, recommendedReorder: 25 },
+  { id: '5', name: 'Pet Shampoo', stock: 25, reorderPoint: 20, movementRate: 'medium', dailyUsage: 4, daysUntilOut: 6, recommendedReorder: 35 },
+  { id: '6', name: 'Dental Chews', stock: 42, reorderPoint: 15, movementRate: 'fast', dailyUsage: 6, daysUntilOut: 7, recommendedReorder: 40 },
+  { id: '7', name: 'Cat Litter', stock: 18, reorderPoint: 20, movementRate: 'slow', dailyUsage: 1, daysUntilOut: 18, recommendedReorder: 15 },
+  { id: '8', name: 'Syringes', stock: 6, reorderPoint: 30, movementRate: 'medium', dailyUsage: 3, daysUntilOut: 2, recommendedReorder: 45 },
 ];
 
 const mockInsights: Insight[] = [
-  { id: '1', text: 'Sales increased by 15% this week compared to last week', type: 'positive' },
-  { id: '2', text: 'Grooming services are trending +32% this month', type: 'positive' },
-  { id: '3', text: 'Rabies Vaccine stock is critically low (5 units left)', type: 'warning' },
-  { id: '4', text: 'Peak hours: 10 AM - 11 AM generates 40% of daily revenue', type: 'neutral' },
-  { id: '5', text: 'Antibiotics sales increased by 25% last 7 days', type: 'positive' },
+  { id: '1', text: 'Revenue increased by 18% this week compared to last week', type: 'growth', icon: '📈', action: 'Check growth drivers' },
+  { id: '2', text: 'Grooming services are trending +32% this month', type: 'growth', icon: '✂️', action: 'Consider adding more grooming slots' },
+  { id: '3', text: 'Sales dropped significantly on Sunday (-41% vs Saturday)', type: 'warning', icon: '⚠️', action: 'Review Sunday operations' },
+  { id: '4', text: 'Bundle grooming + shampoo for higher sales (+25% potential)', type: 'opportunity', icon: '🎯', action: 'Create bundle package' },
+  { id: '5', text: 'Rabies Vaccine will run out in 1 days - Immediate reorder needed', type: 'warning', icon: '💊', action: 'Place urgent order' },
+  { id: '6', text: 'Peak hour prediction: Saturday 10 AM will be busiest this week', type: 'opportunity', icon: '⏰', action: 'Schedule extra staff' },
+  { id: '7', text: 'Antibiotics sales increased by 25% last 7 days', type: 'growth', icon: '💊', action: 'Increase stock level' },
 ];
 
 // ==================== KPI CARD COMPONENT ====================
-const KpiCard: React.FC<KpiCardProps> = ({ title, value, change, prefix, suffix, icon, iconBgColor, iconColor }) => {
+const KpiCard: React.FC<KpiCardProps> = ({ 
+  title, value, change, prefix, suffix, 
+  icon, iconBgColor, aiPrediction 
+}) => {
   const isPositive = change && change > 0;
-  const changeColor = isPositive ? '#10b981' : change && change < 0 ? '#ef4444' : '#64748b';
 
   return (
-    <div className="kpi-card">
+    <div className="kpi-card-ai">
       <div className="kpi-header">
         <span className="kpi-title">{title}</span>
-        {icon && (
-          <div className="kpi-icon-wrapper" style={{ backgroundColor: iconBgColor || '#3d67ee13' }}>
-            <span style={{ color: iconColor || '#3d67ee' }}>{icon}</span>
-          </div>
-        )}
+        <div className="kpi-icon-wrapper" style={{ backgroundColor: iconBgColor || '#3d67ee13' }}>
+          {icon}
+        </div>
       </div>
       <div className="kpi-value">
         {prefix && <span className="kpi-prefix">{prefix}</span>}
         {typeof value === 'number' ? value.toLocaleString() : value}
         {suffix && <span className="kpi-suffix">{suffix}</span>}
       </div>
-      {change !== undefined && (
-        <div className="kpi-change" style={{ color: changeColor }}>
-          {isPositive ? <IoArrowUpOutline size={12} /> : <IoArrowDownOutline size={12} />}
-          {Math.abs(change)}% from last period
+      <div className="kpi-trends">
+        {change !== undefined && (
+          <div className={`kpi-change ${isPositive ? 'positive' : 'negative'}`}>
+            {isPositive ? <IoArrowUpOutline size={12} /> : <IoArrowDownOutline size={12} />}
+            {Math.abs(change)}% from last period
+          </div>
+        )}
+      </div>
+      {aiPrediction && (
+        <div className="kpi-ai-insight">
+          <IoSparkles size={10} />
+          <span>{aiPrediction}</span>
         </div>
       )}
     </div>
   );
 };
 
-// ==================== SALES TREND CHART ====================
-const SalesTrendChart: React.FC = () => {
+// ==================== EXPORT BUTTON COMPONENT ====================
+const ExportButton: React.FC<{ buttonClassName?: string }> = ({ buttonClassName = '' }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleExportPDF = () => {
+    console.log('Exporting as PDF...');
+    setIsOpen(false);
+  };
+
+  const handleExportExcel = () => {
+    console.log('Exporting as Excel...');
+    setIsOpen(false);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   return (
-    <div className="chart-card">
-      <div className="chart-header">
-        <h3>Sales Trend</h3>
-        <span className="chart-subtitle">Daily Revenue (Last 7 Days)</span>
+    <div className="export-dropdown-wrapper" ref={dropdownRef}>
+      <button className={`export-btn ${buttonClassName}`} onClick={() => setIsOpen(!isOpen)}>
+        <IoDownloadOutline size={16} />
+        <span>Export</span>
+        <IoChevronDownOutline size={12} className={isOpen ? 'rotated' : ''} />
+      </button>
+
+      {isOpen && (
+        <div className="export-dropdown-menu">
+          <button onClick={handleExportPDF}>
+            <IoDocumentTextOutline size={16} />
+            <span>Export as PDF</span>
+          </button>
+          <button onClick={handleExportExcel}>
+            <IoTabletPortraitOutline size={16} />
+            <span>Export as Excel</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ==================== PAGE HEADER (INVENTORY STYLE) ====================
+const PageHeader: React.FC = () => {
+  const [selectedBranch, setSelectedBranch] = useState('All');
+
+  return (
+    <div className="analytics-top-container">
+      <div className="analytics-sub-top-container" style={{ paddingLeft: '30px' }}>
+        <div className="analytics-sub-top-left">
+          <IoStatsChart size={23} className="analytics-blue-icon" />
+          <span className="analytics-blue-text">Analytics Dashboard</span>
+        </div>
+        
+        <div className="analytics-branch-selector">
+          <span className="analytics-branch-label">Branch:</span>
+          <select 
+            value={selectedBranch}
+            onChange={(e) => setSelectedBranch(e.target.value)}
+            className="analytics-branch-select"
+          >
+            <option value="All">All Branches</option>
+            <option value="Taguig">Taguig</option>
+            <option value="Las Pinas">Las Piñas</option>
+          </select>
+        </div>
+
+        <ExportButton buttonClassName="analytics-export-btn" />
       </div>
-      <ResponsiveContainer width="100%" height={280}>
-        <LineChart data={mockSalesTrend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+      <div className="analytics-sub-top-container analytics-notification-container" style={{ padding: 9 }}>
+        <Notifications 
+          buttonClassName="analytics-icon-button"
+          iconClassName="analytics-blue-icon"
+          onViewAll={() => {
+            console.log('View all notifications');
+          }}
+          onNotificationClick={(notification) => {
+            if (notification.link) {
+              // navigate(notification.link);
+            }
+          }}
+        />
+      </div>
+    </div>
+  );
+};
+
+// ==================== SALES TREND CHART ====================
+const SalesTrendWithForecast: React.FC = () => {
+  const chartData = mockSalesTrend.map(item => ({
+    day: item.day,
+    actual: item.actual,
+    predicted: item.predicted,
+  }));
+
+  return (
+    <div className="chart-card-ai">
+      <div className="chart-header">
+        <div>
+          <h3>Sales Trend & Forecast</h3>
+          <span className="chart-subtitle">AI-predicted revenue for next 3 days</span>
+        </div>
+        <div className="ai-badge">
+          <IoSparkles size={12} /> AI Forecast Active
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
           <defs>
-            <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id="actualGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#3d67ee" stopOpacity={0.3}/>
               <stop offset="95%" stopColor="#3d67ee" stopOpacity={0}/>
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis dataKey="day" tick={{ fontSize: 12 }} />
-          <YAxis tickFormatter={(value) => `₱${value / 1000}k`} tick={{ fontSize: 12 }} />
+          <XAxis dataKey="day" tick={{ fontSize: 11 }} angle={-20} textAnchor="end" height={60} />
+          <YAxis tickFormatter={(value) => `₱${value / 1000}k`} tick={{ fontSize: 11 }} />
           <Tooltip
-            formatter={(value: number) => [`₱${value.toLocaleString()}`, 'Revenue']}
-            contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
+            formatter={(value: number | null, name: string) => {
+              if (value === null) return ['No data', name];
+              if (name === 'actual') return [`₱${value.toLocaleString()}`, 'Actual Revenue'];
+              return [`₱${value.toLocaleString()}`, 'Predicted Revenue'];
+            }}
+            contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: 'none' }}
           />
           <Legend />
-          <Area type="monotone" dataKey="revenue" stroke="#3d67ee" fill="url(#revenueGradient)" name="Revenue" />
-          <Line type="monotone" dataKey="revenue" stroke="#3d67ee" strokeWidth={2} dot={{ r: 4, fill: '#3d67ee' }} name="Revenue" />
+          <Area type="monotone" dataKey="actual" stroke="#3d67ee" fill="url(#actualGradient)" />
+          <Line type="monotone" dataKey="actual" stroke="#3d67ee" strokeWidth={2} dot={{ r: 4, fill: '#3d67ee' }} name="Actual Revenue" />
+          <Line type="monotone" dataKey="predicted" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4, fill: '#f59e0b' }} name="Predicted Revenue" />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -229,18 +360,24 @@ const SalesTrendChart: React.FC = () => {
 // ==================== TOP SERVICES CHART ====================
 const TopServicesChart: React.FC = () => {
   return (
-    <div className="chart-card">
+    <div className="chart-card-ai">
       <div className="chart-header">
         <h3>Top Services by Revenue</h3>
-        <span className="chart-subtitle">Most profitable services</span>
+        <span className="chart-subtitle">Most profitable services with trend indicators</span>
       </div>
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={mockTopServices} layout="vertical" margin={{ top: 5, right: 30, left: 80, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
           <XAxis type="number" tickFormatter={(value) => `₱${value / 1000}k`} />
-          <YAxis type="category" dataKey="service" tick={{ fontSize: 12 }} width={70} />
+          <YAxis type="category" dataKey="service" tick={{ fontSize: 11 }} width={80} />
           <Tooltip
-            formatter={(value: number) => [`₱${value.toLocaleString()}`, 'Revenue']}
+            formatter={(value: number, name: string, props: any) => {
+              const trend = props.payload.trend;
+              return [
+                `₱${value.toLocaleString()} (${trend && trend > 0 ? `+${trend}%` : `${trend}%`})`,
+                'Revenue'
+              ];
+            }}
             contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: 'none' }}
           />
           <Bar dataKey="revenue" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={30} name="Revenue" />
@@ -253,18 +390,24 @@ const TopServicesChart: React.FC = () => {
 // ==================== TOP PRODUCTS CHART ====================
 const TopProductsChart: React.FC = () => {
   return (
-    <div className="chart-card">
+    <div className="chart-card-ai">
       <div className="chart-header">
         <h3>Top Products by Quantity Sold</h3>
-        <span className="chart-subtitle">Best-selling inventory items</span>
+        <span className="chart-subtitle">Best-selling inventory items with AI predictions</span>
       </div>
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={mockTopProducts} layout="vertical" margin={{ top: 5, right: 30, left: 100, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
           <XAxis type="number" />
-          <YAxis type="category" dataKey="product" tick={{ fontSize: 11 }} width={90} />
+          <YAxis type="category" dataKey="product" tick={{ fontSize: 10 }} width={100} />
           <Tooltip
-            formatter={(value: number) => [`${value} units`, 'Quantity Sold']}
+            formatter={(value: number, name: string, props: any) => {
+              const daysOut = props.payload.daysUntilOut;
+              return [
+                `${value} units sold (Est. ${daysOut} days until out of stock)`,
+                'Quantity'
+              ];
+            }}
             contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: 'none' }}
           />
           <Bar dataKey="quantitySold" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={30} name="Quantity Sold" />
@@ -276,11 +419,24 @@ const TopProductsChart: React.FC = () => {
 
 // ==================== SALES DISTRIBUTION PIE CHART ====================
 const SalesDistributionChart: React.FC = () => {
+  const renderCustomLabel = (props: any) => {
+    const { cx, cy, midAngle, innerRadius, outerRadius, percent } = props;
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+    const x = cx + radius * Math.cos(-midAngle * Math.PI / 180);
+    const y = cy + radius * Math.sin(-midAngle * Math.PI / 180);
+    
+    return (
+      <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight="bold">
+        {`${(percent * 100).toFixed(0)}%`}
+      </text>
+    );
+  };
+
   return (
-    <div className="chart-card">
+    <div className="chart-card-ai">
       <div className="chart-header">
         <h3>Sales Distribution</h3>
-        <span className="chart-subtitle">Revenue split by category</span>
+        <span className="chart-subtitle">Revenue split between services and products</span>
       </div>
       <ResponsiveContainer width="100%" height={280}>
         <PieChart>
@@ -292,16 +448,7 @@ const SalesDistributionChart: React.FC = () => {
             outerRadius={100}
             paddingAngle={5}
             dataKey="value"
-            label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-              const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-              const x = cx + radius * Math.cos(-midAngle * Math.PI / 180);
-              const y = cy + radius * Math.sin(-midAngle * Math.PI / 180);
-              return (
-                <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight="bold">
-                  {`${(percent * 100).toFixed(0)}%`}
-                </text>
-              );
-            }}
+            label={renderCustomLabel}
             labelLine={false}
           >
             {mockSalesDistribution.map((entry, index) => (
@@ -309,49 +456,52 @@ const SalesDistributionChart: React.FC = () => {
             ))}
           </Pie>
           <Tooltip formatter={(value: number) => [`${value}%`, 'Share']} />
-          <Legend
-            verticalAlign="bottom"
-            height={36}
-            iconType="circle"
-            formatter={(value) => <span style={{ fontSize: '13px' }}>{value}</span>}
-          />
+          <Legend verticalAlign="bottom" height={36} iconType="circle" />
         </PieChart>
       </ResponsiveContainer>
+      <div className="ai-insight-chip">
+        <IoSparkles size={12} />
+        <span>Services generate 68.5% of total revenue</span>
+      </div>
     </div>
   );
 };
 
-// ==================== PEAK HOURS CHART ====================
-const PeakHoursChart: React.FC = () => {
+// ==================== PEAK TIME ANALYTICS ====================
+const PeakTimeAnalytics: React.FC = () => {
+  const highestPredicted = mockPeakHours.reduce((max, item) => 
+    (item.predicted && item.predicted > (max.predicted || 0)) ? item : max, mockPeakHours[0]);
+
   return (
-    <div className="chart-card">
+    <div className="chart-card-ai">
       <div className="chart-header">
-        <h3>Peak Hours Analysis</h3>
-        <span className="chart-subtitle">Busiest hours for appointments</span>
+        <h3>Peak Hour Analytics</h3>
+        <span className="chart-subtitle">Busiest hours for appointments with AI prediction</span>
       </div>
       <ResponsiveContainer width="100%" height={280}>
-        <BarChart data={mockPeakHours} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
+        <ComposedChart data={mockPeakHours} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
           <XAxis dataKey="hour" tick={{ fontSize: 11 }} angle={-45} textAnchor="end" height={50} />
-          <YAxis tick={{ fontSize: 12 }} />
-          <Tooltip
-            formatter={(value: number, name: string) => [
-              name === 'appointments' ? `${value} appointments` : `₱${value.toLocaleString()}`,
-              name === 'appointments' ? 'Appointments' : 'Sales'
-            ]}
-            contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: 'none' }}
-          />
+          <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
+          <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+          <Tooltip contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: 'none' }} />
           <Legend />
-          <Bar dataKey="appointments" fill="#06b6d4" radius={[4, 4, 0, 0]} barSize={30} name="Appointments" />
-        </BarChart>
+          <Bar yAxisId="left" dataKey="appointments" fill="#06b6d4" radius={[4, 4, 0, 0]} barSize={25} name="Current Appointments" />
+          <Line yAxisId="right" type="monotone" dataKey="predicted" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 5" name="AI Prediction" dot={{ r: 4 }} />
+        </ComposedChart>
       </ResponsiveContainer>
+      <div className="ai-insight-chip highlight">
+        <IoSparkles size={12} />
+        <span>AI predicts {highestPredicted.hour} will be the busiest hour</span>
+      </div>
     </div>
   );
 };
 
-// ==================== INVENTORY ANALYTICS ====================
-const InventoryAnalytics: React.FC = () => {
+// ==================== INVENTORY INTELLIGENCE ====================
+const InventoryIntelligence: React.FC = () => {
   const lowStockItems = mockInventory.filter(item => item.stock <= item.reorderPoint);
+  const criticalItems = lowStockItems.filter(item => item.daysUntilOut <= 2);
   
   const movementData = [
     { name: 'Fast Moving', count: mockInventory.filter(i => i.movementRate === 'fast').length, color: '#10b981' },
@@ -360,22 +510,23 @@ const InventoryAnalytics: React.FC = () => {
   ];
 
   return (
-    <div className="inventory-analytics">
-      <div className="low-stock-section">
-        <h4>⚠️ Low Stock Alert</h4>
-        {lowStockItems.length === 0 ? (
-          <p className="no-alert">All inventory levels are healthy</p>
+    <div className="inventory-intelligence">
+      <div className="low-stock-section-ai">
+        <h4><IoWarningOutline size={14} /> Critical Stock Alert</h4>
+        {criticalItems.length === 0 ? (
+          <p className="no-alert">No critical stock issues</p>
         ) : (
-          <table className="low-stock-table">
+          <table className="low-stock-table-ai">
             <thead>
-              <tr><th>Item Name</th><th>Current Stock</th><th>Reorder Point</th></tr>
+              <tr><th>Item Name</th><th>Stock</th><th>Days Until Out</th><th>AI Suggestion</th></tr>
             </thead>
             <tbody>
-              {lowStockItems.map(item => (
+              {criticalItems.map(item => (
                 <tr key={item.id}>
-                  <td>{item.name}</td>
-                  <td className="stock-critical">{item.stock}</td>
-                  <td>{item.reorderPoint}</td>
+                  <td><strong>{item.name}</strong></td>
+                  <td className="stock-critical">{item.stock} units</td>
+                  <td className="stock-critical">{item.daysUntilOut} days</td>
+                  <td className="ai-suggestion">Reorder {item.recommendedReorder} units immediately</td>
                 </tr>
               ))}
             </tbody>
@@ -383,12 +534,12 @@ const InventoryAnalytics: React.FC = () => {
         )}
       </div>
       
-      <div className="movement-section">
+      <div className="movement-section-ai">
         <h4>Item Movement Classification</h4>
-        <ResponsiveContainer width="100%" height={200}>
+        <ResponsiveContainer width="100%" height={180}>
           <BarChart data={movementData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
             <YAxis />
             <Tooltip formatter={(value: number) => [`${value} items`, 'Count']} />
             <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={40}>
@@ -398,6 +549,10 @@ const InventoryAnalytics: React.FC = () => {
             </Bar>
           </BarChart>
         </ResponsiveContainer>
+        <div className="ai-insight-chip">
+          <IoSparkles size={12} />
+          <span>Fast-moving items: Prioritize auto-reordering</span>
+        </div>
       </div>
     </div>
   );
@@ -405,33 +560,74 @@ const InventoryAnalytics: React.FC = () => {
 
 // ==================== AI INSIGHTS PANEL ====================
 const AiInsightsPanel: React.FC = () => {
-  const getIcon = (type: string) => {
-    switch(type) {
-      case 'positive': return '📈';
-      case 'warning': return '⚠️';
-      default: return '💡';
-    }
-  };
+  const growthInsights = mockInsights.filter(i => i.type === 'growth');
+  const warningInsights = mockInsights.filter(i => i.type === 'warning');
+  const opportunityInsights = mockInsights.filter(i => i.type === 'opportunity');
 
   return (
-    <div className="insights-panel">
-      <div className="insights-header">
-        <h3>🤖 AI Sales Insights</h3>
-        <span className="insights-badge">Live Analysis</span>
+    <div className="insights-panel-ai-white">
+      <div className="insights-header-ai-white">
+        <h3><IoSparkles size={18} /> AI Sales Intelligence</h3>
+        <span className="insights-badge-ai-white">Real-time Analysis</span>
       </div>
-      <div className="insights-list">
-        {mockInsights.map(insight => (
-          <div key={insight.id} className={`insight-item ${insight.type}`}>
-            <span className="insight-icon">{getIcon(insight.type)}</span>
-            <span className="insight-text">{insight.text}</span>
+      
+      <div className="insights-categories-white">
+        {/* Growth Section */}
+        <div className="insight-category-white growth">
+          <div className="category-header-white">
+            <IoTrendingUpOutline size={14} />
+            <span>Growth Opportunities</span>
           </div>
-        ))}
+          {growthInsights.map(insight => (
+            <div key={insight.id} className="insight-item-ai-white growth">
+              <div className="insight-icon-white">{insight.icon || '📈'}</div>
+              <div className="insight-content-white">
+                <div className="insight-text-white">{insight.text}</div>
+                {insight.action && <div className="insight-action-white">→ {insight.action}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Warning Section */}
+        <div className="insight-category-white warning">
+          <div className="category-header-white">
+            <IoAlertCircle size={14} />
+            <span>Warnings & Risks</span>
+          </div>
+          {warningInsights.map(insight => (
+            <div key={insight.id} className="insight-item-ai-white warning">
+              <div className="insight-icon-white">{insight.icon || '⚠️'}</div>
+              <div className="insight-content-white">
+                <div className="insight-text-white">{insight.text}</div>
+                {insight.action && <div className="insight-action-white">→ {insight.action}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Opportunity Section */}
+        <div className="insight-category-white opportunity">
+          <div className="category-header-white">
+            <IoBulbOutline size={14} />
+            <span>Recommendations</span>
+          </div>
+          {opportunityInsights.map(insight => (
+            <div key={insight.id} className="insight-item-ai-white opportunity">
+              <div className="insight-icon-white">{insight.icon || '💡'}</div>
+              <div className="insight-content-white">
+                <div className="insight-text-white">{insight.text}</div>
+                {insight.action && <div className="insight-action-white">→ {insight.action}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
 };
 
-// ==================== MAIN DASHBOARD WITH NAVBAR ====================
+// ==================== MAIN DASHBOARD ====================
 const AdminAnalytics: React.FC = () => {
   const navigate = useNavigate();
   const notificationsModalRef = useRef<NotificationsModalRef>(null);
@@ -440,23 +636,7 @@ const AdminAnalytics: React.FC = () => {
   const totalTransactions = 342;
   const avgTransactionValue = totalRevenue / totalTransactions;
   const totalAppointments = 98;
-
-  const formatDate = (): string => {
-    const date = new Date();
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    });
-  };
-
-  const formatTime = (): string => {
-    const date = new Date();
-    return date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
-  };
+  const predictedRevenue = 287500;
 
   const handleLogout = (): void => {
     navigate('/login');
@@ -468,89 +648,69 @@ const AdminAnalytics: React.FC = () => {
 
       <div className="bodyContainer" style={{ paddingRight: '10px' }}>
         <div className="analytics-wrapper">
-          {/* Profile Header Section - Matching AdminDashboard style */}
-          <div className="profileCard" style={{ marginBottom: '20px', minHeight: '140px' }}>
-            <div className="profileHeader" style={{ minHeight: '100px', padding: '15px' }}>
-              <div className="profileInfo">
-                <div className="profileNameSection" style={{ marginLeft: '140px' }}>
-                  <h2 className="doctorName" style={{ fontSize: '18px' }}>{currentUser.name}</h2>
-                  <p className="doctorUsername" style={{ fontSize: '11px' }}>@{currentUser.username}</p>
-                  <p className="doctorRole" style={{ fontSize: '12px', marginTop: '12px' }}>{currentUser.role}</p>
-                </div>
-                <div className="profileDateTime">
-                  <div className="profileGlassContainer" style={{ padding: '4px 12px' }}>
-                    <span className="dateTimeText" style={{ fontSize: '11px' }}>
-                      {formatDate()} - {formatTime()}
-                    </span>
-                  </div>
-                  <button className="editProfileBtn" style={{ marginTop: '15px' }}>
-                    <IoCreateOutline size={16} />
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className="profileAvatar" style={{ bottom: '-15px' }}>
-              <img 
-                src={currentUser.image || '../assets/AgsikapLogo-Temp.png'}
-                alt={currentUser.name}
-                className="doctorAvatar"
-                style={{width: "100px", height: "100px", borderRadius: "50%", objectFit: "cover", border: "4px solid white"}}
-              />
-            </div>
-          </div>
+          {/* Page Header - Inventory Style */}
+          <PageHeader />
 
           {/* KPI Cards Row */}
-          <div className="kpi-grid">
+          <div className="kpi-grid-ai">
             <KpiCard 
               title="Total Revenue" 
               value={totalRevenue} 
               prefix="₱" 
               change={12} 
-              icon="💰"
+              icon={<IoWalletOutline size={20} color="#10b981" />}
               iconBgColor="#10b98113"
-              iconColor="#10b981"
+              aiPrediction="+15% expected next month"
             />
             <KpiCard 
               title="Total Transactions" 
               value={totalTransactions} 
               change={8} 
-              icon="📊"
+              icon={<IoReceiptOutline size={20} color="#3d67ee" />}
               iconBgColor="#3d67ee13"
-              iconColor="#3d67ee"
+              aiPrediction="+10% expected next month"
             />
             <KpiCard 
               title="Average Transaction" 
               value={Math.round(avgTransactionValue)} 
               prefix="₱" 
               change={5} 
-              icon="📈"
+              icon={<IoCalculatorOutline size={20} color="#8b5cf6" />}
               iconBgColor="#8b5cf613"
-              iconColor="#8b5cf6"
+              aiPrediction="Stable growth expected"
             />
             <KpiCard 
               title="Completed Appointments" 
               value={totalAppointments} 
               change={15} 
-              icon="📅"
+              icon={<IoCheckmarkDoneCircleOutline size={20} color="#f59e0b" />}
               iconBgColor="#f59e0b13"
-              iconColor="#f59e0b"
+              aiPrediction="Peak season approaching"
+            />
+            <KpiCard 
+              title="Predicted Revenue" 
+              value={predictedRevenue} 
+              prefix="₱" 
+              icon={<IoDiamondOutline size={20} color="#06b6d4" />}
+              iconBgColor="#06b6d413"
+              aiPrediction="Based on AI forecasting"
             />
           </div>
 
           {/* Main Charts Grid */}
-          <div className="charts-grid-2col">
-            <SalesTrendChart />
+          <div className="charts-grid-ai">
+            <SalesTrendWithForecast />
             <TopServicesChart />
           </div>
 
-          <div className="charts-grid-2col">
+          <div className="charts-grid-ai">
             <TopProductsChart />
             <SalesDistributionChart />
           </div>
 
-          <div className="charts-grid-2col">
-            <PeakHoursChart />
-            <InventoryAnalytics />
+          <div className="charts-grid-ai">
+            <PeakTimeAnalytics />
+            <InventoryIntelligence />
           </div>
 
           {/* AI Insights Panel */}
@@ -558,7 +718,6 @@ const AdminAnalytics: React.FC = () => {
         </div>
       </div>
 
-      {/* Notifications Modal */}
       <NotificationsAllModal 
         ref={notificationsModalRef}
         onNotificationClick={(notification) => {

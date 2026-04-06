@@ -5,8 +5,8 @@ import 'react-calendar/dist/Calendar.css';
 import '../doctor_pages/DoctorStyles.css'
 import userImg from '../assets/userAvatar.jpg';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell, Legend
+  Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  Line, Legend, ComposedChart
 } from 'recharts';
 
 // Icons
@@ -22,15 +22,14 @@ import {
   IoDocumentTextOutline as IoDocumentText,
   IoPeopleOutline as IoPeople,
   IoPawOutline,
-  IoTrendingUpOutline,
   IoTimeOutline,
   IoWarningOutline,
   IoArrowUp,
   IoArrowDown,
   IoVideocamOutline,
   IoMedkitOutline,
-  IoCalendarNumberOutline
-} from 'react-icons/io5';
+  IoCalendarNumberOutline,
+  IoSparkles} from 'react-icons/io5';
 
 import Navbar from '../reusable_components/NavBar';
 import NotificationsAllModal from '../reusable_components/NotificationsAllModal';
@@ -74,26 +73,91 @@ interface NotificationItem {
   color: string;
 }
 
-// Chart data interfaces
-interface WeeklyData {
+
+interface VisitData {
   day: string;
   appointments: number;
-  patients: number;
+  walkIns: number;
+  total: number;
 }
 
-interface ServiceDistribution {
-  name: string;
-  value: number;
-  color: string;
+// ========== KPI CARD COMPONENT ==========
+interface KpiCardProps {
+  title: string;
+  value: string | number;
+  change?: number;
+  prefix?: string;
+  suffix?: string;
+  icon?: React.ReactNode;
+  iconBgColor?: string;
+  iconColor?: string;
+  trendLabel?: string;
 }
 
-interface MonthlyTrend {
-  month: string;
-  revenue: number;
-  visits: number;
-}
+const KpiCard: React.FC<KpiCardProps> = ({ 
+  title, 
+  value, 
+  change, 
+  prefix, 
+  suffix, 
+  icon, 
+  iconBgColor, 
+  trendLabel
+}) => {
+  const isPositive = change && change > 0;
 
-// ========== END OF INTERFACES ==========
+  return (
+    <div style={{ 
+      backgroundColor: 'white', 
+      borderRadius: '16px', 
+      padding: '16px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+      border: '1px solid #f0f2f5',
+      transition: 'all 0.2s ease'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <span style={{ fontSize: '13px', fontWeight: 500, color: '#64748b' }}>{title}</span>
+        <div style={{ 
+          backgroundColor: iconBgColor || '#3d67ee13', 
+          width: '36px', 
+          height: '36px', 
+          borderRadius: '12px', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center' 
+        }}>
+          {icon}
+        </div>
+      </div>
+      <div style={{ fontSize: '28px', fontWeight: 700, color: '#1e293b', marginBottom: '8px' }}>
+        {prefix && <span style={{ fontSize: '20px', marginRight: '2px' }}>{prefix}</span>}
+        {typeof value === 'number' ? value.toLocaleString() : value}
+        {suffix && <span style={{ fontSize: '16px', marginLeft: '2px' }}>{suffix}</span>}
+      </div>
+      {change !== undefined && (
+        <div>
+          <div style={{ 
+            display: 'inline-flex', 
+            alignItems: 'center', 
+            gap: '4px', 
+            fontSize: '11px',
+            padding: '2px 8px',
+            borderRadius: '20px',
+            backgroundColor: isPositive ? '#10b98113' : '#ef444413',
+            color: isPositive ? '#10b981' : '#ef4444'
+          }}>
+            {isPositive ? <IoArrowUpOutline size={10} /> : <IoArrowDownOutline size={10} />}
+            {Math.abs(change)}% {trendLabel || 'from last month'}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
+
+// ========== END OF COMPONENTS ==========
 
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -125,7 +189,7 @@ const AdminDashboard: React.FC = () => {
     { id: 7, itemName: 'Vitamin Supplements', type: 'IN', quantity: 15, user: 'Admin', timestamp: '1 day ago', category: 'Medicines' },
   ];
 
-  // Upcoming Calendar Events - Expanded mock data
+  // Upcoming Calendar Events
   const allCalendarEvents: CalendarEvent[] = [
     { id: 1, title: 'Vaccination Drive', date: '2026-03-20', time: '09:00 AM', type: 'appointment', description: 'Annual rabies vaccination event' },
     { id: 2, title: 'Staff Meeting', date: '2026-03-18', time: '02:00 PM', type: 'meeting', description: 'Monthly clinic staff meeting' },
@@ -176,33 +240,18 @@ const AdminDashboard: React.FC = () => {
     },
   ];
 
-  // Chart Data
-  const weeklyData: WeeklyData[] = [
-    { day: 'Mon', appointments: 12, patients: 8 },
-    { day: 'Tue', appointments: 15, patients: 11 },
-    { day: 'Wed', appointments: 18, patients: 14 },
-    { day: 'Thu', appointments: 14, patients: 10 },
-    { day: 'Fri', appointments: 20, patients: 16 },
-    { day: 'Sat', appointments: 8, patients: 6 },
-    { day: 'Sun', appointments: 4, patients: 3 },
+  // Recent Clinic Visits Data
+  const recentVisitsData: VisitData[] = [
+    { day: 'Mon', appointments: 12, walkIns: 5, total: 17 },
+    { day: 'Tue', appointments: 15, walkIns: 7, total: 22 },
+    { day: 'Wed', appointments: 18, walkIns: 6, total: 24 },
+    { day: 'Thu', appointments: 14, walkIns: 8, total: 22 },
+    { day: 'Fri', appointments: 20, walkIns: 10, total: 30 },
+    { day: 'Sat', appointments: 8, walkIns: 4, total: 12 },
+    { day: 'Sun', appointments: 4, walkIns: 2, total: 6 },
   ];
 
-  const serviceDistribution: ServiceDistribution[] = [
-    { name: 'Check-up', value: 45, color: '#3d67ee' },
-    { name: 'Vaccination', value: 25, color: '#10b981' },
-    { name: 'Grooming', value: 15, color: '#f59e0b' },
-    { name: 'Dental', value: 10, color: '#8b5cf6' },
-    { name: 'Surgery', value: 5, color: '#ef4444' },
-  ];
-
-  const monthlyTrends: MonthlyTrend[] = [
-    { month: 'Jan', revenue: 12500, visits: 145 },
-    { month: 'Feb', revenue: 13800, visits: 162 },
-    { month: 'Mar', revenue: 14200, visits: 178 },
-    { month: 'Apr', revenue: 15800, visits: 195 },
-    { month: 'May', revenue: 16200, visits: 210 },
-    { month: 'Jun', revenue: 17500, visits: 228 },
-  ];
+  // Weekly Data for chart
 
   // Helper functions
   const getEventIcon = (type: string) => {
@@ -280,14 +329,15 @@ const AdminDashboard: React.FC = () => {
   };
 
   const quickActions = [
-    { icon: IoCalendarOutline, label: 'Appointments', iconColor: '#3566ee', bgColor: '#3566ee13', borderColor: '#3566ee', action: () => navigate('/schedule') },
-    { icon: IoCalendarNumberOutline, label: 'Calendar', iconColor: '#06b6d4', bgColor: '#06b6d413', borderColor: '#06b6d4', action: () => console.log('Calendar feature coming soon') },
+    { icon: IoCalendarOutline, label: 'Appointments', iconColor: '#3566ee', bgColor: '#3566ee13', borderColor: '#3566ee', hoverBg: '#3566ee25', action: () => navigate('/schedule') },
+    { icon: IoCalendarNumberOutline, label: 'Calendar', iconColor: '#06b6d4', bgColor: '#06b6d413', borderColor: '#06b6d4', hoverBg: '#06b6d425', action: () => console.log('Calendar feature coming soon') },
     { 
       icon: IoNotificationsOutline, 
       label: 'Notifications', 
       iconColor: '#eb8716', 
       bgColor: '#eb871613', 
-      borderColor: '#eb8716', 
+      borderColor: '#eb8716',
+      hoverBg: '#eb871625',
       action: () => notificationsModalRef.current?.openModal()
     },
     { 
@@ -295,11 +345,12 @@ const AdminDashboard: React.FC = () => {
       label: 'Add Patient', 
       iconColor: '#c201c2', 
       bgColor: '#c201c213', 
-      borderColor: '#c201c2', 
+      borderColor: '#c201c2',
+      hoverBg: '#c201c225',
       action: () => navigate('/patient-records', { state: { autoOpenAddMode: true } })
     },
-    { icon: IoDocumentText, label: 'Records', iconColor: '#f12ba5', bgColor: '#f12ba513', borderColor: '#f12ba5', action: () => navigate('/patient-records') },
-    { icon: IoLayersOutline, label: 'Inventory', iconColor: '#ff2222', bgColor: '#ff222213', borderColor: '#ff2222', action: () => navigate('/inventory') },
+    { icon: IoDocumentText, label: 'Records', iconColor: '#f12ba5', bgColor: '#f12ba513', borderColor: '#f12ba5', hoverBg: '#f12ba525', action: () => navigate('/patient-records') },
+    { icon: IoLayersOutline, label: 'Inventory', iconColor: '#ff2222', bgColor: '#ff222213', borderColor: '#ff2222', hoverBg: '#ff222225', action: () => navigate('/inventory') },
   ];
 
   const today = new Date().toISOString().split('T')[0];
@@ -308,6 +359,8 @@ const AdminDashboard: React.FC = () => {
     .sort((a, b) => a.date.localeCompare(b.date));
   
   const displayedEvents = showAllEvents ? upcomingEvents : upcomingEvents.slice(0, 5);
+
+  // Calculate totals from recent visits
 
   return (
     <div className="biContainer" style={{ backgroundColor: '#f8fafc', minHeight: '100vh' }}>
@@ -318,7 +371,7 @@ const AdminDashboard: React.FC = () => {
         <div className="doctorTableContainer">
           {/* Left Column */}
           <div className="leftContainer" style={{ paddingRight: '15px' }}>
-            {/* Doctor Profile Card - COMPACT */}
+            {/* Doctor Profile Card */}
             <div className="profileCard" style={{ marginBottom: '20px', minHeight: '140px' }}>
               <div className="profileHeader" style={{ minHeight: '100px', padding: '15px' }}>
                 <div className="profileInfo">
@@ -349,12 +402,25 @@ const AdminDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Monthly Reports - 4 CARDS IN A ROW with Right Icons */}
+            {/* Monthly Reports - KPI Cards */}
             <div style={{ marginBottom: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <div>
-                  <h3 className="sectionTitle" style={{ fontSize: '15px', marginTop: '15px', marginBottom: '2px' }}>Monthly Reports</h3>
+                  <h3 className="sectionTitle" style={{ fontSize: '15px', marginTop: '0', marginBottom: '2px' }}>Monthly Reports</h3>
                   <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '0' }}>Overview of this month's clinic activity</p>
+                </div>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  backgroundColor: '#3d67ee10', 
+                  padding: '4px 10px', 
+                  borderRadius: '20px',
+                  fontSize: '10px',
+                  color: '#3d67ee'
+                }}>
+                  <IoSparkles size={12} />
+                  <span>Live Analytics</span>
                 </div>
               </div>
               
@@ -363,200 +429,127 @@ const AdminDashboard: React.FC = () => {
                 gridTemplateColumns: 'repeat(4, 1fr)', 
                 gap: '12px'
               }}>
-                {/* Total Patients Card - Purple */}
-                <div style={{ 
-                  background: 'linear-gradient(135deg, #8b5cf6, #a78bfa)', 
-                  borderRadius: '14px', 
-                  padding: '14px',
-                  color: 'white',
-                  position: 'relative',
-                  overflow: 'hidden'
-                }}>
-                  <div style={{ position: 'absolute', right: '12px', top: '12px', opacity: 0.3 }}>
-                    <IoPeople size={32} />
-                  </div>
-                  <div style={{ opacity: 0.8, fontSize: '11px', marginBottom: '4px' }}>Total Patients</div>
-                  <div style={{ fontSize: '28px', fontWeight: 700, marginBottom: '4px' }}>75</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', opacity: 0.9 }}>
-                    <IoArrowUpOutline size={10} />
-                    <span>2% from last month</span>
-                  </div>
-                </div>
-                
-                {/* Appointments Card - Teal */}
-                <div style={{ 
-                  background: 'linear-gradient(135deg, #14b8a6, #2dd4bf)', 
-                  borderRadius: '14px', 
-                  padding: '14px',
-                  color: 'white',
-                  position: 'relative',
-                  overflow: 'hidden'
-                }}>
-                  <div style={{ position: 'absolute', right: '12px', top: '12px', opacity: 0.3 }}>
-                    <IoCalendarClearOutline size={32} />
-                  </div>
-                  <div style={{ opacity: 0.8, fontSize: '11px', marginBottom: '4px' }}>Appointments</div>
-                  <div style={{ fontSize: '28px', fontWeight: 700, marginBottom: '4px' }}>50</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', opacity: 0.9 }}>
-                    <IoArrowDownOutline size={10} />
-                    <span>5% from last month</span>
-                  </div>
-                </div>
-                
-                {/* Inventory Stock Card - Orange */}
-                <div style={{ 
-                  background: 'linear-gradient(135deg, #f97316, #fb923c)', 
-                  borderRadius: '14px', 
-                  padding: '14px',
-                  color: 'white',
-                  position: 'relative',
-                  overflow: 'hidden'
-                }}>
-                  <div style={{ position: 'absolute', right: '12px', top: '12px', opacity: 0.3 }}>
-                    <IoLayersOutline size={32} />
-                  </div>
-                  <div style={{ opacity: 0.8, fontSize: '11px', marginBottom: '4px' }}>Inventory Items</div>
-                  <div style={{ fontSize: '28px', fontWeight: 700, marginBottom: '4px' }}>142</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', opacity: 0.9 }}>
-                    <IoArrowDownOutline size={10} />
-                    <span>8 items low stock</span>
-                  </div>
-                </div>
-                
-                {/* Revenue Card - Pink */}
-                <div style={{ 
-                  background: 'linear-gradient(135deg, #ec4899, #f472b6)', 
-                  borderRadius: '14px', 
-                  padding: '14px',
-                  color: 'white',
-                  position: 'relative',
-                  overflow: 'hidden'
-                }}>
-                  <div style={{ position: 'absolute', right: '12px', top: '12px', opacity: 0.3 }}>
-                    <IoPawOutline size={32} />
-                  </div>
-                  <div style={{ opacity: 0.8, fontSize: '11px', marginBottom: '4px' }}>Revenue</div>
-                  <div style={{ fontSize: '28px', fontWeight: 700, marginBottom: '4px' }}>₱158K</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', opacity: 0.9 }}>
-                    <IoArrowUpOutline size={10} />
-                    <span>12% from last month</span>
-                  </div>
-                </div>
+                <KpiCard 
+                  title="Total Patients"
+                  value={75}
+                  change={2}
+                  icon={<IoPeople size={18} color="#8b5cf6" />}
+                  iconBgColor="#8b5cf613"
+                  iconColor="#8b5cf6"
+                  trendLabel="from last month"
+                />
+                <KpiCard 
+                  title="Appointments"
+                  value={50}
+                  change={-5}
+                  icon={<IoCalendarClearOutline size={18} color="#14b8a6" />}
+                  iconBgColor="#14b8a613"
+                  iconColor="#14b8a6"
+                  trendLabel="from last month"
+                />
+                <KpiCard 
+                  title="Inventory Items"
+                  value={142}
+                  change={-8}
+                  icon={<IoLayersOutline size={18} color="#f97316" />}
+                  iconBgColor="#f9731613"
+                  iconColor="#f97316"
+                  trendLabel="items low stock"
+                />
+                <KpiCard 
+                  title="Revenue"
+                  value={158000}
+                  prefix="₱"
+                  change={12}
+                  icon={<IoPawOutline size={18} color="#ec4899" />}
+                  iconBgColor="#ec489913"
+                  iconColor="#ec4899"
+                  trendLabel="from last month"
+                />
               </div>
             </div>
 
-            {/* Quick Actions - with colored backgrounds and functional buttons */}
+                        {/* Quick Actions - PRETTIER & RESPONSIVE */}
             <h3 className="sectionTitle" style={{ fontSize: '15px', marginBottom: '2px' }}>Quick Actions</h3>
             <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '12px' }}>Frequently used tasks</p>
             
-            <div className="quickActions" style={{ gap: '10px', marginBottom: '30px' }}>
+            <div style={{ 
+              display: 'grid', 
+              gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', 
+              gap: '10px', 
+              marginBottom: '30px'
+            }}>
               {quickActions.map((action, index) => (
                 <button 
                   key={index}
-                  className="quickActionBtn" 
                   onClick={() => handleQuickAction(action.action)}
                   style={{ 
-                    padding: '8px', 
-                    gap: '5px',
-                    borderColor: action.borderColor,
+                    padding: '12px 8px', 
+                    gap: '8px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '14px',
+                    border: `1px solid ${action.borderColor}`,
                     backgroundColor: action.bgColor,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    minWidth: '85px'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = action.hoverBg;
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = `0 4px 12px ${action.borderColor}30`;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = action.bgColor;
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
                   }}
                 >
-                  <action.icon size={20} color={action.iconColor} />
-                  <span style={{ fontSize: '9px', color: action.iconColor }}>{action.label}</span>
+                  <action.icon size={22} color={action.iconColor} />
+                  <span style={{ fontSize: '10px', fontWeight: 500, color: action.iconColor, textAlign: 'center' }}>{action.label}</span>
                 </button>
               ))}
             </div>
 
-            {/* Weekly Appointments Chart */}
-            <div className="appointmentsCard" style={{ padding: '15px', marginTop: '0', marginBottom: '15px' }}>
-              <div className="cardHeader" style={{ marginBottom: '5px' }}>
-                <h3 className="cardTitle" style={{ fontSize: '14px', margin: 0 }}>Weekly Activity</h3>
-                <button className="viewAllBtn" style={{ fontSize: '11px' }}>Details</button>
-              </div>
-              <p style={{ fontSize: '10px', color: '#666', marginBottom: '12px' }}>Appointments & New Patients</p>
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={weeklyData} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="day" tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 10 }} />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Bar dataKey="appointments" name="Appointments" fill="#3d67ee" radius={[4, 4, 0, 0]} barSize={20} />
-                  <Bar dataKey="patients" name="New Patients" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Service Distribution + Monthly Trend */}
-            <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
-              {/* Pie Chart - Service Distribution */}
-              <div className="patientsCard" style={{ padding: '15px', flex: 1, marginTop: '0' }}>
-                <div className="cardHeader" style={{ marginBottom: '5px' }}>
-                  <h3 className="cardTitle" style={{ fontSize: '13px', margin: 0 }}>Services</h3>
+            {/* Weekly Activity Section */}
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div>
+                  <h3 className="sectionTitle" style={{ fontSize: '15px', marginTop: '0', marginBottom: '2px' }}>Weekly Activity</h3>
+                  <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '0' }}>Appointments vs Walk-ins this week</p>
                 </div>
-                <ResponsiveContainer width="100%" height={160}>
-                  <PieChart>
-                    <Pie
-                      data={serviceDistribution}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={35}
-                      outerRadius={55}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {serviceDistribution.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend 
-                      wrapperStyle={{ fontSize: '9px', paddingTop: '5px' }}
-                      iconSize={8}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+                <button className="viewAllBtn" style={{ fontSize: '11px' }}>View Details</button>
               </div>
+            
 
-              {/* Line Chart - Monthly Trend */}
-              <div className="patientsCard" style={{ padding: '15px', flex: 1.5, marginTop: '0' }}>
-                <div className="cardHeader" style={{ marginBottom: '5px' }}>
-                  <h3 className="cardTitle" style={{ fontSize: '13px', margin: 0 }}>Monthly Trend</h3>
-                  <IoTrendingUpOutline size={14} color="#10b981" />
-                </div>
-                <ResponsiveContainer width="100%" height={160}>
-                  <LineChart data={monthlyTrends} margin={{ top: 5, right: 5, left: -15, bottom: 5 }}>
+              {/* Chart */}
+              <div style={{ 
+                backgroundColor: 'white', 
+                borderRadius: '16px', 
+                padding: '16px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                border: '1px solid #f0f2f5'
+              }}>
+                <ResponsiveContainer width="100%" height={250}>
+                  <ComposedChart data={recentVisitsData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="month" tick={{ fontSize: 9 }} />
-                    <YAxis yAxisId="left" tick={{ fontSize: 9 }} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 9 }} />
+                    <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip content={<CustomTooltip />} />
-                    <Line 
-                      yAxisId="left"
-                      type="monotone" 
-                      dataKey="visits" 
-                      name="Visits" 
-                      stroke="#3d67ee" 
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                    />
-                    <Line 
-                      yAxisId="right"
-                      type="monotone" 
-                      dataKey="revenue" 
-                      name="Revenue (₱)" 
-                      stroke="#10b981" 
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                    />
-                  </LineChart>
+                    <Legend />
+                    <Bar dataKey="appointments" name="Appointments" fill="#3d67ee" radius={[4, 4, 0, 0]} barSize={25} />
+                    <Bar dataKey="walkIns" name="Walk-ins" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={25} />
+                    <Line type="monotone" dataKey="total" name="Total Visits" stroke="#10b981" strokeWidth={2} dot={{ r: 4, fill: '#10b981' }} />
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            {/* Inventory Movement Logs - IN and OUT */}
-            <div className="appointmentsCard" style={{ padding: '15px', marginBottom: '15px' }}>
+            {/* Inventory Movement Logs */}
+            <div className="appointmentsCard" style={{ padding: '15px', marginBottom: '15px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f0f2f5' }}>
               <div className="cardHeader" style={{ marginBottom: '8px' }}>
                 <h3 className="cardTitle" style={{ fontSize: '14px', margin: 0 }}>Inventory Movement Logs</h3>
                 <button className="viewAllBtn" style={{ fontSize: '11px' }}>View All</button>
@@ -611,10 +604,10 @@ const AdminDashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Right Column - WIDER with overflow-y auto */}
+          {/* Right Column */}
           <div className="rightContainer" style={{ gap: '12px', flex: '0.7', overflowY: 'auto', paddingLeft: '2px' }}>
             {/* Notifications Section */}
-            <div className="notificationsCard" style={{ padding: '12px', height: 'auto', maxHeight: '320px' }}>
+            <div className="notificationsCard" style={{ padding: '12px', height: 'auto', maxHeight: '320px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f0f2f5' }}>
               <div className="notificationsHeader" style={{ marginBottom: '10px', gap: '40px' }}>
                 <div className="notificationsTitle" style={{ minWidth: 'auto', gap: '6px' }}>
                   <IoNotificationsOutline size={14} />
@@ -630,7 +623,7 @@ const AdminDashboard: React.FC = () => {
               </div>
               <div className="notificationsList" style={{ gap: '6px' }}>
                 {notificationItems.map(notif => (
-                  <div key={notif.id} className="notificationItem" style={{ padding: '8px', gap: '8px' }}>
+                  <div key={notif.id} className="notificationItem" style={{ padding: '8px', gap: '8px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
                     <div className="notificationIcon" style={{ padding: '5px', backgroundColor: `${notif.color}20`, borderRadius: '8px' }}>
                       {notif.icon === 'calendar' && <IoCalendarOutline size={12} color={notif.color} />}
                       {notif.icon === 'document' && <IoDocumentText size={12} color={notif.color} />}
@@ -638,18 +631,18 @@ const AdminDashboard: React.FC = () => {
                       {notif.icon === 'package' && <IoLayersOutline size={12} color={notif.color} />}
                     </div>
                     <div className="notificationContent">
-                      <p className="notificationTitle" style={{ fontSize: '11px' }}>{notif.title}</p>
-                      <p className="notificationDesc" style={{ fontSize: '9px' }}>{notif.description}</p>
+                      <p className="notificationTitle" style={{ fontSize: '11px', fontWeight: 600 }}>{notif.title}</p>
+                      <p className="notificationDesc" style={{ fontSize: '9px', color: '#666' }}>{notif.description}</p>
                     </div>
-                    <span className="notificationTime" style={{ fontSize: '9px' }}>{notif.time}</span>
+                    <span className="notificationTime" style={{ fontSize: '9px', color: '#999' }}>{notif.time}</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Calendar Component - SMALLER */}
+            {/* Calendar Component */}
             <div className="calendarCard" style={{ marginTop: '0' }}>
-              <div className="calendarGradient" style={{ padding: '8px' }}>
+              <div className="calendarGradient" style={{ padding: '8px', borderRadius: '16px' }}>
                 <Calendar
                   onChange={handleDateChange}
                   value={date}
@@ -665,32 +658,32 @@ const AdminDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Upcoming Events - NO GRADIENT BG, White card */}
+            {/* Upcoming Events */}
             <div style={{ 
               backgroundColor: 'white',
               borderRadius: '16px',
               padding: '15px',
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
-              border: '1px solid #e2e8f0'
+              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+              border: '1px solid #f0f2f5'
             }}>
               <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ 
-                  fontSize: '10px', 
+                  fontSize: '13px', 
                   margin: 0, 
                   display: 'flex', 
                   alignItems: 'center', 
                   gap: '8px', 
-                  color: '#1e293b'
+                  color: '#1e293b',
+                  fontWeight: 600
                 }}>
-                  <IoCalendarNumberOutline size={18} color="#3d67ee" />
+                  <IoCalendarNumberOutline size={16} color="#3d67ee" />
                   <span>Upcoming Events</span>
                   <span style={{ 
-                    fontSize: '9px', 
+                    fontSize: '10px', 
                     backgroundColor: '#ebf4ff', 
-                    padding: '0px 8px', 
+                    padding: '2px 8px', 
                     borderRadius: '12px', 
-                    color: '#3d67ee',
-                    flexShrink: 0
+                    color: '#3d67ee'
                   }}>
                     {upcomingEvents.length}
                   </span>
@@ -721,7 +714,7 @@ const AdminDashboard: React.FC = () => {
                     const formattedDate = eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                     const isPast = event.date < today;
                     return (
-                      <div key={event.id} className="upcomingEventItem" style={{ 
+                      <div key={event.id} style={{ 
                         backgroundColor: '#f8fafc', 
                         borderRadius: '10px', 
                         padding: '10px', 
@@ -762,7 +755,7 @@ const AdminDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Notifications Modal - Hidden component, just for modal access */}
+      {/* Notifications Modal */}
       <NotificationsAllModal 
         ref={notificationsModalRef}
         onNotificationClick={(notification) => {
