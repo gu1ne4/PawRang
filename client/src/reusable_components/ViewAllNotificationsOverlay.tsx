@@ -17,7 +17,7 @@ import {
   IoSquareOutline,
   IoEyeOutline
 } from 'react-icons/io5';
-import type { AppNotification } from './Notifications';
+import type { Notification as AppNotification } from './NotificationsAllModal';
 import './NotifStyles.css';
 
 interface ViewAllNotificationsOverlayProps {

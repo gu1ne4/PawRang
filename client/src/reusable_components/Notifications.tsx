@@ -15,6 +15,8 @@ import './NotifStyles.css';
 // Re-export Notification interface for other components
 export type { Notification };
 
+const API_URL = 'http://localhost:5000';
+
 interface NotificationsProps {
   onNotificationClick?: (notification: Notification) => void;
   onMarkAsRead?: (id: string) => void;
@@ -34,59 +36,7 @@ const Notifications: React.FC<NotificationsProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: '1',
-      title: 'Low Stock Alert',
-      message: 'Premium Dog Food Adult 5kg is running low (12 units left)',
-      type: 'warning',
-      timestamp: new Date(Date.now() - 1000 * 60 * 30),
-      read: false,
-      link: '/inventory'
-    },
-    {
-      id: '2',
-      title: 'Expiration Alert',
-      message: 'Gourmet Cat Food Fish Flavor 2kg expires in 5 days',
-      type: 'warning',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
-      read: false,
-      link: '/inventory'
-    },
-    {
-      id: '3',
-      title: 'Product Added',
-      message: 'New product "Orthopedic Dog Bed" has been added to inventory',
-      type: 'success',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24),
-      read: true,
-      link: '/inventory'
-    },
-    {
-      id: '4',
-      title: 'System Update',
-      message: 'System maintenance scheduled for tomorrow at 2:00 AM',
-      type: 'info',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48),
-      read: true,
-    },
-    {
-      id: '5',
-      title: 'New Order Received',
-      message: 'Order #12345 has been placed for $245.00',
-      type: 'info',
-      timestamp: new Date(Date.now() - 1000 * 60 * 15),
-      read: false,
-    },
-    {
-      id: '6',
-      title: 'Payment Failed',
-      message: 'Payment for Order #12340 has failed',
-      type: 'error',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5),
-      read: false,
-    }
-  ]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   // Ref for the modal component
   const modalRef = useRef<NotificationsModalRef>(null);
@@ -95,6 +45,54 @@ const Notifications: React.FC<NotificationsProps> = ({
   const [position, setPosition] = useState({ top: 0, right: 0 });
 
   const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
+
+  const getAdminUserId = useCallback(() => {
+    try {
+      const rawSession = localStorage.getItem('userSession');
+      if (!rawSession) return '';
+      const session = JSON.parse(rawSession);
+      return String(session?.id || session?.pk || '').trim();
+    } catch {
+      return '';
+    }
+  }, []);
+
+  const normalizeFetchedNotification = useCallback((record: any): Notification => ({
+    id: String(record.notificationId || record.id || ''),
+    title: String(record.title || ''),
+    message: String(record.message || ''),
+    type: (record.type || 'info') as Notification['type'],
+    timestamp: new Date(record.timestamp || Date.now()),
+    read: Boolean(record.read),
+    link: record.link || undefined,
+  }), []);
+
+  const fetchNotifications = useCallback(async () => {
+    const adminUserId = getAdminUserId();
+    if (!adminUserId) {
+      setNotifications([]);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/admin-notifications?admin_user_id=${encodeURIComponent(adminUserId)}&module=inventory&limit=50`
+      );
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to fetch notifications.');
+      }
+
+      const normalized = Array.isArray(result.notifications)
+        ? result.notifications.map(normalizeFetchedNotification)
+        : [];
+      setNotifications(normalized);
+    } catch (error) {
+      console.error('Fetch notifications error:', error);
+      setNotifications([]);
+    }
+  }, [getAdminUserId, normalizeFetchedNotification]);
 
   useEffect(() => {
     if (isOpen && anchorEl) {
@@ -125,25 +123,70 @@ const Notifications: React.FC<NotificationsProps> = ({
     };
   }, [isOpen, anchorEl]);
 
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
   const handleButtonClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
     setAnchorEl(event.currentTarget);
-    setIsOpen(prev => !prev);
-  }, []);
-
-  const handleMarkAsRead = useCallback((id: string) => {
-    setNotifications(prev => {
-      const updated = prev.map(notif =>
-        notif.id === id ? { ...notif, read: true } : notif
-      );
-      return updated;
+    setIsOpen(prev => {
+      const nextIsOpen = !prev;
+      if (nextIsOpen) {
+        fetchNotifications();
+      }
+      return nextIsOpen;
     });
-    if (onMarkAsRead) onMarkAsRead(id);
-  }, [onMarkAsRead]);
+  }, [fetchNotifications]);
 
-  const handleMarkAllAsRead = useCallback(() => {
+  const handleMarkAsRead = useCallback(async (id: string) => {
+    const adminUserId = getAdminUserId();
+    if (!adminUserId) return;
+
+    setNotifications(prev =>
+      prev.map(notif =>
+        notif.id === id ? { ...notif, read: true } : notif
+      )
+    );
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin-notifications/${id}/read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminUserId }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to mark notification as read.');
+      }
+      if (onMarkAsRead) onMarkAsRead(id);
+    } catch (error) {
+      console.error('Mark notification as read error:', error);
+      fetchNotifications();
+    }
+  }, [fetchNotifications, getAdminUserId, onMarkAsRead]);
+
+  const handleMarkAllAsRead = useCallback(async () => {
+    const adminUserId = getAdminUserId();
+    if (!adminUserId) return;
+
     setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
-    if (onMarkAllAsRead) onMarkAllAsRead();
-  }, [onMarkAllAsRead]);
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin-notifications/read-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminUserId, module: 'inventory' }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to mark all notifications as read.');
+      }
+      if (onMarkAllAsRead) onMarkAllAsRead();
+    } catch (error) {
+      console.error('Mark all notifications as read error:', error);
+      fetchNotifications();
+    }
+  }, [fetchNotifications, getAdminUserId, onMarkAllAsRead]);
 
   const handleViewAll = useCallback(() => {
     if (onViewAll) onViewAll();
@@ -258,9 +301,10 @@ const Notifications: React.FC<NotificationsProps> = ({
 
       <NotificationsAllModal
         ref={modalRef}
+        notifications={notifications}
         onNotificationClick={onNotificationClick}
-        onMarkAsRead={onMarkAsRead}
-        onMarkAllAsRead={onMarkAllAsRead}
+        onMarkAsRead={handleMarkAsRead}
+        onMarkAllAsRead={handleMarkAllAsRead}
       />
     </>
   );

@@ -7,7 +7,6 @@ import {
   IoAlertCircleOutline,
   IoCheckmarkDoneOutline,
   IoSearchOutline,
-  IoTrashOutline,
   IoCheckboxOutline,
   IoCheckboxSharp,
   IoSquareOutline,
@@ -31,70 +30,19 @@ export interface NotificationsModalRef {
 }
 
 interface NotificationsAllModalProps {
+  notifications: Notification[];
   onNotificationClick?: (notification: Notification) => void;
-  onMarkAsRead?: (id: string) => void;
-  onMarkAllAsRead?: () => void;
+  onMarkAsRead?: (id: string) => void | Promise<void>;
+  onMarkAllAsRead?: () => void | Promise<void>;
 }
 
 const NotificationsAllModal = forwardRef<NotificationsModalRef, NotificationsAllModalProps>(({
+  notifications,
   onNotificationClick,
   onMarkAsRead,
   onMarkAllAsRead,
 }, ref) => {
   const [showViewAllModal, setShowViewAllModal] = useState<boolean>(false);
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: '1',
-      title: 'Low Stock Alert',
-      message: 'Premium Dog Food Adult 5kg is running low (12 units left)',
-      type: 'warning',
-      timestamp: new Date(Date.now() - 1000 * 60 * 30),
-      read: false,
-      link: '/inventory'
-    },
-    {
-      id: '2',
-      title: 'Expiration Alert',
-      message: 'Gourmet Cat Food Fish Flavor 2kg expires in 5 days',
-      type: 'warning',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
-      read: false,
-      link: '/inventory'
-    },
-    {
-      id: '3',
-      title: 'Product Added',
-      message: 'New product "Orthopedic Dog Bed" has been added to inventory',
-      type: 'success',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24),
-      read: true,
-      link: '/inventory'
-    },
-    {
-      id: '4',
-      title: 'System Update',
-      message: 'System maintenance scheduled for tomorrow at 2:00 AM',
-      type: 'info',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 48),
-      read: true,
-    },
-    {
-      id: '5',
-      title: 'New Order Received',
-      message: 'Order #12345 has been placed for $245.00',
-      type: 'info',
-      timestamp: new Date(Date.now() - 1000 * 60 * 15),
-      read: false,
-    },
-    {
-      id: '6',
-      title: 'Payment Failed',
-      message: 'Payment for Order #12340 has failed',
-      type: 'error',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60 * 5),
-      read: false,
-    }
-  ]);
 
   useImperativeHandle(ref, () => ({
     openModal: () => {
@@ -103,17 +51,10 @@ const NotificationsAllModal = forwardRef<NotificationsModalRef, NotificationsAll
   }));
 
   const handleMarkAsRead = useCallback((id: string) => {
-    setNotifications(prev => {
-      const updated = prev.map(notif =>
-        notif.id === id ? { ...notif, read: true } : notif
-      );
-      return updated;
-    });
     if (onMarkAsRead) onMarkAsRead(id);
   }, [onMarkAsRead]);
 
   const handleMarkAllAsReadGlobal = useCallback(() => {
-    setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
     if (onMarkAllAsRead) onMarkAllAsRead();
   }, [onMarkAllAsRead]);
 
@@ -157,10 +98,10 @@ const NotificationsAllModal = forwardRef<NotificationsModalRef, NotificationsAll
         <ViewAllNotificationsModal
           notifications={notifications}
           onClose={() => setShowViewAllModal(false)}
-          onUpdateNotifications={setNotifications}
           getIcon={getIcon}
           formatTime={formatTime}
           onNotificationClick={handleNotificationClick}
+          onMarkAsRead={handleMarkAsRead}
           onMarkAllAsRead={handleMarkAllAsReadGlobal}
         />
       )}
@@ -172,10 +113,10 @@ const NotificationsAllModal = forwardRef<NotificationsModalRef, NotificationsAll
 const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
   notifications,
   onClose,
-  onUpdateNotifications,
   getIcon,
   formatTime,
   onNotificationClick,
+  onMarkAsRead,
   onMarkAllAsRead
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -185,7 +126,7 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [, startTransition] = useTransition(); // Ignore the pending state
   
-  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [displaySearchTerm, setDisplaySearchTerm] = useState('');
 
   // Debounced search with transition for smooth UI
@@ -264,54 +205,17 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
 
   const handleBulkMarkAsRead = useCallback(() => {
     startTransition(() => {
-      onUpdateNotifications(prev =>
-        prev.map(notif => 
-          selectedNotifications.has(notif.id) ? { ...notif, read: true } : notif
-        )
-      );
+      selectedNotifications.forEach(notificationId => {
+        if (onMarkAsRead) onMarkAsRead(notificationId);
+      });
       setSelectedNotifications(new Set());
       setIsSelectionMode(false);
     });
-  }, [selectedNotifications, onUpdateNotifications]);
-
-  const handleBulkDelete = useCallback(() => {
-    if (window.confirm(`Delete ${selectedNotifications.size} notification(s)?`)) {
-      startTransition(() => {
-        onUpdateNotifications(prev => prev.filter(notif => !selectedNotifications.has(notif.id)));
-        setSelectedNotifications(new Set());
-        setIsSelectionMode(false);
-      });
-    }
-  }, [selectedNotifications, onUpdateNotifications]);
-
-  const handleDeleteAll = useCallback(() => {
-    if (window.confirm('Delete all notifications?')) {
-      startTransition(() => {
-        onUpdateNotifications([]);
-        setSelectedNotifications(new Set());
-        setIsSelectionMode(false);
-      });
-    }
-  }, [onUpdateNotifications]);
+  }, [onMarkAsRead, selectedNotifications]);
 
   const handleMarkSingleAsRead = useCallback((id: string) => {
-    onUpdateNotifications(prev =>
-      prev.map(notif =>
-        notif.id === id ? { ...notif, read: true } : notif
-      )
-    );
-  }, [onUpdateNotifications]);
-
-  const handleDeleteSingle = useCallback((id: string) => {
-    if (window.confirm('Delete this notification?')) {
-      onUpdateNotifications(prev => prev.filter(notif => notif.id !== id));
-      setSelectedNotifications(prev => {
-        const newSelected = new Set(prev);
-        newSelected.delete(id);
-        return newSelected;
-      });
-    }
-  }, [onUpdateNotifications]);
+    if (onMarkAsRead) onMarkAsRead(id);
+  }, [onMarkAsRead]);
 
   const exitSelectionMode = useCallback(() => {
     setIsSelectionMode(false);
@@ -320,10 +224,9 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
 
   const handleMarkAllAsReadModal = useCallback(() => {
     startTransition(() => {
-      onUpdateNotifications(prev => prev.map(n => ({ ...n, read: true })));
       if (onMarkAllAsRead) onMarkAllAsRead();
     });
-  }, [onUpdateNotifications, onMarkAllAsRead]);
+  }, [onMarkAllAsRead]);
 
   return (
     <div className="viewAllOverlay" onClick={onClose} style={{ willChange: 'auto' }}>
@@ -416,10 +319,6 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
                     <IoCheckmarkDoneOutline size={12}/>
                     Mark Read
                   </button>
-                  <button className="viewAllOverlayBulkDeleteBtn" onClick={handleBulkDelete}>
-                    <IoTrashOutline size={12}/>
-                    Delete
-                  </button>
                 </>
               )}
               <button className="viewAllOverlayCancelBtn" onClick={exitSelectionMode}>
@@ -484,12 +383,6 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
             ))
           )}
         </div>
-
-        {/* Footer with Delete All */}
-        {notifications.length > 0 && !isSelectionMode && (
-          <div className="viewAllOverlayFooter">
-          </div>
-        )}
       </div>
     </div>
   );
@@ -498,11 +391,11 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
 interface ViewAllModalProps {
   notifications: Notification[];
   onClose: () => void;
-  onUpdateNotifications: React.Dispatch<React.SetStateAction<Notification[]>>;
   getIcon: (type: Notification['type']) => React.ReactElement;
   formatTime: (date: Date) => string;
   onNotificationClick?: (notification: Notification) => void;
-  onMarkAllAsRead?: () => void;
+  onMarkAsRead?: (id: string) => void | Promise<void>;
+  onMarkAllAsRead?: () => void | Promise<void>;
 }
 
 export default NotificationsAllModal;
