@@ -5,6 +5,7 @@ import Notifications from '../reusable_components/Notifications';
 import ImportButton from '../reusable_components/ImportBtn';
 import ExportButton  from '../reusable_components/ExportBtn';
 import { downloadInventoryTemplate } from './pdf_generation/InventoryExcel';
+import { parsePetShieldInventoryTemplate } from './inventoryImport';
 import './GlobalInventoryStyles2.css';
 import { 
   IoArrowBackOutline,
@@ -240,15 +241,95 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
     loadCurrentUser();
   }, []);
 
-      const handleImport = async (file: File) => {
-    console.log('Importing file:', file.name);
+      const handleImport = async (file: File): Promise<boolean> => {
+    const branchId = BRANCH_ID_BY_NAME[selectedBranch];
+    if (!branchId || selectedBranch === 'All') {
+      showAlert('error', 'Select Branch', 'Please select a specific branch before importing inventory.');
+      return false;
+    }
 
-    showAlert('info', 'Processing', `Importing ${file.name}...`);
-  
-    setTimeout(() => {
-      showAlert('success', 'Import Successful', 'Inventory data has been imported successfully!');
-      fetchProducts(); 
-    }, 1500);
+    try {
+      showAlert('info', 'Processing', `Validating and importing ${file.name}...`);
+      const importedRows = await parsePetShieldInventoryTemplate(file);
+
+      const normalizeKey = (item: string, category: string, expirationDate?: string, expirationNA?: boolean) =>
+        [
+          item.trim().toLowerCase().replace(/\s+/g, ' '),
+          category.trim(),
+          expirationNA ? 'na' : (expirationDate || '').trim(),
+        ].join('|');
+
+      let createdCount = 0;
+      let updatedCount = 0;
+      const rowErrors: string[] = [];
+      const currentProducts = [...products];
+
+      for (const row of importedRows) {
+        const matchingProduct = currentProducts.find((product) =>
+          normalizeKey(product.item, product.category, product.expirationDate, product.expirationNA) ===
+          normalizeKey(row.item, row.category, row.expirationDate, row.expirationNA)
+        );
+
+        const payload = {
+          branch_id: branchId,
+          code: matchingProduct?.code || '',
+          item: row.item,
+          category: row.category,
+          basePrice: row.basePrice,
+          sellingPrice: row.sellingPrice,
+          stockCount: row.stockCount,
+          expirationDate: row.expirationNA ? '' : row.expirationDate,
+          expirationNA: row.expirationNA,
+          criticalStockLevel: matchingProduct?.criticalStockLevel || 10,
+          userId: currentUser?.id || currentUser?.pk,
+        };
+
+        const endpoint = matchingProduct
+          ? `${API_URL}/api/inventory/items/${matchingProduct.id || matchingProduct.pk}`
+          : `${API_URL}/api/inventory/items`;
+        const method = matchingProduct ? 'PUT' : 'POST';
+
+        const response = await fetch(endpoint, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          rowErrors.push(`Row ${row.sourceRow}: ${result.error || `Failed to ${matchingProduct ? 'update' : 'create'} product`}`);
+          continue;
+        }
+
+        if (matchingProduct) {
+          updatedCount += 1;
+        } else {
+          createdCount += 1;
+        }
+      }
+
+      await fetchProducts();
+
+      if (rowErrors.length > 0) {
+        showAlert(
+          'error',
+          'Import Completed With Issues',
+          `Created: ${createdCount}, Updated: ${updatedCount}\n\n${rowErrors.join('\n')}`
+        );
+        return true;
+      }
+
+      showAlert(
+        'success',
+        'Import Successful',
+        `Inventory import completed. Created: ${createdCount}, Updated: ${updatedCount}`
+      );
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to import inventory data.';
+      showAlert('error', 'Import Failed', message);
+      return false;
+    }
   };
 
   const handleDownloadTemplate = () => {
@@ -691,6 +772,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                 onImport={handleImport}
                 onDownloadTemplate={handleDownloadTemplate}
                 buttonClassName="invImportBtn"
+                accept=".xlsx"
               />
               <ExportButton 
                 products={products}

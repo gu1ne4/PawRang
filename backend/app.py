@@ -7,7 +7,7 @@ import random
 import string
 import secrets
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import resend
 
 day_availability_store = {
@@ -217,6 +217,8 @@ INVENTORY_CATEGORY_CODES = {
     "Medication": "MED",
 }
 INVENTORY_ITEM_STOP_WORDS = {"and", "for", "of", "the", "with", "to", "a", "an"}
+ADMIN_NOTIFICATION_MODULES = {"inventory"}
+ADMIN_NOTIFICATION_SEVERITIES = {"info", "success", "warning", "error"}
 
 
 def get_single_row(table_name, column, value):
@@ -498,6 +500,23 @@ def normalize_inventory_name_for_compare(item_name):
     return ' '.join(str(item_name or '').strip().lower().split())
 
 
+def normalize_inventory_item_name(item_name):
+    normalized_words = []
+    for raw_word in str(item_name or '').strip().split():
+        if not raw_word:
+            continue
+        if '-' in raw_word:
+            normalized_parts = [
+                part[:1].upper() + part[1:].lower() if part else ''
+                for part in raw_word.split('-')
+            ]
+            normalized_words.append('-'.join(normalized_parts))
+        else:
+            normalized_words.append(raw_word[:1].upper() + raw_word[1:].lower())
+
+    return ' '.join(normalized_words)
+
+
 def find_inventory_duplicate(payload, exclude_item_id=None, include_archived=False):
     query = supabase_admin.table('inventory_items').select(
         'inventory_item_id,item_name,category,no_expiration,expiration_date,is_archived'
@@ -538,7 +557,9 @@ def ensure_inventory_item_is_unique(payload, exclude_item_id=None):
 
 
 def build_inventory_item_payload(data, existing=None):
-    item_name = (data.get('item') or data.get('item_name') or (existing or {}).get('item_name') or '').strip()
+    item_name = normalize_inventory_item_name(
+        data.get('item') or data.get('item_name') or (existing or {}).get('item_name') or ''
+    )
     category = (data.get('category') or (existing or {}).get('category') or '').strip()
     if not item_name:
         raise ValueError('item is required')
@@ -644,6 +665,545 @@ def normalize_inventory_log(record):
     }
 
 
+def build_employee_display_name(employee_id):
+    if not employee_id:
+        return "An admin"
+
+    employee = get_single_row('employee_accounts', 'id', employee_id)
+    if not employee:
+        return "An admin"
+
+    full_name = f"{employee.get('first_name', '')} {employee.get('last_name', '')}".strip()
+    return full_name or employee.get('username') or employee.get('email') or "An admin"
+
+
+def create_admin_notification(
+    *,
+    branch_id,
+    event_type,
+    title,
+    message,
+    severity='info',
+    module='inventory',
+    link=None,
+    actor_id=None,
+    entity_type=None,
+    entity_id=None,
+    event_key=None,
+    metadata=None,
+):
+    if module not in ADMIN_NOTIFICATION_MODULES:
+        raise ValueError(f"Unsupported notification module: {module}")
+    if severity not in ADMIN_NOTIFICATION_SEVERITIES:
+        raise ValueError(f"Unsupported notification severity: {severity}")
+
+    payload = {
+        'branch_id': branch_id,
+        'module': module,
+        'event_type': event_type,
+        'severity': severity,
+        'title': title.strip(),
+        'message': message.strip(),
+        'link': link.strip() if isinstance(link, str) and link.strip() else None,
+        'actor_id': actor_id,
+        'entity_type': entity_type,
+        'entity_id': entity_id,
+        'event_key': event_key.strip() if isinstance(event_key, str) and event_key.strip() else None,
+        'metadata': metadata or {},
+    }
+
+    response = supabase_admin.table('admin_notifications').insert(payload).execute()
+    created = response.data[0] if response.data else None
+    if not created:
+        raise ValueError('Failed to create admin notification')
+    return created
+
+
+def normalize_admin_notification(record, admin_user_id=None):
+    read_at = record.get('read_at')
+    metadata = record.get('metadata') or {}
+
+    return {
+        'id': record.get('notification_id'),
+        'notificationId': record.get('notification_id'),
+        'branchId': record.get('branch_id'),
+        'module': record.get('module') or 'inventory',
+        'eventType': record.get('event_type') or '',
+        'type': record.get('severity') or 'info',
+        'title': record.get('title') or '',
+        'message': record.get('message') or '',
+        'timestamp': record.get('created_at'),
+        'read': bool(read_at),
+        'readAt': read_at,
+        'link': record.get('link') or None,
+        'actorId': record.get('actor_id'),
+        'entityType': record.get('entity_type'),
+        'entityId': record.get('entity_id'),
+        'eventKey': record.get('event_key'),
+        'metadata': metadata,
+        'adminUserId': admin_user_id,
+    }
+
+
+def create_inventory_admin_notification(
+    *,
+    branch_id,
+    event_type,
+    title,
+    message,
+    severity='info',
+    link='/inventory',
+    actor_id=None,
+    entity_type=None,
+    entity_id=None,
+    event_key=None,
+    metadata=None,
+):
+    return create_admin_notification(
+        branch_id=branch_id,
+        event_type=event_type,
+        title=title,
+        message=message,
+        severity=severity,
+        module='inventory',
+        link=link,
+        actor_id=actor_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        event_key=event_key,
+        metadata=metadata,
+    )
+
+
+def safe_create_inventory_admin_notification(**kwargs):
+    try:
+        return create_inventory_admin_notification(**kwargs)
+    except Exception as notification_error:
+        print("Inventory admin notification error:", str(notification_error))
+        return None
+
+
+def admin_notification_event_exists(event_key):
+    if not event_key:
+        return False
+
+    response = supabase_admin.table('admin_notifications') \
+        .select('notification_id') \
+        .eq('event_key', event_key) \
+        .limit(1) \
+        .execute()
+    return bool(response.data)
+
+
+def get_employee_account_or_400(user_id):
+    if not user_id:
+        return None, "admin_user_id is required"
+
+    employee = get_single_row('employee_accounts', 'id', user_id)
+    if not employee:
+        return None, "Employee account not found"
+
+    return employee, None
+
+
+def mark_admin_notification_read(notification_id, admin_user_id):
+    supabase_admin.table('admin_notification_reads').upsert({
+        'notification_id': notification_id,
+        'admin_user_id': admin_user_id,
+        'read_at': datetime.utcnow().isoformat(),
+    }).execute()
+
+
+def get_admin_notification_reads_map(admin_user_id, notification_ids):
+    if not admin_user_id or not notification_ids:
+        return {}
+
+    response = supabase_admin.table('admin_notification_reads') \
+        .select('notification_id,read_at') \
+        .eq('admin_user_id', admin_user_id) \
+        .in_('notification_id', notification_ids) \
+        .execute()
+
+    reads_map = {}
+    for row in (response.data or []):
+        reads_map[row.get('notification_id')] = row.get('read_at')
+    return reads_map
+
+
+def summarize_inventory_transaction_items(items, max_names=3):
+    cleaned_names = [
+        str(item.get('item_name') or item.get('productName') or '').strip()
+        for item in (items or [])
+        if str(item.get('item_name') or item.get('productName') or '').strip()
+    ]
+    if not cleaned_names:
+        return 'inventory items'
+
+    preview = cleaned_names[:max_names]
+    if len(cleaned_names) <= max_names:
+        return ', '.join(preview)
+    return f"{', '.join(preview)} and {len(cleaned_names) - max_names} more"
+
+
+def parse_iso_date(value):
+    if not value:
+        return None
+
+    raw = str(value).strip()
+    if not raw:
+        return None
+
+    for fmt in ('%Y-%m-%d', '%m/%d/%Y'):
+        try:
+            return datetime.strptime(raw[:10] if fmt == '%Y-%m-%d' else raw, fmt).date()
+        except ValueError:
+            continue
+
+    return None
+
+
+def coerce_expiry_windows(raw_windows=None):
+    if raw_windows in (None, '', []):
+        return [30, 7, 1]
+
+    if isinstance(raw_windows, str):
+        pieces = [piece.strip() for piece in raw_windows.split(',')]
+        windows = [coerce_int(piece, 'expiryWindow', minimum=0, maximum=365) for piece in pieces if piece]
+    elif isinstance(raw_windows, list):
+        windows = [coerce_int(piece, 'expiryWindow', minimum=0, maximum=365) for piece in raw_windows]
+    else:
+        raise ValueError('expiry windows must be a comma-separated string or array')
+
+    unique_windows = sorted(set(windows), reverse=True)
+    if not unique_windows:
+        raise ValueError('At least one expiry window is required')
+    return unique_windows
+
+
+def notify_inventory_item_created(item, actor_id=None):
+    actor_name = build_employee_display_name(actor_id)
+    item_name = item.get('item_name') or 'Unknown item'
+    item_code = item.get('item_code') or ''
+    branch_id = item.get('branch_id')
+    item_id = item.get('inventory_item_id')
+
+    return safe_create_inventory_admin_notification(
+        branch_id=branch_id,
+        event_type='inventory_item_created',
+        title='Product added to inventory',
+        message=f"{actor_name} added {item_name} ({item_code}) to inventory.",
+        severity='success',
+        link='/inventory',
+        actor_id=actor_id,
+        entity_type='inventory_item',
+        entity_id=item_id,
+        metadata={
+            'itemCode': item_code,
+            'itemName': item_name,
+            'category': item.get('category'),
+        },
+    )
+
+
+def notify_inventory_item_updated(before_item, after_item, actor_id=None):
+    actor_name = build_employee_display_name(actor_id)
+    item_name = after_item.get('item_name') or before_item.get('item_name') or 'Unknown item'
+    item_code = after_item.get('item_code') or before_item.get('item_code') or ''
+    branch_id = after_item.get('branch_id') or before_item.get('branch_id')
+    item_id = after_item.get('inventory_item_id') or before_item.get('inventory_item_id')
+
+    changed_fields = []
+    field_labels = {
+        'item_name': 'name',
+        'category': 'category',
+        'base_price': 'base price',
+        'selling_price': 'selling price',
+        'current_stock': 'stock',
+        'critical_stock_level': 'critical level',
+        'expiration_date': 'expiration',
+        'no_expiration': 'no expiration',
+        'max_quantity': 'max quantity',
+        'use_max_quantity': 'use max quantity',
+    }
+    for field_name, label in field_labels.items():
+        if before_item.get(field_name) != after_item.get(field_name):
+            changed_fields.append(label)
+
+    changes_text = ', '.join(changed_fields[:4]) if changed_fields else 'product details'
+    if len(changed_fields) > 4:
+        changes_text += f" and {len(changed_fields) - 4} more"
+
+    return safe_create_inventory_admin_notification(
+        branch_id=branch_id,
+        event_type='inventory_item_updated',
+        title='Inventory product updated',
+        message=f"{actor_name} updated {item_name} ({item_code}): {changes_text}.",
+        severity='info',
+        link='/inventory',
+        actor_id=actor_id,
+        entity_type='inventory_item',
+        entity_id=item_id,
+        metadata={
+            'itemCode': item_code,
+            'itemName': item_name,
+            'changedFields': changed_fields,
+        },
+    )
+
+
+def notify_inventory_item_archived(item, actor_id=None, reason=None):
+    actor_name = build_employee_display_name(actor_id)
+    item_name = item.get('item_name') or 'Unknown item'
+    item_code = item.get('item_code') or ''
+
+    message = f"{actor_name} archived {item_name} ({item_code})."
+    if reason:
+        message += f" Reason: {reason}."
+
+    return safe_create_inventory_admin_notification(
+        branch_id=item.get('branch_id'),
+        event_type='inventory_item_archived',
+        title='Inventory product archived',
+        message=message,
+        severity='warning',
+        link='/inventory-archive',
+        actor_id=actor_id,
+        entity_type='inventory_item',
+        entity_id=item.get('inventory_item_id'),
+        metadata={
+            'itemCode': item_code,
+            'itemName': item_name,
+            'reason': reason,
+        },
+    )
+
+
+def notify_inventory_item_restored(item, actor_id=None):
+    actor_name = build_employee_display_name(actor_id)
+    item_name = item.get('item_name') or 'Unknown item'
+    item_code = item.get('item_code') or ''
+
+    return safe_create_inventory_admin_notification(
+        branch_id=item.get('branch_id'),
+        event_type='inventory_item_restored',
+        title='Archived inventory product restored',
+        message=f"{actor_name} restored {item_name} ({item_code}) to active inventory.",
+        severity='success',
+        link='/inventory-archive',
+        actor_id=actor_id,
+        entity_type='inventory_item',
+        entity_id=item.get('inventory_item_id'),
+        metadata={
+            'itemCode': item_code,
+            'itemName': item_name,
+        },
+    )
+
+
+def notify_inventory_transaction_created(result, payload):
+    transaction = result.get('transaction') or {}
+    items = result.get('items') or []
+    actor_id = payload.get('processed_by')
+    actor_name = build_employee_display_name(actor_id)
+    transaction_type = payload.get('transaction_type')
+    transaction_id = transaction.get('inventory_transaction_id')
+    reference_number = transaction.get('reference_number') or payload.get('reference_number')
+    item_count = len(items)
+    item_summary = summarize_inventory_transaction_items(items)
+    action_label = 'stock in' if transaction_type == 'IN' else 'stock out'
+    title = 'Inventory stock received' if transaction_type == 'IN' else 'Inventory stock released'
+    severity = 'success' if transaction_type == 'IN' else 'warning'
+    counterparty = payload.get('counterparty_name')
+    reason = payload.get('reason')
+
+    message = f"{actor_name} recorded {action_label} for {item_count} item(s): {item_summary}. Reference: {reference_number}."
+    if counterparty:
+        message += f" Counterparty: {counterparty}."
+    if reason:
+        message += f" Reason: {reason}."
+
+    return safe_create_inventory_admin_notification(
+        branch_id=payload.get('branch_id'),
+        event_type='inventory_stock_in' if transaction_type == 'IN' else 'inventory_stock_out',
+        title=title,
+        message=message,
+        severity=severity,
+        link='/inventory-logs',
+        actor_id=actor_id,
+        entity_type='inventory_transaction',
+        entity_id=transaction_id,
+        metadata={
+            'referenceNumber': reference_number,
+            'transactionType': transaction_type,
+            'itemCount': item_count,
+            'items': [
+                {
+                    'inventoryItemId': item.get('inventory_item_id'),
+                    'itemCode': item.get('item_code'),
+                    'itemName': item.get('item_name'),
+                    'quantity': item.get('quantity'),
+                    'previousStock': item.get('previous_stock'),
+                    'newStock': item.get('new_stock'),
+                }
+                for item in items
+            ],
+        },
+    )
+
+
+def get_inventory_alert_state(item):
+    if item is None:
+        return 'none'
+
+    raw_stock = item.get('current_stock')
+    if raw_stock is None and 'new_stock' in item:
+        raw_stock = item.get('new_stock')
+    if raw_stock is None:
+        return 'none'
+
+    current_stock = int(raw_stock)
+    critical_stock_level = int(item.get('critical_stock_level') or 10)
+
+    if current_stock <= 0:
+        return 'out_of_stock'
+    if current_stock <= critical_stock_level + 10:
+        return 'low_stock'
+    return 'normal'
+
+
+def notify_inventory_stock_state_transition(before_item, after_item, actor_id=None, source_event=None):
+    before_state = get_inventory_alert_state(before_item or {})
+    after_state = get_inventory_alert_state(after_item or {})
+
+    if after_state == 'normal' or before_state == after_state:
+        return None
+
+    item_name = after_item.get('item_name') or before_item.get('item_name') or 'Unknown item'
+    item_code = after_item.get('item_code') or before_item.get('item_code') or ''
+    branch_id = after_item.get('branch_id') or before_item.get('branch_id')
+    item_id = after_item.get('inventory_item_id') or before_item.get('inventory_item_id')
+    actor_name = build_employee_display_name(actor_id)
+    current_stock = int(after_item.get('current_stock') or after_item.get('new_stock') or 0)
+    critical_stock_level = int(after_item.get('critical_stock_level') or before_item.get('critical_stock_level') or 10)
+
+    if after_state == 'out_of_stock':
+        return safe_create_inventory_admin_notification(
+            branch_id=branch_id,
+            event_type='inventory_out_of_stock',
+            title='Product is out of stock',
+            message=f"{item_name} ({item_code}) is now out of stock after an inventory action by {actor_name}.",
+            severity='error',
+            link='/inventory',
+            actor_id=actor_id,
+            entity_type='inventory_item',
+            entity_id=item_id,
+            event_key=f"inventory:out-of-stock:branch:{branch_id}:item:{item_id}:at:{current_stock}",
+            metadata={
+                'itemCode': item_code,
+                'itemName': item_name,
+                'currentStock': current_stock,
+                'criticalStockLevel': critical_stock_level,
+                'sourceEvent': source_event,
+            },
+        )
+
+    return safe_create_inventory_admin_notification(
+        branch_id=branch_id,
+        event_type='inventory_low_stock',
+        title='Product is running low',
+        message=f"{item_name} ({item_code}) is low on stock with {current_stock} unit(s) left after an inventory action by {actor_name}.",
+        severity='warning',
+        link='/inventory',
+        actor_id=actor_id,
+        entity_type='inventory_item',
+        entity_id=item_id,
+        event_key=f"inventory:low-stock:branch:{branch_id}:item:{item_id}:at:{current_stock}",
+        metadata={
+            'itemCode': item_code,
+            'itemName': item_name,
+            'currentStock': current_stock,
+            'criticalStockLevel': critical_stock_level,
+            'sourceEvent': source_event,
+        },
+    )
+
+
+def notify_inventory_item_expiring_soon(item, days_until_expiry):
+    branch_id = item.get('branch_id')
+    item_id = item.get('inventory_item_id')
+    item_name = item.get('item_name') or 'Unknown item'
+    item_code = item.get('item_code') or ''
+    expiration_date = parse_iso_date(item.get('expiration_date'))
+    if not expiration_date:
+        return None
+
+    event_key = f"inventory:expiring-soon:branch:{branch_id}:item:{item_id}:days:{days_until_expiry}"
+    if admin_notification_event_exists(event_key):
+        return None
+
+    day_label = 'today' if days_until_expiry == 0 else f"in {days_until_expiry} day(s)"
+    return safe_create_inventory_admin_notification(
+        branch_id=branch_id,
+        event_type='inventory_expiring_soon',
+        title='Product expiring soon',
+        message=f"{item_name} ({item_code}) will expire {day_label} on {expiration_date.isoformat()}.",
+        severity='warning',
+        link='/inventory',
+        actor_id=None,
+        entity_type='inventory_item',
+        entity_id=item_id,
+        event_key=event_key,
+        metadata={
+            'itemCode': item_code,
+            'itemName': item_name,
+            'expirationDate': expiration_date.isoformat(),
+            'daysUntilExpiry': days_until_expiry,
+            'currentStock': int(item.get('current_stock') or 0),
+            'criticalStockLevel': int(item.get('critical_stock_level') or 10),
+        },
+    )
+
+
+def reconcile_inventory_expiring_notifications(branch_id=None, expiry_windows=None, today=None):
+    windows = coerce_expiry_windows(expiry_windows)
+    today_date = today or date.today()
+
+    query = supabase_admin.table('inventory_items').select('*') \
+        .eq('is_archived', False) \
+        .eq('no_expiration', False)
+
+    if branch_id is not None:
+        query = query.eq('branch_id', branch_id)
+
+    response = query.execute()
+    rows = response.data or []
+
+    created_notifications = []
+
+    for item in rows:
+        expiration_date = parse_iso_date(item.get('expiration_date'))
+        if not expiration_date:
+            continue
+
+        days_until_expiry = (expiration_date - today_date).days
+        if days_until_expiry < 0:
+            continue
+        if days_until_expiry not in windows:
+            continue
+
+        created = notify_inventory_item_expiring_soon(item, days_until_expiry)
+        if created:
+            created_notifications.append(created)
+
+    return {
+        'createdCount': len(created_notifications),
+        'createdNotifications': created_notifications,
+        'windows': windows,
+        'branchId': branch_id,
+        'asOfDate': today_date.isoformat(),
+    }
+
+
 def get_inventory_item_or_404(item_id):
     item = get_single_row('inventory_items', 'inventory_item_id', item_id)
     if not item:
@@ -692,10 +1252,15 @@ def build_inventory_transaction_payload(data, transaction_type):
             line_total = quantity * unit_cost
             prepared_items.append({
                 'inventory_item_id': inventory_item.get('inventory_item_id'),
+                'branch_id': inventory_item.get('branch_id'),
+                'item_code': inventory_item.get('item_code'),
+                'item_name': inventory_item.get('item_name'),
                 'quantity': quantity,
                 'unit_cost': unit_cost,
                 'unit_price': None,
+                'previous_stock': current_stock,
                 'new_stock': new_stock,
+                'critical_stock_level': inventory_item.get('critical_stock_level'),
             })
         else:
             unit_price = coerce_number(raw_item.get('unitPrice', raw_item.get('unit_price', inventory_item.get('selling_price'))), 'unitPrice', minimum=0, maximum=999999)
@@ -705,10 +1270,15 @@ def build_inventory_transaction_payload(data, transaction_type):
             line_total = quantity * unit_price
             prepared_items.append({
                 'inventory_item_id': inventory_item.get('inventory_item_id'),
+                'branch_id': inventory_item.get('branch_id'),
+                'item_code': inventory_item.get('item_code'),
+                'item_name': inventory_item.get('item_name'),
                 'quantity': quantity,
                 'unit_cost': None,
                 'unit_price': unit_price,
+                'previous_stock': current_stock,
                 'new_stock': new_stock,
+                'critical_stock_level': inventory_item.get('critical_stock_level'),
             })
 
         total_amount += line_total
@@ -767,6 +1337,7 @@ def persist_inventory_transaction(payload):
     return {
         'transaction': transaction,
         'lineItems': line_response.data or [],
+        'items': payload['items'],
     }
 
 
@@ -1911,9 +2482,24 @@ def create_inventory_item():
         ensure_inventory_item_is_unique(payload)
         response = supabase_admin.table('inventory_items').insert(payload).execute()
         created = response.data[0] if response.data else None
+        item_record = created or payload
+        notify_inventory_item_created(item_record, actor_id=payload.get('created_by') or payload.get('updated_by'))
+        notify_inventory_stock_state_transition(
+            {
+                'inventory_item_id': item_record.get('inventory_item_id'),
+                'branch_id': item_record.get('branch_id'),
+                'item_code': item_record.get('item_code'),
+                'item_name': item_record.get('item_name'),
+                'current_stock': None,
+                'critical_stock_level': item_record.get('critical_stock_level'),
+            },
+            item_record,
+            actor_id=payload.get('created_by') or payload.get('updated_by'),
+            source_event='inventory_item_created',
+        )
         return jsonify({
             'message': 'Inventory item created successfully',
-            'item': normalize_inventory_item(created or payload)
+            'item': normalize_inventory_item(item_record)
         }), 201
     except Exception as e:
         print("Create inventory item error:", str(e))
@@ -1935,9 +2521,17 @@ def update_inventory_item(item_id):
             .eq('inventory_item_id', item_id) \
             .execute()
         updated = response.data[0] if response.data else get_single_row('inventory_items', 'inventory_item_id', item_id)
+        updated_record = updated or existing
+        notify_inventory_item_updated(existing, updated_record, actor_id=payload.get('updated_by'))
+        notify_inventory_stock_state_transition(
+            existing,
+            updated_record,
+            actor_id=payload.get('updated_by'),
+            source_event='inventory_item_updated',
+        )
         return jsonify({
             'message': 'Inventory item updated successfully',
-            'item': normalize_inventory_item(updated or existing)
+            'item': normalize_inventory_item(updated_record)
         }), 200
     except Exception as e:
         print("Update inventory item error:", str(e))
@@ -1967,7 +2561,12 @@ def archive_inventory_item(item_id):
             .eq('inventory_item_id', item_id) \
             .execute()
         archived = response.data[0] if response.data else get_single_row('inventory_items', 'inventory_item_id', item_id)
-        return jsonify({'message': 'Inventory item archived successfully', 'item': normalize_inventory_item(archived)}), 200
+        notify_inventory_item_archived(
+            archived or item,
+            actor_id=update_data.get('archived_by'),
+            reason=update_data.get('archive_reason'),
+        )
+        return jsonify({'message': 'Inventory item archived successfully', 'item': normalize_inventory_item(archived or item)}), 200
     except Exception as e:
         print("Archive inventory item error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -2003,7 +2602,8 @@ def restore_inventory_item(item_id):
             .eq('inventory_item_id', item_id) \
             .execute()
         restored = response.data[0] if response.data else get_single_row('inventory_items', 'inventory_item_id', item_id)
-        return jsonify({'message': 'Inventory item restored successfully', 'item': normalize_inventory_item(restored)}), 200
+        notify_inventory_item_restored(restored or item, actor_id=data.get('userId') or data.get('processedBy') or data.get('processed_by'))
+        return jsonify({'message': 'Inventory item restored successfully', 'item': normalize_inventory_item(restored or item)}), 200
     except Exception as e:
         print("Restore inventory item error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -2015,6 +2615,28 @@ def create_inventory_stock_in():
     try:
         payload = build_inventory_transaction_payload(data, 'IN')
         result = persist_inventory_transaction(payload)
+        notify_inventory_transaction_created(result, payload)
+        for item in (result.get('items') or []):
+            notify_inventory_stock_state_transition(
+                {
+                    'inventory_item_id': item.get('inventory_item_id'),
+                    'branch_id': item.get('branch_id'),
+                    'item_code': item.get('item_code'),
+                    'item_name': item.get('item_name'),
+                    'current_stock': item.get('previous_stock'),
+                    'critical_stock_level': item.get('critical_stock_level'),
+                },
+                {
+                    'inventory_item_id': item.get('inventory_item_id'),
+                    'branch_id': item.get('branch_id'),
+                    'item_code': item.get('item_code'),
+                    'item_name': item.get('item_name'),
+                    'current_stock': item.get('new_stock'),
+                    'critical_stock_level': item.get('critical_stock_level'),
+                },
+                actor_id=payload.get('processed_by'),
+                source_event='inventory_stock_in',
+            )
         return jsonify({
             'message': 'Stock received successfully',
             'transaction': result['transaction'],
@@ -2031,6 +2653,28 @@ def create_inventory_stock_out():
     try:
         payload = build_inventory_transaction_payload(data, 'OUT')
         result = persist_inventory_transaction(payload)
+        notify_inventory_transaction_created(result, payload)
+        for item in (result.get('items') or []):
+            notify_inventory_stock_state_transition(
+                {
+                    'inventory_item_id': item.get('inventory_item_id'),
+                    'branch_id': item.get('branch_id'),
+                    'item_code': item.get('item_code'),
+                    'item_name': item.get('item_name'),
+                    'current_stock': item.get('previous_stock'),
+                    'critical_stock_level': item.get('critical_stock_level'),
+                },
+                {
+                    'inventory_item_id': item.get('inventory_item_id'),
+                    'branch_id': item.get('branch_id'),
+                    'item_code': item.get('item_code'),
+                    'item_name': item.get('item_name'),
+                    'current_stock': item.get('new_stock'),
+                    'critical_stock_level': item.get('critical_stock_level'),
+                },
+                actor_id=payload.get('processed_by'),
+                source_event='inventory_stock_out',
+            )
         return jsonify({
             'message': 'Stock out recorded successfully',
             'transaction': result['transaction'],
@@ -2073,6 +2717,160 @@ def get_inventory_logs():
         return jsonify({'logs': logs}), 200
     except Exception as e:
         print("Fetch inventory logs error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/admin-notifications', methods=['GET'])
+def get_admin_notifications():
+    try:
+        admin_user_id = (request.args.get('admin_user_id') or request.args.get('adminUserId') or '').strip()
+        branch_id_raw = request.args.get('branch_id', request.args.get('branchId'))
+        module = (request.args.get('module') or 'inventory').strip() or 'inventory'
+        unread_only = parse_bool(request.args.get('unread_only', request.args.get('unreadOnly')), default=False)
+        limit_raw = request.args.get('limit')
+
+        _, employee_error = get_employee_account_or_400(admin_user_id)
+        if employee_error:
+            return jsonify({'error': employee_error}), 400
+
+        query = supabase_admin.table('admin_notifications').select('*')
+        if branch_id_raw:
+            query = query.eq('branch_id', coerce_int(branch_id_raw, 'branch_id', minimum=1))
+        if module:
+            query = query.eq('module', module)
+
+        limit_value = None
+        if limit_raw not in (None, ''):
+            limit_value = coerce_int(limit_raw, 'limit', minimum=1, maximum=200)
+
+        query = query.order('created_at', desc=True)
+        if limit_value:
+            query = query.limit(limit_value)
+
+        response = query.execute()
+        rows = response.data or []
+        notification_ids = [row.get('notification_id') for row in rows if row.get('notification_id') is not None]
+        reads_map = get_admin_notification_reads_map(admin_user_id, notification_ids)
+
+        notifications = []
+        unread_count = 0
+
+        for row in rows:
+            enriched = dict(row)
+            enriched['read_at'] = reads_map.get(row.get('notification_id'))
+            normalized = normalize_admin_notification(enriched, admin_user_id=admin_user_id)
+            if not normalized['read']:
+                unread_count += 1
+            if unread_only and normalized['read']:
+                continue
+            notifications.append(normalized)
+
+        return jsonify({
+            'notifications': notifications,
+            'unreadCount': unread_count,
+            'totalCount': len(notifications),
+        }), 200
+    except Exception as e:
+        print("Fetch admin notifications error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/admin-notifications/<int:notification_id>/read', methods=['POST'])
+def read_admin_notification(notification_id):
+    data = request.get_json() or {}
+    try:
+        admin_user_id = (data.get('admin_user_id') or data.get('adminUserId') or '').strip()
+        _, employee_error = get_employee_account_or_400(admin_user_id)
+        if employee_error:
+            return jsonify({'error': employee_error}), 400
+
+        notification = get_single_row('admin_notifications', 'notification_id', notification_id)
+        if not notification:
+            return jsonify({'error': 'Notification not found'}), 404
+
+        mark_admin_notification_read(notification_id, admin_user_id)
+
+        enriched = dict(notification)
+        enriched['read_at'] = datetime.utcnow().isoformat()
+        return jsonify({
+            'message': 'Notification marked as read',
+            'notification': normalize_admin_notification(enriched, admin_user_id=admin_user_id),
+        }), 200
+    except Exception as e:
+        print("Mark admin notification read error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/admin-notifications/read-all', methods=['POST'])
+def read_all_admin_notifications():
+    data = request.get_json() or {}
+    try:
+        admin_user_id = (data.get('admin_user_id') or data.get('adminUserId') or '').strip()
+        branch_id_raw = data.get('branch_id', data.get('branchId'))
+        module = (data.get('module') or 'inventory').strip() or 'inventory'
+
+        _, employee_error = get_employee_account_or_400(admin_user_id)
+        if employee_error:
+            return jsonify({'error': employee_error}), 400
+
+        query = supabase_admin.table('admin_notifications').select('notification_id')
+        if branch_id_raw not in (None, ''):
+            query = query.eq('branch_id', coerce_int(branch_id_raw, 'branch_id', minimum=1))
+        if module:
+            query = query.eq('module', module)
+
+        notifications_response = query.execute()
+        notifications = notifications_response.data or []
+        notification_ids = [
+            row.get('notification_id')
+            for row in notifications
+            if row.get('notification_id') is not None
+        ]
+
+        if not notification_ids:
+            return jsonify({'message': 'No notifications to mark as read', 'updatedCount': 0}), 200
+
+        read_at = datetime.utcnow().isoformat()
+        read_rows = [
+            {
+                'notification_id': notification_id,
+                'admin_user_id': admin_user_id,
+                'read_at': read_at,
+            }
+            for notification_id in notification_ids
+        ]
+        supabase_admin.table('admin_notification_reads').upsert(read_rows).execute()
+
+        return jsonify({
+            'message': 'Notifications marked as read',
+            'updatedCount': len(notification_ids),
+        }), 200
+    except Exception as e:
+        print("Mark all admin notifications read error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/admin-notifications/reconcile/inventory-expiring-soon', methods=['POST'])
+def reconcile_inventory_expiring_soon_notifications():
+    data = request.get_json() or {}
+    try:
+        branch_id_raw = data.get('branch_id', data.get('branchId'))
+        branch_id = None
+        if branch_id_raw not in (None, ''):
+            branch_id = coerce_int(branch_id_raw, 'branch_id', minimum=1)
+
+        expiry_windows = data.get('windows', data.get('expiryWindows'))
+        result = reconcile_inventory_expiring_notifications(
+            branch_id=branch_id,
+            expiry_windows=expiry_windows,
+        )
+
+        return jsonify({
+            'message': 'Inventory expiring-soon reconciliation completed',
+            **result,
+        }), 200
+    except Exception as e:
+        print("Reconcile inventory expiring notifications error:", str(e))
         return jsonify({"error": str(e)}), 400
 
 
