@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import './UserStyles.css';
-import API_URL from '../API';
+import { apiService } from '../apiService';
 import ClientNavBar from '../reusable_components/ClientNavBar';
 
 import {
@@ -63,19 +62,21 @@ const UserHome: React.FC = () => {
 
   useEffect(() => {
     if (!currentUser?.id) return;
+    let isCancelled = false;
 
-    const token = localStorage.getItem('access_token');
-
-    axios
-      .get(`${API_URL}/profile/${currentUser.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+    apiService
+      .getProfile(currentUser.id)
       .then(res => {
-        const updated = { ...currentUser, ...res.data.user };
+        if (isCancelled) return;
+        const updated = { ...currentUser, ...res.user };
         setCurrentUser(updated);
         localStorage.setItem('userSession', JSON.stringify(updated));
       })
       .catch(err => console.error('Failed to refresh profile:', err));
+
+    return () => {
+      isCancelled = true;
+    };
   }, [currentUser?.id]);
 
   useEffect(() => {

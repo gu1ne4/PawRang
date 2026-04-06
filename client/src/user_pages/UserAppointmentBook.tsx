@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import './UserStyles.css';
@@ -176,6 +175,64 @@ const BOOKING_DRAFT_KEY = 'userAppointmentBookingDraft';
 const DEFAULT_SUBMITTED_BOOKING_MESSAGE =
   'Your appointment is under review. You will receive an email once it is confirmed.';
 
+const parseResponseBody = async (response: Response): Promise<any> => {
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+};
+
+const getErrorMessage = (payload: any, fallback: string): string => {
+  if (typeof payload === 'string' && payload.trim()) return payload;
+  if (payload && typeof payload === 'object') {
+    if (typeof payload.error === 'string' && payload.error.trim()) return payload.error;
+    if (typeof payload.message === 'string' && payload.message.trim()) return payload.message;
+  }
+  return fallback;
+};
+
+const requestJson = async <T,>(url: string, options?: RequestInit): Promise<T> => {
+  const response = await fetch(url, options);
+  const payload = await parseResponseBody(response);
+
+  if (!response.ok) {
+    throw new Error(getErrorMessage(payload, `Request failed with status ${response.status}`));
+  }
+
+  return (payload ?? {}) as T;
+};
+
+const apiClient = {
+  async get<T>(url: string, options?: RequestInit): Promise<{ data: T }> {
+    const data = await requestJson<T>(url, { ...(options ?? {}), method: 'GET' });
+    return { data };
+  },
+  async post<T>(url: string, body?: unknown, options?: RequestInit): Promise<{ data: T }> {
+    const headers = new Headers(options?.headers);
+    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+
+    const response = await fetch(url, {
+      ...(options ?? {}),
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body ?? {}),
+    });
+    const payload = await parseResponseBody(response);
+
+    if (!response.ok) {
+      const error: any = new Error(getErrorMessage(payload, `Request failed with status ${response.status}`));
+      error.response = { data: payload, status: response.status };
+      throw error;
+    }
+
+    return { data: (payload ?? {}) as T };
+  },
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const UserAppointmentBook: React.FC = () => {
@@ -249,15 +306,38 @@ const UserAppointmentBook: React.FC = () => {
   const restoredDraftRef = useRef(false);
   const handledReturnedPetRef = useRef<number | null>(null);
 
+  const buildHeaders = (includeJson = false): HeadersInit => {
+    const headers: Record<string, string> = {};
+    const token = getToken();
+
+    if (includeJson) headers['Content-Type'] = 'application/json';
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    return headers;
+  };
+
   // ── Fetch pets ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentUser?.id) return;
+    let isCancelled = false;
+
     setLoadingPets(true);
-    axios
-      .get(`${API_URL}/pets/user/${currentUser.id}`, { headers: { Authorization: `Bearer ${getToken()}` } })
-      .then(res => setPets(res.data.pets ?? []))
-      .catch(err => console.error('Failed to fetch pets:', err))
-      .finally(() => setLoadingPets(false));
+    requestJson<{ pets?: Pet[] }>(`${API_URL}/pets/user/${currentUser.id}`, {
+      headers: buildHeaders(),
+    })
+      .then(data => {
+        if (!isCancelled) setPets(data.pets ?? []);
+      })
+      .catch(() => {
+        if (!isCancelled) setPets([]);
+      })
+      .finally(() => {
+        if (!isCancelled) setLoadingPets(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, [currentUser?.id]);
 
   useEffect(() => {
@@ -295,22 +375,41 @@ const UserAppointmentBook: React.FC = () => {
 
   // ── Fetch branches ────────────────────────────────────────────────────────
   useEffect(() => {
+    let isCancelled = false;
+
     setLoadingBranches(true);
-    axios
-      .get(`${API_URL}/branches`, { headers: { Authorization: `Bearer ${getToken()}` } })
-      .then(res => setBranches(normalizeBranches(res.data)))
-      .catch(err => console.error('Failed to fetch branches:', err))
-      .finally(() => setLoadingBranches(false));
+    requestJson<any>(`${API_URL}/branches`, {
+      headers: buildHeaders(),
+    })
+      .then(data => {
+        if (!isCancelled) setBranches(normalizeBranches(data));
+      })
+      .catch(() => {
+        if (!isCancelled) setBranches([]);
+      })
+      .finally(() => {
+        if (!isCancelled) setLoadingBranches(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   useEffect(() => {
+    let isCancelled = false;
+
     setLoadingAvailability(true);
-    Promise.all([
-      axios.get(`${API_URL}/api/day-availability`),
-      axios.get(`${API_URL}/api/special-dates`),
+    Promise.allSettled([
+      requestJson<any[]>(`${API_URL}/api/day-availability`),
+      requestJson<{ specialDates?: SpecialDateRecord[] }>(`${API_URL}/api/special-dates`),
     ])
-      .then(([availabilityRes, specialDatesRes]) => {
-        const rawAvailability = Array.isArray(availabilityRes.data) ? availabilityRes.data : [];
+      .then(([availabilityResult, specialDatesResult]) => {
+        if (isCancelled) return;
+
+        const rawAvailability = availabilityResult.status === 'fulfilled' && Array.isArray(availabilityResult.value)
+          ? availabilityResult.value
+          : [];
         const nextAvailability: DayAvailabilityMap = {};
 
         rawAvailability.forEach((day: any) => {
@@ -318,8 +417,8 @@ const UserAppointmentBook: React.FC = () => {
           if (key) nextAvailability[key] = Boolean(day?.is_available);
         });
 
-        const nextSpecialDates = Array.isArray(specialDatesRes.data?.specialDates)
-          ? specialDatesRes.data.specialDates
+        const nextSpecialDates = specialDatesResult.status === 'fulfilled' && Array.isArray(specialDatesResult.value?.specialDates)
+          ? specialDatesResult.value.specialDates
               .map((event: SpecialDateRecord) => String(event?.event_date ?? '').trim())
               .filter(Boolean)
           : [];
@@ -327,8 +426,13 @@ const UserAppointmentBook: React.FC = () => {
         setDayAvailability(nextAvailability);
         setSpecialDates(nextSpecialDates);
       })
-      .catch(err => console.error('Failed to fetch clinic availability:', err))
-      .finally(() => setLoadingAvailability(false));
+      .finally(() => {
+        if (!isCancelled) setLoadingAvailability(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -343,11 +447,13 @@ const UserAppointmentBook: React.FC = () => {
       return;
     }
 
+    let isCancelled = false;
     setLoadingTimeSlots(true);
-    axios
-      .get(`${API_URL}/api/time-slots/${dayName.toLowerCase()}`)
-      .then(res => {
-        const rawSlots = Array.isArray(res.data?.timeSlots) ? res.data.timeSlots : [];
+    requestJson<{ timeSlots?: TimeSlotRecord[] }>(`${API_URL}/api/time-slots/${dayName.toLowerCase()}`)
+      .then(data => {
+        if (isCancelled) return;
+
+        const rawSlots = Array.isArray(data?.timeSlots) ? data.timeSlots : [];
         const formattedSlots = rawSlots
           .filter((slot: TimeSlotRecord) => slot?.start_time && slot?.end_time && slot?.is_available !== false)
           .map((slot: TimeSlotRecord) => `${formatSlotTime(slot.start_time)} - ${formatSlotTime(slot.end_time)}`);
@@ -355,12 +461,19 @@ const UserAppointmentBook: React.FC = () => {
         setDayTimeSlots(formattedSlots);
         setSelectedTime(prev => (prev && formattedSlots.includes(prev) ? prev : null));
       })
-      .catch(err => {
-        console.error('Failed to fetch time slots:', err);
-        setDayTimeSlots([]);
-        setSelectedTime(null);
+      .catch(() => {
+        if (!isCancelled) {
+          setDayTimeSlots([]);
+          setSelectedTime(null);
+        }
       })
-      .finally(() => setLoadingTimeSlots(false));
+      .finally(() => {
+        if (!isCancelled) setLoadingTimeSlots(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, [selectedDate, dayAvailability]);
 
   useEffect(() => {
@@ -654,7 +767,7 @@ const UserAppointmentBook: React.FC = () => {
         typeLabel = `Laboratory Tests (${selectedLabOptions.map(o => o.name).join(', ')})`;
       
       // appointments POST — cast ids to Number
-      const apptRes = await axios.post(
+      const apptRes = await apiClient.post(
         `${API_URL}/appointments`,
         {
           owner_id:         currentUser.id,
@@ -671,7 +784,7 @@ const UserAppointmentBook: React.FC = () => {
       const bookingEmailSent = apptRes.data?.emailSent !== false;
 
       // medical-information POST — add the three NOT NULL fields
-      await axios.post(
+      await apiClient.post(
         `${API_URL}/medical-information`,
         {
           appointment_id:       appointmentId,
@@ -692,7 +805,7 @@ const UserAppointmentBook: React.FC = () => {
         let referenceUrl: string | undefined;
         if (haircutImageBase64) {
           try {
-            const upRes = await axios.post(
+            const upRes = await apiClient.post(
               `${API_URL}/upload-pet-photo`,
               { file: haircutImageBase64, file_name: `haircut_ref_${appointmentId}.jpg`, mime_type: haircutImageMime },
               { headers: { Authorization: `Bearer ${getToken()}` } },
@@ -701,7 +814,7 @@ const UserAppointmentBook: React.FC = () => {
           } catch { /* non-fatal */ }
         }
         const styleName = haircutStyles.find(h => h.id === selectedHaircutStyle)?.name ?? selectedHaircutStyle;
-        await axios.post(
+        await apiClient.post(
           `${API_URL}/grooming-details`,
           { appointment_id: appointmentId, haircut_style: styleName, haircut_description: customHaircutDescription || undefined, haircut_reference_url: referenceUrl },
           { headers: { Authorization: `Bearer ${getToken()}` } },

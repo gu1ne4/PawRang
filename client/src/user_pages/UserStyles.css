@@ -366,6 +366,64 @@
     background-color: #2d4fb0;
 }
 
+.modal-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    transform: none;
+}
+
+.vaccination-confirm-modal {
+    max-width: 470px;
+    align-items: stretch;
+    gap: 14px;
+}
+
+.vaccination-confirm-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto;
+    border-radius: 999px;
+    background: rgba(61, 103, 238, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.vaccination-confirm-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: #eef4ff;
+    color: #3450a3;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.vaccination-confirm-checkbox {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border: 1px solid #d9e1ff;
+    border-radius: 12px;
+    background: #fff;
+    color: #344054;
+    font-size: 13px;
+    line-height: 1.5;
+    cursor: pointer;
+}
+
+.vaccination-confirm-checkbox input {
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.vaccination-confirm-actions {
+    margin-top: 4px;
+}
+
 .home-landing {
     display: flex;
     flex-direction: column;
@@ -1528,7 +1586,23 @@
     margin-top: 25px;
 }
 
+.vaccinations-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.vaccination-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .add-vaccine-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     background-color: #3d67ee;
     border: none;
     border-radius: 15px;
@@ -1537,6 +1611,11 @@
     font-size: 11px;
     font-weight: 500;
     cursor: pointer;
+}
+
+.add-vaccine-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
 }
 
 .vaccinations-list {
@@ -1594,6 +1673,7 @@
     font-weight: 600;
     color: #333;
     margin-bottom: 5px;
+    margin-top: 8px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

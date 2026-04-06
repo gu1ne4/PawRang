@@ -23,6 +23,7 @@ import AdminRescheduleModal from './AdminRescheduleModal';
 import { availabilityService } from './availabilityService';             
 import Notifications from '../reusable_components/Notifications';
 import UserDetailsView from './UserDetailsView';
+import { apiService } from '../apiService';
 
 // --- TYPESCRIPT INTERFACES ---
 interface CurrentUser {
@@ -251,7 +252,7 @@ const CustomCalendar = ({ selectedDate, onSelectDate, bookedDates = {}, availabl
 // ==========================================
 //  1. CREATE APPOINTMENT MODAL (With Search Pet)
 // ==========================================
-const CreateAppointmentModal = ({ visible, onClose, onSubmit }: any) => {
+const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: any) => {
     // --- PATIENT STATE ---
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
@@ -276,6 +277,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit }: any) => {
     // --- APPOINTMENT STATE ---
     const [service, setService] = useState('');
     const [subService, setSubService] = useState(''); 
+    const [branchId, setBranchId] = useState('');
     const [date, setDate] = useState('');
     const [time, setTime] = useState('');
     const initialMedicalAnswers = {
@@ -331,7 +333,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit }: any) => {
         setFirstName(''); setLastName(''); setEmail(''); setPhone(''); setReason('');
         setPetName(''); setPetType(''); setCustomPetType(''); setBreed(''); setCustomBreed(''); setGender('');
         setDob(''); setAge(''); setColor(''); setUnknownDob(false);
-        setService(''); setSubService(''); setDate(''); setTime('');
+        setService(''); setSubService(''); setBranchId(''); setDate(''); setTime('');
         setMedicalAnswers(initialMedicalAnswers);
         setMedicationDetails('');
         setMedicalNotes('');
@@ -485,6 +487,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit }: any) => {
             pet_id: petId || 'WALK_IN',   
             is_walk_in: !ownerId && !petId,
             appointment_type: finalService,
+            branch_id: branchId ? Number(branchId) : null,
             appointment_date: date,
             appointment_time: formattedTime, 
             
@@ -606,10 +609,11 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit }: any) => {
     const selectedServiceObj = servicesList.find(s => s.name === service);
     let validService = service !== '';
     if (selectedServiceObj?.hasOptions && subService === '') validService = false;
+    const validBranch = branchId !== '';
     const allMedicalAnswered = medicalQuestionConfigs.every(question => medicalAnswers[question.key] !== null);
     const validMedical = allMedicalAnswered && (!medicalAnswers.medications72h || medicationDetails.trim() !== '');
 
-    const isFormValid = firstName.trim() !== '' && lastName.trim() !== '' && petName.trim() !== '' && date !== '' && time !== '' && validPetType && validService && validMedical;
+    const isFormValid = firstName.trim() !== '' && lastName.trim() !== '' && petName.trim() !== '' && date !== '' && time !== '' && validPetType && validService && validBranch && validMedical;
 
     const missingFields: string[] = [];
 
@@ -618,6 +622,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit }: any) => {
     if (!petName.trim()) missingFields.push('Pet name');
     if (!validPetType) missingFields.push('Pet type');
     if (!validService) missingFields.push('Service');
+    if (!validBranch) missingFields.push('Branch');
     if (!date) missingFields.push('Appointment date');
     if (!time) missingFields.push('Time slot');
     if (!allMedicalAnswered) missingFields.push('Medical information');
@@ -815,6 +820,25 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit }: any) => {
                                     {selectedServiceObj.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                 </select>
                             )}
+                        </div>
+
+                        <div style={{ marginBottom: '15px' }}>
+                            <label style={{ fontSize: '12px', fontWeight: '600', color: '#555', marginBottom: '5px', display: 'block' }}>Branch *</label>
+                            <select
+                                className="formInput"
+                                value={branchId}
+                                onChange={e => setBranchId(e.target.value)}
+                                style={{ width: '100%', padding: '10px' }}
+                            >
+                                <option value="">Select Branch</option>
+                                {branches.map((branch: any) => {
+                                    const value = String(branch.branch_id || branch.id || '');
+                                    const label = branch.branch_name || branch.name || `Branch ${value}`;
+                                    return (
+                                        <option key={value} value={value}>{label}</option>
+                                    );
+                                })}
+                            </select>
                         </div>
 
                         <div style={{ marginBottom: '20px' }}>
@@ -1062,24 +1086,32 @@ const ConfirmationModal = ({ visible, onClose, onConfirm, title, message, confir
 // ==========================================
 const DeclinePreferenceModal = ({ visible, onClose, appointment, requestDetails, onSubmit }: any) => {
     const [selectedReason, setSelectedReason] = useState('');
-    const [customReason, setCustomReason] = useState('');
+    const [emailMessage, setEmailMessage] = useState('');
     const [loading, setLoading] = useState(false);
+    const MESSAGE_LIMIT = 500;
 
     useEffect(() => {
         if (visible) {
             setSelectedReason('');
-            setCustomReason('');
+            setEmailMessage('');
             setLoading(false);
         }
     }, [visible]);
 
-    if (!visible) return null;
-
     const selectedReasonOption = DECLINE_PREFERENCE_REASONS.find((reason) => reason.id === selectedReason);
-    const generatedReason = selectedReason === 'specific'
-        ? customReason.trim()
-        : selectedReasonOption?.template || '';
+    const generatedReason = emailMessage;
     const appointmentEmail = appointment?.patient_email || appointment?.patientEmail || appointment?.email || appointment?.walk_in_email || 'the patient';
+
+    useEffect(() => {
+        if (!selectedReason) {
+            setEmailMessage('');
+            return;
+        }
+
+        setEmailMessage(selectedReasonOption?.template || '');
+    }, [selectedReason, selectedReasonOption?.template]);
+
+    if (!visible) return null;
 
     const formatDateValue = (value: string) => {
         if (!value) return 'Not provided';
@@ -1101,7 +1133,7 @@ const DeclinePreferenceModal = ({ visible, onClose, appointment, requestDetails,
 
     const handleSubmit = async () => {
         if (!selectedReason) return;
-        if (selectedReason === 'specific' && !customReason.trim()) return;
+        if (!emailMessage.trim()) return;
 
         setLoading(true);
         try {
@@ -1146,7 +1178,6 @@ const DeclinePreferenceModal = ({ visible, onClose, appointment, requestDetails,
                             value={selectedReason}
                             onChange={(e) => {
                                 setSelectedReason(e.target.value);
-                                if (e.target.value !== 'specific') setCustomReason('');
                             }}
                             style={{ width: '100%', padding: '10px', height: '44px' }}
                         >
@@ -1157,29 +1188,38 @@ const DeclinePreferenceModal = ({ visible, onClose, appointment, requestDetails,
                         </select>
                     </div>
 
-                    {selectedReason === 'specific' && (
+                    {selectedReason && (
                         <div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                                 <label style={{ fontSize: '13px', fontWeight: '600', color: '#555' }}>
-                                    Custom Reason <span style={{ color: '#d32f2f' }}>*</span>
+                                    Email update to be sent to patient <span style={{ color: '#d32f2f' }}>*</span>
                                 </label>
-                                <span style={{ fontSize: '11px', color: '#999' }}>{customReason.length}/300</span>
+                                <span style={{ fontSize: '11px', color: emailMessage.length >= MESSAGE_LIMIT ? '#d32f2f' : '#999' }}>
+                                    {emailMessage.length}/{MESSAGE_LIMIT}
+                                </span>
                             </div>
                             <textarea
                                 className="formInput"
-                                rows={3}
-                                maxLength={300}
-                                placeholder="Explain why the clinic cannot approve the patient's preferred schedule."
-                                value={customReason}
-                                onChange={(e) => setCustomReason(e.target.value)}
+                                rows={4}
+                                maxLength={MESSAGE_LIMIT}
+                                placeholder={
+                                    selectedReason === 'specific'
+                                        ? "Write the message that should be emailed to the patient."
+                                        : "You can edit the prepared message before sending it."
+                                }
+                                value={emailMessage}
+                                onChange={(e) => setEmailMessage(e.target.value.slice(0, MESSAGE_LIMIT))}
                                 style={{ resize: 'none' }}
                             />
+                            <div style={{ fontSize: '11px', color: '#666', marginTop: '6px' }}>
+                                The selected reason still categorizes the decline. You can edit the actual email wording here.
+                            </div>
                         </div>
                     )}
 
-                    {generatedReason && (
+                    {selectedReason && (
                         <div>
-                            <div style={{ fontSize: '13px', fontWeight: '700', color: '#555', marginBottom: '8px' }}>Email update to be sent to patient:</div>
+                            <div style={{ fontSize: '13px', fontWeight: '700', color: '#555', marginBottom: '8px' }}>Email preview:</div>
                             <div style={{ padding: '14px 16px', borderRadius: '10px', border: '1px solid #e7ebf5', backgroundColor: '#f8faff', color: '#555', fontSize: '14px', lineHeight: '22px' }}>
                                 {generatedReason}
                             </div>
@@ -1201,15 +1241,15 @@ const DeclinePreferenceModal = ({ visible, onClose, appointment, requestDetails,
                     </button>
                     <button
                         onClick={handleSubmit}
-                        disabled={!selectedReason || loading || (selectedReason === 'specific' && !customReason.trim())}
+                        disabled={!selectedReason || loading || !emailMessage.trim()}
                         style={{
                             padding: '11px 24px',
-                            backgroundColor: (!selectedReason || loading || (selectedReason === 'specific' && !customReason.trim())) ? '#f0a8a8' : '#d32f2f',
+                            backgroundColor: (!selectedReason || loading || !emailMessage.trim()) ? '#f0a8a8' : '#d32f2f',
                             border: 'none',
                             borderRadius: '8px',
                             color: 'white',
                             fontWeight: '600',
-                            cursor: (!selectedReason || loading || (selectedReason === 'specific' && !customReason.trim())) ? 'not-allowed' : 'pointer'
+                            cursor: (!selectedReason || loading || !emailMessage.trim()) ? 'not-allowed' : 'pointer'
                         }}
                     >
                         {loading ? 'Declining...' : 'Decline Preference'}
@@ -1522,6 +1562,7 @@ export default function Schedule() {
 
     const [userData, setUserData] = useState<any[]>([]);
     const [doctors, setDoctors] = useState<any[]>([]);
+    const [branches, setBranches] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [refreshingDetails, setRefreshingDetails] = useState(false);
 
@@ -1857,6 +1898,7 @@ export default function Schedule() {
         const { data: patients } = await supabase.from('patient_account').select('*');
         const { data: pets } = await supabase.from('pet_profile').select('*');
         const { data: doctorAccounts } = await supabase.from('employee_accounts').select('*');
+        const { data: branchRows } = await supabase.from('branches').select('*');
         const appointmentIds = [
             ...(appts || []).map(app => app.appointment_id || app.id),
             ...(walkIns || []).map(walkIn => walkIn.walkin_id || walkIn.id)
@@ -1866,6 +1908,7 @@ export default function Schedule() {
             : [];
         const medicalInformationByTarget = new Map<string, any>();
         const doctorById = new Map<string, any>();
+        const branchById = new Map<string, any>();
 
         (medicalInformationRows || []).forEach((medicalInfoItem: any) => {
             const medicalInfoRecordType = medicalInfoItem?.record_type || (medicalInfoItem?.walkin_id ? 'walkin' : 'appointment');
@@ -1880,6 +1923,13 @@ export default function Schedule() {
             const doctorKey = String(doctorItem?.id || doctorItem?.pk || '');
             if (doctorKey && !doctorById.has(doctorKey)) {
                 doctorById.set(doctorKey, doctorItem);
+            }
+        });
+
+        (branchRows || []).forEach((branchItem: any) => {
+            const branchKey = String(branchItem?.branch_id || branchItem?.id || '');
+            if (branchKey && !branchById.has(branchKey)) {
+                branchById.set(branchKey, branchItem);
             }
         });
 
@@ -1927,6 +1977,11 @@ export default function Schedule() {
     const mappedDoctorName = mappedDoctorRecord
         ? (getPersonDisplayName(mappedDoctorRecord) || 'Not Assigned')
         : 'Not Assigned';
+    const mappedBranchId = app.branch_id || null;
+    const mappedBranchRecord = mappedBranchId ? branchById.get(String(mappedBranchId)) : null;
+    const mappedBranchName = mappedBranchRecord
+        ? (mappedBranchRecord.branch_name || mappedBranchRecord.name || 'Not specified')
+        : 'Not specified';
 
     return {
         ...app, ...owner, ...pet,
@@ -1944,6 +1999,9 @@ export default function Schedule() {
         displayStatus: getDisplayAppointmentStatus(normalizedStatus, latestRescheduleRequest),
         doctor: mappedDoctorName,
         assignedDoctor: mappedDoctorId,
+        branchId: mappedBranchId,
+        branch: mappedBranchName,
+        branchName: mappedBranchName,
         email: mappedEmail, patientEmail: mappedEmail, patient_email: mappedEmail,
         phone: mappedPhone, contact_number: mappedPhone,
         reasonForVisit: mappedReason, patient_reason: mappedReason, reason: mappedReason,
@@ -1981,6 +2039,11 @@ export default function Schedule() {
             const mappedDoctorName = mappedDoctorRecord
                 ? (getPersonDisplayName(mappedDoctorRecord) || 'Not Assigned')
                 : 'Not Assigned';
+            const mappedBranchId = w.branch_id || null;
+            const mappedBranchRecord = mappedBranchId ? branchById.get(String(mappedBranchId)) : null;
+            const mappedBranchName = mappedBranchRecord
+                ? (mappedBranchRecord.branch_name || mappedBranchRecord.name || 'Not specified')
+                : 'Not specified';
 
             return {
                 id: `walkin-${w.walkin_id}`,
@@ -1998,6 +2061,9 @@ export default function Schedule() {
                 displayStatus: getDisplayAppointmentStatus(normalizedStatus, latestRescheduleRequest),
                 doctor: mappedDoctorName,
                 assignedDoctor: mappedDoctorId,
+                branchId: mappedBranchId,
+                branch: mappedBranchName,
+                branchName: mappedBranchName,
                 email: w.email || 'Not provided',
                 patientEmail: w.email || 'Not provided',
                 phone: w.contact_number || 'Not provided',
@@ -2076,6 +2142,16 @@ export default function Schedule() {
         }
     };
 
+    const loadBranches = async () => {
+        try {
+            const branchResponse = await apiService.getBranches();
+            setBranches(branchResponse?.branches || []);
+        } catch (error) {
+            console.error('Failed to load branches:', error);
+            setBranches([]);
+        }
+    };
+
     const handleSubmitAppointment = async (appointmentData: any) => {
         try {
             setLoading(true);
@@ -2147,6 +2223,7 @@ export default function Schedule() {
     useEffect(() => {
         loadAppointments();
         loadDoctors();
+        loadBranches();
         loadDayAvailability(); 
     }, [loadAppointments]);
 
@@ -2208,7 +2285,7 @@ export default function Schedule() {
                         </div>
 
                         <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '20px', flex: 1, boxShadow: '0 0 18px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '5px', flexShrink: 0 }}>Doctors Available</h3>
+                            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '5px', flexShrink: 0 }}>PetShield Veterinarian</h3>
                             
                             <div className="doctors-scroll-container" style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column' }}>
                                 {doctors.map((doctor, index) => (
@@ -2281,6 +2358,7 @@ export default function Schedule() {
                 visible={showCreateModal}
                 onClose={handleCloseModal}
                 onSubmit={handleSubmitAppointment}
+                branches={branches}
             />
 
             <ConfirmationModal 

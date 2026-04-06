@@ -128,30 +128,37 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
     const [selectedDate, setSelectedDate] = useState('');
     const [selectedTimeSlot, setSelectedTimeSlot] = useState<any>(null);
     const [selectedReason, setSelectedReason] = useState('');
-    const [customReason, setCustomReason] = useState('');
+    const [emailMessage, setEmailMessage] = useState('');
     const [timeSlots, setTimeSlots] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [loadingSlots, setLoadingSlots] = useState(false);
     const [availableDays, setAvailableDays] = useState<any>(null);
 
-    const CHAR_LIMIT = 300;
+    const CHAR_LIMIT = 500;
     const selectedReasonOption = RESCHEDULE_REASONS.find(reason => reason.id === selectedReason);
-    const generatedExplanation = selectedReason === 'specific'
-        ? customReason.trim()
-        : selectedReasonOption?.template || '';
+    const generatedExplanation = emailMessage;
 
     useEffect(() => {
         if (visible) {
             setSelectedDate('');
             setSelectedTimeSlot(null);
             setSelectedReason('');
-            setCustomReason('');
+            setEmailMessage('');
             setTimeSlots([]);
             availabilityService.getDayAvailability()
                 .then(setAvailableDays)
                 .catch(console.error);
         }
     }, [visible]);
+
+    useEffect(() => {
+        if (!selectedReason) {
+            setEmailMessage('');
+            return;
+        }
+
+        setEmailMessage(selectedReasonOption?.template || '');
+    }, [selectedReason, selectedReasonOption?.template]);
 
     useEffect(() => {
         if (!selectedDate) { setTimeSlots([]); return; }
@@ -188,7 +195,7 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
 
     const handleSubmit = async () => {
         if (!selectedDate || !selectedTimeSlot) return;
-        if (selectedReason === 'specific' && !customReason.trim()) return;
+        if (selectedReason && !emailMessage.trim()) return;
         setLoading(true);
         try {
             await onSubmit({
@@ -312,7 +319,6 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
                             value={selectedReason}
                             onChange={e => {
                                 setSelectedReason(e.target.value);
-                                if (e.target.value !== 'specific') setCustomReason('');
                             }}
                             className="formSelect"
                             style={{ width: '100%', height: '45px' }}
@@ -324,28 +330,35 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
                                 </option>
                             ))}
                         </select>
-                        {selectedReason === 'specific' && (
+                        {selectedReason && (
                             <div style={{ marginTop: '12px' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                                     <label style={{ fontWeight: '600', fontSize: '14px' }}>
-                                        Specific Reason <span style={{ color: '#d32f2f' }}>*</span>
+                                        Email message to be sent to patient <span style={{ color: '#d32f2f' }}>*</span>
                                     </label>
-                                    <span style={{ fontSize: '11px', color: customReason.length >= CHAR_LIMIT ? '#d32f2f' : '#999' }}>
-                                        {customReason.length}/{CHAR_LIMIT}
+                                    <span style={{ fontSize: '11px', color: emailMessage.length >= CHAR_LIMIT ? '#d32f2f' : '#999' }}>
+                                        {emailMessage.length}/{CHAR_LIMIT}
                                     </span>
                                 </div>
                                 <textarea
                                     className="formInput"
-                                    style={{ height: '80px', width: '100%', resize: 'vertical' }}
-                                    value={customReason}
-                                    onChange={e => setCustomReason(e.target.value.slice(0, CHAR_LIMIT))}
-                                    placeholder="Please explain why you need to reschedule"
+                                    style={{ height: '100px', width: '100%', resize: 'vertical' }}
+                                    value={emailMessage}
+                                    onChange={e => setEmailMessage(e.target.value.slice(0, CHAR_LIMIT))}
+                                    placeholder={
+                                        selectedReason === 'specific'
+                                            ? 'Write the message that should be emailed to the patient.'
+                                            : 'You can edit the prepared message before sending it.'
+                                    }
                                 />
+                                <div style={{ fontSize: '11px', color: '#666', marginTop: '6px' }}>
+                                    The selected reason still helps categorize the request. You can edit the actual email wording here.
+                                </div>
                             </div>
                         )}
                     </div>
 
-                    {generatedExplanation && (
+                    {selectedReason && (
                         <div>
                             <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '14px' }}>
                                 Email to be sent to patient:
@@ -394,10 +407,10 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
                         style={{ flex: 1, padding: '12px', backgroundColor: '#f5f5f5', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#666', fontWeight: '600' }}>
                         Cancel
                     </button>
-                    <button onClick={handleSubmit} disabled={!selectedDate || !selectedTimeSlot || loading || (selectedReason === 'specific' && !customReason.trim())}
+                    <button onClick={handleSubmit} disabled={!selectedDate || !selectedTimeSlot || loading || (selectedReason && !emailMessage.trim())}
                         style={{ flex: 1, padding: '12px', borderRadius: '8px', border: 'none', fontWeight: '600', color: 'white',
-                            backgroundColor: (!selectedDate || !selectedTimeSlot || loading || (selectedReason === 'specific' && !customReason.trim())) ? '#ccc' : '#3d67ee',
-                            cursor: (!selectedDate || !selectedTimeSlot || loading || (selectedReason === 'specific' && !customReason.trim())) ? 'not-allowed' : 'pointer' }}>
+                            backgroundColor: (!selectedDate || !selectedTimeSlot || loading || (selectedReason && !emailMessage.trim())) ? '#ccc' : '#3d67ee',
+                            cursor: (!selectedDate || !selectedTimeSlot || loading || (selectedReason && !emailMessage.trim())) ? 'not-allowed' : 'pointer' }}>
                         {loading ? 'Sending...' : 'Send Reschedule Request'}
                     </button>
                 </div>

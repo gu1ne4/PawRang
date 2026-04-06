@@ -788,6 +788,84 @@
   border-radius: 8px;
 }
 
+.app-reschedule-request-block {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #edf1fb;
+}
+
+.app-reschedule-request-block h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #3d67ee;
+  margin-bottom: 10px;
+}
+
+.app-reschedule-request-helper {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #f6f8ff;
+  border: 1px solid #dfe7ff;
+  border-radius: 10px;
+  font-size: 12px;
+  color: #4b5d87;
+  margin-bottom: 12px;
+}
+
+.app-reschedule-request-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.app-reschedule-request-card {
+  background: #fafcff;
+  border: 1px solid #e3ebff;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.app-reschedule-request-label {
+  display: block;
+  font-size: 11px;
+  color: #7a89a8;
+  font-weight: 700;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.app-reschedule-request-value {
+  display: block;
+  font-size: 13px;
+  color: #2f3b58;
+  font-weight: 600;
+}
+
+.app-reschedule-request-note {
+  margin-top: 12px;
+  background: #fff7f8;
+  border: 1px solid #ffe1e6;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.app-reschedule-request-note h5 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: #ee3d5a;
+  font-weight: 700;
+}
+
+.app-reschedule-request-note p {
+  margin: 0;
+  font-size: 13px;
+  color: #4a4a4a;
+  white-space: pre-wrap;
+}
+
 /* No Selection */
 .app-empty-details {
   display: flex;
@@ -826,6 +904,12 @@
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.app-action-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .app-action-btn.cancel {
@@ -837,6 +921,15 @@
   background-color: #b71c1c;
 }
 
+.app-action-btn.withdraw {
+  background-color: #f57c00;
+  color: white;
+}
+
+.app-action-btn.withdraw:hover {
+  background-color: #cf6d06;
+}
+
 .app-action-btn.reschedule {
   background-color: #3d67ee;
   color: white;
@@ -844,6 +937,29 @@
 
 .app-action-btn.reschedule:hover {
   background-color: #2d4fb0;
+}
+
+.app-action-btn.reschedule:disabled {
+  background-color: #b8c8fb;
+}
+
+.app-action-helper {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #dfe7ff;
+  border-radius: 10px;
+  background: #f6f8ff;
+  font-size: 12px;
+  color: #4b5d87;
+}
+
+@media (max-width: 768px) {
+  .app-reschedule-request-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ===== CANCEL/RESCHEDULE MODAL STYLES ===== */

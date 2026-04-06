@@ -2,8 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import './UserAuthStylesheet.css'
 import { ShieldCheck, UserCheck } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import axios from 'axios';
-import API_URL from '../API';
+import { apiService } from '../apiService';
 
 const OTP_EXPIRY_SECONDS   = 10 * 60; // 10 minutes — matches backend
 const RESEND_COOLDOWN_SECS = 60;       // 60s between resend requests
@@ -98,7 +97,7 @@ export default function ConfirmOTP() {
     }
 
     // ── Verify OTP ───────────────────────────────────────────────────────────
-    function confirmOtpHandler() {
+    async function confirmOtpHandler() {
         setServerError('');
         setServerSuccess('');
 
@@ -108,29 +107,27 @@ export default function ConfirmOTP() {
 
         setIsLoading(true);
 
-        axios
-            .post(`${API_URL}/verify-otp`, { email, otp: otp.join(''), mode })
-            .then((response: any) => {
-                setServerSuccess(response.data.message);
-                clearInterval(expiryIntervalRef.current!);
-                clearInterval(resendIntervalRef.current!);
-                setIsLoading(false);
-                setTimeout(() => {
-                    if (isEmailConfirmation) {
-                        nav('/login');
-                    } else {
-                        nav('/change-password', { state: { email } });
-                    }
-                }, 1500);
-            })
-            .catch((error: any) => {
-                setServerError(error.response?.data?.error || 'Invalid OTP. Please try again.');
-                setIsLoading(false);
-            });
+        try {
+            const response = await apiService.verifyOtp({ email, otp: otp.join(''), mode });
+            setServerSuccess(response.message);
+            clearInterval(expiryIntervalRef.current!);
+            clearInterval(resendIntervalRef.current!);
+            setIsLoading(false);
+            setTimeout(() => {
+                if (isEmailConfirmation) {
+                    nav('/login');
+                } else {
+                    nav('/change-password', { state: { email } });
+                }
+            }, 1500);
+        } catch (error: any) {
+            setServerError(error.response?.data?.error || error.data?.error || error.message || 'Invalid OTP. Please try again.');
+            setIsLoading(false);
+        }
     }
 
     // ── Resend OTP ───────────────────────────────────────────────────────────
-    function resendOtpHandler() {
+    async function resendOtpHandler() {
         setServerError('');
         setServerSuccess('');
 
@@ -138,21 +135,19 @@ export default function ConfirmOTP() {
 
         setIsResending(true);
 
-        axios
-            .post(`${API_URL}/resend-otp`, { email, mode })
-            .then(() => {
-                setServerSuccess('A new OTP has been sent to your email.');
-                setOtp(['', '', '', '', '', '']);
-                setOtpError('');
-                inputRefs.current[0]?.focus();
-                startExpiryTimer();
-                startResendCooldown();
-                setIsResending(false);
-            })
-            .catch((error: any) => {
-                setServerError(error.response?.data?.error || 'Failed to resend OTP. Please try again.');
-                setIsResending(false);
-            });
+        try {
+            await apiService.resendOtp({ email, mode });
+            setServerSuccess('A new OTP has been sent to your email.');
+            setOtp(['', '', '', '', '', '']);
+            setOtpError('');
+            inputRefs.current[0]?.focus();
+            startExpiryTimer();
+            startResendCooldown();
+            setIsResending(false);
+        } catch (error: any) {
+            setServerError(error.response?.data?.error || error.data?.error || error.message || 'Failed to resend OTP. Please try again.');
+            setIsResending(false);
+        }
     }
 
     const otpExpired     = expirySeconds === 0;

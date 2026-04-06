@@ -21,8 +21,14 @@ interface User {
   username: string;
   fullname?: string;
   fullName?: string;
+  firstName?: string;
+  first_name?: string;
+  lastName?: string;
+  last_name?: string;
+  profileImage?: string;
   userImage?: string;
   userimage?: string;
+  user_image?: string;
   email?: string;
   contact_number?: string;
   contactnumber?: string;
@@ -82,8 +88,11 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
     };
   }, [mobileMenuOpen]);
 
+  const firstName = currentUser?.firstName || currentUser?.first_name || '';
+  const lastName = currentUser?.lastName || currentUser?.last_name || '';
+  const combinedName = `${firstName} ${lastName}`.trim();
   const displayName = currentUser
-    ? currentUser.fullname || currentUser.fullName || currentUser.username || 'User'
+    ? combinedName || currentUser.fullname || currentUser.fullName || currentUser.username || 'User'
     : '';
 
   const isHomeActive = location.pathname === '/user/home' && location.hash !== '#about';
@@ -164,9 +173,11 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
     confirmLogout();
   };
 
-  const avatar = currentUser?.userImage || currentUser?.userimage ? (
+  const profileImage = currentUser?.profileImage || currentUser?.userImage || currentUser?.userimage || currentUser?.user_image;
+
+  const avatar = profileImage ? (
     <img
-      src={currentUser.userImage || currentUser.userimage}
+      src={profileImage}
       alt={displayName}
       className="profile-image"
     />

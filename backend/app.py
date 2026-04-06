@@ -418,10 +418,12 @@ def get_profile_display_name(profile):
 
     first_name = profile.get('firstName') or profile.get('first_name') or ""
     last_name = profile.get('lastName') or profile.get('last_name') or ""
+    combined_name = f"{first_name} {last_name}".strip()
 
     return (
-        profile.get('fullname')
-        or f"{first_name} {last_name}".strip()
+        combined_name
+        or profile.get('full_name')
+        or profile.get('fullname')
         or profile.get('username')
         or profile.get('email')
         or ""
@@ -434,14 +436,15 @@ def normalize_patient_admin_account(profile):
     first_name = profile.get('firstName') or profile.get('first_name') or ""
     last_name = profile.get('lastName') or profile.get('last_name') or ""
     full_name = (
-        profile.get('fullname')
+        profile.get('full_name')
+        or profile.get('fullname')
         or f"{first_name} {last_name}".strip()
         or profile.get('username')
         or profile.get('email')
         or "Unknown"
     )
     contact = profile.get('contact_number') or profile.get('contactNumber') or profile.get('contactnumber') or ""
-    user_image = profile.get('userImage') or profile.get('userimage')
+    user_image = profile.get('userImage') or profile.get('userimage') or profile.get('user_image')
     raw_status = (profile.get('status') or 'active').strip().lower()
     status = 'Disabled' if raw_status in ('disabled', 'inactive') else 'Active'
 
@@ -458,6 +461,45 @@ def normalize_patient_admin_account(profile):
         "userImage": user_image,
         "userimage": user_image,
     }
+
+def normalize_public_profile(profile):
+    if not profile:
+        return None
+
+    first_name = profile.get('firstName') or profile.get('first_name') or ""
+    last_name = profile.get('lastName') or profile.get('last_name') or ""
+    full_name = f"{first_name} {last_name}".strip() or profile.get('full_name') or profile.get('fullname') or get_profile_display_name(profile)
+
+    if (not first_name or not last_name) and full_name:
+        split_first, split_last = split_full_name(full_name)
+        first_name = first_name or split_first
+        last_name = last_name or split_last
+
+    contact = profile.get('contact_number') or profile.get('contactNumber') or profile.get('contactnumber') or ""
+    user_image = profile.get('userImage') or profile.get('userimage') or profile.get('user_image') or profile.get('profileImage')
+    created_at = profile.get('created_at') or profile.get('dateJoined') or profile.get('date_joined') or ""
+    raw_status = (profile.get('status') or 'active').strip().lower()
+
+    normalized = {
+        "id": profile.get('id'),
+        "username": profile.get('username') or "",
+        "email": profile.get('email') or "",
+        "fullname": full_name,
+        "fullName": full_name,
+        "firstName": first_name,
+        "lastName": last_name,
+        "contact_number": contact,
+        "contactNumber": contact,
+        "role": profile.get('role'),
+        "status": raw_status,
+        "userImage": user_image,
+        "userimage": user_image,
+        "profileImage": user_image,
+        "created_at": created_at,
+        "dateJoined": created_at,
+    }
+
+    return normalized
 
 def build_reschedule_action_links(token):
     base_url = get_public_base_url()
@@ -1371,6 +1413,20 @@ def add_pet():
     birthday = data.get('birthday')
     age      = data.get('age')
     weight   = data.get('weight_kg')
+    pet_photo_url = data.get('pet_photo_url')
+    is_vaccinated = data.get('is_vaccinated')
+    vaccination_urls = data.get('vaccination_urls')
+
+    if birthday and not age:
+        try:
+            birthday_date = datetime.strptime(str(birthday), '%Y-%m-%d').date()
+            today = datetime.utcnow().date()
+            derived_years = today.year - birthday_date.year - (
+                (today.month, today.day) < (birthday_date.month, birthday_date.day)
+            )
+            age = str(max(derived_years, 0))
+        except ValueError:
+            age = None
 
     if not all([owner_id, pet_name, pet_type, breed, pet_size, gender]):
         missing = [k for k, v in {
@@ -1380,7 +1436,7 @@ def add_pet():
         return jsonify({"error": f"Missing required fields: {missing}"}), 400
 
     try:
-        response = supabase.table('pet_profile').insert({
+        insert_payload = {
             "owner_id":    owner_id,
             "pet_name":    pet_name,
             "pet_species": pet_type,
@@ -1390,13 +1446,158 @@ def add_pet():
             "birthday":    birthday,
             "age":         age,
             "weight_kg":   weight,
-        }).execute()
+            "pet_photo_url": pet_photo_url,
+            "is_vaccinated": is_vaccinated,
+            "vaccination_urls": vaccination_urls,
+        }
+
+        try:
+            response = supabase.table('pet_profile').insert(insert_payload).execute()
+        except Exception as insert_error:
+            if 'is_vaccinated' not in str(insert_error):
+                raise
+
+            insert_payload.pop('is_vaccinated', None)
+            response = supabase.table('pet_profile').insert(insert_payload).execute()
 
         pet = response.data[0] if response.data else None
         return jsonify({"message": "Pet added successfully", "pet": pet}), 200
 
     except Exception as e:
         print("Add pet error:", e)
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/upload-pet-photo', methods=['POST'])
+def upload_pet_photo():
+    import base64
+
+    data = request.get_json() or {}
+    file_b64 = data.get('file')
+    file_name = data.get('file_name', f"pet_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}.jpg")
+    mime_type = data.get('mime_type', 'image/jpeg')
+
+    if not file_b64:
+        return jsonify({"error": "No file provided"}), 400
+
+    try:
+        file_data = base64.b64decode(file_b64)
+        original_name = os.path.basename(str(file_name or '').strip()) or f"pet_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}.jpg"
+        safe_name = ''.join(ch if ch.isalnum() or ch in ('-', '_', '.') else '_' for ch in original_name)
+        safe_name = safe_name or f"pet_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}.jpg"
+        unique_folder = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}_{uuid.uuid4().hex[:8]}"
+        file_path = f"photos/{unique_folder}/{safe_name}"
+
+        supabase_admin.storage.from_("pet-photos").upload(
+            path=file_path,
+            file=file_data,
+            file_options={"content-type": mime_type}
+        )
+
+        public_url = f"{SUPABASE_URL}/storage/v1/object/public/pet-photos/{file_path}"
+        return jsonify({"photoUrl": public_url}), 200
+
+    except Exception as e:
+        print("Upload pet photo error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/upload-profile-photo', methods=['POST'])
+def upload_profile_photo():
+    import base64
+
+    data = request.get_json() or {}
+    file_b64 = data.get('file')
+    file_name = data.get('file_name', f"profile_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}.jpg")
+    mime_type = data.get('mime_type', 'image/jpeg')
+
+    if not file_b64:
+        return jsonify({"error": "No file provided"}), 400
+
+    try:
+        file_data = base64.b64decode(file_b64)
+        original_name = os.path.basename(str(file_name or '').strip()) or f"profile_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}.jpg"
+        safe_name = ''.join(ch if ch.isalnum() or ch in ('-', '_', '.') else '_' for ch in original_name)
+        safe_name = safe_name or f"profile_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}.jpg"
+        unique_folder = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}_{uuid.uuid4().hex[:8]}"
+        file_path = f"profile-photos/{unique_folder}/{safe_name}"
+
+        supabase_admin.storage.from_("pet-photos").upload(
+            path=file_path,
+            file=file_data,
+            file_options={"content-type": mime_type}
+        )
+
+        public_url = f"{SUPABASE_URL}/storage/v1/object/public/pet-photos/{file_path}"
+        return jsonify({"photoUrl": public_url}), 200
+
+    except Exception as e:
+        print("Upload profile photo error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/pets/<int:pet_id>', methods=['PATCH'])
+def update_pet(pet_id):
+    data = request.get_json() or {}
+    allowed = [
+        'pet_name', 'pet_species', 'pet_breed', 'pet_gender',
+        'pet_size', 'birthday', 'age', 'weight_kg',
+        'pet_photo_url', 'is_vaccinated', 'vaccination_urls',
+    ]
+    update_data = {k: v for k, v in data.items() if k in allowed}
+
+    birthday = update_data.get('birthday')
+    if birthday and not update_data.get('age'):
+        try:
+            birthday_date = datetime.strptime(str(birthday), '%Y-%m-%d').date()
+            today = datetime.utcnow().date()
+            derived_years = today.year - birthday_date.year - (
+                (today.month, today.day) < (birthday_date.month, birthday_date.day)
+            )
+            update_data['age'] = str(max(derived_years, 0))
+        except ValueError:
+            pass
+
+    if not update_data:
+        return jsonify({"error": "No valid fields to update"}), 400
+
+    try:
+        try:
+            response = supabase_admin.table('pet_profile') \
+                .update(update_data) \
+                .eq('pet_id', pet_id) \
+                .execute()
+        except Exception as update_error:
+            if 'is_vaccinated' not in str(update_error):
+                raise
+
+            retry_payload = dict(update_data)
+            retry_payload.pop('is_vaccinated', None)
+            response = supabase_admin.table('pet_profile') \
+                .update(retry_payload) \
+                .eq('pet_id', pet_id) \
+                .execute()
+
+        pet = response.data[0] if response.data else None
+        return jsonify({"message": "Pet updated successfully", "pet": pet}), 200
+
+    except Exception as e:
+        print("Update pet error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/pets/<int:pet_id>', methods=['DELETE'])
+def delete_pet(pet_id):
+    try:
+        supabase_admin.table('pet_profile') \
+            .delete() \
+            .eq('pet_id', pet_id) \
+            .execute()
+
+        return jsonify({"message": "Pet deleted successfully"}), 200
+
+    except Exception as e:
+        print("Delete pet error:", str(e))
         return jsonify({"error": str(e)}), 400
 
 
@@ -1428,30 +1629,19 @@ def get_user_profile(user_id):
         # First try patient_account
         response = supabase.table('patient_account').select('*').eq('id', user_id).execute()
         if response.data:
-            profile = response.data[0]
-            fullname = get_profile_display_name(profile)
+            normalized = normalize_public_profile(response.data[0])
             return jsonify({
-                "id": profile['id'],
-                "email": profile.get('email'),
-                "username": profile.get('username'),
-                "fullname": fullname,
-                "contact_number": profile.get('contact_number'),
-                "role": profile.get('role'),
-                "status": profile.get('status')
+                **normalized,
+                "user": normalized
             }), 200
 
         # If not found, try employee_accounts
         response = supabase.table('employee_accounts').select('*').eq('id', user_id).execute()
         if response.data:
-            profile = response.data[0]
-            fullname = get_profile_display_name(profile)
+            normalized = normalize_public_profile(response.data[0])
             return jsonify({
-                "id": profile['id'],
-                "email": profile.get('email'),
-                "username": profile.get('username'),
-                "fullname": fullname,
-                "role": profile.get('role'),
-                "status": profile.get('status')
+                **normalized,
+                "user": normalized
             }), 200
 
         return jsonify({"error": "Profile not found"}), 404
@@ -1459,6 +1649,195 @@ def get_user_profile(user_id):
     except Exception as e:
         print("Profile fetch error:", e)
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/profile/<user_id>', methods=['PATCH'])
+def update_user_profile(user_id):
+    data = request.get_json() or {}
+
+    try:
+        profile = get_single_row('patient_account', 'id', user_id)
+        table_name = 'patient_account'
+
+        if not profile:
+            profile = get_single_row('employee_accounts', 'id', user_id)
+            table_name = 'employee_accounts'
+
+        if not profile:
+            return jsonify({"error": "Profile not found"}), 404
+
+        username = (data.get('username') or profile.get('username') or '').strip()
+        first_name = (data.get('firstName') or data.get('first_name') or '').strip()
+        last_name = (data.get('lastName') or data.get('last_name') or '').strip()
+        full_name = (
+            (data.get('fullName') or data.get('fullname') or data.get('full_name') or '').strip()
+            or f"{first_name} {last_name}".strip()
+            or profile.get('full_name')
+            or profile.get('fullname')
+            or get_profile_display_name(profile)
+        )
+        contact_number = (
+            data.get('contactNumber')
+            if 'contactNumber' in data else
+            data.get('contact_number')
+            if 'contact_number' in data else
+            data.get('contactnumber')
+        )
+        user_image = (
+            data.get('userImage')
+            if 'userImage' in data else
+            data.get('userimage')
+            if 'userimage' in data else
+            data.get('user_image')
+            if 'user_image' in data else
+            data.get('profileImage')
+        )
+
+        base_update = {}
+        if 'username' in data:
+            base_update['username'] = username
+        if any(key in data for key in ('contactNumber', 'contact_number', 'contactnumber')):
+            base_update['contact_number'] = (contact_number or '').strip()
+
+        has_name_update = any(key in data for key in ('firstName', 'first_name', 'lastName', 'last_name', 'fullName', 'fullname', 'full_name'))
+        has_image_update = any(key in data for key in ('userImage', 'userimage', 'user_image', 'profileImage'))
+
+        if not base_update and not has_name_update and not has_image_update:
+            return jsonify({"error": "No valid profile fields to update"}), 400
+
+        split_first_name, split_last_name = split_full_name(full_name)
+        name_variants = [{}]
+        if has_name_update:
+            if table_name == 'patient_account':
+                name_variants = [
+                    {"firstName": split_first_name, "lastName": split_last_name},
+                    {"first_name": split_first_name, "last_name": split_last_name},
+                    {"full_name": full_name, "firstName": split_first_name, "lastName": split_last_name},
+                    {"fullname": full_name, "firstName": split_first_name, "lastName": split_last_name},
+                    {"full_name": full_name, "first_name": split_first_name, "last_name": split_last_name},
+                    {"fullname": full_name, "first_name": split_first_name, "last_name": split_last_name},
+                    {"full_name": full_name},
+                    {"fullname": full_name},
+                ]
+            else:
+                name_variants = [
+                    {"full_name": full_name, "first_name": split_first_name, "last_name": split_last_name},
+                    {"full_name": full_name},
+                    {"fullname": full_name, "first_name": split_first_name, "last_name": split_last_name},
+                    {"fullname": full_name, "firstName": split_first_name, "lastName": split_last_name},
+                    {"first_name": split_first_name, "last_name": split_last_name},
+                    {"firstName": split_first_name, "lastName": split_last_name},
+                    {"full_name": full_name, "firstName": split_first_name, "lastName": split_last_name},
+                    {"fullname": full_name},
+                ]
+
+        image_variants = [{}]
+        if has_image_update:
+            image_variants = [
+                {"userImage": user_image},
+                {"userimage": user_image},
+                {"user_image": user_image},
+                {},
+            ]
+
+        response = None
+        last_error = None
+        attempted_payloads = set()
+
+        for name_variant in name_variants:
+            for image_variant in image_variants:
+                update_payload = {**base_update, **name_variant, **image_variant}
+                if not update_payload:
+                    continue
+
+                payload_signature = tuple(sorted(update_payload.keys()))
+                if payload_signature in attempted_payloads:
+                    continue
+                attempted_payloads.add(payload_signature)
+
+                try:
+                    response = supabase_admin.table(table_name).update(update_payload).eq('id', user_id).execute()
+                    last_error = None
+                    break
+                except Exception as update_error:
+                    last_error = update_error
+                    print("Profile update fallback attempt failed:", update_error)
+            if response is not None:
+                break
+
+        if response is None:
+            raise last_error if last_error else Exception("Unable to update profile")
+        updated_profile = response.data[0] if response.data else get_single_row(table_name, 'id', user_id)
+        normalized = normalize_public_profile(updated_profile or profile)
+
+        return jsonify({
+            "message": "Profile updated successfully",
+            **normalized,
+            "user": normalized
+        }), 200
+
+    except Exception as e:
+        print("Profile update error:", e)
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/profile/<user_id>/change-password', methods=['POST'])
+def change_authenticated_user_password(user_id):
+    data = request.get_json() or {}
+    current_password = data.get('current_password') or ''
+    new_password = data.get('new_password') or ''
+
+    if not current_password or not new_password:
+        return jsonify({"error": "Current password and new password are required"}), 400
+
+    if len(new_password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    if not any(char.islower() for char in new_password) or not any(char.isupper() for char in new_password) or not any(char.isdigit() for char in new_password):
+        return jsonify({"error": "Password must contain at least one uppercase letter, one lowercase letter, and one number"}), 400
+
+    if current_password == new_password:
+        return jsonify({"error": "New password must be different from your current password"}), 400
+
+    try:
+        profile = get_single_row('patient_account', 'id', user_id)
+
+        if not profile:
+            profile = get_single_row('employee_accounts', 'id', user_id)
+
+        if not profile:
+            return jsonify({"error": "Profile not found"}), 404
+
+        email = normalize_email_address(profile.get('email'))
+        if not email:
+            return jsonify({"error": "This account does not have a valid email address"}), 400
+
+        try:
+            auth_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+            auth_response = auth_client.auth.sign_in_with_password({
+                "email": email,
+                "password": current_password
+            })
+            auth_user = getattr(auth_response, 'user', None)
+            if not auth_user:
+                return jsonify({"error": "Current password is incorrect"}), 401
+        except Exception as auth_error:
+            print("Current password verification error:", auth_error)
+            return jsonify({"error": "Current password is incorrect"}), 401
+
+        auth_user_id = str(getattr(auth_user, 'id', '') or '')
+        if auth_user_id and auth_user_id != str(user_id):
+            return jsonify({"error": "Authenticated user mismatch"}), 403
+
+        supabase_admin.auth.admin.update_user_by_id(str(user_id), {
+            "password": new_password
+        })
+
+        return jsonify({"message": "Password changed successfully"}), 200
+
+    except Exception as e:
+        print("Authenticated password change error:", e)
+        return jsonify({"error": str(e)}), 400
 
 
 # -----------------------------------------------
@@ -1648,6 +2027,12 @@ def create_appointment():
         owner_id = data.get('owner_id')
         pet_id = data.get('pet_id')
         is_walk_in = data.get('is_walk_in', False)  # ← ADD THIS FLAG
+        branch_id = data.get('branch_id') or data.get('branchId')
+
+        try:
+            branch_id = int(branch_id) if branch_id not in (None, '', 'null') else None
+        except (TypeError, ValueError):
+            branch_id = None
 
         # ==========================================
         # THE WALK-IN MAGIC (Restored from your working version)
@@ -1671,6 +2056,7 @@ def create_appointment():
                     "appointment_date": data.get('appointment_date') or data.get('date'),
                     "appointment_time": data.get('appointment_time') or data.get('time'),
                     "patient_reason": data.get('patient_reason') or data.get('reason') or '',
+                    "branch_id": branch_id,
                     "status": "pending"
                 }).execute()
 
@@ -1718,6 +2104,7 @@ def create_appointment():
             "appointment_date": data.get('appointment_date') or data.get('date'),
             "appointment_time": data.get('appointment_time') or data.get('time'),
             "patient_reason": data.get('patient_reason') or data.get('reason') or '',
+            "branch_id": branch_id,
             "status": "pending"
         }
         
@@ -1868,12 +2255,104 @@ def get_medical_information(appointment_id):
 @app.route('/appointments/user/<user_id>', methods=['GET'])
 def get_user_appointments(user_id):
     try:
-        response = supabase.table('appointments') \
-            .select(', pet_profile()') \
+        appointments = supabase_admin.table('appointments') \
+            .select('*') \
             .eq('owner_id', user_id) \
-            .execute()
+            .order('created_at', desc=True) \
+            .execute().data or []
 
-        return jsonify({"appointments": response.data}), 200
+        appointment_ids = [app.get('appointment_id') for app in appointments if app.get('appointment_id') is not None]
+        pet_ids = [app.get('pet_id') for app in appointments if app.get('pet_id') is not None]
+        doctor_ids = [app.get('doctor_id') or app.get('assigned_doctor_id') for app in appointments if app.get('doctor_id') or app.get('assigned_doctor_id')]
+        branch_ids = [app.get('branch_id') for app in appointments if app.get('branch_id') is not None]
+        pets = []
+        medical_rows = []
+        doctors = []
+        branches = []
+        reschedule_requests = []
+        if pet_ids:
+            pets = supabase_admin.table('pet_profile') \
+                .select('*') \
+                .in_('pet_id', pet_ids) \
+                .execute().data or []
+        if appointment_ids:
+            medical_rows = supabase_admin.table('medical_information') \
+                .select('*') \
+                .in_('appointment_id', appointment_ids) \
+                .execute().data or []
+        if doctor_ids:
+            doctors = supabase_admin.table('employee_accounts') \
+                .select('*') \
+                .in_('id', doctor_ids) \
+                .execute().data or []
+        if branch_ids:
+            branches = supabase_admin.table('branches') \
+                .select('*') \
+                .in_('branch_id', branch_ids) \
+                .execute().data or []
+        if appointment_ids:
+            reschedule_requests = supabase_admin.table('reschedule_requests') \
+                .select('*') \
+                .eq('target_type', 'appointment') \
+                .in_('target_id', appointment_ids) \
+                .order('created_at', desc=True) \
+                .execute().data or []
+
+        pets_by_id = {str(pet.get('pet_id')): pet for pet in pets}
+        doctors_by_id = {str(doctor.get('id')): doctor for doctor in doctors}
+        branches_by_id = {str(branch.get('branch_id')): branch for branch in branches}
+        latest_request_by_target = {}
+        for request_item in reschedule_requests:
+            target_key = str(request_item.get('target_id'))
+            if target_key not in latest_request_by_target:
+                latest_request_by_target[target_key] = request_item
+        medical_by_appointment_id = {}
+        for medical_row in medical_rows:
+            normalized_medical = normalize_medical_information_record(medical_row)
+            if normalized_medical and normalized_medical.get('appointment_id') not in (None, ''):
+                medical_by_appointment_id[str(normalized_medical.get('appointment_id'))] = normalized_medical
+        enriched_appointments = []
+
+        for appointment in appointments:
+            pet = pets_by_id.get(str(appointment.get('pet_id'))) or {}
+            medical_information = medical_by_appointment_id.get(str(appointment.get('appointment_id')))
+            doctor = doctors_by_id.get(str(appointment.get('doctor_id') or appointment.get('assigned_doctor_id'))) or {}
+            branch = branches_by_id.get(str(appointment.get('branch_id'))) or {}
+            pet_name = pet.get('pet_name') or appointment.get('pet_name') or 'Unknown Pet'
+            pet_breed = pet.get('pet_breed') or appointment.get('pet_breed') or 'Breed not available'
+            pet_photo_url = pet.get('pet_photo_url') or appointment.get('pet_photo_url')
+            doctor_name = get_profile_display_name(doctor) or 'Not yet assigned'
+            branch_name = branch.get('branch_name') or branch.get('name') or 'Not specified'
+            latest_reschedule_request = latest_request_by_target.get(str(appointment.get('appointment_id')))
+            normalized_status = appointment.get('status') or 'pending'
+
+            if latest_reschedule_request and latest_reschedule_request.get('status') in ('pending', 'needs_new_schedule') and normalized_status not in ('completed', 'cancelled'):
+                normalized_status = 'pending'
+
+            enriched_appointments.append({
+                **appointment,
+                'status': normalized_status,
+                'pet_name': pet_name,
+                'petName': pet_name,
+                'pet_breed': pet_breed,
+                'petBreed': pet_breed,
+                'pet_photo_url': pet_photo_url,
+                'doctor': doctor_name,
+                'assignedDoctor': appointment.get('doctor_id') or appointment.get('assigned_doctor_id'),
+                'branch_name': branch_name,
+                'branchName': branch_name,
+                'medicalInformation': medical_information,
+                'medical_information': medical_information,
+                'latestRescheduleRequest': latest_reschedule_request,
+                'pet_profile': {
+                    'pet_id': pet.get('pet_id') or appointment.get('pet_id'),
+                    'pet_name': pet_name,
+                    'pet_breed': pet_breed,
+                    'pet_photo_url': pet_photo_url,
+                } if pet or appointment.get('pet_id') else None,
+            })
+
+        return jsonify({"appointments": enriched_appointments}), 200
 
     except Exception as e:
         print("Fetch appointments error:", e)
@@ -2199,7 +2678,8 @@ def handle_special_dates():
             res = supabase_admin.table('special_dates').select('*').order('event_date').execute()
             return jsonify({"specialDates": res.data}), 200
         except Exception as e:
-            return jsonify({"error": str(e)}), 400
+            print("Special dates fetch error:", e)
+            return jsonify({"specialDates": []}), 200
 
     if request.method == 'POST':
         data = request.get_json()
@@ -2244,6 +2724,8 @@ def get_appointments_table():
         patients = supabase_admin.table("patient_account").select("*").execute().data or []
         pets = supabase_admin.table("pet_profile").select("*").execute().data or []
         doctors = supabase_admin.table("employee_accounts").select("*").execute().data or []
+        branches = supabase_admin.table("branches").select("*").execute().data or []
+        branches_by_id = {str(branch.get('branch_id') or branch.get('id')): branch for branch in branches}
 
         formatted = []
         for app in appts:
@@ -2251,8 +2733,10 @@ def get_appointments_table():
             pet = next((p for p in pets if str(p.get('pet_id')) == str(app.get('pet_id'))), {})
             doc_id = app.get("assigned_doctor_id") or app.get("doctor_id")
             doc = next((d for d in doctors if str(d.get('id')) == str(doc_id)), {})
+            branch = branches_by_id.get(str(app.get('branch_id')), {})
             
             doc_name = get_profile_display_name(doc) or "Not Assigned"
+            branch_name = branch.get('branch_name') or branch.get('name') or 'Not specified'
             
             owner_name = f"{owner.get('firstName', '')} {owner.get('lastName', '')}".strip() or owner.get('username')
             if not owner_name and app.get('walk_in_first_name'):
@@ -2296,6 +2780,9 @@ def get_appointments_table():
                 "status": (app.get("status") or "pending").lower(),
                 "doctor": doc_name,
                 "assignedDoctor": doc_id,
+                "branch": branch_name,
+                "branchName": branch_name,
+                "branch_id": app.get("branch_id"),
                 "email": email, "patientEmail": email, "patient_email": email,
                 "phone": phone, "patientPhone": phone, "contact_number": phone, "contactNumber": phone,
                 "reasonForVisit": reason, "patient_reason": reason, "reason": reason, "reason_for_visit": reason,
@@ -2322,6 +2809,7 @@ def get_appointments_history():
         patients = supabase_admin.table("patient_account").select("*").execute().data or []
         pets = supabase_admin.table("pet_profile").select("*").execute().data or []
         doctors = supabase_admin.table("employee_accounts").select("*").execute().data or []
+        branches = supabase_admin.table("branches").select("*").execute().data or []
         reschedule_requests = supabase_admin.table("reschedule_requests").select("*").order("created_at", desc=True).execute().data or []
         medical_information_rows = supabase_admin.table("medical_information").select("*").execute().data or []
 
@@ -2329,6 +2817,7 @@ def get_appointments_history():
         patients_by_id = {str(patient.get("id")): patient for patient in patients}
         pets_by_id = {str(pet.get("pet_id")): pet for pet in pets}
         doctors_by_id = {str(doctor.get("id")): doctor for doctor in doctors}
+        branches_by_id = {str(branch.get("branch_id") or branch.get("id")): branch for branch in branches}
         latest_request_by_target = {}
         medical_information_by_target = {}
 
@@ -2356,6 +2845,7 @@ def get_appointments_history():
             pet = pets_by_id.get(str(app.get("pet_id")), {})
             doctor_id = app.get("doctor_id") or app.get("assigned_doctor_id")
             doctor = doctors_by_id.get(str(doctor_id), {}) if doctor_id else {}
+            branch = branches_by_id.get(str(app.get("branch_id")), {}) if app.get("branch_id") is not None else {}
             latest_reschedule_request = latest_request_by_target.get(f"appointment-{app.get('appointment_id')}")
             medical_information = medical_information_by_target.get(f"appointment-{app.get('appointment_id')}")
 
@@ -2366,6 +2856,7 @@ def get_appointments_history():
             pet_type = (pet.get("pet_species") or "Unknown").title()
             pet_breed = (pet.get("pet_breed") or "Unknown").title()
             pet_gender = (pet.get("pet_gender") or "Unknown").title()
+            branch_name = branch.get("branch_name") or branch.get("name") or "Not specified"
 
             formatted.append({
                 "id": f"appointment-{app.get('appointment_id')}",
@@ -2404,6 +2895,9 @@ def get_appointments_history():
                 "time_display": time_range,
                 "doctor": get_profile_display_name(doctor) or "Not Assigned",
                 "assignedDoctor": doctor_id,
+                "branch": branch_name,
+                "branchName": branch_name,
+                "branch_id": app.get("branch_id"),
                 "status": status,
                 "medicalInformation": medical_information,
                 "medical_information": medical_information,
@@ -2420,6 +2914,7 @@ def get_appointments_history():
 
             doctor_id = walkin.get("doctor_id") or walkin.get("assigned_doctor_id")
             doctor = doctors_by_id.get(str(doctor_id), {}) if doctor_id else {}
+            branch = branches_by_id.get(str(walkin.get("branch_id")), {}) if walkin.get("branch_id") is not None else {}
             latest_reschedule_request = latest_request_by_target.get(f"walkin-{walkin.get('walkin_id')}")
             medical_information = medical_information_by_target.get(f"walkin-{walkin.get('walkin_id')}")
             patient_name = f"{walkin.get('first_name', '')} {walkin.get('last_name', '')}".strip() or "Walk-In Patient"
@@ -2429,6 +2924,7 @@ def get_appointments_history():
             pet_type = (walkin.get("pet_species") or "Unknown").title()
             pet_breed = (walkin.get("pet_breed") or "Unknown").title()
             pet_gender = (walkin.get("pet_gender") or "Unknown").title()
+            branch_name = branch.get("branch_name") or branch.get("name") or "Not specified"
 
             formatted.append({
                 "id": f"walkin-{walkin.get('walkin_id')}",
@@ -2469,6 +2965,9 @@ def get_appointments_history():
                 "time_display": time_range,
                 "doctor": get_profile_display_name(doctor) or "Not Assigned",
                 "assignedDoctor": doctor_id,
+                "branch": branch_name,
+                "branchName": branch_name,
+                "branch_id": walkin.get("branch_id"),
                 "status": status,
                 "medicalInformation": medical_information,
                 "medical_information": medical_information,
@@ -2637,6 +3136,69 @@ def create_admin_reschedule_request(appointment_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
+@app.route('/api/appointments/<appointment_id>/request-reschedule', methods=['POST'])
+def create_patient_reschedule_request(appointment_id):
+    data = request.get_json() or {}
+    try:
+        table_name, id_column, resolved_id = resolve_appointment_target(
+            appointment_id,
+            data.get("recordType") or data.get("record_type")
+        )
+        email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+        existing_record = email_context.get("record") or {}
+        target_type = 'walkin' if table_name == 'walkin_appointments' else 'appointment'
+        requested_by = parse_uuid_or_none(data.get("requested_by"))
+        preferred_date = data.get("new_date")
+        preferred_time = data.get("new_time")
+        patient_note = data.get("reason") or data.get("reschedule_reason") or None
+        clinic_reason = existing_record.get("reschedule_reason") or None
+
+        if not preferred_date or not preferred_time:
+            return jsonify({"error": "Preferred date and time are required"}), 400
+
+        note_parts = []
+        if preferred_date:
+            note_parts.append(f"Preferred date: {preferred_date}")
+        if preferred_time:
+            note_parts.append(f"Preferred time: {preferred_time}")
+        if patient_note:
+            note_parts.append(f"Patient note: {patient_note}")
+        combined_note = " | ".join(note_parts) if note_parts else "Patient requested a new preferred schedule from the appointment details page"
+
+        for open_status in ('pending', 'needs_new_schedule'):
+            supabase_admin.table('reschedule_requests').update({
+                "status": "cancelled",
+                "responded_at": datetime.utcnow().isoformat(),
+                "response_note": "Superseded by a newer patient reschedule request"
+            }).eq('target_type', target_type).eq('target_id', resolved_id).eq('status', open_status).execute()
+
+        insert_res = supabase_admin.table('reschedule_requests').insert({
+            "target_type": target_type,
+            "target_id": resolved_id,
+            "current_appointment_date": existing_record.get("appointment_date"),
+            "current_appointment_time": existing_record.get("appointment_time"),
+            "proposed_appointment_date": existing_record.get("appointment_date"),
+            "proposed_appointment_time": existing_record.get("appointment_time"),
+            "reason": clinic_reason,
+            "requested_by": requested_by,
+            "status": "needs_new_schedule",
+            "patient_preferred_date": preferred_date,
+            "patient_preferred_time": preferred_time,
+            "patient_response_type": "choose_another_date",
+            "responded_at": datetime.utcnow().isoformat(),
+            "response_note": combined_note
+        }).execute()
+
+        request_row = (insert_res.data or [{}])[0]
+
+        return jsonify({
+            "message": "Reschedule request submitted for clinic review",
+            "requestId": request_row.get("request_id"),
+            "status": request_row.get("status") or "needs_new_schedule"
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
 @app.route('/reschedule/confirm/<token>', methods=['GET'])
 def confirm_reschedule_request(token):
     req, state = get_pending_reschedule_request(token)
@@ -2761,6 +3323,35 @@ def get_reschedule_requests():
 
         res = query.execute()
         return jsonify({"requests": res.data or []}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/api/reschedule-requests/<int:request_id>/withdraw', methods=['PUT'])
+def withdraw_reschedule_request(request_id):
+    try:
+        req = get_reschedule_request_by_id(request_id)
+        if not req:
+            return jsonify({"error": "Reschedule request not found"}), 404
+
+        current_status = (req.get('status') or '').strip().lower()
+        if current_status not in ('pending', 'needs_new_schedule'):
+            return jsonify({"error": f"Only open reschedule requests can be withdrawn. Current status: {req.get('status') or 'unknown'}"}), 400
+
+        existing_note = (req.get('response_note') or '').strip()
+        note_parts = [part for part in [existing_note, 'Withdrawn by patient from appointment details page'] if part]
+        combined_note = " | ".join(note_parts)
+
+        supabase_admin.table('reschedule_requests').update({
+            "status": "cancelled",
+            "responded_at": datetime.utcnow().isoformat(),
+            "response_note": combined_note,
+            "patient_response_type": "withdraw"
+        }).eq('request_id', request_id).execute()
+
+        return jsonify({
+            "message": "Reschedule request withdrawn successfully",
+            "status": "cancelled"
+        }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 

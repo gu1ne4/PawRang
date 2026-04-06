@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import API_URL from '../API';
+import { apiService } from '../apiService';
 import ClientNavBar from '../reusable_components/ClientNavBar';
 import {
   IoCalendar, IoClose, IoSearchOutline, IoTimeOutline, IoEllipse,
   IoCutOutline, IoDocumentTextOutline, IoAlertCircleOutline,
   IoCheckmarkCircleOutline, IoCloseCircleOutline, IoChevronDown,
-  IoInformationCircleOutline,
+  IoInformationCircleOutline, IoMedicalOutline, IoBugOutline,
+  IoShieldCheckmarkOutline, IoHeartOutline, IoPersonOutline,
+  IoLocationOutline, IoChevronBack, IoChevronForward,
 } from 'react-icons/io5';
 import './UserStyles2.css';
 
@@ -42,7 +43,28 @@ interface Appointment {
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   branch_id: number | null;
   created_at: string;
+  pet_name?: string;
+  petName?: string;
+  pet_breed?: string;
+  petBreed?: string;
+  pet_photo_url?: string | null;
+  doctor?: string;
+  assignedDoctor?: string | null;
+  branch_name?: string;
+  branchName?: string;
+  medicalInformation?: MedicalInformation | null;
+  medical_information?: MedicalInformation | null;
   pet_profile?: Pet;
+  latestRescheduleRequest?: any;
+}
+
+interface MedicalInformation {
+  on_medication?: boolean;
+  medication_details?: string;
+  flea_tick_prevention?: boolean;
+  is_vaccinated?: boolean;
+  is_pregnant?: boolean;
+  additional_notes?: string;
 }
 
 interface AlertConfig {
@@ -58,18 +80,182 @@ type AppointmentModalLayer = 'details' | 'cancel' | 'reschedule';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const clinicHours: Record<string, string[]> = {
-  Monday:    ['8:00AM - 9:00AM','9:00AM - 10:00AM','10:00AM - 11:00AM','11:00AM - 12:00PM','1:00PM - 2:00PM','2:00PM - 3:00PM','3:00PM - 4:00PM','4:00PM - 5:00PM'],
-  Tuesday:   ['8:00AM - 9:00AM','9:00AM - 10:00AM','10:00AM - 11:00AM','11:00AM - 12:00PM','1:00PM - 2:00PM','2:00PM - 3:00PM','3:00PM - 4:00PM','4:00PM - 5:00PM'],
-  Wednesday: ['8:00AM - 9:00AM','9:00AM - 10:00AM','10:00AM - 11:00AM','11:00AM - 12:00PM','1:00PM - 2:00PM','2:00PM - 3:00PM','3:00PM - 4:00PM','4:00PM - 5:00PM'],
-  Thursday:  ['8:00AM - 9:00AM','9:00AM - 10:00AM','10:00AM - 11:00AM','11:00AM - 12:00PM','1:00PM - 2:00PM','2:00PM - 3:00PM','3:00PM - 4:00PM','4:00PM - 5:00PM'],
-  Friday:    ['8:00AM - 9:00AM','9:00AM - 10:00AM','10:00AM - 11:00AM','11:00AM - 12:00PM','1:00PM - 2:00PM','2:00PM - 3:00PM','3:00PM - 4:00PM','4:00PM - 5:00PM'],
-  Saturday:  [], Sunday: [],
+type DayAvailability = Record<string, boolean>;
+
+interface RescheduleTimeSlot {
+  id: string | number;
+  startTime: string;
+  endTime: string;
+  displayText: string;
+}
+
+const RescheduleCalendar = ({
+  selectedDate,
+  onSelectDate,
+  availableDays = null,
+  specialDates = [],
+  disablePastDates = false,
+}: {
+  selectedDate: string;
+  onSelectDate: (date: string) => void;
+  availableDays?: DayAvailability | null;
+  specialDates?: string[];
+  disablePastDates?: boolean;
+}) => {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const todayDate = new Date();
+  const minMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+  const maxMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 1);
+  const canGoPrev = currentMonth > minMonth;
+  const canGoNext = currentMonth < maxMonth;
+  const specialDateSet = new Set(specialDates);
+  const dayNamesList = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const todayStr = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
+
+  const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  const getFirstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+
+  const renderDays = () => {
+    const daysInMonth = getDaysInMonth(currentMonth);
+    const firstDay = getFirstDayOfMonth(currentMonth);
+    const days = [];
+    const monthStr = String(currentMonth.getMonth() + 1).padStart(2, '0');
+    const yearStr = currentMonth.getFullYear();
+
+    for (let i = 0; i < firstDay; i += 1) {
+      days.push(<div key={`empty-${i}`} style={{ width: '32px', height: '32px' }} />);
+    }
+
+    for (let i = 1; i <= daysInMonth; i += 1) {
+      const dayStr = String(i).padStart(2, '0');
+      const fullDate = `${yearStr}-${monthStr}-${dayStr}`;
+      const dayOfWeek = new Date(yearStr, currentMonth.getMonth(), i).getDay();
+      const dayName = dayNamesList[dayOfWeek];
+      const isSelected = selectedDate === fullDate;
+      const isToday = fullDate === todayStr;
+      const isPast = disablePastDates && fullDate < todayStr;
+      const isUnavailableDay = availableDays && availableDays[dayName] === false;
+      const isSpecialDate = specialDateSet.has(fullDate);
+      const isDisabled = isPast || isUnavailableDay || isSpecialDate;
+
+      let bgColor = 'transparent';
+      let textColor = isDisabled ? '#d3d3d3' : '#333';
+      let fontWeight = '400';
+
+      if (!isDisabled) {
+        if (isSelected) {
+          bgColor = '#3d67ee';
+          textColor = 'white';
+          fontWeight = '600';
+        } else if (isToday) {
+          bgColor = '#f0f7ff';
+          textColor = '#3d67ee';
+          fontWeight = '700';
+        }
+      }
+
+      days.push(
+        <div
+          key={i}
+          onClick={() => !isDisabled && onSelectDate(isSelected ? '' : fullDate)}
+          style={{
+            width: '32px',
+            height: '32px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: isDisabled ? 'not-allowed' : 'pointer',
+            backgroundColor: bgColor,
+            color: textColor,
+            borderRadius: '50%',
+            fontSize: '13px',
+            fontWeight,
+            transition: 'all 0.2s ease',
+            opacity: isDisabled ? 0.5 : 1,
+          }}
+        >
+          {i}
+        </div>
+      );
+    }
+
+    return days;
+  };
+
+  return (
+    <div style={{ width: '100%', userSelect: 'none' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+        <button
+          onClick={() => canGoPrev && setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))}
+          type="button"
+          disabled={!canGoPrev}
+          style={{ background: 'none', border: 'none', cursor: canGoPrev ? 'pointer' : 'not-allowed', color: canGoPrev ? '#3d67ee' : '#ccc' }}
+        >
+          <IoChevronBack size={18} />
+        </button>
+        <h3 style={{ fontSize: '15px', fontWeight: '700', margin: 0 }}>
+          {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+        </h3>
+        <button
+          onClick={() => canGoNext && setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))}
+          type="button"
+          disabled={!canGoNext}
+          style={{ background: 'none', border: 'none', cursor: canGoNext ? 'pointer' : 'not-allowed', color: canGoNext ? '#3d67ee' : '#ccc' }}
+        >
+          <IoChevronForward size={18} />
+        </button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px 2px', justifyItems: 'center' }}>
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+          <div key={day} style={{ fontSize: '11px', color: '#a0a0a0', fontWeight: '700', marginBottom: '6px' }}>
+            {day}
+          </div>
+        ))}
+        {renderDays()}
+      </div>
+    </div>
+  );
 };
 
 const MIN_REASON_CHARS = 10;
+const RESCHEDULE_LOCK_MESSAGE = 'A reschedule request is already under review. You can request another change after the clinic reviews the current request.';
+
+const hasStructuredRescheduleMetadata = (value?: string | null) =>
+  /(^|\|)\s*Preferred (date|time):/i.test(value || '');
+
+const extractRescheduleRequestNote = (value?: string | null) => {
+  const rawValue = (value || '').trim();
+  if (!rawValue) return '';
+
+  const noteMatch = rawValue.match(/(?:^|\|)\s*Patient note:\s*([^|]+)/i);
+  if (noteMatch?.[1]) {
+    return noteMatch[1].trim();
+  }
+
+  if (!hasStructuredRescheduleMetadata(rawValue)) {
+    return rawValue;
+  }
+
+  return '';
+};
+
+const isPatientInitiatedRescheduleRequest = (request?: any | null) =>
+  request?.patient_response_type === 'choose_another_date' &&
+  String(request?.proposed_appointment_date || '') === String(request?.current_appointment_date || '') &&
+  String(request?.proposed_appointment_time || '') === String(request?.current_appointment_time || '');
+
+const getOpenRescheduleRequest = (appointment: Appointment) => {
+  const request = appointment.latestRescheduleRequest ?? null;
+  const normalizedStatus = (request?.status || '').toLowerCase();
+  return ['pending', 'needs_new_schedule'].includes(normalizedStatus) ? request : null;
+};
+
+const canWithdrawRescheduleRequest = (appointment: Appointment) => {
+  const request = getOpenRescheduleRequest(appointment);
+  return Boolean(request && isPatientInitiatedRescheduleRequest(request));
+};
 const DEFAULT_PET_IMG  = 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400';
-const getToken         = () => localStorage.getItem('access_token') ?? '';
 const isMobileViewport = () =>
   typeof window !== 'undefined' && window.innerWidth <= 768;
 
@@ -79,6 +265,96 @@ const getAppointmentCreatedTime = (appointment: Appointment) => {
 
   const fallback = new Date(`${appointment.appointment_date}T${appointment.appointment_time}`).getTime();
   return Number.isNaN(fallback) ? 0 : fallback;
+};
+
+const getAppointmentPetData = (appointment: Appointment) => ({
+  name: appointment.pet_profile?.pet_name ?? appointment.pet_name ?? appointment.petName ?? 'Unknown Pet',
+  breed: appointment.pet_profile?.pet_breed ?? appointment.pet_breed ?? appointment.petBreed ?? 'Breed not available',
+  photoUrl: appointment.pet_profile?.pet_photo_url ?? appointment.pet_photo_url ?? DEFAULT_PET_IMG,
+});
+
+const getAppointmentDoctorName = (appointment: Appointment) =>
+  appointment.doctor?.trim() || 'Not yet assigned';
+
+const getAppointmentBranchName = (appointment: Appointment) =>
+  appointment.branch_name?.trim() || appointment.branchName?.trim() || 'Not specified';
+
+const getAppointmentMedicalInfo = (appointment: Appointment) =>
+  appointment.medicalInformation ?? appointment.medical_information ?? null;
+
+const renderMedicalInformation = (appointment: Appointment) => {
+  const medicalInfo = getAppointmentMedicalInfo(appointment);
+
+  if (!medicalInfo) return null;
+
+  const medicalItems = [
+    {
+      key: 'medications',
+      icon: <IoMedicalOutline size={16} color="#8c63ff" />,
+      label: 'Medications (72h)',
+      value: medicalInfo.on_medication,
+      details: medicalInfo.medication_details,
+    },
+    {
+      key: 'flea',
+      icon: <IoBugOutline size={16} color="#ff9a3c" />,
+      label: 'Flea/Tick Prevention',
+      value: medicalInfo.flea_tick_prevention,
+    },
+    {
+      key: 'vaccine',
+      icon: <IoShieldCheckmarkOutline size={16} color="#3d67ee" />,
+      label: 'Vaccinations',
+      value: medicalInfo.is_vaccinated,
+    },
+    {
+      key: 'pregnancy',
+      icon: <IoHeartOutline size={16} color="#ef5da8" />,
+      label: 'Pregnant',
+      value: medicalInfo.is_pregnant,
+    },
+  ];
+
+  return (
+    <div className="app-medical-block">
+      <h4>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <IoInformationCircleOutline size={17} color="#3d67ee" />
+          Medical Information
+        </span>
+      </h4>
+
+      {medicalItems.map(item => {
+        const displayValue = item.value ? 'Yes' : 'No';
+        return (
+          <React.Fragment key={item.key}>
+            <div className="app-medical-item">
+              {item.icon}
+              <span className="app-medical-tag">{item.label}</span>
+              <span className={`app-medical-status ${item.value ? 'success' : 'warning'}`}>
+                {displayValue}
+              </span>
+            </div>
+            {item.details && (
+              <div className="app-medical-note">{item.details}</div>
+            )}
+          </React.Fragment>
+        );
+      })}
+
+      {medicalInfo.additional_notes?.trim() && (
+        <div className="app-notes-block">
+          <h4>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <IoDocumentTextOutline size={16} color="#3d67ee" />
+              Additional Notes
+            </span>
+          </h4>
+          <p>{medicalInfo.additional_notes}</p>
+        </div>
+      )}
+    </div>
+  );
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -129,6 +405,10 @@ const UserAppointmentView: React.FC = () => {
   const [rescheduleReasonError,         setRescheduleReasonError]         = useState('');
   const [rescheduleTarget,              setRescheduleTarget]              = useState<Appointment | null>(null);
   const [rescheduleParentModal,         setRescheduleParentModal]         = useState<AppointmentModalLayer | null>(null);
+  const [rescheduleAvailableDays,       setRescheduleAvailableDays]       = useState<DayAvailability | null>(null);
+  const [rescheduleSpecialDates,        setRescheduleSpecialDates]        = useState<string[]>([]);
+  const [rescheduleTimeSlots,           setRescheduleTimeSlots]           = useState<RescheduleTimeSlot[]>([]);
+  const [loadingRescheduleSlots,        setLoadingRescheduleSlots]        = useState(false);
 
   // ── Shared ────────────────────────────────────────────────────────────────
   const [isMutating,    setIsMutating]    = useState(false);
@@ -204,13 +484,15 @@ const UserAppointmentView: React.FC = () => {
     if (!currentUser?.id) return;
     setLoadingAppts(true);
     try {
-      const res = await axios.get(`${API_URL}/appointments/user/${currentUser.id}`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      const sortedAppointments = [...(res.data.appointments ?? [])].sort(
+      const res = await apiService.getUserAppointments(currentUser.id);
+      const sortedAppointments = [...(res.appointments ?? [])].sort(
         (a: Appointment, b: Appointment) => getAppointmentCreatedTime(b) - getAppointmentCreatedTime(a),
       );
       setAppointments(sortedAppointments);
+      setSelectedForDetails((prev) => {
+        if (!prev) return prev;
+        return sortedAppointments.find((item) => item.appointment_id === prev.appointment_id) ?? prev;
+      });
     } catch (err) {
       console.error('Failed to fetch appointments:', err);
     } finally {
@@ -242,17 +524,88 @@ const UserAppointmentView: React.FC = () => {
   // Helpers
   // ─────────────────────────────────────────────────────────────────────────
 
+  useEffect(() => {
+    if (!rescheduleModalVisible) return;
+
+    let isActive = true;
+    setRescheduleAvailableDays(null);
+    setRescheduleSpecialDates([]);
+    setRescheduleTimeSlots([]);
+
+    Promise.all([
+      apiService.getDayAvailability().catch(() => null),
+      apiService.getSpecialDates().catch(() => []),
+    ]).then(([dayAvailability, specialDates]) => {
+      if (!isActive) return;
+      setRescheduleAvailableDays(dayAvailability);
+      setRescheduleSpecialDates(
+        (Array.isArray(specialDates) ? specialDates : [])
+          .map((event: any) => event?.event_date)
+          .filter(Boolean)
+      );
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [rescheduleModalVisible]);
+
+  useEffect(() => {
+    if (!rescheduleModalVisible || !newDate) {
+      setRescheduleTimeSlots([]);
+      setLoadingRescheduleSlots(false);
+      return;
+    }
+
+    let isActive = true;
+    const dayNamesList = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const selectedDayName = dayNamesList[new Date(`${newDate}T00:00:00`).getDay()];
+
+    setLoadingRescheduleSlots(true);
+    apiService.getTimeSlotsForDay(selectedDayName)
+      .then((slots: any[]) => {
+        if (!isActive) return;
+
+        const formattedSlots: RescheduleTimeSlot[] = (slots || []).map((slot: any) => ({
+          id: slot.id,
+          startTime: slot.start_time,
+          endTime: slot.end_time,
+          displayText: formatTimeSlotDisplay(slot.start_time, slot.end_time),
+        }));
+
+        setRescheduleTimeSlots(formattedSlots);
+      })
+      .catch((error) => {
+        if (!isActive) return;
+        console.error('Failed to load reschedule time slots:', error);
+        setRescheduleTimeSlots([]);
+      })
+      .finally(() => {
+        if (isActive) setLoadingRescheduleSlots(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [newDate, rescheduleModalVisible]);
+
   const handleLogout = () => {
     localStorage.removeItem('userSession');
     localStorage.removeItem('access_token');
     navigate('/login');
   };
 
-  const formatDate = (s: string) =>
-    new Date(s).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  const formatDate = (s?: string | null) => {
+    if (!s) return 'Not provided';
+
+    const parsedDate = new Date(s);
+    if (Number.isNaN(parsedDate.getTime())) return String(s);
+
+    return parsedDate.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  };
 
   const formatTime = (value: string) => {
-    if (!value) return '';
+    if (!value) return 'Not provided';
 
     const normalized = value.trim().toUpperCase();
     if (normalized.includes('AM') || normalized.includes('PM')) return value;
@@ -269,6 +622,25 @@ const UserAppointmentView: React.FC = () => {
     return `${hour12}:${minute} ${period}`;
   };
 
+  const formatCalendarDateLabel = (value: string) =>
+    new Date(`${value}T00:00:00`).toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+  const formatTimeSlotDisplay = (startTime: string, endTime: string) =>
+    `${formatTime(startTime)} - ${formatTime(endTime)}`;
+
+  const toDbTime = (value: string) => {
+    if (!value) return '';
+    if (/^\d{2}:\d{2}(:\d{2})?$/.test(value)) {
+      return value.length === 5 ? `${value}:00` : value;
+    }
+    return value;
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'confirmed': return '#00aa00';
@@ -281,14 +653,6 @@ const UserAppointmentView: React.FC = () => {
 
   const capitalize    = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const isActionable  = (status: string) => status === 'pending' || status === 'confirmed';
-
-  const getDayName = (dateString: string) => {
-    const d = new Date(dateString);
-    return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
-  };
-
-  const getTimeSlotsForDate = (date: string) =>
-    date ? clinicHours[getDayName(date)] ?? [] : [];
 
   const openAppointmentDetails = (appointment: Appointment) => {
     setSelectedForDetails(appointment);
@@ -307,9 +671,10 @@ const UserAppointmentView: React.FC = () => {
     if (activeFilter === 'Pending' && a.status !== 'pending')   return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
+      const petName = getAppointmentPetData(a).name.toLowerCase();
       return (
         a.appointment_type.toLowerCase().includes(q) ||
-        (a.pet_profile?.pet_name ?? '').toLowerCase().includes(q) ||
+        petName.includes(q) ||
         a.status.toLowerCase().includes(q)
       );
     }
@@ -318,6 +683,12 @@ const UserAppointmentView: React.FC = () => {
 
   const totalPages   = Math.ceil(filtered.length / itemsPerPage);
   const currentItems = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const selectedOpenRescheduleRequest = selectedForDetails ? getOpenRescheduleRequest(selectedForDetails) : null;
+  const isSelectedRescheduleLocked = Boolean(selectedOpenRescheduleRequest);
+  const canWithdrawSelectedReschedule = selectedForDetails ? canWithdrawRescheduleRequest(selectedForDetails) : false;
+  const selectedRescheduleHelperMessage = canWithdrawSelectedReschedule
+    ? 'This reschedule request is under clinic review. If your plans changed, you can withdraw it and keep your current appointment schedule.'
+    : RESCHEDULE_LOCK_MESSAGE;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Cancel
@@ -358,11 +729,7 @@ const UserAppointmentView: React.FC = () => {
     setIsMutating(true);
     const restoreModal = cancelParentModal;
     try {
-      await axios.patch(
-        `${API_URL}/appointments/${cancelTarget.appointment_id}/cancel`,
-        { cancel_reason: cancelReason },
-        { headers: { Authorization: `Bearer ${getToken()}` } },
-      );
+      await apiService.cancelAppointment(cancelTarget.appointment_id, cancelReason.trim());
       await fetchAppointments();
       if (selectedForDetails?.appointment_id === cancelTarget.appointment_id)
         setSelectedForDetails(prev => prev ? { ...prev, status: 'cancelled' } : prev);
@@ -379,7 +746,7 @@ const UserAppointmentView: React.FC = () => {
       showAlert(
         'error',
         'Error',
-        err.response?.data?.error ?? 'Failed to cancel appointment',
+        err.response?.data?.error ?? err.data?.error ?? err.message ?? 'Failed to cancel appointment',
         null,
         false,
         'OK',
@@ -398,6 +765,11 @@ const UserAppointmentView: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   const openReschedule = (appt: Appointment) => {
+    if (getOpenRescheduleRequest(appt)) {
+      showAlert('info', 'Request Under Review', RESCHEDULE_LOCK_MESSAGE);
+      return;
+    }
+
     if (detailsModalVisible) {
       setDetailsModalVisible(false);
       setRescheduleParentModal('details');
@@ -406,6 +778,7 @@ const UserAppointmentView: React.FC = () => {
     }
     setRescheduleTarget(appt); setRescheduleStep(1); setNewDate(''); setNewTime('');
     setRescheduleReason(''); setRescheduleUnderstoodChecked(false); setRescheduleReasonError('');
+    setRescheduleTimeSlots([]);
     setRescheduleModalVisible(true);
   };
 
@@ -440,14 +813,16 @@ const UserAppointmentView: React.FC = () => {
     setIsMutating(true);
     const restoreModal = rescheduleParentModal;
     try {
-      await axios.patch(
-        `${API_URL}/appointments/${rescheduleTarget.appointment_id}/reschedule`,
-        { new_date: newDate, new_time: newTime, reschedule_reason: rescheduleReason },
-        { headers: { Authorization: `Bearer ${getToken()}` } },
-      );
+      await apiService.rescheduleAppointment(rescheduleTarget.appointment_id, {
+        new_date: newDate,
+        new_time: toDbTime(newTime),
+        reschedule_reason: rescheduleReason,
+        requested_by: currentUser?.id ?? null,
+        recordType: 'appointment',
+      });
       await fetchAppointments();
       if (selectedForDetails?.appointment_id === rescheduleTarget.appointment_id)
-        setSelectedForDetails(prev => prev ? { ...prev, appointment_date: newDate, appointment_time: newTime, status: 'pending' } : prev);
+        setSelectedForDetails(prev => prev ? { ...prev, status: 'pending' } : prev);
       showAlert(
         'success',
         'Submitted',
@@ -461,7 +836,7 @@ const UserAppointmentView: React.FC = () => {
       showAlert(
         'error',
         'Error',
-        err.response?.data?.error ?? 'Failed to reschedule',
+        err.response?.data?.error ?? err.data?.error ?? err.message ?? 'Failed to reschedule',
         null,
         false,
         'OK',
@@ -475,18 +850,129 @@ const UserAppointmentView: React.FC = () => {
     }
   };
 
-  const timeSlots = getTimeSlotsForDate(newDate);
+  const withdrawRescheduleRequest = async (appointment: Appointment) => {
+    const openRequest = getOpenRescheduleRequest(appointment);
+    if (!openRequest?.request_id) return;
+
+    setIsMutating(true);
+    try {
+      await apiService.withdrawRescheduleRequest(openRequest.request_id);
+      await fetchAppointments();
+      showAlert(
+        'success',
+        'Request Withdrawn',
+        'Your reschedule request has been withdrawn. Your appointment schedule remains unchanged.',
+      );
+    } catch (err: any) {
+      showAlert(
+        'error',
+        'Error',
+        err.response?.data?.error ?? err.data?.error ?? err.message ?? 'Failed to withdraw the reschedule request',
+      );
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
+  const renderRescheduleRequestDetails = (appointment: Appointment) => {
+    const request = getOpenRescheduleRequest(appointment);
+    if (!request) return null;
+
+    const patientInitiated = isPatientInitiatedRescheduleRequest(request);
+    const extractedPatientNote = extractRescheduleRequestNote(request.response_note);
+    const noteDisplay = extractedPatientNote ||
+      (!hasStructuredRescheduleMetadata(request.response_note) ? (request.response_note?.trim() || 'Not provided') : 'Not provided');
+
+    const requestRows = patientInitiated
+      ? [
+          {
+            label: 'Current Appointment Date',
+            value: formatDate(request.current_appointment_date || appointment.appointment_date),
+          },
+          {
+            label: 'Current Appointment Time',
+            value: formatTime(request.current_appointment_time || appointment.appointment_time),
+          },
+          {
+            label: 'Preferred Appointment Date',
+            value: formatDate(request.patient_preferred_date),
+          },
+          {
+            label: 'Preferred Appointment Time',
+            value: formatTime(request.patient_preferred_time),
+          },
+        ]
+      : [
+          {
+            label: 'Clinic Proposed Date',
+            value: formatDate(request.proposed_appointment_date),
+          },
+          {
+            label: 'Clinic Proposed Time',
+            value: formatTime(request.proposed_appointment_time),
+          },
+          {
+            label: 'Your Preferred Date',
+            value: formatDate(request.patient_preferred_date),
+          },
+          {
+            label: 'Your Preferred Time',
+            value: formatTime(request.patient_preferred_time),
+          },
+        ];
+
+    const noteLabel = patientInitiated ? 'Your Reason' : 'Clinic Note';
+    const reviewLabel = patientInitiated
+      ? 'Waiting for clinic review. If your plans changed, you can withdraw this request below.'
+      : 'Waiting for your review';
+    const noteValue = patientInitiated
+      ? noteDisplay
+      : (request.reason?.trim() || noteDisplay || 'Not provided');
+
+    return (
+      <div className="app-reschedule-request-block">
+        <h4>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <IoCalendar size={17} color="#3d67ee" />
+            Reschedule Request In Review
+          </span>
+        </h4>
+
+        <div className="app-reschedule-request-helper">
+          <IoInformationCircleOutline size={16} color="#3d67ee" />
+          <span>{reviewLabel}</span>
+        </div>
+
+        <div className="app-reschedule-request-grid">
+          {requestRows.map((row) => (
+            <div key={row.label} className="app-reschedule-request-card">
+              <span className="app-reschedule-request-label">{row.label}</span>
+              <span className="app-reschedule-request-value">{row.value}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="app-reschedule-request-note">
+          <h5>{noteLabel}</h5>
+          <p>{noteValue || 'Not provided'}</p>
+        </div>
+      </div>
+    );
+  };
 
   const renderAppointmentDetailsContent = (appointment: Appointment) => (
+    (() => {
+      const pet = getAppointmentPetData(appointment);
+      return (
     <>
       <div className="app-pet-summary">
         <img
-          src={appointment.pet_profile?.pet_photo_url ?? DEFAULT_PET_IMG}
-          alt={appointment.pet_profile?.pet_name}
+          src={pet.photoUrl}
+          alt={pet.name}
           className="app-pet-thumb"
         />
         <div className="app-pet-name-badge">
-          <h4>{appointment.pet_profile?.pet_name ?? 'Unknown Pet'}</h4>
+          <h4>{pet.name}</h4>
           <p>{appointment.appointment_type}</p>
         </div>
       </div>
@@ -505,6 +991,16 @@ const UserAppointmentView: React.FC = () => {
         <IoTimeOutline size={18} color="#3d67ee" />
         <span className="app-info-label">Time:</span>
         <span className="app-info-value">{formatTime(appointment.appointment_time)}</span>
+      </div>
+      <div className="app-info-row">
+        <IoPersonOutline size={18} color="#3d67ee" />
+        <span className="app-info-label">Doctor:</span>
+        <span className="app-info-value">{getAppointmentDoctorName(appointment)}</span>
+      </div>
+      <div className="app-info-row">
+        <IoLocationOutline size={18} color="#3d67ee" />
+        <span className="app-info-label">Branch:</span>
+        <span className="app-info-value">{getAppointmentBranchName(appointment)}</span>
       </div>
       <div className="app-info-row">
         <IoEllipse size={18} color={getStatusColor(appointment.status)} />
@@ -526,7 +1022,12 @@ const UserAppointmentView: React.FC = () => {
           <p>{appointment.patient_reason}</p>
         </div>
       )}
+
+      {renderRescheduleRequestDetails(appointment)}
+      {renderMedicalInformation(appointment)}
     </>
+      );
+    })()
   );
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -619,35 +1120,40 @@ const UserAppointmentView: React.FC = () => {
               {loadingAppts ? (
                 <div className="app-empty-state"><p>Loading appointments…</p></div>
               ) : currentItems.length > 0 ? currentItems.map(item => (
-                <div
-                  key={item.appointment_id}
-                  className={`app-table-row ${selectedForDetails?.appointment_id === item.appointment_id ? 'selected' : ''}`}
-                  onClick={() => openAppointmentDetails(item)}
-                >
-                  <div className="app-table-cell app-service-cell" style={{flex:1.2}} title={item.appointment_type}>
-                    {item.appointment_type}
-                  </div>
-                  <div className="app-table-cell app-pet-cell" style={{flex:1}}>
-                    <img
-                      src={item.pet_profile?.pet_photo_url ?? DEFAULT_PET_IMG}
-                      alt={item.pet_profile?.pet_name ?? 'Pet'}
-                      className="app-pet-card-thumb"
-                    />
-                    <div className="app-pet-card-copy">
-                      <div className="app-pet-card-name">{item.pet_profile?.pet_name ?? 'N/A'}</div>
-                      <div className="app-pet-card-breed">{item.pet_profile?.pet_breed ?? 'Breed not available'}</div>
+                (() => {
+                  const pet = getAppointmentPetData(item);
+                  return (
+                    <div
+                      key={item.appointment_id}
+                      className={`app-table-row ${selectedForDetails?.appointment_id === item.appointment_id ? 'selected' : ''}`}
+                      onClick={() => openAppointmentDetails(item)}
+                    >
+                      <div className="app-table-cell app-service-cell" style={{flex:1.2}} title={item.appointment_type}>
+                        {item.appointment_type}
+                      </div>
+                      <div className="app-table-cell app-pet-cell" style={{flex:1}}>
+                        <img
+                          src={pet.photoUrl}
+                          alt={pet.name}
+                          className="app-pet-card-thumb"
+                        />
+                        <div className="app-pet-card-copy">
+                          <div className="app-pet-card-name">{pet.name}</div>
+                          <div className="app-pet-card-breed">{pet.breed}</div>
+                        </div>
+                      </div>
+                      <div className="app-table-cell app-schedule-cell" style={{flex:1.5}}>
+                        <div className="app-schedule-date">{formatDate(item.appointment_date)}</div>
+                        <div className="app-time-cell">{formatTime(item.appointment_time)}</div>
+                      </div>
+                      <div className="app-table-cell" style={{flex:0.9}}>
+                        <span className="app-status-pill" style={{ backgroundColor: getStatusColor(item.status)+'20', color: getStatusColor(item.status) }}>
+                          {capitalize(item.status)}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="app-table-cell app-schedule-cell" style={{flex:1.5}}>
-                    <div className="app-schedule-date">{formatDate(item.appointment_date)}</div>
-                    <div className="app-time-cell">{formatTime(item.appointment_time)}</div>
-                  </div>
-                  <div className="app-table-cell" style={{flex:0.9}}>
-                    <span className="app-status-pill" style={{ backgroundColor: getStatusColor(item.status)+'20', color: getStatusColor(item.status) }}>
-                      {capitalize(item.status)}
-                    </span>
-                  </div>
-                </div>
+                  );
+                })()
               )) : (
                 <div className="app-empty-state">
                   <IoCalendar size={50} color="#ccc" />
@@ -677,15 +1183,18 @@ const UserAppointmentView: React.FC = () => {
           <div className="app-details-title"><h3>Appointment Details</h3></div>
           <div className="app-details-scroll">
             {selectedForDetails ? (
+              (() => {
+                const pet = getAppointmentPetData(selectedForDetails);
+                return (
               <>
                 <div className="app-pet-summary">
                   <img
-                    src={selectedForDetails.pet_profile?.pet_photo_url ?? DEFAULT_PET_IMG}
-                    alt={selectedForDetails.pet_profile?.pet_name}
+                    src={pet.photoUrl}
+                    alt={pet.name}
                     className="app-pet-thumb"
                   />
                   <div className="app-pet-name-badge">
-                    <h4>{selectedForDetails.pet_profile?.pet_name ?? 'Unknown Pet'}</h4>
+                    <h4>{pet.name}</h4>
                     <p>{selectedForDetails.appointment_type}</p>
                   </div>
                 </div>
@@ -693,6 +1202,7 @@ const UserAppointmentView: React.FC = () => {
                 <div className="app-info-row"><IoCutOutline size={18} color="#3d67ee" /><span className="app-info-label">Service:</span><span className="app-info-value">{selectedForDetails.appointment_type}</span></div>
                 <div className="app-info-row"><IoCalendar size={18} color="#3d67ee" /><span className="app-info-label">Date:</span><span className="app-info-value">{formatDate(selectedForDetails.appointment_date)}</span></div>
                 <div className="app-info-row"><IoTimeOutline size={18} color="#3d67ee" /><span className="app-info-label">Time:</span><span className="app-info-value">{formatTime(selectedForDetails.appointment_time)}</span></div>
+                <div className="app-info-row"><IoLocationOutline size={18} color="#3d67ee" /><span className="app-info-label">Branch:</span><span className="app-info-value">{getAppointmentBranchName(selectedForDetails)}</span></div>
                 <div className="app-info-row">
                   <IoEllipse size={18} color={getStatusColor(selectedForDetails.status)} />
                   <span className="app-info-label">Status:</span>
@@ -707,7 +1217,12 @@ const UserAppointmentView: React.FC = () => {
                     <p>{selectedForDetails.patient_reason}</p>
                   </div>
                 )}
+
+                {renderRescheduleRequestDetails(selectedForDetails)}
+                {renderMedicalInformation(selectedForDetails)}
               </>
+                );
+              })()
             ) : (
               <div className="app-empty-details">
                 <IoDocumentTextOutline size={60} color="#ccc" />
@@ -717,14 +1232,37 @@ const UserAppointmentView: React.FC = () => {
           </div>
 
           {selectedForDetails && isActionable(selectedForDetails.status) && (
-            <div className="app-action-bar">
-              <button className="app-action-btn cancel" onClick={() => openCancel(selectedForDetails)} disabled={isMutating}>
-                <IoClose size={18} color="white" /><span>Cancel</span>
-              </button>
-              <button className="app-action-btn reschedule" onClick={() => openReschedule(selectedForDetails)} disabled={isMutating}>
-                <IoCalendar size={18} color="white" /><span>Reschedule</span>
-              </button>
-            </div>
+            <>
+              <div className="app-action-bar">
+                <button className="app-action-btn cancel" onClick={() => openCancel(selectedForDetails)} disabled={isMutating}>
+                  <IoClose size={18} color="white" /><span>Cancel</span>
+                </button>
+                {canWithdrawSelectedReschedule ? (
+                  <button
+                    className="app-action-btn withdraw"
+                    onClick={() => withdrawRescheduleRequest(selectedForDetails)}
+                    disabled={isMutating}
+                  >
+                    <IoCloseCircleOutline size={18} color="white" /><span>Withdraw</span>
+                  </button>
+                ) : (
+                  <button
+                    className="app-action-btn reschedule"
+                    onClick={() => openReschedule(selectedForDetails)}
+                    disabled={isMutating || isSelectedRescheduleLocked}
+                    title={isSelectedRescheduleLocked ? selectedRescheduleHelperMessage : undefined}
+                  >
+                    <IoCalendar size={18} color="white" /><span>Reschedule</span>
+                  </button>
+                )}
+              </div>
+              {isSelectedRescheduleLocked && (
+                <div className="app-action-helper">
+                  <IoInformationCircleOutline size={16} color="#3d67ee" />
+                  <span>{selectedRescheduleHelperMessage}</span>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -745,16 +1283,40 @@ const UserAppointmentView: React.FC = () => {
               {renderAppointmentDetailsContent(selectedForDetails)}
             </div>
             {isActionable(selectedForDetails.status) && (
-              <div className="app-action-bar app-action-bar-modal">
-                <button className="app-action-btn cancel" onClick={() => openCancel(selectedForDetails)} disabled={isMutating}>
-                  <IoClose size={18} color="white" />
-                  <span>Cancel</span>
-                </button>
-                <button className="app-action-btn reschedule" onClick={() => openReschedule(selectedForDetails)} disabled={isMutating}>
-                  <IoCalendar size={18} color="white" />
-                  <span>Reschedule</span>
-                </button>
-              </div>
+              <>
+                <div className="app-action-bar app-action-bar-modal">
+                  <button className="app-action-btn cancel" onClick={() => openCancel(selectedForDetails)} disabled={isMutating}>
+                    <IoClose size={18} color="white" />
+                    <span>Cancel</span>
+                  </button>
+                  {canWithdrawSelectedReschedule ? (
+                    <button
+                      className="app-action-btn withdraw"
+                      onClick={() => withdrawRescheduleRequest(selectedForDetails)}
+                      disabled={isMutating}
+                    >
+                      <IoCloseCircleOutline size={18} color="white" />
+                      <span>Withdraw</span>
+                    </button>
+                  ) : (
+                    <button
+                      className="app-action-btn reschedule"
+                      onClick={() => openReschedule(selectedForDetails)}
+                      disabled={isMutating || isSelectedRescheduleLocked}
+                      title={isSelectedRescheduleLocked ? selectedRescheduleHelperMessage : undefined}
+                    >
+                      <IoCalendar size={18} color="white" />
+                      <span>Reschedule</span>
+                    </button>
+                  )}
+                </div>
+                {isSelectedRescheduleLocked && (
+                  <div className="app-action-helper">
+                    <IoInformationCircleOutline size={16} color="#3d67ee" />
+                    <span>{selectedRescheduleHelperMessage}</span>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -792,22 +1354,29 @@ const UserAppointmentView: React.FC = () => {
               )}
               {cancelStep === 2 && (
                 <div>
-                  <div className="app-step-guide"><h3>Review Cancellation</h3></div>
+                  <div className="app-step-guide"><h3>Review Cancellation</h3><p>Please double-check the appointment details before confirming.</p></div>
                   <div className="app-summary-card">
                     <div className="app-card-header"><IoCalendar size={18} color="#3d67ee" /><h4>Appointment Details</h4></div>
                     <div className="app-card-body">
-                      <div className="app-summary-line"><span className="app-summary-tag">Pet:</span><span className="app-summary-data">{cancelTarget.pet_profile?.pet_name ?? 'N/A'}</span></div>
+                      <div className="app-summary-line"><span className="app-summary-tag">Pet:</span><span className="app-summary-data">{getAppointmentPetData(cancelTarget).name}</span></div>
                       <div className="app-summary-line"><span className="app-summary-tag">Service:</span><span className="app-summary-data">{cancelTarget.appointment_type}</span></div>
                       <div className="app-summary-line"><span className="app-summary-tag">Date:</span><span className="app-summary-data">{formatDate(cancelTarget.appointment_date)}</span></div>
                       <div className="app-summary-line"><span className="app-summary-tag">Time:</span><span className="app-summary-data">{formatTime(cancelTarget.appointment_time)}</span></div>
+                      <div className="app-summary-line"><span className="app-summary-tag">Doctor:</span><span className="app-summary-data">{getAppointmentDoctorName(cancelTarget)}</span></div>
+                      <div className="app-summary-line"><span className="app-summary-tag">Branch:</span><span className="app-summary-data">{getAppointmentBranchName(cancelTarget)}</span></div>
+                      <div className="app-summary-line"><span className="app-summary-tag">Status:</span><span className="app-summary-data">{capitalize(cancelTarget.status)}</span></div>
                     </div>
                   </div>
                   {cancelReason && (
                     <div className="app-reason-card">
                       <div className="app-card-header"><IoDocumentTextOutline size={18} color="#ee3d5a" /><h4>Your Reason</h4></div>
-                      <div className="app-card-body"><p className="app-quote-text">"{cancelReason}"</p></div>
+                      <div className="app-card-body"><p className="app-quote-text">{cancelReason.trim()}</p></div>
                     </div>
                   )}
+                  <div className="app-info-banner">
+                    <IoInformationCircleOutline size={18} color="#3d67ee" />
+                    <span>Your cancellation reason will be included in the clinic notification.</span>
+                  </div>
                   <div className="app-warning-box">
                     <div className="app-warning-header"><IoAlertCircleOutline size={20} color="#b71c1c" /><h4>⚠️ Non-Refundable</h4></div>
                     <ul><li>Any payments made are non-refundable</li><li>This action cannot be undone</li></ul>
@@ -852,29 +1421,65 @@ const UserAppointmentView: React.FC = () => {
                 <div>
                   <div className="app-step-guide"><h3>Select New Date & Time</h3></div>
                   <div className="app-calendar-panel">
-                    <label style={{ display:'block', marginBottom:8, fontSize:14, color:'#333', fontWeight:500 }}>New Date</label>
-                    <input
-                      type="date"
-                      min={new Date().toISOString().split('T')[0]}
-                      max={(() => { const d = new Date(); d.setMonth(d.getMonth()+2); return d.toISOString().split('T')[0]; })()}
-                      value={newDate}
-                      onChange={e => { setNewDate(e.target.value); setNewTime(''); }}
-                      style={{ width:'100%', padding:'10px', borderRadius:'8px', border:'1px solid #e0e0e0', fontSize:'14px', marginBottom:16 }}
-                    />
+                    <label style={{ display:'block', marginBottom:10, fontSize:14, color:'#333', fontWeight:600 }}>Select New Date</label>
+                    <div style={{ border: '1px solid #ddd', borderRadius: '12px', padding: '15px', backgroundColor: '#fafafa' }}>
+                      <RescheduleCalendar
+                        selectedDate={newDate}
+                        onSelectDate={(selectedDate) => {
+                          setNewDate(selectedDate);
+                          setNewTime('');
+                        }}
+                        availableDays={rescheduleAvailableDays}
+                        specialDates={rescheduleSpecialDates}
+                        disablePastDates
+                      />
+                    </div>
                     {newDate && (
-                      <div className="app-time-panel">
-                        <div className="app-time-header"><IoTimeOutline size={18} color="#3d67ee" /><h4>Available slots for {formatDate(newDate)}</h4></div>
-                        <div className="app-time-grid">
-                          {timeSlots.length > 0 ? timeSlots.map((t,i) => (
-                            <button key={i} className={`app-time-option ${newTime===t?'selected':''}`} onClick={() => setNewTime(t)}>
-                              <IoTimeOutline size={14} /><span>{t}</span>
-                            </button>
-                          )) : (
-                            <div className="app-no-slots"><IoAlertCircleOutline size={24} color="#999" /><p>No slots available for this date</p></div>
-                          )}
-                        </div>
+                      <div style={{ backgroundColor: '#e8f5e9', padding: '10px', borderRadius: '6px', marginTop: '10px', color: '#2e7d32', fontWeight: '600', fontSize: '13px' }}>
+                        Selected: {formatCalendarDateLabel(newDate)}
                       </div>
                     )}
+
+                    <div className="app-time-panel">
+                      <div className="app-time-header">
+                        <IoTimeOutline size={18} color="#3d67ee" />
+                        <h4>Select New Time Slot</h4>
+                        {loadingRescheduleSlots && <span style={{ fontSize: '12px', color: '#999', fontWeight: 400 }}>Loading...</span>}
+                      </div>
+
+                      {!newDate ? (
+                        <div className="app-no-slots">
+                          <IoAlertCircleOutline size={24} color="#999" />
+                          <p>Please select a date first</p>
+                        </div>
+                      ) : rescheduleTimeSlots.length > 0 ? (
+                        <>
+                          <div className="app-time-grid">
+                            {rescheduleTimeSlots.map((slot) => (
+                              <button
+                                key={slot.id}
+                                className={`app-time-option ${newTime === slot.startTime ? 'selected' : ''}`}
+                                onClick={() => setNewTime(slot.startTime)}
+                              >
+                                <IoTimeOutline size={14} />
+                                <span>{slot.displayText}</span>
+                              </button>
+                            ))}
+                          </div>
+                          {newTime && (
+                            <div style={{ backgroundColor: '#e8f5e9', padding: '10px', borderRadius: '6px', marginTop: '10px', color: '#2e7d32', fontWeight: '600', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <IoCheckmarkCircleOutline size={16} />
+                              Selected: {formatTime(newTime)}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="app-no-slots">
+                          <IoAlertCircleOutline size={24} color="#999" />
+                          <p>No time slots configured for this date</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

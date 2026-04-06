@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import profileHeader from '../assets/ProfileHeader.png';
+import { apiService } from '../apiService';
 import ClientNavBar from '../reusable_components/ClientNavBar';
 import { 
   IoPersonOutline,
@@ -29,9 +30,11 @@ import './UserStyles3.css';
 
 // Types
 interface UserProfile {
+  id?: string;
   username: string;
   firstName: string;
   lastName: string;
+  fullname?: string;
   email: string;
   contactNumber: string;
   profileImage: string | null;
@@ -57,7 +60,7 @@ interface Appointment {
   time: string;
   type: string;
   vet: string;
-  status: 'upcoming' | 'completed' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
 }
 
 interface Notification {
@@ -85,6 +88,179 @@ interface FormErrors {
   email?: string;
   contactNumber?: string;
 }
+
+const DEFAULT_PROFILE_IMAGE = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400';
+const DEFAULT_PET_IMAGE = 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400';
+const PH_PHONE_TOTAL_DIGITS = 12;
+const PH_PHONE_DISPLAY_MAX_LENGTH = 16;
+
+const normalizePhilippinePhoneDigits = (value: string): string => {
+  let digits = String(value || '').replace(/\D/g, '');
+
+  if (!digits) return '';
+
+  if (digits.startsWith('0')) {
+    digits = `63${digits.slice(1)}`;
+  } else if (digits.startsWith('9')) {
+    digits = `63${digits}`;
+  } else if (digits.startsWith('639')) {
+    digits = digits;
+  }
+
+  if (digits.startsWith('63')) {
+    return digits.slice(0, PH_PHONE_TOTAL_DIGITS);
+  }
+
+  return digits.slice(0, 10);
+};
+
+const formatPhoneNumber = (value: string): string => {
+  const digits = normalizePhilippinePhoneDigits(value);
+
+  if (!digits) return '+63 ';
+
+  const localDigits = digits.startsWith('63') ? digits.slice(2) : digits;
+  const parts = [
+    localDigits.slice(0, 3),
+    localDigits.slice(3, 6),
+    localDigits.slice(6, 10),
+  ].filter(Boolean);
+
+  return `+63 ${parts.join(' ')}`.trim();
+};
+
+const toStoredPhoneNumber = (value: string): string => {
+  const digits = normalizePhilippinePhoneDigits(value);
+  return digits ? `+${digits}` : '';
+};
+
+const splitFullName = (fullName: string) => {
+  const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: parts[0] || '',
+    lastName: parts.slice(1).join(' '),
+  };
+};
+
+const buildCharCountState = (profile: UserProfile) => ({
+  firstName: profile.firstName.length,
+  lastName: profile.lastName.length,
+  username: profile.username.length,
+  contactNumber: profile.contactNumber.length,
+});
+
+const normalizeUserProfile = (raw: any): UserProfile => {
+  const storedFullName = raw?.fullname || raw?.fullName || raw?.full_name || '';
+  const splitName = splitFullName(storedFullName);
+  const firstName = raw?.firstName || raw?.first_name || splitName.firstName;
+  const lastName = raw?.lastName || raw?.last_name || splitName.lastName;
+  const joinedDate = raw?.dateJoined || raw?.created_at || raw?.date_joined || '';
+  const contactNumber = raw?.contactNumber || raw?.contact_number || raw?.contactnumber || '';
+
+  return {
+    id: raw?.id,
+    username: raw?.username || '',
+    firstName,
+    lastName,
+    fullname: `${firstName || ''} ${lastName || ''}`.trim() || storedFullName,
+    email: raw?.email || '',
+    contactNumber: contactNumber ? formatPhoneNumber(contactNumber) : '',
+    profileImage: raw?.profileImage || raw?.userImage || raw?.userimage || raw?.user_image || null,
+    dateJoined: joinedDate,
+  };
+};
+
+const formatDisplayDate = (dateString: string): string => {
+  if (!dateString) return 'Not provided';
+  const parsed = new Date(dateString);
+  if (Number.isNaN(parsed.getTime())) return 'Not provided';
+  const options: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'long', day: 'numeric' };
+  return parsed.toLocaleDateString(undefined, options);
+};
+
+const formatJoinedText = (dateString: string): string => {
+  if (!dateString) return 'Joined recently';
+  const parsed = new Date(dateString);
+  if (Number.isNaN(parsed.getTime())) return 'Joined recently';
+  return `Joined ${formatDisplayDate(dateString)}`;
+};
+
+const formatAppointmentTime = (timeValue: string): string => {
+  if (!timeValue) return 'Time not set';
+  const parts = String(timeValue).split(':');
+  if (parts.length < 2) return String(timeValue);
+  const hours = Number(parts[0]);
+  const minutes = parts[1] ?? '00';
+  if (Number.isNaN(hours)) return String(timeValue);
+  const suffix = hours >= 12 ? 'PM' : 'AM';
+  const displayHour = hours % 12 || 12;
+  return `${displayHour}:${minutes} ${suffix}`;
+};
+
+const formatPetAge = (ageValue: any, birthday?: string): string => {
+  const numericAge = Number(ageValue);
+  if (!Number.isNaN(numericAge) && numericAge >= 0) {
+    return `${numericAge} ${numericAge === 1 ? 'year' : 'years'}`;
+  }
+
+  if (!birthday) return 'Age unavailable';
+  const birthdayDate = new Date(birthday);
+  if (Number.isNaN(birthdayDate.getTime())) return 'Age unavailable';
+
+  const today = new Date();
+  let years = today.getFullYear() - birthdayDate.getFullYear();
+  const hasBirthdayPassed =
+    today.getMonth() > birthdayDate.getMonth() ||
+    (today.getMonth() === birthdayDate.getMonth() && today.getDate() >= birthdayDate.getDate());
+
+  if (!hasBirthdayPassed) years -= 1;
+  return `${Math.max(years, 0)} ${Math.max(years, 0) === 1 ? 'year' : 'years'}`;
+};
+
+const normalizeAppointmentStatus = (status: string): Appointment['status'] => {
+  const normalized = (status || '').toLowerCase();
+  if (normalized === 'completed') return 'completed';
+  if (normalized === 'cancelled') return 'cancelled';
+  if (normalized === 'confirmed') return 'confirmed';
+  return 'pending';
+};
+
+const mapAppointmentsToCards = (rawAppointments: any[]): Appointment[] =>
+  (rawAppointments || []).map((appointment: any) => ({
+    id: String(appointment?.appointment_id ?? appointment?.id ?? ''),
+    petName: appointment?.petName || appointment?.pet_name || appointment?.pet_profile?.pet_name || 'Unknown Pet',
+    petImage: appointment?.pet_photo_url || appointment?.petPhotoUrl || appointment?.pet_profile?.pet_photo_url || null,
+    date: appointment?.appointment_date || appointment?.date || '',
+    time: formatAppointmentTime(appointment?.appointment_time || appointment?.time || ''),
+    type: appointment?.appointment_type || appointment?.type || appointment?.service || 'Appointment',
+    vet: appointment?.doctor || appointment?.vet || 'PetShield Veterinarian',
+    status: normalizeAppointmentStatus(appointment?.status || 'pending'),
+  }));
+
+const mapPetsToCards = (rawPets: any[], rawAppointments: any[]): Pet[] => {
+  const appointmentsByPetId = (rawAppointments || []).reduce<Record<string, number>>((acc, appointment: any) => {
+    const petId = String(appointment?.pet_id || appointment?.pet_profile?.pet_id || '');
+    if (!petId) return acc;
+    acc[petId] = (acc[petId] || 0) + 1;
+    return acc;
+  }, {});
+
+  return (rawPets || []).map((pet: any) => {
+    const petId = String(pet?.pet_id ?? pet?.id ?? '');
+    const vaccinationRecords = Array.isArray(pet?.vaccination_urls) ? pet.vaccination_urls.length : 0;
+
+    return {
+      id: petId,
+      name: pet?.pet_name || pet?.name || 'Unnamed Pet',
+      type: pet?.pet_species || pet?.type || 'Pet',
+      breed: pet?.pet_breed || pet?.breed || 'Breed not specified',
+      image: pet?.pet_photo_url || pet?.image || null,
+      age: formatPetAge(pet?.age, pet?.birthday),
+      medicalRecords: vaccinationRecords,
+      appointments: appointmentsByPetId[petId] || 0,
+    };
+  });
+};
 
 const UserProfile: React.FC = () => {
   const navigate = useNavigate();
@@ -148,95 +324,13 @@ const UserProfile: React.FC = () => {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isUploadingProfileImage, setIsUploadingProfileImage] = useState(false);
   const [passwordErrors, setPasswordErrors] = useState<Record<string, string>>({});
   const [emailErrors, setEmailErrors] = useState<Record<string, string>>({});
 
-  // Mock data
-  const [pets, setPets] = useState<Pet[]>([
-    {
-      id: '1',
-      name: 'Max',
-      type: 'Dog',
-      breed: 'Golden Retriever',
-      age: '3 years',
-      image: 'https://images.unsplash.com/photo-1552053831-71594a27632d?w=400',
-      medicalRecords: 5,
-      appointments: 2
-    },
-    {
-      id: '2',
-      name: 'Luna',
-      type: 'Cat',
-      breed: 'Persian',
-      age: '2 years',
-      image: 'https://images.unsplash.com/photo-1573865526739-10659fec78a5?w=400',
-      medicalRecords: 3,
-      appointments: 1
-    },
-    {
-      id: '3',
-      name: 'Charlie',
-      type: 'Dog',
-      breed: 'French Bulldog',
-      age: '1 year',
-      image: 'https://images.unsplash.com/photo-1583512603805-3cc6b41f3edb?w=400',
-      medicalRecords: 2,
-      appointments: 3
-    },
-    {
-      id: '4',
-      name: 'Bella',
-      type: 'Cat',
-      breed: 'Maine Coon',
-      age: '4 years',
-      image: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=400',
-      medicalRecords: 2,
-      appointments: 3
-    },
-  ]);
-
-  const [appointments, setAppointments] = useState<Appointment[]>([
-    {
-      id: 'a1',
-      petName: 'Max',
-      petImage: 'https://images.unsplash.com/photo-1552053831-71594a27632d?w=400',
-      date: '2024-03-20',
-      time: '10:30 AM',
-      type: 'Vaccination',
-      vet: 'Dr. Smith',
-      status: 'upcoming'
-    },
-    {
-      id: 'a2',
-      petName: 'Luna',
-      petImage: 'https://images.unsplash.com/photo-1573865526739-10659fec78a5?w=400',
-      date: '2024-03-15',
-      time: '2:00 PM',
-      type: 'Check-up',
-      vet: 'Dr. Wilson',
-      status: 'completed'
-    },
-    {
-      id: 'a3',
-      petName: 'Charlie',
-      petImage: 'https://images.unsplash.com/photo-1583512603805-3cc6b41f3edb?w=400',
-      date: '2024-03-10',
-      time: '11:15 AM',
-      type: 'Deworming',
-      vet: 'Dr. Johnson',
-      status: 'completed'
-    },
-    {
-      id: 'a4',
-      petName: 'Max',
-      petImage: 'https://images.unsplash.com/photo-1552053831-71594a27632d?w=400',
-      date: '2024-02-28',
-      time: '9:00 AM',
-      type: 'Grooming',
-      vet: 'Dr. Smith',
-      status: 'cancelled'
-    }
-  ]);
+  const [pets, setPets] = useState<Pet[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
 
   const [notifications, setNotifications] = useState<Notification[]>([
     {
@@ -286,95 +380,71 @@ const UserProfile: React.FC = () => {
     const loadUser = async () => {
       try {
         const session = localStorage.getItem('userSession');
-        if (session) {
-          const user = JSON.parse(session);
-          setCurrentUser(user);
-          setEditedProfile({
-            username: user.username || '',
-            firstName: user.firstName || user.fullname?.split(' ')[0] || '',
-            lastName: user.lastName || user.fullname?.split(' ')[1] || '',
-            email: user.email || '',
-            contactNumber: user.contactNumber || '+63 ',
-            profileImage: user.userImage || user.userimage || null,
-            dateJoined: user.dateJoined || '2024-01-01'
-          });
-          setCharCounts({
-            firstName: user.firstName?.length || 0,
-            lastName: user.lastName?.length || 0,
-            username: user.username?.length || 0,
-            contactNumber: user.contactNumber?.length || 3
-          });
-        } else {
-          // Mock user for demo
-          const mockUser = {
-            username: 'johndoe',
-            firstName: 'John',
-            lastName: 'Doe',
-            email: 'john.doe@example.com',
-            contactNumber: '+63 912 345 6789',
-            profileImage: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400',
-            dateJoined: '2024-01-15'
-          };
-          setCurrentUser(mockUser);
-          setEditedProfile(mockUser);
-          setCharCounts({
-            firstName: mockUser.firstName.length,
-            lastName: mockUser.lastName.length,
-            username: mockUser.username.length,
-            contactNumber: mockUser.contactNumber.length
-          });
+        if (!session) {
+          navigate('/login');
+          return;
         }
+
+        const user = JSON.parse(session);
+        const normalizedSession = normalizeUserProfile(user);
+
+        setCurrentUser(normalizedSession);
+        setEditedProfile(normalizedSession);
+        setCharCounts(buildCharCountState(normalizedSession));
+
+        if (!user?.id) return;
+
+        const [profileResponse, petsResponse, appointmentsResponse] = await Promise.all([
+          apiService.getProfile(user.id),
+          apiService.getUserPets(user.id),
+          apiService.getUserAppointments(user.id),
+        ]);
+
+        const profilePayload = profileResponse?.user || profileResponse || {};
+        const normalizedProfile = normalizeUserProfile({
+          ...user,
+          ...profilePayload,
+          profileImage:
+            profilePayload?.profileImage ||
+            profilePayload?.userImage ||
+            profilePayload?.userimage ||
+            normalizedSession.profileImage ||
+            null,
+        });
+        const rawPets = petsResponse?.pets || [];
+        const rawAppointments = appointmentsResponse?.appointments || [];
+        const mappedAppointments = mapAppointmentsToCards(rawAppointments);
+        const mappedPets = mapPetsToCards(rawPets, rawAppointments);
+        const mergedSession = {
+          ...user,
+          ...profilePayload,
+          profileImage: normalizedProfile.profileImage,
+          userImage: normalizedProfile.profileImage,
+          userimage: normalizedProfile.profileImage,
+        };
+
+        localStorage.setItem('userSession', JSON.stringify(mergedSession));
+        setCurrentUser(normalizedProfile);
+        setEditedProfile(normalizedProfile);
+        setCharCounts(buildCharCountState(normalizedProfile));
+        setPets(mappedPets);
+        setAppointments(mappedAppointments);
       } catch (error) {
         console.error("Failed to load user session", error);
+        showAlert('error', 'Unable to Load Profile', 'We could not load your latest profile information right now.');
       }
     };
     loadUser();
-  }, []);
-
-  // Format phone number with fixed +63 prefix
-  const formatPhoneNumber = (value: string): string => {
-    // Ensure +63 is always at the start
-    if (!value.startsWith('+63')) {
-      value = '+63 ' + value.replace(/^\+63\s*/, '');
-    }
-    
-    // Remove all non-digits from the part after +63
-    const prefix = '+63 ';
-    const digitsPart = value.slice(4).replace(/\D/g, '');
-    
-    // Format the remaining digits
-    let formatted = prefix;
-    
-    if (digitsPart.length <= 3) {
-      formatted += digitsPart;
-    } else if (digitsPart.length <= 6) {
-      formatted += digitsPart.slice(0, 3) + ' ' + digitsPart.slice(3);
-    } else {
-      formatted += digitsPart.slice(0, 3) + ' ' + digitsPart.slice(3, 6) + ' ' + digitsPart.slice(6, 10);
-    }
-    
-    return formatted;
-  };
+  }, [navigate]);
 
   // Handle contact number change
   const handleContactNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value;
-    
-    // Always ensure +63 prefix
-    if (!value.startsWith('+63')) {
-      value = '+63 ' + value.replace(/^\+63\s*/, '');
+    let value = formatPhoneNumber(e.target.value);
+
+    if (value.length > PH_PHONE_DISPLAY_MAX_LENGTH) {
+      value = value.slice(0, PH_PHONE_DISPLAY_MAX_LENGTH);
     }
 
-    const maxLength = 14;
-    if (value.length > maxLength) {
-      value = value.slice(0, maxLength);
-    }
-    
-    // Only allow digits after the prefix
-    const prefix = '+63 ';
-    const digits = value.slice(4).replace(/\D/g, '');
-    value = prefix + (digits ? digits : '');
-    
     setEditedProfile({...editedProfile, contactNumber: value});
     setCharCounts({...charCounts, contactNumber: value.length});
     if (formErrors.contactNumber) setFormErrors({...formErrors, contactNumber: undefined});
@@ -414,12 +484,12 @@ const UserProfile: React.FC = () => {
     }
 
     // Contact number validation 
-    const digits = editedProfile.contactNumber.replace(/\D/g, '');
+    const digits = normalizePhilippinePhoneDigits(editedProfile.contactNumber);
     if (!editedProfile.contactNumber || editedProfile.contactNumber === '+63 ') {
       errors.contactNumber = 'Contact number is required';
     } else if (!digits.startsWith('63')) {
       errors.contactNumber = 'Please enter a valid PH number starting with 63';
-    } else if (digits.length !== 12) {
+    } else if (digits.length !== PH_PHONE_TOTAL_DIGITS) {
       errors.contactNumber = 'Please enter a valid 12-digit number (including 63)';
     }
 
@@ -451,7 +521,7 @@ const UserProfile: React.FC = () => {
 
   const handleViewProfile = () => {
     setDropdownVisible(false);
-    navigate('/profile');
+    navigate('/user/profile');
   };
 
   const handleMyPets = () => {
@@ -467,26 +537,77 @@ const UserProfile: React.FC = () => {
     }
   };
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     if (!validateProfileForm()) {
       return;
     }
 
-    setCurrentUser(editedProfile);
-    setIsEditing(false);
-    setFormErrors({});
-    showAlert('success', 'Success', 'Profile updated successfully!');
+    if (!currentUser?.id) {
+      showAlert('error', 'Unable to Save', 'Could not find your user session. Please log in again.');
+      return;
+    }
+
+    try {
+      const response = await apiService.updateProfile(currentUser.id, {
+        username: editedProfile.username,
+        firstName: editedProfile.firstName,
+        lastName: editedProfile.lastName,
+        contactNumber: toStoredPhoneNumber(editedProfile.contactNumber),
+        userImage: editedProfile.profileImage || undefined,
+      });
+
+      const responsePayload = response?.user || response || {};
+      const persistedProfileImage =
+        responsePayload?.profileImage ||
+        responsePayload?.userImage ||
+        responsePayload?.userimage ||
+        editedProfile.profileImage ||
+        currentUser.profileImage ||
+        null;
+
+      const normalizedProfile = normalizeUserProfile({
+        ...currentUser,
+        ...editedProfile,
+        ...responsePayload,
+        profileImage: persistedProfileImage,
+        userImage: persistedProfileImage,
+        userimage: persistedProfileImage,
+      });
+      const rawSession = localStorage.getItem('userSession');
+      const existingSession = rawSession ? JSON.parse(rawSession) : {};
+      const mergedSession = {
+        ...existingSession,
+        ...responsePayload,
+        username: normalizedProfile.username,
+        firstName: normalizedProfile.firstName,
+        lastName: normalizedProfile.lastName,
+        fullname: normalizedProfile.fullname,
+        fullName: normalizedProfile.fullname,
+        contactNumber: normalizedProfile.contactNumber,
+        contact_number: toStoredPhoneNumber(normalizedProfile.contactNumber),
+        profileImage: persistedProfileImage,
+        userImage: persistedProfileImage,
+        userimage: persistedProfileImage,
+      };
+
+      localStorage.setItem('userSession', JSON.stringify(mergedSession));
+      setCurrentUser(normalizedProfile);
+      setEditedProfile(normalizedProfile);
+      setCharCounts(buildCharCountState(normalizedProfile));
+      setIsEditing(false);
+      setFormErrors({});
+      showAlert('success', 'Success', 'Profile updated successfully!');
+    } catch (error: any) {
+      console.error('Failed to update profile', error);
+      showAlert('error', 'Unable to Save', error?.message || 'Failed to save profile changes. Please try again.');
+    }
   };
 
   const handleCancelEdit = () => {
+    if (!currentUser) return;
     setIsEditing(false);
-    setEditedProfile(currentUser!);
-    setCharCounts({
-      firstName: currentUser!.firstName.length,
-      lastName: currentUser!.lastName.length,
-      username: currentUser!.username.length,
-      contactNumber: currentUser!.contactNumber.length
-    });
+    setEditedProfile(currentUser);
+    setCharCounts(buildCharCountState(currentUser));
     setFormErrors({});
   };
 
@@ -533,7 +654,7 @@ const UserProfile: React.FC = () => {
     }
   };
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     // Reset errors
     setPasswordErrors({});
 
@@ -550,9 +671,13 @@ const UserProfile: React.FC = () => {
       errors.newPassword = 'Password must be at least 8 characters';
     } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(passwordData.newPassword)) {
       errors.newPassword = 'Password must contain at least one uppercase, one lowercase, and one number';
+    } else if (passwordData.newPassword === passwordData.currentPassword) {
+      errors.newPassword = 'New password must be different from your current password';
     }
 
-    if (passwordData.newPassword !== passwordData.confirmPassword) {
+    if (!passwordData.confirmPassword) {
+      errors.confirmPassword = 'Please confirm your new password';
+    } else if (passwordData.newPassword !== passwordData.confirmPassword) {
       errors.confirmPassword = 'Passwords do not match';
     }
 
@@ -561,24 +686,84 @@ const UserProfile: React.FC = () => {
       return;
     }
 
-    // Success
-    setShowPasswordModal(false);
-    setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    showAlert('success', 'Success', 'Password changed successfully!');
+    if (!currentUser?.id) {
+      showAlert('error', 'Unable to Change Password', 'Could not find your user session. Please log in again.');
+      return;
+    }
+
+    try {
+      setIsChangingPassword(true);
+      await apiService.changeAuthenticatedPassword(currentUser.id, {
+        current_password: passwordData.currentPassword,
+        new_password: passwordData.newPassword,
+      });
+
+      setShowPasswordModal(false);
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setPasswordErrors({});
+      showAlert('success', 'Success', 'Password changed successfully!');
+    } catch (error: any) {
+      const message = error?.message || 'Failed to change password. Please try again.';
+      if (message.toLowerCase().includes('current password')) {
+        setPasswordErrors({ currentPassword: message });
+      } else if (message.toLowerCase().includes('uppercase') || message.toLowerCase().includes('lowercase') || message.toLowerCase().includes('number') || message.toLowerCase().includes('8 characters')) {
+        setPasswordErrors({ newPassword: message });
+      } else {
+        showAlert('error', 'Unable to Change Password', message);
+      }
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
 
-  const pickImage = (setter: React.Dispatch<React.SetStateAction<any>>, field: string) => {
+  const pickImage = () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setter((prev: any) => ({ ...prev, [field]: reader.result }));
-        };
-        reader.readAsDataURL(file);
+      if (!file) {
+        return;
+      }
+
+      try {
+        setIsUploadingProfileImage(true);
+
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            if (typeof reader.result === 'string') {
+              resolve(reader.result);
+            } else {
+              reject(new Error('Could not read the selected image.'));
+            }
+          };
+          reader.onerror = () => reject(new Error('Could not read the selected image.'));
+          reader.readAsDataURL(file);
+        });
+
+        const fileBase64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+        const uploadResponse = await apiService.uploadProfilePhoto(
+          fileBase64,
+          file.name,
+          file.type || 'image/jpeg'
+        );
+        const uploadedPhotoUrl = uploadResponse?.photoUrl;
+
+        if (!uploadedPhotoUrl) {
+          throw new Error('Profile photo upload did not return an image URL.');
+        }
+
+        setEditedProfile((prev) => ({ ...prev, profileImage: uploadedPhotoUrl }));
+      } catch (error: any) {
+        console.error('Failed to upload profile image', error);
+        showAlert(
+          'error',
+          'Unable to Upload Photo',
+          error?.message || 'We could not upload your profile picture right now.'
+        );
+      } finally {
+        setIsUploadingProfileImage(false);
       }
     };
     input.click();
@@ -586,18 +771,18 @@ const UserProfile: React.FC = () => {
 
   const handleViewAllAppointments = () => {
     if (!isEditing) {
-      navigate('/appointments');
+      navigate('/user/appointment-view');
     }
   };
 
   const formatDate = (dateString: string): string => {
-    const options: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'long', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString(undefined, options);
+    return formatDisplayDate(dateString);
   };
 
   const getStatusBadgeClass = (status: string) => {
     switch(status) {
-      case 'upcoming': return 'upf-status-badge upf-upcoming';
+      case 'pending': return 'upf-status-badge upf-pending';
+      case 'confirmed': return 'upf-status-badge upf-confirmed';
       case 'completed': return 'upf-status-badge upf-completed';
       case 'cancelled': return 'upf-status-badge upf-cancelled';
       default: return 'upf-status-badge';
@@ -727,25 +912,29 @@ const UserProfile: React.FC = () => {
             <div className="upf-profile-picture-wrapper">
               <div className="upf-profile-picture-border">
                 <img 
-                  src={editedProfile.profileImage || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=400'} 
+                  src={(isEditing ? editedProfile.profileImage : currentUser?.profileImage) || DEFAULT_PROFILE_IMAGE}
                   alt="Profile"
                   className="upf-profile-picture"
                 />
-                <button 
-                  className="upf-change-photo-btn"
-                  onClick={() => pickImage(setEditedProfile, 'profileImage')}
-                >
-                  <IoCameraOutline size={20} color="#ffffff" />
-                </button>
+                {isEditing && (
+                  <button 
+                    className="upf-change-photo-btn"
+                    onClick={pickImage}
+                    disabled={isUploadingProfileImage}
+                    title={isUploadingProfileImage ? 'Uploading photo...' : 'Change profile photo'}
+                  >
+                    <IoCameraOutline size={20} color="#ffffff" />
+                  </button>
+                )}
               </div>
             </div>
             
             <div className="upf-header-info">
-              <h1>{currentUser?.firstName} {currentUser?.lastName}</h1>
+              <h1>{`${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim() || currentUser?.fullname || currentUser?.username || 'Pet Parent'}</h1>
               <div className="upf-header-meta">
-                <span>@{currentUser?.username}</span>
+                <span>@{currentUser?.username || 'petparent'}</span>
                 <span>•</span>
-                <span>Joined {currentUser ? formatDate(currentUser.dateJoined) : ''}</span>
+                <span>{formatJoinedText(currentUser?.dateJoined || '')}</span>
               </div>
             </div>
 
@@ -839,7 +1028,7 @@ const UserProfile: React.FC = () => {
                         )}
                       </div>
                     ) : (
-                      <span className="upf-info-value">{currentUser?.username}</span>
+                      <span className="upf-info-value">{currentUser?.username || 'Not provided'}</span>
                     )}
                   </div>
 
@@ -870,7 +1059,7 @@ const UserProfile: React.FC = () => {
                         )}
                       </div>
                     ) : (
-                      <span className="upf-info-value">{currentUser?.firstName}</span>
+                      <span className="upf-info-value">{currentUser?.firstName || 'Not provided'}</span>
                     )}
                   </div>
 
@@ -901,7 +1090,7 @@ const UserProfile: React.FC = () => {
                         )}
                       </div>
                     ) : (
-                      <span className="upf-info-value">{currentUser?.lastName}</span>
+                      <span className="upf-info-value">{currentUser?.lastName || 'Not provided'}</span>
                     )}
                   </div>
 
@@ -910,7 +1099,7 @@ const UserProfile: React.FC = () => {
                       Email
                     </span>
                     <div className="upf-email-display">
-                      <span className="upf-info-value">{currentUser?.email}</span>
+                      <span className="upf-info-value">{currentUser?.email || 'Not provided'}</span>
                       <button
                         className="upf-change-email-btn"
                         onClick={() => setShowEmailModal(true)}
@@ -936,14 +1125,14 @@ const UserProfile: React.FC = () => {
                             onChange={handleContactNumberChange}
                             placeholder="+63 XXX XXX XXXX"
                           />
-                          <span className="upf-char-counter">{charCounts.contactNumber}/14</span>
+                          <span className="upf-char-counter">{charCounts.contactNumber}/{PH_PHONE_DISPLAY_MAX_LENGTH}</span>
                         </div>
                         {formErrors.contactNumber && (
                           <span className="upf-field-error">{formErrors.contactNumber}</span>
                         )}
                       </div>
                     ) : (
-                      <span className="upf-info-value">{currentUser?.contactNumber}</span>
+                      <span className="upf-info-value">{currentUser?.contactNumber || 'Not provided'}</span>
                     )}
                   </div>
                 </div>
@@ -959,13 +1148,15 @@ const UserProfile: React.FC = () => {
                     <button
                       className="upf-save-btn"
                       onClick={handleSaveProfile}
+                      disabled={isUploadingProfileImage}
                     >
                       <IoCheckmarkCircle size={18} />
-                      <span>Save Changes</span>
+                      <span>{isUploadingProfileImage ? 'Uploading Photo...' : 'Save Changes'}</span>
                     </button>
                     <button
                       className="upf-cancel-btn"
                       onClick={handleCancelEdit}
+                      disabled={isUploadingProfileImage}
                     >
                       <IoClose size={18} />
                       <span>Cancel</span>
@@ -1023,7 +1214,7 @@ const UserProfile: React.FC = () => {
                 <h3>My Pets</h3>
                 <button 
                   className="upf-add-pet-btn"
-                  onClick={() => navigate('/add-pet')}
+                  onClick={() => navigate('/user/pet-profile')}
                   disabled={isEditing}
                 >
                   <IoAdd size={20} />
@@ -1032,10 +1223,14 @@ const UserProfile: React.FC = () => {
               </div>
 
               <div className="upf-pets-grid">
-                {pets.map(pet => (
+                {pets.length === 0 ? (
+                  <div className="upf-empty-state-card">
+                    <p>Your created pet profiles will show here.</p>
+                  </div>
+                ) : pets.map(pet => (
                   <div key={pet.id} className="upf-pet-card">
                     <img 
-                      src={pet.image || 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400'} 
+                      src={pet.image || DEFAULT_PET_IMAGE} 
                       alt={pet.name}
                       className="upf-pet-image"
                     />
@@ -1071,12 +1266,16 @@ const UserProfile: React.FC = () => {
               </div>
 
               <div className="upf-appointments-list">
-                {appointments
-                  .filter(apt => apt.status === 'upcoming')
+                {appointments.filter(apt => apt.status !== 'completed' && apt.status !== 'cancelled').length === 0 ? (
+                  <div className="upf-empty-state-card">
+                    <p>Your created appointments will show here.</p>
+                  </div>
+                ) : appointments
+                  .filter(apt => apt.status !== 'completed' && apt.status !== 'cancelled')
                   .map(appointment => (
                     <div key={appointment.id} className="upf-appointment-item">
                       <img 
-                        src={appointment.petImage || 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400'} 
+                        src={appointment.petImage || DEFAULT_PET_IMAGE} 
                         alt={appointment.petName}
                         className="upf-appointment-pet-image"
                       />
@@ -1084,10 +1283,13 @@ const UserProfile: React.FC = () => {
                         <div className="upf-appointment-header">
                           <h4>{appointment.petName}</h4>
                           <span className={getStatusBadgeClass(appointment.status)}>
-                            {appointment.status}
+                            {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
                           </span>
                         </div>
-                        <p className="upf-appointment-type">{appointment.type} with {appointment.vet}</p>
+                        <p className="upf-appointment-type">
+                          {appointment.type}
+                          {appointment.vet ? ` with ${appointment.vet}` : ''}
+                        </p>
                         <p className="upf-appointment-datetime">
                           <IoCalendar size={14} /> {formatDate(appointment.date)} • {appointment.time}
                         </p>
@@ -1191,14 +1393,16 @@ const UserProfile: React.FC = () => {
                 <button 
                   className="upf-btn-secondary"
                   onClick={() => setShowPasswordModal(false)}
+                  disabled={isChangingPassword}
                 >
                   Cancel
                 </button>
                 <button 
                   className="upf-btn-primary"
                   onClick={handleChangePassword}
+                  disabled={isChangingPassword}
                 >
-                  Change Password
+                  {isChangingPassword ? 'Changing...' : 'Change Password'}
                 </button>
               </div>
             </div>

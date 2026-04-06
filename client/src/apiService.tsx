@@ -1,6 +1,6 @@
 // apiService.ts
 // All HTTP calls to the Flask backend live here.
-// Every page imports from this file instead of calling fetch/axios inline.
+// Every page imports from this file instead of calling fetch inline.
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:5000';
 
@@ -25,10 +25,15 @@ async function request<T = any>(
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw Object.assign(new Error(body.error ?? 'Request failed'), {
+    const error = Object.assign(new Error(body.error ?? 'Request failed'), {
       status: res.status,
       data: body,
+      response: {
+        status: res.status,
+        data: body,
+      },
     });
+    throw error;
   }
 
   return res.json();
@@ -75,6 +80,20 @@ export const apiService = {
     });
   },
 
+  getProfile(userId: string) {
+    return request(`/profile/${userId}`);
+  },
+
+  changeAuthenticatedPassword(
+    userId: string,
+    payload: { current_password: string; new_password: string }
+  ) {
+    return request(`/profile/${userId}/change-password`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   // ─── Pets ───────────────────────────────────────────────────────────────
 
   getUserPets(userId: string) {
@@ -92,6 +111,7 @@ export const apiService = {
     age?: string;
     weight_kg?: string;
     pet_photo_url?: string;
+    is_vaccinated?: boolean;
     vaccination_urls?: string[];
   }) {
     return request('/pets', { method: 'POST', body: JSON.stringify(payload) });
@@ -107,6 +127,7 @@ export const apiService = {
     age: string;
     weight_kg: string;
     pet_photo_url: string;
+    is_vaccinated: boolean;
     vaccination_urls: string[];
   }>) {
     return request(`/pets/${petId}`, {
@@ -121,6 +142,17 @@ export const apiService = {
 
   uploadPetPhoto(fileBase64: string, fileName: string, mimeType: string) {
     return request('/upload-pet-photo', {
+      method: 'POST',
+      body: JSON.stringify({
+        file: fileBase64,
+        file_name: fileName,
+        mime_type: mimeType,
+      }),
+    });
+  },
+
+  uploadProfilePhoto(fileBase64: string, fileName: string, mimeType: string) {
+    return request('/upload-profile-photo', {
       method: 'POST',
       body: JSON.stringify({
         file: fileBase64,
@@ -164,11 +196,19 @@ export const apiService = {
       new_date: string;
       new_time: string;
       reschedule_reason: string;
+      requested_by?: string | null;
+      recordType?: string;
     }
   ) {
-    return request(`/appointments/${appointmentId}/reschedule`, {
-      method: 'PATCH',
+    return request(`/api/appointments/${appointmentId}/request-reschedule`, {
+      method: 'POST',
       body: JSON.stringify(payload),
+    });
+  },
+
+  withdrawRescheduleRequest(requestId: number) {
+    return request(`/api/reschedule-requests/${requestId}/withdraw`, {
+      method: 'PUT',
     });
   },
 
@@ -216,11 +256,49 @@ export const apiService = {
 
   // ─── User profile ────────────────────────────────────────────────────────
 
+  getDayAvailability() {
+    return request('/api/day-availability').then((data: any) => {
+      const dayAvailability: Record<string, boolean> = {
+        sunday: false,
+        monday: false,
+        tuesday: false,
+        wednesday: false,
+        thursday: false,
+        friday: false,
+        saturday: false,
+      };
+
+      (Array.isArray(data) ? data : []).forEach((day: any) => {
+        const dayKey = day?.day_of_week?.toLowerCase?.();
+        if (dayKey) {
+          dayAvailability[dayKey] = Boolean(day?.is_available);
+        }
+      });
+
+      return dayAvailability;
+    });
+  },
+
+  getTimeSlotsForDay(dayName: string) {
+    return request(`/api/time-slots/${dayName.toLowerCase()}`).then(
+      (data: any) => data?.timeSlots || []
+    );
+  },
+
+  getSpecialDates() {
+    return request('/api/special-dates').then(
+      (data: any) => data?.specialDates || []
+    );
+  },
+
   updateProfile(userId: string, payload: Partial<{
+    username: string;
     firstName: string;
     lastName: string;
+    contactNumber: string;
     contact_number: string;
     userImage: string;
+    profileImage: string;
   }>) {
     return request(`/profile/${userId}`, {
       method: 'PATCH',

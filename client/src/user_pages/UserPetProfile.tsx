@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import axios from 'axios';
-import API_URL from '../API';
+import { apiService } from '../apiService';
 import profileHeader from '../assets/ProfileHeader.png';
 import petsPeeking from '../assets/PetsPeeking.png';
 import ClientNavBar from '../reusable_components/ClientNavBar';
@@ -40,6 +39,7 @@ interface Pet {
   age: string;
   weight_kg: string;
   pet_photo_url: string | null;
+  is_vaccinated?: boolean | null;
   vaccination_urls: string[] | null;
   created_at: string;
 }
@@ -54,6 +54,10 @@ interface AlertConfig {
 }
 
 type PetModalLayer = 'pet' | 'add' | 'edit';
+
+type VaccinationUploadContext =
+  | { source: 'add-form' }
+  | { source: 'existing-pet'; pet: Pet };
 
 interface PetProfileLocationState {
   returnToBooking?: boolean;
@@ -90,11 +94,73 @@ const formatDate = (s: string) =>
     year: 'numeric', month: 'long', day: 'numeric',
   });
 
-const formatDateInput = (text: string) => {
-  const c = text.replace(/\D/g, '');
-  if (c.length <= 4) return c;
-  if (c.length <= 6) return `${c.slice(0, 4)}-${c.slice(4)}`;
-  return `${c.slice(0, 4)}-${c.slice(4, 6)}-${c.slice(6, 8)}`;
+const parseBirthdayDate = (value?: string | null) => {
+  if (!value) return null;
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const calculateAgeYearsFromBirthday = (value?: string | null) => {
+  const birthday = parseBirthdayDate(value);
+  if (!birthday) return '';
+
+  const today = new Date();
+  let years = today.getFullYear() - birthday.getFullYear();
+  const beforeBirthday =
+    today.getMonth() < birthday.getMonth() ||
+    (today.getMonth() === birthday.getMonth() && today.getDate() < birthday.getDate());
+
+  if (beforeBirthday) years -= 1;
+  return String(Math.max(years, 0));
+};
+
+const getAgeDisplayValue = (birthday?: string | null, rawAge?: string | null, isUnknown = false) => {
+  if (isUnknown) return 'Unknown';
+  if (birthday) return formatPetAge(calculateAgeYearsFromBirthday(birthday), birthday);
+  if (rawAge) return formatPetAge(rawAge, null);
+  return '';
+};
+
+const getVaccinationDisplay = (value?: boolean | null, urls?: string[] | null) => {
+  if (value === true) return 'Yes';
+  if (value === false) return 'No';
+  return (urls?.length ?? 0) > 0 ? 'Yes' : 'Not specified';
+};
+
+const isPetMarkedVaccinated = (pet?: Partial<Pet> | null) =>
+  Boolean(pet?.is_vaccinated || ((pet?.vaccination_urls?.length ?? 0) > 0));
+
+const VACCINATION_ACKNOWLEDGEMENT =
+  'I understand that adding a vaccination record means this pet should be treated as vaccinated.';
+
+const getPetApiErrorMessage = (error: any, fallback: string) => {
+  const rawMessage = String(
+    error?.response?.data?.error ??
+    error?.data?.error ??
+    error?.message ??
+    ''
+  ).trim();
+  const normalizedMessage = rawMessage.toLowerCase();
+
+  if (!rawMessage) return fallback;
+  if (normalizedMessage === 'method not allowed' || error?.status === 405) {
+    return 'This pet profile action is not available right now. Please refresh the page and try again.';
+  }
+  if (normalizedMessage.includes('failed to fetch')) {
+    return 'We could not reach the pet profile service. Please check the connection and try again.';
+  }
+
+  return rawMessage;
+};
+
+const getUploadedFileName = (url: string, fallback: string) => {
+  try {
+    const rawName = new URL(url).pathname.split('/').pop() || fallback;
+    return decodeURIComponent(rawName).replace(/\+/g, ' ');
+  } catch {
+    const rawName = url.split('/').pop() || fallback;
+    return decodeURIComponent(rawName).replace(/\+/g, ' ');
+  }
 };
 
 const pickFile = (
@@ -116,8 +182,6 @@ const pickFile = (
   };
   input.click();
 };
-
-const getToken = () => localStorage.getItem('access_token') ?? '';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -154,6 +218,7 @@ const UserPetProfile: React.FC = () => {
     petName:       '',
     petType:       'Dog' as 'Dog' | 'Cat',
     breed:         '',
+    customBreed:   '',
     breedSize:     'Medium' as 'Small' | 'Medium' | 'Large',
     birthday:      '',
     age:           '',
@@ -161,12 +226,16 @@ const UserPetProfile: React.FC = () => {
     weight:        '',
     weightUnknown: false,
     gender:        'Male' as 'Male' | 'Female',
+    isVaccinated:  null as boolean | null,
   });
   const [addImage, setAddImage] =
     useState<{ preview: string; base64: string; mime: string } | null>(null);
   const [addVaccFiles, setAddVaccFiles] =
     useState<{ id: string; name: string; base64: string; mime: string }[]>([]);
   const [addErrors, setAddErrors] = useState<Record<string, string>>({});
+  const [vaccinationActionPetId, setVaccinationActionPetId] = useState<number | null>(null);
+  const [vaccinationConfirmContext, setVaccinationConfirmContext] = useState<VaccinationUploadContext | null>(null);
+  const [vaccinationConfirmChecked, setVaccinationConfirmChecked] = useState(false);
 
   // ── Edit modal ────────────────────────────────────────────────────────────
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -243,10 +312,8 @@ const UserPetProfile: React.FC = () => {
   const fetchPets = useCallback(async (userId: string): Promise<Pet[]> => {
     setLoadingPets(true);
     try {
-      const res = await axios.get(`${API_URL}/pets/user/${userId}`, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      const list: Pet[] = res.data.pets ?? [];
+      const res = await apiService.getUserPets(userId);
+      const list: Pet[] = res.pets ?? [];
       setPets(list);
       return list;
     } catch (err) {
@@ -260,12 +327,8 @@ const UserPetProfile: React.FC = () => {
   const uploadFile = useCallback(async (
     base64: string, fileName: string, mime: string,
   ): Promise<string> => {
-    const res = await axios.post(
-      `${API_URL}/upload-pet-photo`,
-      { file: base64, file_name: fileName, mime_type: mime },
-      { headers: { Authorization: `Bearer ${getToken()}` } },
-    );
-    return res.data.photoUrl as string;
+    const res = await apiService.uploadPetPhoto(base64, fileName, mime);
+    return res.photoUrl as string;
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -297,20 +360,59 @@ const UserPetProfile: React.FC = () => {
   // Add pet
   // ─────────────────────────────────────────────────────────────────────────
 
+  const handleAddBirthdayChange = (birthday: string) => {
+    setAddForm(f => ({
+      ...f,
+      birthday,
+      age: calculateAgeYearsFromBirthday(birthday),
+    }));
+  };
+
+  const getResolvedBreed = () => (
+    addForm.breed === 'Other' ? addForm.customBreed.trim() : addForm.breed
+  );
+
+  const handleAddBirthdayUnknownToggle = () => {
+    setAddForm(f => ({
+      ...f,
+      ageUnknown: !f.ageUnknown,
+      birthday: '',
+      age: '',
+    }));
+  };
+
+  const handleEditBirthdayChange = (birthday: string) => {
+    setEditPet(p => ({
+      ...p,
+      birthday,
+      age: calculateAgeYearsFromBirthday(birthday),
+    }));
+  };
+
   const validateAddForm = (): boolean => {
     const errors: Record<string, string> = {};
     if (addForm.petName.trim().length < 2)
       errors.petName = 'Name must be at least 2 characters';
     if (!addForm.breed)
       errors.breed = 'Please select a breed';
-    if (!addForm.ageUnknown && !addForm.birthday && !addForm.age)
-      errors.birthdayAge = 'Provide birthday or age';
-    if (addForm.age && !addForm.ageUnknown) {
-      const n = parseFloat(addForm.age);
-      if (isNaN(n) || n < 0 || n > 30) errors.age = 'Age must be 0–30';
+    if (addForm.breed === 'Other' && addForm.customBreed.trim().length < 2)
+      errors.customBreed = 'Please enter the breed name';
+    if (!addForm.ageUnknown && !addForm.birthday)
+      errors.birthday = 'Please select the pet birthday or mark it as unknown';
+    if (addForm.birthday) {
+      const birthday = parseBirthdayDate(addForm.birthday);
+      if (!birthday) {
+        errors.birthday = 'Please enter a valid birthday';
+      } else if (birthday > new Date()) {
+        errors.birthday = 'Birthday cannot be in the future';
+      }
     }
     if (!addForm.weight && !addForm.weightUnknown)
       errors.weight = 'Provide weight or check unknown';
+    if (addForm.isVaccinated === null)
+      errors.isVaccinated = 'Please choose whether your pet is vaccinated';
+    if (addForm.isVaccinated === false && addVaccFiles.length > 0)
+      errors.isVaccinated = 'Adding a vaccination record means the pet should be marked as vaccinated';
     setAddErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -338,27 +440,24 @@ const UserPetProfile: React.FC = () => {
         }
       }
 
-      const addRes = await axios.post(
-        `${API_URL}/pets`,
-        {
-          owner_id:         currentUser.id,
-          pet_name:         addForm.petName,
-          pet_type:         addForm.petType,
-          breed:            addForm.breed,
-          pet_size:         addForm.breedSize,
-          gender:           addForm.gender,
-          birthday:         addForm.birthday || undefined,
-          age:              addForm.ageUnknown    ? undefined : addForm.age    || undefined,
-          weight_kg:        addForm.weightUnknown ? undefined : addForm.weight || undefined,
-          pet_photo_url:    photoUrl,
-          vaccination_urls: vaccUrls.length ? vaccUrls : undefined,
-        },
-        { headers: { Authorization: `Bearer ${getToken()}` } },
-      );
+      const addRes = await apiService.addPet({
+        owner_id:         currentUser.id,
+        pet_name:         addForm.petName,
+        pet_type:         addForm.petType,
+        breed:            getResolvedBreed(),
+        pet_size:         addForm.breedSize,
+        gender:           addForm.gender,
+        birthday:         addForm.birthday || undefined,
+        age:              addForm.ageUnknown ? undefined : calculateAgeYearsFromBirthday(addForm.birthday) || undefined,
+        weight_kg:        addForm.weightUnknown ? undefined : addForm.weight || undefined,
+        pet_photo_url:    photoUrl,
+        is_vaccinated:    addForm.isVaccinated ?? false,
+        vaccination_urls: vaccUrls.length ? vaccUrls : undefined,
+      });
 
       const refreshedPets = await fetchPets(currentUser.id);
       const locationState = location.state as PetProfileLocationState | null;
-      const createdPetId = Number(addRes.data?.pet_id ?? addRes.data?.id ?? addRes.data?.pet?.pet_id ?? 0);
+      const createdPetId = Number(addRes?.pet_id ?? addRes?.id ?? addRes?.pet?.pet_id ?? 0);
       const createdPet = refreshedPets.find(pet => pet.pet_id === createdPetId)
         ?? refreshedPets[refreshedPets.length - 1];
 
@@ -378,7 +477,11 @@ const UserPetProfile: React.FC = () => {
       showAlert('success', 'Pet Added!', `${addForm.petName} has been added to your profile.`);
     } catch (err: any) {
       console.error('handleAddPet error:', err);
-      showAlert('error', 'Error', err.response?.data?.error ?? 'Failed to add pet. Please try again.');
+      showAlert(
+        'error',
+        'Unable to Add Pet',
+        getPetApiErrorMessage(err, 'Failed to add pet. Please try again.')
+      );
     } finally {
       setIsSaving(false);
     }
@@ -386,9 +489,9 @@ const UserPetProfile: React.FC = () => {
 
   const resetAddForm = () => {
     setAddForm({
-      petName: '', petType: 'Dog', breed: '', breedSize: 'Medium',
+      petName: '', petType: 'Dog', breed: '', customBreed: '', breedSize: 'Medium',
       birthday: '', age: '', ageUnknown: false,
-      weight: '', weightUnknown: false, gender: 'Male',
+      weight: '', weightUnknown: false, gender: 'Male', isVaccinated: null,
     });
     setAddImage(null);
     setAddVaccFiles([]);
@@ -400,7 +503,11 @@ const UserPetProfile: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   const openEditModal = (pet: Pet) => {
-    setEditPet({ ...pet });
+    setEditPet({
+      ...pet,
+      age: pet.birthday ? calculateAgeYearsFromBirthday(pet.birthday) : pet.age,
+      is_vaccinated: pet.is_vaccinated ?? ((pet.vaccination_urls?.length ?? 0) > 0),
+    });
     setEditImage({ preview: pet.pet_photo_url ?? DEFAULT_PET_IMG, base64: null, mime: 'image/jpeg' });
     if (mobilePetModalOpen && isMobileView) {
       setMobilePetModalOpen(false);
@@ -423,6 +530,14 @@ const UserPetProfile: React.FC = () => {
 
   const handleSavePet = async () => {
     if (!editPet.pet_id || !currentUser?.id) return;
+    if (editPet.is_vaccinated === false && (editPet.vaccination_urls?.length ?? 0) > 0) {
+      showAlert(
+        'error',
+        'Vaccination Status Mismatch',
+        'This pet already has vaccination records. Remove those records first or keep the pet marked as vaccinated.',
+      );
+      return;
+    }
     setIsSaving(true);
     try {
       let photoUrl = editPet.pet_photo_url;
@@ -434,21 +549,18 @@ const UserPetProfile: React.FC = () => {
         );
       }
 
-      await axios.patch(
-        `${API_URL}/pets/${editPet.pet_id}`,
-        {
-          pet_name:      editPet.pet_name,
-          pet_species:   editPet.pet_species,
-          pet_breed:     editPet.pet_breed,
-          pet_gender:    editPet.pet_gender,
-          pet_size:      editPet.pet_size,
-          birthday:      editPet.birthday  ?? undefined,
-          age:           editPet.age       ?? undefined,
-          weight_kg:     editPet.weight_kg ?? undefined,
-          pet_photo_url: photoUrl          ?? undefined,
-        },
-        { headers: { Authorization: `Bearer ${getToken()}` } },
-      );
+      await apiService.updatePet(editPet.pet_id, {
+        pet_name:      editPet.pet_name,
+        pet_species:   editPet.pet_species,
+        pet_breed:     editPet.pet_breed,
+        pet_gender:    editPet.pet_gender,
+        pet_size:      editPet.pet_size,
+        birthday:      editPet.birthday  ?? undefined,
+        age:           editPet.birthday ? calculateAgeYearsFromBirthday(editPet.birthday) : editPet.age ?? undefined,
+        weight_kg:     editPet.weight_kg ?? undefined,
+        is_vaccinated: editPet.is_vaccinated ?? undefined,
+        pet_photo_url: photoUrl          ?? undefined,
+      });
 
       const freshPets = await fetchPets(currentUser.id);
       const updated   = freshPets.find(p => p.pet_id === editPet.pet_id);
@@ -468,7 +580,11 @@ const UserPetProfile: React.FC = () => {
       );
     } catch (err: any) {
       console.error('handleSavePet error:', err);
-      showAlert('error', 'Error', err.response?.data?.error ?? 'Failed to save changes.');
+      showAlert(
+        'error',
+        'Unable to Save Pet',
+        getPetApiErrorMessage(err, 'Failed to save changes.')
+      );
     } finally {
       setIsSaving(false);
     }
@@ -484,9 +600,7 @@ const UserPetProfile: React.FC = () => {
       `Are you sure you want to delete ${pet.pet_name}'s profile? This cannot be undone.`,
       async () => {
         try {
-          await axios.delete(`${API_URL}/pets/${pet.pet_id}`, {
-            headers: { Authorization: `Bearer ${getToken()}` },
-          });
+          await apiService.deletePet(pet.pet_id);
           if (currentUser?.id) await fetchPets(currentUser.id);
           if (selectedPet?.pet_id === pet.pet_id) {
             setSelectedPet(null);
@@ -504,8 +618,8 @@ const UserPetProfile: React.FC = () => {
         } catch (err: any) {
           showAlert(
             'error',
-            'Error',
-            err.response?.data?.error ?? 'Failed to delete pet.',
+            'Unable to Delete Pet',
+            getPetApiErrorMessage(err, 'Failed to delete pet.'),
             null,
             false,
             'OK',
@@ -514,6 +628,202 @@ const UserPetProfile: React.FC = () => {
         }
       },
       true, 'Delete',
+    );
+  };
+
+  const syncSelectedPet = useCallback((freshPets: Pet[], petId: number) => {
+    const updatedPet = freshPets.find(candidate => candidate.pet_id === petId) ?? null;
+    if (selectedPet?.pet_id === petId) {
+      setSelectedPet(updatedPet);
+    }
+    return updatedPet;
+  }, [selectedPet?.pet_id]);
+
+  const closeVaccinationConfirm = () => {
+    setVaccinationConfirmContext(null);
+    setVaccinationConfirmChecked(false);
+  };
+
+  const launchVaccinationUploadForAddForm = () => {
+    pickFile('.pdf,image/*', (base64, mime, name) => {
+      setAddVaccFiles(prev => [
+        ...prev,
+        { id: Date.now().toString(), name, base64, mime },
+      ]);
+      setAddForm(prev => ({ ...prev, isVaccinated: true }));
+      setAddErrors(prev => ({ ...prev, isVaccinated: undefined }));
+    });
+  };
+
+  const launchVaccinationUploadForPet = (pet: Pet) => {
+    pickFile('.pdf,image/*', async (base64, mime, name) => {
+      setVaccinationActionPetId(pet.pet_id);
+      try {
+        const uploadedUrl = await uploadFile(base64, name, mime);
+        const updatedVaccinationUrls = [...(pet.vaccination_urls ?? []), uploadedUrl];
+
+        await apiService.updatePet(pet.pet_id, {
+          vaccination_urls: updatedVaccinationUrls,
+          is_vaccinated: true,
+        });
+
+        const freshPets = await fetchPets(currentUser!.id);
+        syncSelectedPet(freshPets, pet.pet_id);
+
+        showAlert(
+          'success',
+          'Vaccination Added',
+          `${name} has been added to ${pet.pet_name}'s vaccination records.`,
+        );
+      } catch (err: any) {
+        console.error('handleAddVaccinationRecord error:', err);
+        showAlert(
+          'error',
+          'Unable to Add Vaccination',
+          getPetApiErrorMessage(err, 'Failed to upload the vaccination record.'),
+        );
+      } finally {
+        setVaccinationActionPetId(null);
+      }
+    });
+  };
+
+  const handleConfirmVaccinationUpload = () => {
+    if (!vaccinationConfirmChecked || !vaccinationConfirmContext) return;
+
+    const context = vaccinationConfirmContext;
+    closeVaccinationConfirm();
+
+    if (context.source === 'add-form') {
+      launchVaccinationUploadForAddForm();
+      return;
+    }
+
+    launchVaccinationUploadForPet(context.pet);
+  };
+
+  const handleAddVaccinationRecord = (pet: Pet) => {
+    if (!currentUser?.id) {
+      showAlert('error', 'Not logged in', 'Could not find your user session.');
+      return;
+    }
+
+    if (!isPetMarkedVaccinated(pet)) {
+      setVaccinationConfirmChecked(false);
+      setVaccinationConfirmContext({ source: 'existing-pet', pet });
+      return;
+    }
+
+    launchVaccinationUploadForPet(pet);
+  };
+
+  const handleDeleteVaccinationRecord = (pet: Pet, url: string, fileName: string) => {
+    showAlert(
+      'confirm',
+      'Remove Vaccination Record',
+      `Are you sure you want to remove ${fileName} from ${pet.pet_name}'s vaccination records?`,
+      async () => {
+        if (!currentUser?.id) {
+          showAlert('error', 'Not logged in', 'Could not find your user session.');
+          return;
+        }
+
+        setVaccinationActionPetId(pet.pet_id);
+        try {
+          await apiService.updatePet(pet.pet_id, {
+            vaccination_urls: (pet.vaccination_urls ?? []).filter(recordUrl => recordUrl !== url),
+          });
+
+          const freshPets = await fetchPets(currentUser.id);
+          syncSelectedPet(freshPets, pet.pet_id);
+
+          showAlert(
+            'success',
+            'Vaccination Removed',
+            `${fileName} has been removed from ${pet.pet_name}'s vaccination records.`,
+          );
+        } catch (err: any) {
+          console.error('handleDeleteVaccinationRecord error:', err);
+          showAlert(
+            'error',
+            'Unable to Remove Vaccination',
+            getPetApiErrorMessage(err, 'Failed to remove the vaccination record.'),
+          );
+        } finally {
+          setVaccinationActionPetId(null);
+        }
+      },
+      true,
+      'Remove',
+    );
+  };
+
+  const renderVaccinationRecords = (pet: Pet) => {
+    const isVaccinationBusy = vaccinationActionPetId === pet.pet_id;
+
+    return (
+      <div className="vaccinations-section" style={{ marginTop: 25 }}>
+        <div className="section-header vaccinations-header">
+          <div className="vaccination-section-title">
+            <IoMedicalOutline size={22} color="#3d67ee" />
+            <h4>Vaccination Records</h4>
+          </div>
+          <button
+            type="button"
+            className="add-vaccine-btn"
+            onClick={() => handleAddVaccinationRecord(pet)}
+            disabled={isVaccinationBusy}
+          >
+            <IoAdd size={14} />
+            <span>{isVaccinationBusy ? 'Adding...' : 'Add'}</span>
+          </button>
+        </div>
+        {pet.vaccination_urls?.length ? (
+          <div className="vaccinations-list">
+            {pet.vaccination_urls.map((url, i) => {
+              const fileName = getUploadedFileName(url, `Vaccination ${i + 1}`);
+
+              return (
+                <div key={`${url}-${i}`} className="vaccination-card">
+                  <div className="vaccination-header">
+                    <div>
+                      <div className="vaccination-title">
+                        <IoMedical size={20} color="#3d67ee" />
+                        <span>Vaccination</span>
+                      </div>
+                      <p className="vaccination-name">{fileName}</p>
+                    </div>
+                    <div className="vaccination-actions">
+                      <button
+                        type="button"
+                        className="delete-vaccine-btn"
+                        onClick={() => handleDeleteVaccinationRecord(pet, url, fileName)}
+                        aria-label={`Remove ${fileName}`}
+                      >
+                        <IoTrashOutline size={18} color="#ff6b6b" />
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="view-doc-btn"
+                    onClick={() => window.open(url, '_blank')}
+                  >
+                    <IoEyeOutline size={18} />
+                    <span>View Document</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p style={{ color: '#999', fontSize: 14, fontStyle: 'italic' }}>
+            {isPetMarkedVaccinated(pet)
+              ? 'No vaccination records uploaded yet. Use the cute add button to upload one.'
+              : 'This pet is currently marked as not vaccinated. Uploading a vaccination record will ask for confirmation and mark the pet as vaccinated.'}
+          </p>
+        )}
+      </div>
     );
   };
 
@@ -576,12 +886,13 @@ const UserPetProfile: React.FC = () => {
               {([
                 ['Name',     pet.pet_name],
                 ['Species',  pet.pet_species],
+                ['Gender',   pet.pet_gender],
                 ['Breed',    pet.pet_breed],
                 ['Size',     pet.pet_size],
                 ['Birthday', pet.birthday ? formatDate(pet.birthday) : 'Unknown'],
                 ['Age',      formatPetAge(pet.age, pet.birthday)],
                 ['Weight',   pet.weight_kg ? `${pet.weight_kg} kg` : 'Unknown'],
-                ['Gender',   pet.pet_gender],
+                ['Vaccinated', getVaccinationDisplay(pet.is_vaccinated, pet.vaccination_urls)],
               ] as [string, string][]).map(([label, value]) => (
                 <div key={label} className="info-row">
                   <span className="info-label">{label}:</span>
@@ -590,35 +901,7 @@ const UserPetProfile: React.FC = () => {
               ))}
             </div>
 
-            <div className="vaccinations-section" style={{ marginTop: 25 }}>
-              <div className="section-header">
-                <IoMedicalOutline size={22} color="#3d67ee" />
-                <h4>Vaccination Records</h4>
-              </div>
-              {pet.vaccination_urls?.length ? (
-                <div className="vaccinations-list">
-                  {pet.vaccination_urls.map((url, i) => (
-                    <div key={i} className="vaccination-card">
-                      <div className="vaccination-title">
-                        <IoMedical size={20} color="#3d67ee" />
-                        <span>Vaccination {i + 1}</span>
-                      </div>
-                      <button
-                        className="view-doc-btn"
-                        onClick={() => window.open(url, '_blank')}
-                      >
-                        <IoEyeOutline size={18} />
-                        <span>View Document</span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p style={{ color: '#999', fontSize: 14, fontStyle: 'italic' }}>
-                  No vaccination records uploaded.
-                </p>
-              )}
-            </div>
+            {renderVaccinationRecords(pet)}
 
             <div style={{ marginTop: 30, paddingTop: 20, borderTop: '1px solid #ffcccc', display: 'flex', justifyContent: 'center' }}>
               <button
@@ -695,6 +978,57 @@ const UserPetProfile: React.FC = () => {
                 }}
               >
                 {alertConfig.confirmText}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {vaccinationConfirmContext && (
+        <div className="modal-overlay" onClick={closeVaccinationConfirm}>
+          <div
+            className="modal-content vaccination-confirm-modal"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="vaccination-confirm-icon">
+              <IoMedicalOutline size={34} color="#3d67ee" />
+            </div>
+            <h3 className="modal-title">Confirm Vaccination Update</h3>
+            <p className="modal-message">
+              This pet is currently marked as not vaccinated. Adding a vaccination
+              record means the pet should now be treated as vaccinated.
+            </p>
+
+            <div className="vaccination-confirm-note">
+              <IoInformationCircleOutline size={18} color="#3d67ee" />
+              <span>
+                We will keep the uploaded proof and automatically mark this pet as
+                vaccinated after you continue.
+              </span>
+            </div>
+
+            <label className="vaccination-confirm-checkbox">
+              <input
+                type="checkbox"
+                checked={vaccinationConfirmChecked}
+                onChange={e => setVaccinationConfirmChecked(e.target.checked)}
+              />
+              <span>{VACCINATION_ACKNOWLEDGEMENT}</span>
+            </label>
+
+            <div className="modal-actions vaccination-confirm-actions">
+              <button
+                className="modal-btn modal-btn-cancel"
+                onClick={closeVaccinationConfirm}
+              >
+                Cancel
+              </button>
+              <button
+                className="modal-btn modal-btn-confirm"
+                onClick={handleConfirmVaccinationUpload}
+                disabled={!vaccinationConfirmChecked}
+              >
+                I Understand
               </button>
             </div>
           </div>
@@ -826,12 +1160,12 @@ const UserPetProfile: React.FC = () => {
                       {([
                         ['Name',     selectedPet.pet_name],
                         ['Species',  selectedPet.pet_species],
+                        ['Gender',   selectedPet.pet_gender],
                         ['Breed',    selectedPet.pet_breed],
                         ['Size',     selectedPet.pet_size],
                         ['Birthday', selectedPet.birthday ? formatDate(selectedPet.birthday) : 'Unknown'],
                         ['Age',      formatPetAge(selectedPet.age, selectedPet.birthday)],
                         ['Weight',   selectedPet.weight_kg ? `${selectedPet.weight_kg} kg`    : 'Unknown'],
-                        ['Gender',   selectedPet.pet_gender],
                       ] as [string, string][]).map(([label, value]) => (
                         <div key={label} className="info-row">
                           <span className="info-label">{label}:</span>
@@ -841,34 +1175,7 @@ const UserPetProfile: React.FC = () => {
                     </div>
 
                     {/* Vaccination records */}
-                    <div className="vaccinations-section" style={{ marginTop: 25 }}>
-                      <div className="section-header">
-                        <IoMedicalOutline size={22} color="#3d67ee" />
-                        <h4>Vaccination Records</h4>
-                      </div>
-                      {selectedPet.vaccination_urls?.length ? (
-                        <div className="vaccinations-list">
-                          {selectedPet.vaccination_urls.map((url, i) => (
-                            <div key={i} className="vaccination-card">
-                              <div className="vaccination-title">
-                                <IoMedical size={20} color="#3d67ee" />
-                                <span>Vaccination {i + 1}</span>
-                              </div>
-                              <button
-                                className="view-doc-btn"
-                                onClick={() => window.open(url, '_blank')}
-                              >
-                                <IoEyeOutline size={18} /><span>View Document</span>
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p style={{ color: '#999', fontSize: 14, fontStyle: 'italic' }}>
-                          No vaccination records uploaded.
-                        </p>
-                      )}
-                    </div>
+                    {renderVaccinationRecords(selectedPet)}
 
                     {/* Delete */}
                     <div style={{ marginTop: 30, paddingTop: 20, borderTop: '1px solid #ffcccc' }}>
@@ -983,7 +1290,12 @@ const UserPetProfile: React.FC = () => {
                   <button
                     key={type}
                     className={`type-btn ${addForm.petType === type ? 'selected' : ''}`}
-                    onClick={() => setAddForm(f => ({ ...f, petType: type, breed: '' }))}
+                    onClick={() => setAddForm(f => ({
+                      ...f,
+                      petType: type,
+                      breed: '',
+                      customBreed: '',
+                    }))}
                   >
                     {type === 'Dog' ? <IoPaw size={18} /> : <IoHappy size={18} />}
                     <span>{type}</span>
@@ -991,12 +1303,29 @@ const UserPetProfile: React.FC = () => {
                 ))}
               </div>
 
+              {/* Gender */}
+              <label className="form-label">Gender</label>
+              <select
+                className="form-select"
+                value={addForm.gender}
+                onChange={e =>
+                  setAddForm(f => ({ ...f, gender: e.target.value as 'Male' | 'Female' }))
+                }
+              >
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+              </select>
+
               {/* Breed */}
               <label className="form-label">Breed</label>
               <select
                 className={`form-select ${addErrors.breed ? 'error' : ''}`}
                 value={addForm.breed}
-                onChange={e => setAddForm(f => ({ ...f, breed: e.target.value }))}
+                onChange={e => setAddForm(f => ({
+                  ...f,
+                  breed: e.target.value,
+                  customBreed: e.target.value === 'Other' ? f.customBreed : '',
+                }))}
               >
                 <option value="">Select breed</option>
                 {(addForm.petType === 'Dog' ? DOG_BREEDS : CAT_BREEDS).map(b => (
@@ -1004,6 +1333,24 @@ const UserPetProfile: React.FC = () => {
                 ))}
               </select>
               {addErrors.breed && <span className="error-message">{addErrors.breed}</span>}
+
+              {addForm.breed === 'Other' && (
+                <>
+                  <label className="form-label">Specify Breed</label>
+                  <div className="input-with-counter">
+                    <input
+                      type="text"
+                      className={`form-input ${addErrors.customBreed ? 'error' : ''}`}
+                      placeholder="Enter the breed name"
+                      value={addForm.customBreed}
+                      maxLength={60}
+                      onChange={e => setAddForm(f => ({ ...f, customBreed: e.target.value }))}
+                    />
+                    <span className="char-counter">{addForm.customBreed.length}/60</span>
+                  </div>
+                  {addErrors.customBreed && <span className="error-message">{addErrors.customBreed}</span>}
+                </>
+              )}
 
               {/* Breed Size */}
               <label className="form-label">Breed Size</label>
@@ -1023,53 +1370,38 @@ const UserPetProfile: React.FC = () => {
               <label className="form-label">Pet Birthday</label>
               <div className="input-with-checkbox">
                 <input
-                  type="text"
-                  className="form-input"
-                  placeholder="YYYY-MM-DD"
+                  type="date"
+                  className={`form-input ${addErrors.birthday ? 'error' : ''}`}
                   value={addForm.ageUnknown ? '' : addForm.birthday}
                   disabled={addForm.ageUnknown}
-                  onChange={e =>
-                    setAddForm(f => ({ ...f, birthday: formatDateInput(e.target.value) }))
-                  }
+                  max={new Date().toISOString().split('T')[0]}
+                  onChange={e => handleAddBirthdayChange(e.target.value)}
                 />
                 <label className="checkbox-label">
                   <input
                     type="checkbox"
                     checked={addForm.ageUnknown}
-                    onChange={() =>
-                      setAddForm(f => ({ ...f, ageUnknown: !f.ageUnknown, birthday: '', age: '' }))
-                    }
+                    onChange={handleAddBirthdayUnknownToggle}
                   />
                   <span>Unknown</span>
                 </label>
               </div>
+              {addErrors.birthday && <span className="error-message">{addErrors.birthday}</span>}
 
               {/* Age */}
-              <label className="form-label">Age (years)</label>
-              <div className="input-with-checkbox">
+              <label className="form-label">Age</label>
+              <div className="input-with-unit">
                 <input
                   type="text"
-                  className={`form-input ${addErrors.age ? 'error' : ''}`}
-                  placeholder="e.g. 3"
-                  value={addForm.ageUnknown ? '' : addForm.age}
-                  disabled={addForm.ageUnknown}
-                  maxLength={2}
-                  onChange={e =>
-                    setAddForm(f => ({ ...f, age: e.target.value.replace(/\D/g, '') }))
-                  }
+                  className="form-input"
+                  placeholder={addForm.ageUnknown ? 'Unknown' : 'Select birthday first'}
+                  value={getAgeDisplayValue(addForm.birthday, addForm.age, addForm.ageUnknown)}
+                  readOnly
                 />
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={addForm.ageUnknown}
-                    onChange={() =>
-                      setAddForm(f => ({ ...f, ageUnknown: !f.ageUnknown, age: '' }))
-                    }
-                  />
-                  <span>Unknown</span>
-                </label>
               </div>
-              {addErrors.age && <span className="error-message">{addErrors.age}</span>}
+              <p style={{ marginTop: -8, marginBottom: 15, color: '#777', fontSize: 12 }}>
+                Age is calculated automatically from the pet birthday.
+              </p>
 
               {/* Weight */}
               <label className="form-label">Weight (kg)</label>
@@ -1098,31 +1430,40 @@ const UserPetProfile: React.FC = () => {
               </div>
               {addErrors.weight && <span className="error-message">{addErrors.weight}</span>}
 
-              {/* Gender */}
-              <label className="form-label">Gender</label>
-              <select
-                className="form-select"
-                value={addForm.gender}
-                onChange={e =>
-                  setAddForm(f => ({ ...f, gender: e.target.value as 'Male' | 'Female' }))
-                }
-              >
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-              </select>
+              <label className="form-label">Is your pet vaccinated?</label>
+              <div className="size-selector vaccination-choice-selector">
+                {[
+                  { label: 'Yes', value: true },
+                  { label: 'No', value: false },
+                ].map(option => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    className={`size-btn ${addForm.isVaccinated === option.value ? 'selected' : ''}`}
+                    onClick={() => {
+                      setAddForm(f => ({ ...f, isVaccinated: option.value }));
+                      setAddErrors(prev => ({ ...prev, isVaccinated: undefined }));
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              {addErrors.isVaccinated && <span className="error-message">{addErrors.isVaccinated}</span>}
 
               {/* Vaccination upload */}
               <label className="form-label">Vaccination Records</label>
               <button
                 className="upload-area-btn"
-                onClick={() =>
-                  pickFile('.pdf,image/*', (base64, mime, name) =>
-                    setAddVaccFiles(prev => [
-                      ...prev,
-                      { id: Date.now().toString(), name, base64, mime },
-                    ])
-                  )
-                }
+                onClick={() => {
+                  if (addForm.isVaccinated === false) {
+                    setVaccinationConfirmChecked(false);
+                    setVaccinationConfirmContext({ source: 'add-form' });
+                    return;
+                  }
+
+                  launchVaccinationUploadForAddForm();
+                }}
               >
                 <IoCloudUploadOutline size={30} color="#3d67ee" />
                 <span>Upload Vaccination Proof</span>
@@ -1150,10 +1491,6 @@ const UserPetProfile: React.FC = () => {
                     </div>
                   ))}
                 </div>
-              )}
-
-              {addErrors.birthdayAge && (
-                <div className="error-message text-center">{addErrors.birthdayAge}</div>
               )}
 
               <button className="submit-btn" onClick={handleAddPet} disabled={isSaving}>
@@ -1227,20 +1564,19 @@ const UserPetProfile: React.FC = () => {
 
               <label className="form-label">Birthday</label>
               <input
-                type="text" className="form-input" placeholder="YYYY-MM-DD"
+                type="date" className="form-input"
                 value={editPet.birthday ?? ''}
-                onChange={e =>
-                  setEditPet(p => ({ ...p, birthday: formatDateInput(e.target.value) }))
-                }
+                max={new Date().toISOString().split('T')[0]}
+                onChange={e => handleEditBirthdayChange(e.target.value)}
               />
 
-              <label className="form-label">Age (years)</label>
+              <label className="form-label">Age</label>
               <input
-                type="text" className="form-input" placeholder="e.g. 3" maxLength={2}
-                value={editPet.age ?? ''}
-                onChange={e =>
-                  setEditPet(p => ({ ...p, age: e.target.value.replace(/\D/g, '') }))
-                }
+                type="text"
+                className="form-input"
+                value={getAgeDisplayValue(editPet.birthday, editPet.age)}
+                placeholder="Select birthday first"
+                readOnly
               />
 
               <label className="form-label">Weight (kg)</label>
@@ -1253,6 +1589,23 @@ const UserPetProfile: React.FC = () => {
                   }
                 />
                 <span className="unit-label">kg</span>
+              </div>
+
+              <label className="form-label">Is your pet vaccinated?</label>
+              <div className="size-selector vaccination-choice-selector">
+                {[
+                  { label: 'Yes', value: true },
+                  { label: 'No', value: false },
+                ].map(option => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    className={`size-btn ${editPet.is_vaccinated === option.value ? 'selected' : ''}`}
+                    onClick={() => setEditPet(p => ({ ...p, is_vaccinated: option.value }))}
+                  >
+                    {option.label}
+                  </button>
+                ))}
               </div>
 
               <label className="form-label">Gender</label>

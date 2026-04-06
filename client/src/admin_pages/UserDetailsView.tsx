@@ -41,6 +41,9 @@ type AppointmentLike = {
   service?: string;
   date_time?: string;
   doctor?: string;
+  branch?: string;
+  branchName?: string;
+  branch_id?: number | string | null;
   status?: string;
   latestRescheduleRequest?: any;
   medicalInformation?: any;
@@ -110,8 +113,9 @@ export default function UserDetailsView({
     });
   };
 
-  const getRequestStatusMeta = (statusValue?: string) => {
+  const getRequestStatusMeta = (statusValue?: string, patientResponseTypeValue?: string | null) => {
     const normalized = (statusValue || '').toLowerCase();
+    const patientResponseType = (patientResponseTypeValue || '').toLowerCase();
     switch (normalized) {
       case 'needs_new_schedule':
         return { label: 'CLIENT REQUESTED ANOTHER DATE', bg: '#fff3e0', color: '#f57c00' };
@@ -122,6 +126,9 @@ export default function UserDetailsView({
       case 'declined':
         return { label: 'DECLINED', bg: '#ffebee', color: '#c62828' };
       case 'cancelled':
+        if (patientResponseType === 'withdraw') {
+          return { label: 'WITHDRAWN BY PATIENT', bg: '#f3e5f5', color: '#7b1fa2' };
+        }
         return { label: 'CANCELLED', bg: '#ffebee', color: '#c62828' };
       case 'expired':
         return { label: 'EXPIRED', bg: '#f5f5f5', color: '#616161' };
@@ -136,14 +143,72 @@ export default function UserDetailsView({
     return 'Not provided';
   };
 
+  const formatPatientResponseType = (value?: string | null) => {
+    const normalized = (value || '').trim().toLowerCase();
+    switch (normalized) {
+      case 'choose_another_date':
+        return 'Requested another date';
+      case 'confirm':
+        return 'Accepted clinic proposal';
+      case 'cancel':
+        return 'Cancelled appointment';
+      case 'withdraw':
+        return 'Withdrew request';
+      default:
+        return value || 'No response yet';
+    }
+  };
+
+  const hasStructuredRescheduleMetadata = (value?: string | null) =>
+    /(^|\|)\s*Preferred (date|time):/i.test(value || '');
+
+  const extractStructuredPatientNote = (value?: string | null) => {
+    const rawValue = (value || '').trim();
+    if (!rawValue) return '';
+
+    const noteMatch = rawValue.match(/(?:^|\|)\s*Patient note:\s*([^|]+)/i);
+    if (noteMatch?.[1]) {
+      return noteMatch[1].trim();
+    }
+
+    if (!hasStructuredRescheduleMetadata(rawValue)) {
+      return rawValue;
+    }
+
+    return '';
+  };
+
   const status = (user.status || '').toLowerCase();
   const assignedDoctor = user.doctor || 'Not Assigned';
+  const assignedBranch = user.branch || user.branchName || 'Not specified';
   const latestRescheduleRequest = user.latestRescheduleRequest || null;
   const medicalInformation = user.medicalInformation || user.medical_information || null;
+  const isDirectPatientRescheduleRequest =
+    latestRescheduleRequest?.patient_response_type === 'choose_another_date' &&
+    String(latestRescheduleRequest?.proposed_appointment_date || '') === String(latestRescheduleRequest?.current_appointment_date || '') &&
+    String(latestRescheduleRequest?.proposed_appointment_time || '') === String(latestRescheduleRequest?.current_appointment_time || '');
+  const extractedPatientNote = extractStructuredPatientNote(latestRescheduleRequest?.response_note);
+  const hasLegacyGenericPatientNote =
+    isDirectPatientRescheduleRequest &&
+    (
+      !latestRescheduleRequest?.response_note ||
+      latestRescheduleRequest?.response_note === 'Patient requested a new preferred schedule from the appointment details page'
+    );
+  const clinicReasonDisplay = isDirectPatientRescheduleRequest
+    ? (user.reschedule_reason || 'Not provided')
+    : (latestRescheduleRequest?.reason || user.reschedule_reason || 'Not provided');
+  const patientNoteDisplay = hasLegacyGenericPatientNote
+    ? (latestRescheduleRequest?.reason || 'Not provided')
+    : (
+        extractedPatientNote ||
+        (!hasStructuredRescheduleMetadata(latestRescheduleRequest?.response_note)
+          ? (latestRescheduleRequest?.response_note || 'Not provided')
+          : 'Not provided')
+      );
   
   // Aggressively pull data from ANY possible field name
   const reasonForVisit = user.reasonForVisit || user.patient_reason || user.reason || 'Not provided';
-  const rescheduleReason = user.rescheduleReason || user.reschedule_reason || '';
+  const rescheduleReason = clinicReasonDisplay === 'Not provided' ? '' : clinicReasonDisplay;
   const email = user.email || user.patientEmail || user.patient_email || user.walk_in_email || 'Not provided';
   const phone = user.phone || user.contact_number || user.patientPhone || user.patient_phone || user.walk_in_phone || 'Not provided';
   
@@ -164,11 +229,67 @@ export default function UserDetailsView({
     gender: petGender,
   };
 
-  const requestStatusMeta = getRequestStatusMeta(latestRescheduleRequest?.status);
+  const requestStatusMeta = getRequestStatusMeta(
+    latestRescheduleRequest?.status,
+    latestRescheduleRequest?.patient_response_type
+  );
   const canReviewClientPreference =
     !readOnly &&
     latestRescheduleRequest?.status === 'needs_new_schedule' &&
     (latestRescheduleRequest?.patient_preferred_date || latestRescheduleRequest?.patient_preferred_time);
+  const rescheduleDetailItems = isDirectPatientRescheduleRequest
+    ? [
+        {
+          label: 'Current Appointment Date',
+          value: formatDate(latestRescheduleRequest?.current_appointment_date || latestRescheduleRequest?.proposed_appointment_date),
+        },
+        {
+          label: 'Current Appointment Time',
+          value: formatTime(latestRescheduleRequest?.current_appointment_time || latestRescheduleRequest?.proposed_appointment_time),
+        },
+        {
+          label: 'Preferred Appointment Date',
+          value: formatDate(latestRescheduleRequest?.patient_preferred_date),
+        },
+        {
+          label: 'Preferred Appointment Time',
+          value: formatTime(latestRescheduleRequest?.patient_preferred_time),
+        },
+        {
+          label: 'Patient Reason',
+          value: patientNoteDisplay,
+        },
+        {
+          label: 'Patient Response',
+          value: formatPatientResponseType(latestRescheduleRequest?.patient_response_type),
+        },
+      ]
+    : [
+        {
+          label: 'Clinic Proposed Date',
+          value: formatDate(latestRescheduleRequest?.proposed_appointment_date),
+        },
+        {
+          label: 'Clinic Proposed Time',
+          value: formatTime(latestRescheduleRequest?.proposed_appointment_time),
+        },
+        {
+          label: 'Patient Preferred Date',
+          value: formatDate(latestRescheduleRequest?.patient_preferred_date),
+        },
+        {
+          label: 'Patient Preferred Time',
+          value: formatTime(latestRescheduleRequest?.patient_preferred_time),
+        },
+        {
+          label: 'Clinic Reason',
+          value: clinicReasonDisplay,
+        },
+        {
+          label: 'Patient Response',
+          value: formatPatientResponseType(latestRescheduleRequest?.patient_response_type),
+        },
+      ];
   const canAcceptAppointment = status === 'pending';
   const showBottomLifecycleActions = !readOnly && status !== 'pending';
 
@@ -334,10 +455,16 @@ export default function UserDetailsView({
               <span style={{ fontSize: '16px', fontWeight: '600' }}>{user.service || 'Appointment'}</span>
               <span style={{ color: '#3d67ee', fontWeight: '600' }}>{user.date_time || 'Schedule not set'}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <span style={{ fontSize: '14px', color: '#666' }}>Assigned Doctor: </span>
-                <strong style={{ color: assignedDoctor === 'Not Assigned' ? '#f57c00' : '#333' }}>{assignedDoctor}</strong>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div>
+                  <span style={{ fontSize: '14px', color: '#666' }}>Assigned Doctor: </span>
+                  <strong style={{ color: assignedDoctor === 'Not Assigned' ? '#f57c00' : '#333' }}>{assignedDoctor}</strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '14px', color: '#666' }}>Branch: </span>
+                  <strong style={{ color: assignedBranch === 'Not specified' ? '#888' : '#333' }}>{assignedBranch}</strong>
+                </div>
               </div>
               {!readOnly && (
                 <button
@@ -393,21 +520,23 @@ export default function UserDetailsView({
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '18px' }}>
-                <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Clinic Proposed Date</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatDate(latestRescheduleRequest?.proposed_appointment_date)}</div></div>
-                <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Clinic Proposed Time</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatTime(latestRescheduleRequest?.proposed_appointment_time)}</div></div>
-                <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Client Preferred Date</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatDate(latestRescheduleRequest?.patient_preferred_date)}</div></div>
-                <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Client Preferred Time</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatTime(latestRescheduleRequest?.patient_preferred_time)}</div></div>
-                <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Clinic Reason</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{latestRescheduleRequest?.reason || 'Not provided'}</div></div>
-                <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Patient Response</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{latestRescheduleRequest?.patient_response_type || 'No response yet'}</div></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: isDirectPatientRescheduleRequest ? '0' : '18px' }}>
+                {rescheduleDetailItems.map((item) => (
+                  <div key={item.label}>
+                    <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>{item.label}</div>
+                    <div style={{ fontSize: '14px', fontWeight: '500', whiteSpace: 'pre-wrap' }}>{item.value}</div>
+                  </div>
+                ))}
               </div>
 
-              <div style={{ marginBottom: canReviewClientPreference ? '18px' : '0' }}>
-                <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Patient Note</div>
-                <div style={{ fontSize: '14px', fontWeight: '500', color: '#333', whiteSpace: 'pre-wrap' }}>
-                  {latestRescheduleRequest?.response_note || 'Not provided'}
+              {!isDirectPatientRescheduleRequest && (
+                <div style={{ marginBottom: canReviewClientPreference ? '18px' : '0' }}>
+                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Patient Note</div>
+                  <div style={{ fontSize: '14px', fontWeight: '500', color: '#333', whiteSpace: 'pre-wrap' }}>
+                    {patientNoteDisplay}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {canReviewClientPreference && (
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
