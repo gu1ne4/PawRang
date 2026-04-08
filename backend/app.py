@@ -3,11 +3,15 @@ from flask_cors import CORS
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import os
+import json
 import random
 import string
 import secrets
 import hashlib
+import uuid
+import time
 from datetime import datetime, timedelta, date
+from html import escape
 import resend
 
 day_availability_store = {
@@ -87,6 +91,15 @@ def send_html_email(to_email, subject, html):
     })
 
 
+def send_appointment_email_safely(send_fn, *args, context="Appointment email"):
+    try:
+        send_fn(*args)
+        return True
+    except Exception as e:
+        print(f"{context} error: {e}")
+        return False
+
+
 def send_appointment_status_email(notification_type, patient_email, patient_name, pet_name, service, appointment_date, appointment_time, reason=""):
     if not patient_email:
         raise ValueError("Patient email is missing")
@@ -123,6 +136,157 @@ def send_appointment_status_email(notification_type, patient_email, patient_name
     """
 
     send_html_email(patient_email, subject, html)
+
+
+def send_reschedule_review_email(to_email, patient_name, pet_name, service_name, appointment_date, appointment_time, action='accepted', clinic_note=None):
+    if not to_email:
+        return False
+
+    normalized_action = (action or 'accepted').strip().lower()
+    is_accepted = normalized_action == 'accepted'
+    display_date = format_date_for_email(appointment_date)
+    display_time = appointment_time or "Not provided"
+
+    if is_accepted:
+        subject = "Preferred Reschedule Confirmed"
+        title = "Preferred Schedule Confirmed"
+        intro = f"Hello {patient_name or 'Patient'}, the clinic has accepted your preferred reschedule for <strong>{pet_name or 'your pet'}</strong>."
+        body = "<p>Your appointment has been updated to the confirmed schedule above.</p><p>If you need further changes, please contact the clinic.</p>"
+    else:
+        subject = "Preferred Reschedule Update"
+        title = "Preferred Schedule Declined"
+        intro = f"Hello {patient_name or 'Patient'}, the clinic reviewed your preferred schedule for <strong>{pet_name or 'your pet'}</strong>, but could not approve it at this time."
+        body = "<p>Please wait for another proposed schedule from the clinic, or contact the clinic directly if you would like to discuss other available times.</p>"
+
+    note_html = f"<p><strong>Clinic Note:</strong> {clinic_note}</p>" if clinic_note else ""
+    html = f"""
+        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
+            <h2>{title}</h2>
+            <p>{intro}</p>
+            <p><strong>Service:</strong> {service_name or 'Appointment'}</p>
+            <p><strong>{'Confirmed' if is_accepted else 'Requested'} Date:</strong> {display_date}</p>
+            <p><strong>{'Confirmed' if is_accepted else 'Requested'} Time:</strong> {display_time}</p>
+            {note_html}
+            {body}
+        </div>
+    """
+
+    send_html_email(to_email, subject, html)
+    return True
+
+
+def send_appointment_confirmed_email(to_email, patient_name, pet_name, service_name, appointment_date, appointment_time, assigned_doctor=None):
+    if not to_email:
+        return False
+
+    doctor_html = f"<p><strong>Assigned Doctor:</strong> {assigned_doctor}</p>" if assigned_doctor else ""
+    html = f"""
+        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
+            <h2>Appointment Confirmed</h2>
+            <p>Hello {patient_name or 'Patient'},</p>
+            <p>Your appointment for <strong>{pet_name or 'your pet'}</strong> has been confirmed by the clinic.</p>
+            <p><strong>Service:</strong> {service_name or 'Appointment'}</p>
+            <p><strong>Date:</strong> {format_date_for_email(appointment_date)}</p>
+            <p><strong>Time:</strong> {appointment_time or 'TBD'}</p>
+            {doctor_html}
+            <p>If you have any questions, please contact the clinic.</p>
+            <p>Thank you,<br/>PawRang Veterinary Clinic</p>
+        </div>
+    """
+
+    send_html_email(to_email, "Appointment Confirmed", html)
+    return True
+
+
+def send_reschedule_email(to_email, patient_name, pet_name, service_name, new_date, new_time, reason=None, action_links=None):
+    if not to_email:
+        return False
+
+    reason_html = f"<p><strong>Reason for rescheduling:</strong> {reason}</p>" if reason else ""
+    action_html = ""
+    if action_links:
+        action_html = f"""
+            <div style="margin: 24px 0;">
+                <a href="{action_links.get('confirm')}" style="display:inline-block;padding:12px 18px;background:#2e7d32;color:#fff;text-decoration:none;border-radius:8px;margin-right:10px;">Confirm New Schedule</a>
+                <a href="{action_links.get('choose_another')}" style="display:inline-block;padding:12px 18px;background:#1565c0;color:#fff;text-decoration:none;border-radius:8px;margin-right:10px;">Choose Another Date</a>
+                <a href="{action_links.get('cancel')}" style="display:inline-block;padding:12px 18px;background:#c62828;color:#fff;text-decoration:none;border-radius:8px;">Cancel Appointment</a>
+            </div>
+        """
+
+    html = f"""
+        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
+            <h2>Reschedule Request</h2>
+            <p>Hello {patient_name or 'Patient'},</p>
+            <p>The clinic is proposing a new schedule for <strong>{pet_name or 'your pet'}</strong>.</p>
+            <p><strong>Service:</strong> {service_name or 'Appointment'}</p>
+            <p><strong>Proposed Date:</strong> {format_date_for_email(new_date)}</p>
+            <p><strong>Proposed Time:</strong> {new_time or 'Not provided'}</p>
+            {reason_html}
+            {action_html}
+            <p>Your current appointment will stay unchanged until you confirm.</p>
+            <p>If you have questions, please contact the clinic.</p>
+        </div>
+    """
+
+    send_html_email(to_email, "Appointment reschedule request", html)
+    return True
+
+
+def send_cancellation_email(to_email, patient_name, pet_name, service_name, appointment_date, appointment_time, reason=None):
+    if not to_email:
+        return False
+
+    reason_html = f"<p><strong>Reason for cancellation:</strong> {reason}</p>" if reason else ""
+    html = f"""
+        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
+            <h2>Appointment Cancelled</h2>
+            <p>Hello {patient_name or 'Patient'},</p>
+            <p>Your appointment for <strong>{pet_name or 'your pet'}</strong> has been cancelled by the clinic.</p>
+            <p><strong>Service:</strong> {service_name or 'Appointment'}</p>
+            <p><strong>Original Date:</strong> {format_date_for_email(appointment_date)}</p>
+            <p><strong>Original Time:</strong> {appointment_time or 'Not provided'}</p>
+            {reason_html}
+            <p>If you would like to book a new appointment, please contact the clinic or use the booking page.</p>
+            <p>We apologize for the inconvenience.</p>
+        </div>
+    """
+
+    send_html_email(to_email, "Appointment cancellation notice", html)
+    return True
+
+
+def send_booking_confirmation_email(to_email, patient_name, pet_name, service_name, appointment_date, appointment_time, appointment_status='pending'):
+    if not to_email:
+        return False
+
+    normalized_status = (appointment_status or 'pending').strip().lower()
+    is_pending = normalized_status == 'pending'
+    status_html = (
+        """
+        <p>Your request has been received and is currently <strong>under review</strong>.</p>
+        <p>We will send you another email once the clinic confirms your schedule.</p>
+        """
+        if is_pending else
+        """
+        <p>Your appointment has been successfully booked.</p>
+        """
+    )
+
+    html = f"""
+        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
+            <h2>Appointment Booking Confirmation</h2>
+            <p>Hello {patient_name or 'Patient'},</p>
+            <p>We have received the appointment request for <strong>{pet_name or 'your pet'}</strong>.</p>
+            <p><strong>Service:</strong> {service_name or 'Appointment'}</p>
+            <p><strong>Date:</strong> {format_date_for_email(appointment_date)}</p>
+            <p><strong>Time:</strong> {appointment_time or 'Not provided'}</p>
+            {status_html}
+            <p>If any detail needs to change, please contact the clinic.</p>
+        </div>
+    """
+
+    send_html_email(to_email, "Appointment request received" if is_pending else "Appointment booking confirmation", html)
+    return True
 
 
 def format_admin_appointment(appointment, patients_by_id, pets_by_id, doctors_by_id):
@@ -219,13 +383,46 @@ INVENTORY_CATEGORY_CODES = {
 INVENTORY_ITEM_STOP_WORDS = {"and", "for", "of", "the", "with", "to", "a", "an"}
 ADMIN_NOTIFICATION_MODULES = {"inventory"}
 ADMIN_NOTIFICATION_SEVERITIES = {"info", "success", "warning", "error"}
+TRANSIENT_SUPABASE_ERROR_PATTERNS = (
+    "winerror 10035",
+    "non-blocking socket operation could not be completed immediately",
+    "temporarily unavailable",
+    "connection reset",
+    "connection aborted",
+    "timeout",
+)
+
+
+def is_transient_supabase_error(error):
+    message = str(error or "").lower()
+    return any(pattern in message for pattern in TRANSIENT_SUPABASE_ERROR_PATTERNS)
+
+
+def execute_with_retry(run_query, *, attempts=3, base_delay=0.15, context="Supabase read"):
+    last_error = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            return run_query()
+        except Exception as e:
+            last_error = e
+            is_last_attempt = attempt >= attempts
+            if is_last_attempt or not is_transient_supabase_error(e):
+                raise
+            print(f"{context} transient error on attempt {attempt}/{attempts}: {e}")
+            time.sleep(base_delay * attempt)
+
+    raise last_error
 
 
 def get_single_row(table_name, column, value):
-    result = supabase_admin.table(table_name) \
-        .select('*') \
-        .eq(column, value) \
-        .execute()
+    result = execute_with_retry(
+        lambda: supabase_admin.table(table_name)
+        .select('*')
+        .eq(column, value)
+        .execute(),
+        context=f"Fetch {table_name} row"
+    )
 
     rows = result.data or []
     if len(rows) > 1:
@@ -266,9 +463,9 @@ def normalize_profile(profile, source_table):
             "id": profile.get('id'),
             "email": profile.get('email'),
             "username": profile.get('username'),
-            "firstName": profile.get('first_name'),
-            "lastName": profile.get('last_name'),
-            "contact_number": profile.get('contact_number'),
+            "firstName": profile.get('first_name') or profile.get('firstName'),
+            "lastName": profile.get('last_name') or profile.get('lastName'),
+            "contact_number": profile.get('contact_number') or profile.get('contactNumber'),
             "role": profile.get('role'),
             "status": profile.get('status'),
             "userImage": profile.get('employee_image'),
@@ -279,12 +476,12 @@ def normalize_profile(profile, source_table):
         "id": profile.get('id'),
         "email": profile.get('email'),
         "username": profile.get('username'),
-        "firstName": profile.get('firstName'),
-        "lastName": profile.get('lastName'),
-        "contact_number": profile.get('contact_number'),
+        "firstName": profile.get('firstName') or profile.get('first_name'),
+        "lastName": profile.get('lastName') or profile.get('last_name'),
+        "contact_number": profile.get('contact_number') or profile.get('contactNumber'),
         "role": profile.get('role'),
         "status": profile.get('status'),
-        "userImage": profile.get('userImage'),
+        "userImage": profile.get('userImage') or profile.get('user_image') or profile.get('userimage') or profile.get('profileImage'),
         "account_type": "patient",
     }
 
@@ -390,6 +587,495 @@ def coerce_number(value, field_name, minimum=None, maximum=None, default=None, a
     if maximum is not None and parsed > maximum:
         raise ValueError(f"{field_name} must be at most {maximum}")
     return round(parsed, 2)
+
+
+def format_display_time(value):
+    normalized = normalize_db_time(value)
+    if not normalized:
+        return ""
+
+    for fmt in ("%H:%M:%S", "%H:%M"):
+        try:
+            return datetime.strptime(normalized, fmt).strftime("%I:%M %p").lstrip("0")
+        except ValueError:
+            continue
+    return normalized
+
+
+def format_display_time_range(value):
+    normalized = normalize_db_time(value)
+    if not normalized:
+        return ""
+
+    try:
+        start = datetime.strptime(normalized, "%H:%M:%S")
+    except ValueError:
+        try:
+            start = datetime.strptime(normalized, "%H:%M")
+        except ValueError:
+            return value or ""
+
+    end = start + timedelta(hours=1)
+    return f"{start.strftime('%I:%M %p').lstrip('0')} - {end.strftime('%I:%M %p').lstrip('0')}"
+
+
+def get_public_base_url():
+    return (
+        os.environ.get("PUBLIC_API_URL")
+        or os.environ.get("BACKEND_PUBLIC_URL")
+        or os.environ.get("APP_BASE_URL")
+        or request.url_root.rstrip("/")
+    )
+
+
+def normalize_medical_information_record(record):
+    if not record:
+        return None
+
+    record_type = record.get("record_type") or ("walkin" if record.get("walkin_id") not in (None, "") else "appointment")
+    target_id = record.get("walkin_id") if record_type == "walkin" else record.get("appointment_id")
+
+    return {
+        "id": record.get("id") or record.get("medical_information_id") or record.get("medical_id"),
+        "record_type": record_type,
+        "target_id": target_id,
+        "appointment_id": record.get("appointment_id"),
+        "walkin_id": record.get("walkin_id"),
+        "on_medication": record.get("on_medication"),
+        "medication_details": record.get("medication_details"),
+        "flea_tick_prevention": record.get("flea_tick_prevention"),
+        "is_vaccinated": record.get("is_vaccinated"),
+        "is_pregnant": record.get("is_pregnant"),
+        "additional_notes": record.get("additional_notes"),
+        "has_allergies": record.get("has_allergies"),
+        "allergy_details": record.get("allergy_details"),
+        "has_skin_condition": record.get("has_skin_condition"),
+        "skin_condition_details": record.get("skin_condition_details"),
+        "been_groomed_before": record.get("been_groomed_before"),
+        "created_at": record.get("created_at"),
+        "updated_at": record.get("updated_at"),
+    }
+
+
+def normalize_email_address(email):
+    return (email or "").strip().lower()
+
+
+def find_account_by_email(email):
+    normalized_email = normalize_email_address(email)
+    if not normalized_email:
+        return None
+
+    patient = get_single_row("patient_account", "email", normalized_email)
+    if patient:
+        return {"account_type": "patient", "user_id": patient.get("id"), "email": normalized_email}
+
+    employee = get_single_row("employee_accounts", "email", normalized_email)
+    if employee:
+        return {"account_type": "employee", "user_id": employee.get("id"), "email": normalized_email}
+
+    return None
+
+
+def get_profile_display_name(profile):
+    if not profile:
+        return ""
+
+    first_name = profile.get("firstName") or profile.get("first_name") or ""
+    last_name = profile.get("lastName") or profile.get("last_name") or ""
+    combined_name = f"{first_name} {last_name}".strip()
+
+    return (
+        combined_name
+        or profile.get("full_name")
+        or profile.get("fullname")
+        or profile.get("username")
+        or profile.get("email")
+        or ""
+    )
+
+
+def normalize_public_profile(profile):
+    if not profile:
+        return None
+
+    first_name = profile.get("firstName") or profile.get("first_name") or ""
+    last_name = profile.get("lastName") or profile.get("last_name") or ""
+    full_name = (
+        profile.get("full_name")
+        or profile.get("fullname")
+        or f"{first_name} {last_name}".strip()
+        or get_profile_display_name(profile)
+    )
+
+    if (not first_name or not last_name) and full_name:
+        split_first, split_last = split_full_name(full_name)
+        first_name = first_name or split_first
+        last_name = last_name or split_last
+
+    contact = profile.get("contact_number") or profile.get("contactNumber") or profile.get("contactnumber") or ""
+    user_image = (
+        profile.get("userImage")
+        or profile.get("userimage")
+        or profile.get("user_image")
+        or profile.get("profileImage")
+    )
+    created_at = profile.get("created_at") or profile.get("dateJoined") or profile.get("date_joined") or ""
+    raw_status = (profile.get("status") or "active").strip().lower()
+
+    return {
+        "id": profile.get("id"),
+        "username": profile.get("username") or "",
+        "email": profile.get("email") or "",
+        "fullname": full_name,
+        "fullName": full_name,
+        "firstName": first_name,
+        "lastName": last_name,
+        "contact_number": contact,
+        "contactNumber": contact,
+        "role": profile.get("role"),
+        "status": raw_status,
+        "userImage": user_image,
+        "userimage": user_image,
+        "profileImage": user_image,
+        "created_at": created_at,
+        "dateJoined": created_at,
+    }
+
+
+def build_reschedule_action_links(token):
+    base_url = get_public_base_url()
+    return {
+        "confirm": f"{base_url}/reschedule/confirm/{token}",
+        "choose_another": f"{base_url}/reschedule/choose-another-date/{token}",
+        "cancel": f"{base_url}/reschedule/cancel/{token}",
+    }
+
+
+def parse_uuid_or_none(value):
+    if not value:
+        return None
+
+    try:
+        return str(uuid.UUID(str(value)))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def resolve_appointment_target(target_id, record_type=None):
+    normalized_type = (record_type or "").strip().lower()
+
+    if normalized_type == "walkin":
+        return "walkin_appointments", "walkin_id", int(target_id)
+    if normalized_type == "appointment":
+        return "appointments", "appointment_id", int(target_id)
+
+    appointment = get_single_row("appointments", "appointment_id", target_id)
+    if appointment:
+        return "appointments", "appointment_id", int(target_id)
+
+    walkin = get_single_row("walkin_appointments", "walkin_id", target_id)
+    if walkin:
+        return "walkin_appointments", "walkin_id", int(target_id)
+
+    raise ValueError("Appointment target not found")
+
+
+def get_reschedule_email_context(table_name, id_column, record_id):
+    record_res = supabase_admin.table(table_name).select("*").eq(id_column, record_id).single().execute()
+    record = record_res.data or {}
+
+    if table_name == "walkin_appointments":
+        return {
+            "record": record,
+            "email": record.get("email"),
+            "patient_name": f"{record.get('first_name', '')} {record.get('last_name', '')}".strip() or "Patient",
+            "pet_name": record.get("pet_name") or "your pet",
+            "service_name": record.get("appointment_type") or "Appointment",
+        }
+
+    owner = {}
+    pet = {}
+
+    owner_id = record.get("owner_id")
+    pet_id = record.get("pet_id")
+
+    if owner_id:
+        owner_res = supabase_admin.table("patient_account").select("*").eq("id", owner_id).single().execute()
+        owner = owner_res.data or {}
+
+    if pet_id:
+        pet_res = supabase_admin.table("pet_profile").select("*").eq("pet_id", pet_id).single().execute()
+        pet = pet_res.data or {}
+
+    return {
+        "record": record,
+        "email": owner.get("email"),
+        "patient_name": get_profile_display_name(owner) or "Patient",
+        "pet_name": pet.get("pet_name") or "your pet",
+        "service_name": record.get("appointment_type") or "Appointment",
+    }
+
+
+def get_assigned_doctor_name_from_record(record):
+    if not record:
+        return None
+
+    doctor_id = record.get("assigned_doctor_id") or record.get("doctor_id")
+    if not doctor_id:
+        return None
+
+    try:
+        doctor_res = supabase_admin.table("employee_accounts").select("*").eq("id", doctor_id).single().execute()
+        doctor = doctor_res.data or {}
+        full_name = get_profile_display_name(doctor)
+        return full_name or None
+    except Exception as doctor_error:
+        print(f"Assigned doctor lookup error: {doctor_error}")
+        return None
+
+
+def get_pending_reschedule_request(token):
+    req_res = supabase_admin.table("reschedule_requests").select("*").eq("token", token).single().execute()
+    req = req_res.data or None
+
+    if not req:
+        return None, "not_found"
+
+    if req.get("status") != "pending":
+        return req, "closed"
+
+    expires_at_raw = req.get("expires_at")
+    if expires_at_raw:
+        expires_at = datetime.fromisoformat(str(expires_at_raw).replace("Z", "+00:00"))
+        if datetime.now(expires_at.tzinfo) > expires_at:
+            supabase_admin.table("reschedule_requests").update({
+                "status": "expired",
+                "responded_at": datetime.utcnow().isoformat()
+            }).eq("request_id", req.get("request_id")).execute()
+            req["status"] = "expired"
+            return req, "expired"
+
+    return req, "ok"
+
+
+def get_reschedule_request_by_id(request_id):
+    req_res = supabase_admin.table("reschedule_requests").select("*").eq("request_id", request_id).single().execute()
+    return req_res.data or None
+
+
+def apply_reschedule_to_target(req, appointment_date, appointment_time):
+    table_name, id_column, resolved_id = resolve_appointment_target(req.get("target_id"), req.get("target_type"))
+    current_res = supabase_admin.table(table_name).select("*").eq(id_column, resolved_id).single().execute()
+    current_record = current_res.data or {}
+    current_status = current_record.get("status")
+
+    update_payload = {
+        "appointment_date": appointment_date,
+        "appointment_time": normalize_db_time(appointment_time),
+        "reschedule_reason": req.get("reason"),
+        "rescheduled_at": datetime.utcnow().isoformat(),
+        "rescheduled_by": req.get("requested_by"),
+    }
+
+    if current_status and current_status not in ("cancelled", "completed"):
+        update_payload["status"] = current_status
+
+    supabase_admin.table(table_name).update(update_payload).eq(id_column, resolved_id).execute()
+    return table_name, id_column, resolved_id
+
+
+def render_html_page(title, message, extra_html=""):
+    html = f"""
+        <!doctype html>
+        <html lang="en">
+        <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>{title}</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; background: #f6f8fb; margin: 0; padding: 24px; color: #1f2937; }}
+                .card {{ max-width: 760px; margin: 40px auto; background: white; border-radius: 16px; padding: 32px; box-shadow: 0 12px 30px rgba(0,0,0,0.08); }}
+                h1 {{ margin-top: 0; font-size: 28px; }}
+                p {{ line-height: 1.6; }}
+                a, button {{ display: inline-block; margin: 8px 8px 0 0; padding: 12px 16px; border-radius: 8px; text-decoration: none; border: none; cursor: pointer; font-size: 14px; }}
+                .primary {{ background: #2563eb; color: white; }}
+                .success {{ background: #2e7d32; color: white; }}
+                .danger {{ background: #c62828; color: white; }}
+                .muted {{ background: #eef2ff; color: #334155; }}
+                label {{ display: block; margin: 14px 0 6px; font-weight: 600; }}
+                input, textarea, select {{ width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 8px; box-sizing: border-box; }}
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h1>{title}</h1>
+                <p>{message}</p>
+                {extra_html}
+            </div>
+        </body>
+        </html>
+    """
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+def render_choose_another_date_page(req, error_message=""):
+    proposed_date = escape(str(req.get("proposed_appointment_date") or "Not provided"))
+    proposed_time = escape(format_display_time(req.get("proposed_appointment_time")) or "Not provided")
+    error_html = f"<div class='error-box'>{escape(error_message)}</div>" if error_message else ""
+
+    all_special_dates = supabase_admin.table("special_dates").select("*").execute().data or []
+    all_time_slots = supabase_admin.table("time_slots").select("*").execute().data or []
+    day_availability_rows = supabase_admin.table("working_days").select("*").execute().data or []
+
+    day_availability = {
+        (row.get("day_of_week") or "").strip().lower(): bool(row.get("is_active"))
+        for row in day_availability_rows
+        if row.get("day_of_week")
+    }
+    special_dates = {
+        str(item.get("event_date"))
+        for item in all_special_dates
+        if item.get("event_date")
+    }
+
+    slots_by_day = {}
+    for slot in all_time_slots:
+        day_key = (slot.get("day_of_week") or "").strip().lower()
+        if not day_key:
+            continue
+        if slot.get("is_active") is False:
+            continue
+        start_time = normalize_db_time(slot.get("start_time"))
+        slots_by_day.setdefault(day_key, []).append({
+            "value": start_time,
+            "label": format_display_time_range(start_time),
+        })
+
+    slots_by_date = {}
+    today_value = date.today()
+    for month_offset in range(0, 6):
+        month_base = date(today_value.year + ((today_value.month - 1 + month_offset) // 12), ((today_value.month - 1 + month_offset) % 12) + 1, 1)
+        cursor = month_base
+        while cursor.month == month_base.month:
+            day_key = cursor.strftime("%A").lower()
+            date_key = cursor.isoformat()
+            if day_availability.get(day_key) and date_key not in special_dates:
+                day_slots = slots_by_day.get(day_key, [])
+                if day_slots:
+                    slots_by_date[date_key] = day_slots
+            cursor += timedelta(days=1)
+
+    html = f"""
+        <!doctype html>
+        <html lang="en">
+        <head>
+            <meta charset="utf-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1" />
+            <title>Choose Another Date</title>
+            <style>
+                body {{ margin:0; padding:28px 18px; font-family:Arial, sans-serif; background:linear-gradient(180deg,#f6f8fb 0%,#eef4ff 100%); color:#1f2937; }}
+                .card {{ max-width:1200px; margin:0 auto; background:#fff; border-radius:24px; box-shadow:0 18px 50px rgba(61,103,238,.08); padding:28px; }}
+                .summary {{ margin-top:20px; padding:18px 20px; border-radius:16px; border:1px solid #d8e3ff; background:linear-gradient(135deg,#f8fbff 0%,#eef3ff 100%); }}
+                .summary small {{ display:block; color:#3d67ee; font-weight:700; text-transform:uppercase; letter-spacing:.04em; margin-bottom:8px; }}
+                .layout {{ display:grid; grid-template-columns:minmax(320px,420px) minmax(360px,1fr); gap:22px; margin-top:24px; }}
+                .panel {{ background:#fff; border:1px solid #e6e9f2; border-radius:20px; padding:22px; box-shadow:0 0 18px rgba(0,0,0,.04); }}
+                .calendar-header {{ display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }}
+                .calendar-grid {{ display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:12px 8px; justify-items:center; }}
+                .calendar-label {{ font-size:12px; font-weight:700; color:#98a2b3; text-transform:uppercase; }}
+                .calendar-day, .calendar-spacer {{ width:44px; height:44px; }}
+                .calendar-day {{ border-radius:50%; border:1px solid #111827; background:#fff; color:#111827; cursor:pointer; }}
+                .calendar-day.selected {{ background:#3d67ee; color:#fff; border-color:#3d67ee; }}
+                .calendar-day.disabled {{ color:#c5cad8; border-color:#dce2ef; background:#fafbff; cursor:not-allowed; }}
+                .slot-list {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; }}
+                .slot-btn {{ border:1px solid #cfd8f6; background:#fff; border-radius:14px; padding:14px 16px; font-size:15px; font-weight:600; cursor:pointer; }}
+                .slot-btn.selected {{ background:linear-gradient(135deg,#3d67ee 0%,#5b7fff 100%); color:#fff; border-color:#3d67ee; }}
+                .hint, .empty, .error-box {{ margin-top:16px; padding:12px 14px; border-radius:12px; font-size:14px; }}
+                .hint {{ background:#e8f5e9; color:#2e7d32; font-weight:600; }}
+                .empty {{ background:#f5f7fb; color:#6b7280; text-align:center; }}
+                .error-box {{ background:#fff1f1; color:#d32f2f; border:1px solid #f3c6c6; }}
+                textarea {{ width:100%; min-height:130px; padding:16px 18px; border:1px solid #d6dceb; border-radius:16px; resize:vertical; }}
+                .actions {{ display:flex; justify-content:flex-end; margin-top:26px; grid-column:1 / -1; }}
+                .submit {{ background:linear-gradient(135deg,#3d67ee 0%,#2557eb 100%); color:#fff; border:none; border-radius:14px; padding:16px 28px; font-size:16px; font-weight:700; cursor:pointer; }}
+                .submit:disabled {{ opacity:.45; cursor:not-allowed; }}
+                @media (max-width:900px) {{ .layout {{ grid-template-columns:1fr; }} }}
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h1>Choose Another Date</h1>
+                <p>Tell the clinic what schedule works better for you using the currently available appointment settings.</p>
+                <div class="summary">
+                    <small>Clinic Proposed Schedule</small>
+                    <div><strong>{proposed_date}</strong> at <strong>{proposed_time}</strong></div>
+                </div>
+                {error_html}
+                <form method="POST" class="layout">
+                    <section class="panel">
+                        <h2>Select Preferred Date</h2>
+                        <p>Only days enabled in the clinic availability settings are selectable here.</p>
+                        <div class="calendar-header">
+                            <button type="button" id="prevMonthBtn">&#8249;</button>
+                            <strong id="calendarMonthLabel"></strong>
+                            <button type="button" id="nextMonthBtn">&#8250;</button>
+                        </div>
+                        <div class="calendar-grid" id="calendarGrid"></div>
+                        <div class="hint" id="selectedDateHint">Select an available date.</div>
+                        <input type="hidden" name="preferred_date" id="preferredDateInput" />
+                    </section>
+                    <section style="display:flex;flex-direction:column;gap:16px;">
+                        <section class="panel">
+                            <h2>Select Preferred Time Slot</h2>
+                            <p>Available slots come directly from the clinic's configured time slots for the selected day.</p>
+                            <div class="slot-list" id="slotList"></div>
+                            <div class="empty" id="slotEmptyState">Pick another date to see other available slots.</div>
+                            <input type="hidden" name="preferred_time" id="preferredTimeInput" />
+                        </section>
+                        <section class="panel">
+                            <h2>Notes for the clinic</h2>
+                            <textarea name="response_note" placeholder="Let us know which dates or times work better for you."></textarea>
+                        </section>
+                    </section>
+                    <div class="actions"><button type="submit" class="submit" id="submitButton" disabled>Send My Preference</button></div>
+                </form>
+            </div>
+            <script>
+                const dayAvailability = __DAY_AVAILABILITY__;
+                const specialDates = __SPECIAL_DATES__;
+                const slotsByDate = __SLOTS_BY_DATE__;
+                const monthLabel = document.getElementById('calendarMonthLabel');
+                const calendarGrid = document.getElementById('calendarGrid');
+                const selectedDateHint = document.getElementById('selectedDateHint');
+                const selectedDateInput = document.getElementById('preferredDateInput');
+                const selectedTimeInput = document.getElementById('preferredTimeInput');
+                const slotList = document.getElementById('slotList');
+                const slotEmptyState = document.getElementById('slotEmptyState');
+                const submitButton = document.getElementById('submitButton');
+                const weekdayLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+                const dayKeys = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+                const today = new Date(); const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                let currentMonth = new Date(today.getFullYear(), today.getMonth(), 1); let selectedDate = ''; let selectedTime = '';
+                function formatDateKey(date) {{ const y = date.getFullYear(); const m = String(date.getMonth()+1).padStart(2,'0'); const d = String(date.getDate()).padStart(2,'0'); return `${{y}}-${{m}}-${{d}}`; }}
+                function formatFriendlyDate(dateKey) {{ if (!dateKey) return 'Select an available date.'; const d = new Date(`${{dateKey}}T00:00:00`); return `Selected: ${{d.toLocaleDateString(undefined, {{ weekday:'long', month:'long', day:'numeric', year:'numeric' }})}}`; }}
+                function isDateSelectable(date) {{ const key = formatDateKey(date); const weekday = dayKeys[date.getDay()]; return !(date < todayMidnight || !dayAvailability[weekday] || specialDates.includes(key)); }}
+                function updateSubmitState() {{ submitButton.disabled = !(selectedDate && selectedTime); }}
+                function setSelectedDate(dateKey) {{ selectedDate = dateKey; selectedTime = ''; selectedDateInput.value = dateKey; selectedTimeInput.value = ''; selectedDateHint.textContent = formatFriendlyDate(dateKey); renderCalendar(); renderSlots(); updateSubmitState(); }}
+                function setSelectedTime(timeValue) {{ selectedTime = timeValue; selectedTimeInput.value = timeValue; renderSlots(); updateSubmitState(); }}
+                function renderSlots() {{ slotList.innerHTML = ''; const slots = selectedDate ? (slotsByDate[selectedDate] || []) : []; if (!slots.length) {{ slotEmptyState.style.display='block'; slotEmptyState.textContent = selectedDate ? 'No configured time slots for this date.' : 'Pick another date to see other available slots.'; return; }} slotEmptyState.style.display='none'; slots.forEach((slot) => {{ const btn = document.createElement('button'); btn.type='button'; btn.className='slot-btn' + (selectedTime === slot.value ? ' selected' : ''); btn.textContent = slot.label; btn.addEventListener('click', () => setSelectedTime(slot.value)); slotList.appendChild(btn); }}); }}
+                function renderCalendar() {{ calendarGrid.innerHTML=''; monthLabel.textContent = `${{monthNames[currentMonth.getMonth()]}} ${{currentMonth.getFullYear()}}`; weekdayLabels.forEach((label) => {{ const el = document.createElement('div'); el.className='calendar-label'; el.textContent = label; calendarGrid.appendChild(el); }}); const first = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1); const last = new Date(currentMonth.getFullYear(), currentMonth.getMonth()+1, 0); for (let i=0;i<first.getDay();i++) {{ const spacer=document.createElement('div'); spacer.className='calendar-spacer'; calendarGrid.appendChild(spacer); }} for (let day=1; day<=last.getDate(); day++) {{ const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day); const key = formatDateKey(date); const btn = document.createElement('button'); btn.type='button'; btn.className='calendar-day'; btn.textContent=String(day); const selectable = isDateSelectable(date); if (!selectable) {{ btn.classList.add('disabled'); btn.disabled = true; }} else if (selectedDate === key) {{ btn.classList.add('selected'); }} btn.addEventListener('click', () => {{ if (!selectable) return; setSelectedDate(key); }}); calendarGrid.appendChild(btn); }} }}
+                document.getElementById('prevMonthBtn').addEventListener('click', () => {{ currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth()-1, 1); renderCalendar(); }});
+                document.getElementById('nextMonthBtn').addEventListener('click', () => {{ currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth()+1, 1); renderCalendar(); }});
+                renderCalendar(); renderSlots(); updateSubmitState();
+            </script>
+        </body>
+        </html>
+    """
+
+    html = html.replace("__DAY_AVAILABILITY__", json.dumps(day_availability))
+    html = html.replace("__SPECIAL_DATES__", json.dumps(sorted(special_dates)))
+    html = html.replace("__SLOTS_BY_DATE__", json.dumps(slots_by_date))
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
 def parse_inventory_expiration_date(value, no_expiration=False):
@@ -818,11 +1504,14 @@ def get_admin_notification_reads_map(admin_user_id, notification_ids):
     if not admin_user_id or not notification_ids:
         return {}
 
-    response = supabase_admin.table('admin_notification_reads') \
-        .select('notification_id,read_at') \
-        .eq('admin_user_id', admin_user_id) \
-        .in_('notification_id', notification_ids) \
-        .execute()
+    response = execute_with_retry(
+        lambda: supabase_admin.table('admin_notification_reads')
+        .select('notification_id,read_at')
+        .eq('admin_user_id', admin_user_id)
+        .in_('notification_id', notification_ids)
+        .execute(),
+        context='Fetch admin notification reads'
+    )
 
     reads_map = {}
     for row in (response.data or []):
@@ -1645,11 +2334,12 @@ def login():
 @app.route('/profile/<user_id>', methods=['GET'])
 def get_profile(user_id):
     try:
-        profile, source_table = find_account_by_user_id(user_id)
+        profile, _ = find_account_by_user_id(user_id)
         if not profile:
             return jsonify({"error": "User not found"}), 404
 
-        return jsonify({"user": normalize_profile(profile, source_table)}), 200
+        normalized = normalize_public_profile(profile)
+        return jsonify({**normalized, "user": normalized}), 200
 
     except Exception as e:
         print("Get profile error:", str(e))
@@ -1661,43 +2351,158 @@ def get_profile(user_id):
 # -----------------------------------------------
 @app.route('/profile/<user_id>', methods=['PATCH'])
 def update_profile(user_id):
-    data    = request.get_json()
+    data = request.get_json() or {}
 
     try:
-        profile, source_table = find_account_by_user_id(user_id)
+        profile = get_single_row('patient_account', 'id', user_id)
+        table_name = 'patient_account'
+
         if not profile:
-            return jsonify({"error": "User not found"}), 404
+            profile = get_single_row('employee_accounts', 'id', user_id)
+            table_name = 'employee_accounts'
 
-        if source_table == 'employee_accounts':
-            field_map = {
-                'firstName': 'first_name',
-                'lastName': 'last_name',
-                'contact_number': 'contact_number',
-                'userImage': 'employee_image',
-            }
+        if not profile:
+            return jsonify({"error": "Profile not found"}), 404
+
+        username = (data.get('username') or profile.get('username') or '').strip()
+        existing_first_name = (profile.get('firstName') or profile.get('first_name') or '').strip()
+        existing_last_name = (profile.get('lastName') or profile.get('last_name') or '').strip()
+
+        first_name_key_present = 'firstName' in data or 'first_name' in data
+        last_name_key_present = 'lastName' in data or 'last_name' in data
+        full_name_key_present = any(key in data for key in ('fullName', 'fullname', 'full_name'))
+
+        provided_first_name = (
+            data.get('firstName')
+            if 'firstName' in data else
+            data.get('first_name')
+            if 'first_name' in data else
+            None
+        )
+        provided_last_name = (
+            data.get('lastName')
+            if 'lastName' in data else
+            data.get('last_name')
+            if 'last_name' in data else
+            None
+        )
+        provided_full_name = (
+            data.get('fullName')
+            if 'fullName' in data else
+            data.get('fullname')
+            if 'fullname' in data else
+            data.get('full_name')
+            if 'full_name' in data else
+            None
+        )
+
+        first_name = (
+            provided_first_name.strip()
+            if isinstance(provided_first_name, str) else
+            existing_first_name
+        )
+        last_name = (
+            provided_last_name.strip()
+            if isinstance(provided_last_name, str) else
+            existing_last_name
+        )
+
+        full_name = (
+            (provided_full_name or '').strip()
+            if isinstance(provided_full_name, str) else
+            f"{first_name} {last_name}".strip()
+        ) or profile.get('full_name') or profile.get('fullname') or get_profile_display_name(profile)
+        contact_number = (
+            data.get('contactNumber')
+            if 'contactNumber' in data else
+            data.get('contact_number')
+            if 'contact_number' in data else
+            data.get('contactnumber')
+        )
+        user_image = (
+            data.get('userImage')
+            if 'userImage' in data else
+            data.get('userimage')
+            if 'userimage' in data else
+            data.get('user_image')
+            if 'user_image' in data else
+            data.get('profileImage')
+        )
+
+        base_update = {}
+        if 'username' in data:
+            base_update['username'] = username
+        if any(key in data for key in ('contactNumber', 'contact_number', 'contactnumber')):
+            base_update['contact_number'] = (contact_number or '').strip()
+
+        has_name_update = any(key in data for key in ('firstName', 'first_name', 'lastName', 'last_name', 'fullName', 'fullname', 'full_name'))
+        has_image_update = any(key in data for key in ('userImage', 'userimage', 'user_image', 'profileImage'))
+
+        if not base_update and not has_name_update and not has_image_update:
+            return jsonify({"error": "No valid profile fields to update"}), 400
+
+        if first_name_key_present or last_name_key_present:
+            split_first_name = first_name
+            split_last_name = last_name
         else:
-            field_map = {
-                'firstName': 'firstName',
-                'lastName': 'lastName',
-                'contact_number': 'contact_number',
-                'userImage': 'userImage',
-            }
+            split_first_name, split_last_name = split_full_name(full_name)
+        name_variants = [{}]
+        if has_name_update:
+            if table_name == 'patient_account':
+                name_variants = [
+                    {"firstName": split_first_name, "lastName": split_last_name},
+                    {"full_name": full_name, "firstName": split_first_name, "lastName": split_last_name},
+                    {"fullname": full_name, "firstName": split_first_name, "lastName": split_last_name},
+                    {"full_name": full_name},
+                    {"fullname": full_name},
+                ]
+            else:
+                name_variants = [
+                    {"first_name": split_first_name, "last_name": split_last_name},
+                    {"full_name": full_name, "first_name": split_first_name, "last_name": split_last_name},
+                    {"fullname": full_name, "first_name": split_first_name, "last_name": split_last_name},
+                    {"full_name": full_name},
+                    {"fullname": full_name},
+                ]
 
-        update_data = {
-            db_key: data[key]
-            for key, db_key in field_map.items()
-            if key in data
-        }
+        image_variants = [{}]
+        if has_image_update:
+            if table_name == 'patient_account':
+                image_variants = [{"userImage": user_image}, {"userimage": user_image}, {"user_image": user_image}, {}]
+            else:
+                image_variants = [{"employee_image": user_image}, {"userImage": user_image}, {}]
 
-        if not update_data:
-            return jsonify({"error": "No valid fields to update"}), 400
+        response = None
+        last_error = None
+        attempted_payloads = set()
 
-        supabase_admin.table(source_table) \
-            .update(update_data) \
-            .eq('id', user_id) \
-            .execute()
+        for name_variant in name_variants:
+            for image_variant in image_variants:
+                update_payload = {**base_update, **name_variant, **image_variant}
+                if not update_payload:
+                    continue
 
-        return jsonify({"message": "Profile updated successfully"}), 200
+                payload_signature = tuple(sorted(update_payload.keys()))
+                if payload_signature in attempted_payloads:
+                    continue
+                attempted_payloads.add(payload_signature)
+
+                try:
+                    response = supabase_admin.table(table_name).update(update_payload).eq('id', user_id).execute()
+                    last_error = None
+                    break
+                except Exception as update_error:
+                    last_error = update_error
+                    print("Profile update fallback attempt failed:", update_error)
+            if response is not None:
+                break
+
+        if response is None:
+            raise last_error if last_error else Exception("Unable to update profile")
+
+        updated_profile = response.data[0] if response.data else get_single_row(table_name, 'id', user_id)
+        normalized = normalize_public_profile(updated_profile or profile)
+        return jsonify({"message": "Profile updated successfully", **normalized, "user": normalized}), 200
 
     except Exception as e:
         print("Update profile error:", str(e))
@@ -1711,7 +2516,7 @@ def update_profile(user_id):
 def upload_pet_photo():
     import base64
 
-    data      = request.get_json()
+    data      = request.get_json() or {}
     file_b64  = data.get('file')
     file_name = data.get('file_name', f"pet_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}.jpg")
     mime_type = data.get('mime_type', 'image/jpeg')
@@ -1721,7 +2526,10 @@ def upload_pet_photo():
 
     try:
         file_data = base64.b64decode(file_b64)
-        file_path = f"photos/{file_name}"
+        original_name = os.path.basename(str(file_name or '').strip()) or f"pet_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}.jpg"
+        safe_name = ''.join(ch if ch.isalnum() or ch in ('-', '_', '.') else '_' for ch in original_name)
+        unique_folder = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}_{uuid.uuid4().hex[:8]}"
+        file_path = f"photos/{unique_folder}/{safe_name}"
 
         supabase_admin.storage.from_("pet-photos").upload(
             path=file_path,
@@ -1737,12 +2545,87 @@ def upload_pet_photo():
         return jsonify({"error": str(e)}), 400
 
 
+@app.route('/upload-profile-photo', methods=['POST'])
+def upload_profile_photo():
+    import base64
+
+    data = request.get_json() or {}
+    file_b64 = data.get('file')
+    file_name = data.get('file_name', f"profile_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}.jpg")
+    mime_type = data.get('mime_type', 'image/jpeg')
+
+    if not file_b64:
+        return jsonify({"error": "No file provided"}), 400
+
+    try:
+        file_data = base64.b64decode(file_b64)
+        original_name = os.path.basename(str(file_name or '').strip()) or f"profile_{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}.jpg"
+        safe_name = ''.join(ch if ch.isalnum() or ch in ('-', '_', '.') else '_' for ch in original_name)
+        unique_folder = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}_{uuid.uuid4().hex[:8]}"
+        file_path = f"profile-photos/{unique_folder}/{safe_name}"
+
+        supabase_admin.storage.from_("pet-photos").upload(
+            path=file_path,
+            file=file_data,
+            file_options={"content-type": mime_type}
+        )
+
+        public_url = f"{SUPABASE_URL}/storage/v1/object/public/pet-photos/{file_path}"
+        return jsonify({"photoUrl": public_url}), 200
+    except Exception as e:
+        print("Upload profile photo error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/profile/<user_id>/change-password', methods=['POST'])
+def change_authenticated_user_password(user_id):
+    data = request.get_json() or {}
+    current_password = data.get('current_password') or ''
+    new_password = data.get('new_password') or ''
+
+    if not current_password or not new_password:
+        return jsonify({"error": "Current password and new password are required"}), 400
+
+    if len(new_password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    if not any(char.islower() for char in new_password) or not any(char.isupper() for char in new_password) or not any(char.isdigit() for char in new_password):
+        return jsonify({"error": "Password must contain at least one uppercase letter, one lowercase letter, and one number"}), 400
+
+    if current_password == new_password:
+        return jsonify({"error": "New password must be different from your current password"}), 400
+
+    try:
+        profile = get_single_row('patient_account', 'id', user_id) or get_single_row('employee_accounts', 'id', user_id)
+        if not profile:
+            return jsonify({"error": "Profile not found"}), 404
+
+        email = normalize_email_address(profile.get('email'))
+        if not email:
+            return jsonify({"error": "This account does not have a valid email address"}), 400
+
+        auth_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        auth_result = auth_client.auth.sign_in_with_password({"email": email, "password": current_password})
+        session = getattr(auth_result, 'session', None)
+        if not session:
+            return jsonify({"error": "Current password is incorrect"}), 400
+
+        supabase_admin.auth.admin.update_user_by_id(user_id, {"password": new_password})
+        return jsonify({"message": "Password changed successfully"}), 200
+    except Exception as e:
+        print("Change authenticated password error:", str(e))
+        lowered = str(e).lower()
+        if 'invalid login credentials' in lowered or 'invalid_credentials' in lowered:
+            return jsonify({"error": "Current password is incorrect"}), 400
+        return jsonify({"error": str(e)}), 400
+
+
 # -----------------------------------------------
 # ADD PET PROFILE
 # -----------------------------------------------
 @app.route('/pets', methods=['POST'])
 def add_pet():
-    data             = request.get_json()
+    data             = request.get_json() or {}
     owner_id         = data.get('owner_id')
     pet_name         = data.get('pet_name')
     pet_type         = data.get('pet_type')
@@ -1753,6 +2636,7 @@ def add_pet():
     age              = data.get('age')
     weight           = data.get('weight_kg')
     pet_photo_url    = data.get('pet_photo_url')
+    is_vaccinated    = data.get('is_vaccinated')
     vaccination_urls = data.get('vaccination_urls')
 
     if not all([owner_id, pet_name, pet_type, breed, pet_size, gender]):
@@ -1774,6 +2658,7 @@ def add_pet():
             "age":              age,
             "weight_kg":        weight,
             "pet_photo_url":    pet_photo_url,
+            "is_vaccinated":    is_vaccinated,
             "vaccination_urls": vaccination_urls if vaccination_urls else None,
         }).execute()
 
@@ -1808,11 +2693,11 @@ def get_user_pets(user_id):
 # -----------------------------------------------
 @app.route('/pets/<int:pet_id>', methods=['PATCH'])
 def update_pet(pet_id):
-    data    = request.get_json()
+    data    = request.get_json() or {}
     allowed = [
         'pet_name', 'pet_species', 'pet_breed', 'pet_gender',
         'pet_size', 'birthday', 'age', 'weight_kg',
-        'pet_photo_url', 'vaccination_urls',
+        'pet_photo_url', 'is_vaccinated', 'vaccination_urls',
     ]
     update_data = {k: v for k, v in data.items() if k in allowed}
 
@@ -1851,45 +2736,134 @@ def delete_pet(pet_id):
         return jsonify({"error": str(e)}), 400
 
 
+def create_appointment_record(data, allow_walk_in=False):
+    data = data or {}
+    owner_id = data.get('owner_id')
+    pet_id = data.get('pet_id')
+    is_walk_in = bool(data.get('is_walk_in', False))
+    branch_id = data.get('branch_id') or data.get('branchId')
+
+    try:
+        branch_id = int(branch_id) if branch_id not in (None, '', 'null') else None
+    except (TypeError, ValueError):
+        branch_id = None
+
+    if allow_walk_in and (owner_id == 'WALK_IN' or pet_id == 'WALK_IN') and is_walk_in:
+        walk_in_email = data.get('walk_in_email') or ''
+        walk_in_phone = data.get('walk_in_phone') or ''
+        response = supabase_admin.table('walkin_appointments').insert({
+            "first_name": (data.get('walk_in_first_name') or 'Walk-In').strip(),
+            "last_name": (data.get('walk_in_last_name') or 'Guest').strip(),
+            "email": walk_in_email,
+            "contact_number": walk_in_phone,
+            "pet_name": data.get('walk_in_pet_name') or 'Unknown Pet',
+            "pet_species": data.get('walk_in_pet_type') or 'Other',
+            "pet_breed": data.get('walk_in_breed') or 'Unknown',
+            "pet_gender": data.get('walk_in_gender') or 'Unknown',
+            "pet_dob": data.get('walk_in_dob') or None,
+            "appointment_type": data.get('appointment_type') or data.get('service'),
+            "appointment_date": data.get('appointment_date') or data.get('date'),
+            "appointment_time": data.get('appointment_time') or data.get('time'),
+            "patient_reason": data.get('patient_reason') or data.get('reason') or '',
+            "branch_id": branch_id,
+            "status": "pending",
+        }).execute()
+
+        created_row = (response.data or [{}])[0]
+        created_id = created_row.get('walkin_id') or created_row.get('id')
+        email_sent = False
+
+        try:
+            email_context = get_reschedule_email_context('walkin_appointments', 'walkin_id', created_id)
+            existing_record = email_context.get("record") or created_row
+            email_sent = send_appointment_email_safely(
+                send_booking_confirmation_email,
+                email_context.get("email"),
+                email_context.get("patient_name"),
+                email_context.get("pet_name"),
+                email_context.get("service_name"),
+                existing_record.get("appointment_date"),
+                format_display_time(existing_record.get("appointment_time")),
+                existing_record.get("status") or "pending",
+                context="Booking confirmation preparation (walk-in)"
+            )
+        except Exception as email_error:
+            print(f"Booking confirmation preparation error (walk-in): {email_error}")
+
+        return {
+            "message": "Walk-in appointment created!",
+            "data": response.data,
+            "appointment_id": None,
+            "walkin_id": created_id,
+            "target_id": created_id,
+            "recordType": "walkin",
+            "emailSent": email_sent,
+        }
+
+    required_fields = {
+        "owner_id": owner_id,
+        "pet_id": pet_id,
+        "appointment_type": data.get('appointment_type') or data.get('service'),
+        "appointment_date": data.get('appointment_date') or data.get('date'),
+        "appointment_time": data.get('appointment_time') or data.get('time'),
+    }
+    missing = [key for key, value in required_fields.items() if not value]
+    if missing:
+        raise ValueError(f"Missing required fields: {missing}")
+
+    response = supabase_admin.table('appointments').insert({
+        "owner_id": owner_id,
+        "pet_id": pet_id,
+        "appointment_type": required_fields["appointment_type"],
+        "appointment_date": required_fields["appointment_date"],
+        "appointment_time": required_fields["appointment_time"],
+        "patient_reason": data.get('patient_reason') or data.get('reason') or '',
+        "branch_id": branch_id,
+        "status": "pending",
+    }).execute()
+
+    created_row = (response.data or [{}])[0]
+    created_id = created_row.get('appointment_id') or created_row.get('id')
+    email_sent = False
+
+    try:
+        email_context = get_reschedule_email_context('appointments', 'appointment_id', created_id)
+        existing_record = email_context.get("record") or created_row
+        email_sent = send_appointment_email_safely(
+            send_booking_confirmation_email,
+            email_context.get("email"),
+            email_context.get("patient_name"),
+            email_context.get("pet_name"),
+            email_context.get("service_name"),
+            existing_record.get("appointment_date"),
+            format_display_time(existing_record.get("appointment_time")),
+            existing_record.get("status") or "pending",
+            context="Booking confirmation preparation"
+        )
+    except Exception as email_error:
+        print(f"Booking confirmation preparation error: {email_error}")
+
+    return {
+        "message": "Appointment created!",
+        "data": response.data,
+        "appointment_id": created_id,
+        "walkin_id": None,
+        "target_id": created_id,
+        "recordType": "appointment",
+        "emailSent": email_sent,
+    }
+
+
 # -----------------------------------------------
 # BOOK APPOINTMENT
 # -----------------------------------------------
 @app.route('/appointments', methods=['POST'])
 def book_appointment():
-    data             = request.get_json()
-    owner_id         = data.get('owner_id')
-    pet_id           = data.get('pet_id')
-    appointment_type = data.get('appointment_type')
-    appointment_date = data.get('appointment_date')
-    appointment_time = data.get('appointment_time')
-    patient_reason   = data.get('patient_reason', '')
-    branch_id        = data.get('branch_id')
-
-    if not all([owner_id, pet_id, appointment_type, appointment_date, appointment_time]):
-        missing = [k for k, v in {
-            "owner_id":         owner_id,
-            "pet_id":           pet_id,
-            "appointment_type": appointment_type,
-            "appointment_date": appointment_date,
-            "appointment_time": appointment_time,
-        }.items() if not v]
-        return jsonify({"error": f"Missing required fields: {missing}"}), 400
-
     try:
-        result = supabase_admin.table('appointments').insert({
-            "owner_id":         owner_id,
-            "pet_id":           pet_id,
-            "appointment_type": appointment_type,
-            "appointment_date": appointment_date,
-            "appointment_time": appointment_time,
-            "patient_reason":   patient_reason,
-            "branch_id":        branch_id,
-            "status":           "pending",
-        }).execute()
-
-        appointment_id = result.data[0]["appointment_id"] if result.data else None
-        return jsonify({"message": "Appointment booked successfully!", "appointment_id": appointment_id}), 200
-
+        created = create_appointment_record(request.get_json() or {}, allow_walk_in=False)
+        return jsonify(created), 200
+    except ValueError as value_error:
+        return jsonify({"error": str(value_error)}), 400
     except Exception as e:
         print("Appointment error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -2000,35 +2974,83 @@ def save_grooming_details():
 # -----------------------------------------------
 # SAVE MEDICAL INFORMATION
 # -----------------------------------------------
-@app.route('/medical-information', methods=['POST'])
-def save_medical_information():
-    data           = request.get_json()
-    appointment_id = data.get('appointment_id')
+@app.route('/medical-information', methods=['GET', 'POST'])
+@app.route('/api/medical-information', methods=['GET', 'POST'])
+def medical_information_collection():
+    if request.method == 'GET':
+        try:
+            appointment_ids_raw = (request.args.get('appointmentIds') or '').strip()
+            query = supabase_admin.table('medical_information').select('*')
 
-    if not appointment_id:
+            if appointment_ids_raw:
+                parsed_ids = [item.strip() for item in appointment_ids_raw.split(',') if item.strip()]
+                query = query.in_('appointment_id', parsed_ids)
+
+            response = query.execute()
+            rows = [normalize_medical_information_record(item) for item in (response.data or [])]
+            rows = [item for item in rows if item]
+            return jsonify({"medicalInformation": rows}), 200
+        except Exception as e:
+            print("Medical information list error:", str(e))
+            return jsonify({"error": str(e)}), 400
+
+    data = request.get_json() or {}
+    record_type = (data.get('record_type') or ('walkin' if data.get('walkin_id') else 'appointment')).strip().lower()
+    appointment_id = data.get('appointment_id')
+    walkin_id = data.get('walkin_id')
+
+    if record_type == 'walkin' and not walkin_id:
+        return jsonify({"error": "walkin_id is required for walkin medical information"}), 400
+    if record_type != 'walkin' and not appointment_id:
         return jsonify({"error": "appointment_id is required"}), 400
 
     try:
-        supabase_admin.table('medical_information').insert({
-            "appointment_id":         appointment_id,
-            "is_pregnant":            data.get('is_pregnant'),
-            "is_vaccinated":          data.get('is_vaccinated'),
-            "has_allergies":          data.get('has_allergies'),
-            "allergy_details":        data.get('allergy_details'),
-            "has_skin_condition":     data.get('has_skin_condition'),
-            "been_groomed_before":    data.get('been_groomed_before'),
-            "on_medication":          data.get('on_medication'),
-            "medication_details":     data.get('medication_details'),
+        payload = {
+            "record_type": record_type,
+            "appointment_id": appointment_id if record_type != 'walkin' else None,
+            "walkin_id": walkin_id if record_type == 'walkin' else None,
+            "is_pregnant": data.get('is_pregnant'),
+            "is_vaccinated": data.get('is_vaccinated'),
+            "has_allergies": data.get('has_allergies'),
+            "allergy_details": data.get('allergy_details'),
+            "has_skin_condition": data.get('has_skin_condition'),
+            "been_groomed_before": data.get('been_groomed_before'),
+            "on_medication": data.get('on_medication'),
+            "medication_details": data.get('medication_details'),
             "skin_condition_details": data.get('skin_condition_details'),
-            "flea_tick_prevention":   data.get('flea_tick_prevention'),
-            "additional_notes":       data.get('additional_notes'),
-        }).execute()
+            "flea_tick_prevention": data.get('flea_tick_prevention'),
+            "additional_notes": data.get('additional_notes'),
+        }
 
-        return jsonify({"message": "Medical information saved successfully!"}), 200
+        lookup_column = 'walkin_id' if record_type == 'walkin' else 'appointment_id'
+        lookup_value = walkin_id if record_type == 'walkin' else appointment_id
+        existing = supabase_admin.table('medical_information').select('*').eq(lookup_column, lookup_value).execute().data or []
 
+        if existing:
+            response = supabase_admin.table('medical_information').update(payload).eq(lookup_column, lookup_value).execute()
+        else:
+            response = supabase_admin.table('medical_information').insert(payload).execute()
+
+        normalized = normalize_medical_information_record((response.data or [{}])[0])
+        return jsonify({"message": "Medical information saved successfully!", "medicalInformation": normalized}), 200
     except Exception as e:
         print("Medical information error:", str(e))
         return jsonify({"error": str(e)}), 400
+
+
+@app.route('/medical-information/<appointment_id>', methods=['GET'])
+@app.route('/api/medical-information/<appointment_id>', methods=['GET'])
+def get_medical_information_by_target(appointment_id):
+    record_type = (request.args.get('recordType') or request.args.get('record_type') or 'appointment').strip().lower()
+    lookup_column = 'walkin_id' if record_type == 'walkin' else 'appointment_id'
+
+    try:
+        response = supabase_admin.table('medical_information').select('*').eq(lookup_column, appointment_id).single().execute()
+        normalized = normalize_medical_information_record(response.data or {})
+        return jsonify({"medicalInformation": normalized}), 200
+    except Exception as e:
+        print("Medical information fetch error:", str(e))
+        return jsonify({"medicalInformation": None}), 200
 
 
 # -----------------------------------------------
@@ -2037,14 +3059,58 @@ def save_medical_information():
 @app.route('/appointments/user/<user_id>', methods=['GET'])
 def get_user_appointments(user_id):
     try:
-        response = supabase_admin.table('appointments') \
-            .select('*, pet_profile(*)') \
-            .eq('owner_id', user_id) \
-            .order('appointment_date', desc=True) \
-            .execute()
+        appointments = supabase_admin.table('appointments').select('*').eq('owner_id', user_id).order('appointment_date', desc=True).execute().data or []
+        pets = supabase_admin.table('pet_profile').select('*').eq('owner_id', user_id).execute().data or []
+        branches = supabase_admin.table('branches').select('*').execute().data or []
+        reschedule_requests = supabase_admin.table('reschedule_requests').select('*').order('created_at', desc=True).execute().data or []
+        medical_information_rows = supabase_admin.table('medical_information').select('*').execute().data or []
 
-        return jsonify({"appointments": response.data}), 200
+        pets_by_id = {str(pet.get('pet_id')): pet for pet in pets}
+        branches_by_id = {str(branch.get('branch_id') or branch.get('id')): branch for branch in branches}
+        medical_information_by_target = {}
+        latest_request_by_target = {}
 
+        for medical_row in medical_information_rows:
+            normalized = normalize_medical_information_record(medical_row)
+            if not normalized:
+                continue
+            key = f"{normalized.get('record_type')}-{normalized.get('target_id')}"
+            if normalized.get('target_id') not in (None, "") and key not in medical_information_by_target:
+                medical_information_by_target[key] = normalized
+
+        for request_item in reschedule_requests:
+            key = f"{request_item.get('target_type')}-{request_item.get('target_id')}"
+            if key not in latest_request_by_target:
+                latest_request_by_target[key] = request_item
+
+        formatted = []
+        for appointment in appointments:
+            pet = pets_by_id.get(str(appointment.get('pet_id')), {})
+            branch = branches_by_id.get(str(appointment.get('branch_id')), {})
+            medical_information = medical_information_by_target.get(f"appointment-{appointment.get('appointment_id')}")
+            latest_request = latest_request_by_target.get(f"appointment-{appointment.get('appointment_id')}")
+            branch_name = branch.get('branch_name') or branch.get('name') or 'Not specified'
+
+            formatted.append({
+                **appointment,
+                "id": appointment.get('appointment_id'),
+                "recordType": "appointment",
+                "pet_profile": pet,
+                "pet_name": pet.get('pet_name') or appointment.get('pet_name'),
+                "pet_species": pet.get('pet_species'),
+                "pet_breed": pet.get('pet_breed'),
+                "pet_gender": pet.get('pet_gender'),
+                "pet_photo_url": pet.get('pet_photo_url'),
+                "date_display": str(appointment.get('appointment_date') or ''),
+                "time_display": format_display_time(appointment.get('appointment_time')),
+                "time_range_display": format_display_time_range(appointment.get('appointment_time')),
+                "branch": branch_name,
+                "branchName": branch_name,
+                "medicalInformation": medical_information,
+                "latestRescheduleRequest": latest_request,
+            })
+
+        return jsonify({"appointments": formatted}), 200
     except Exception as e:
         print("Fetch appointments error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -2056,7 +3122,10 @@ def get_user_appointments(user_id):
 @app.route('/branches', methods=['GET'])
 def get_branches():
     try:
-        res = supabase.table('branches').select('*').order('branch_id').execute()
+        res = execute_with_retry(
+            lambda: supabase.table('branches').select('*').order('branch_id').execute(),
+            context='Fetch branches'
+        )
         return jsonify({'branches': res.data}), 200
 
     except Exception as e:
@@ -2068,13 +3137,43 @@ def get_branches():
 # ADMIN COMPATIBILITY ROUTES
 # -----------------------------------------------
 @app.route('/accounts', methods=['GET'])
+@app.route('/api/doctors', methods=['GET'])
 def get_accounts():
     try:
-        res = supabase_admin.table('employee_accounts').select('*').execute()
+        res = execute_with_retry(
+            lambda: supabase_admin.table('employee_accounts').select('*').execute(),
+            context='Fetch employee accounts'
+        )
         accounts = [normalize_employee_admin_account(item) for item in (res.data or [])]
+        if request.path == '/api/doctors':
+            veterinarian_roles = {'veterinarian', 'vet'}
+            accounts = [
+                account for account in accounts
+                if (account.get('role') or '').strip().lower() in veterinarian_roles
+            ]
         return jsonify(accounts), 200
     except Exception as e:
         print("Fetch accounts error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/admin/appointment-search-data', methods=['GET'])
+def get_admin_appointment_search_data():
+    try:
+        pets = execute_with_retry(
+            lambda: supabase_admin.table('pet_profile').select('*').execute(),
+            context='Fetch admin appointment search pets'
+        ).data or []
+        patients = execute_with_retry(
+            lambda: supabase_admin.table('patient_account').select('*').execute(),
+            context='Fetch admin appointment search patients'
+        ).data or []
+        return jsonify({
+            "pets": pets,
+            "patients": patients,
+        }), 200
+    except Exception as e:
+        print("Appointment search data error:", str(e))
         return jsonify({"error": str(e)}), 400
 
 
@@ -2747,7 +3846,10 @@ def get_admin_notifications():
         if limit_value:
             query = query.limit(limit_value)
 
-        response = query.execute()
+        response = execute_with_retry(
+            lambda: query.execute(),
+            context='Fetch admin notifications'
+        )
         rows = response.data or []
         notification_ids = [row.get('notification_id') for row in rows if row.get('notification_id') is not None]
         reads_map = get_admin_notification_reads_map(admin_user_id, notification_ids)
@@ -2874,100 +3976,356 @@ def reconcile_inventory_expiring_soon_notifications():
         return jsonify({"error": str(e)}), 400
 
 
+def build_admin_appointment_rows(include_history=False):
+    appointments = execute_with_retry(
+        lambda: supabase_admin.table("appointments").select("*").execute(),
+        context="Fetch appointments for admin schedule"
+    ).data or []
+    walkins = execute_with_retry(
+        lambda: supabase_admin.table("walkin_appointments").select("*").execute(),
+        context="Fetch walk-in appointments for admin schedule"
+    ).data or []
+    patients = execute_with_retry(
+        lambda: supabase_admin.table("patient_account").select("*").execute(),
+        context="Fetch patients for admin schedule"
+    ).data or []
+    pets = execute_with_retry(
+        lambda: supabase_admin.table("pet_profile").select("*").execute(),
+        context="Fetch pets for admin schedule"
+    ).data or []
+    doctors = execute_with_retry(
+        lambda: supabase_admin.table("employee_accounts").select("*").execute(),
+        context="Fetch employees for admin schedule"
+    ).data or []
+    branches = execute_with_retry(
+        lambda: supabase_admin.table("branches").select("*").execute(),
+        context="Fetch branches for admin schedule"
+    ).data or []
+    reschedule_requests = execute_with_retry(
+        lambda: supabase_admin.table("reschedule_requests").select("*").order("created_at", desc=True).execute(),
+        context="Fetch reschedule requests for admin schedule"
+    ).data or []
+    medical_information_rows = execute_with_retry(
+        lambda: supabase_admin.table("medical_information").select("*").execute(),
+        context="Fetch medical information for admin schedule"
+    ).data or []
+
+    patients_by_id = {str(patient.get("id")): patient for patient in patients}
+    pets_by_id = {str(pet.get("pet_id")): pet for pet in pets}
+    doctors_by_id = {str(doctor.get("id")): doctor for doctor in doctors}
+    branches_by_id = {str(branch.get("branch_id") or branch.get("id")): branch for branch in branches}
+    latest_request_by_target = {}
+    medical_information_by_target = {}
+
+    for request_item in reschedule_requests:
+        map_key = f"{request_item.get('target_type')}-{request_item.get('target_id')}"
+        if map_key not in latest_request_by_target:
+            latest_request_by_target[map_key] = request_item
+
+    for medical_row in medical_information_rows:
+        normalized_medical = normalize_medical_information_record(medical_row)
+        if not normalized_medical:
+            continue
+        medical_key = f"{normalized_medical.get('record_type')}-{normalized_medical.get('target_id')}"
+        if normalized_medical.get("target_id") not in (None, "") and medical_key not in medical_information_by_target:
+            medical_information_by_target[medical_key] = normalized_medical
+
+    history_statuses = {"completed", "cancelled"}
+    formatted = []
+
+    def should_include(status_value):
+        normalized = (status_value or "").lower()
+        return normalized in history_statuses if include_history else normalized not in history_statuses
+
+    for app in appointments:
+        status = (app.get("status") or "pending").lower()
+        if not should_include(status):
+            continue
+
+        owner = patients_by_id.get(str(app.get("owner_id")), {})
+        pet = pets_by_id.get(str(app.get("pet_id")), {})
+        doctor_id = app.get("doctor_id") or app.get("assigned_doctor_id")
+        doctor = doctors_by_id.get(str(doctor_id), {}) if doctor_id else {}
+        branch = branches_by_id.get(str(app.get("branch_id")), {}) if app.get("branch_id") is not None else {}
+        latest_reschedule_request = latest_request_by_target.get(f"appointment-{app.get('appointment_id')}")
+        medical_information = medical_information_by_target.get(f"appointment-{app.get('appointment_id')}")
+
+        owner_name = get_profile_display_name(owner) or "Unknown Owner"
+        pet_name = pet.get("pet_name") or "Unknown Pet"
+        pet_type = (pet.get("pet_species") or "Unknown").title()
+        pet_breed = (pet.get("pet_breed") or "Unknown").title()
+        pet_gender = (pet.get("pet_gender") or "Unknown").title()
+        time_range = format_display_time_range(app.get("appointment_time"))
+        date_display = str(app.get("appointment_date") or "")
+        branch_name = branch.get("branch_name") or branch.get("name") or "Not specified"
+
+        formatted.append({
+            **app,
+            "id": f"appointment-{app.get('appointment_id')}",
+            "dbId": app.get("appointment_id"),
+            "recordType": "appointment",
+            "ownerName": owner_name,
+            "name": owner_name,
+            "patient_name": owner_name,
+            "email": owner.get("email") or "Not provided",
+            "patientEmail": owner.get("email") or "Not provided",
+            "patient_email": owner.get("email") or "Not provided",
+            "phone": owner.get("contact_number") or "Not provided",
+            "patientPhone": owner.get("contact_number") or "Not provided",
+            "patient_phone": owner.get("contact_number") or "Not provided",
+            "contact_number": owner.get("contact_number") or "Not provided",
+            "reasonForVisit": app.get("patient_reason") or "Not provided",
+            "patient_reason": app.get("patient_reason") or "Not provided",
+            "reason": app.get("patient_reason") or "Not provided",
+            "rescheduleReason": (latest_reschedule_request or {}).get("reason") or app.get("reschedule_reason") or "Not provided",
+            "reschedule_reason": app.get("reschedule_reason"),
+            "pet_name": pet_name,
+            "petName": pet_name,
+            "type": pet_type,
+            "petType": pet_type,
+            "pet_type": pet_type,
+            "pet_species": pet_type,
+            "breed": pet_breed,
+            "petBreed": pet_breed,
+            "pet_breed": pet_breed,
+            "gender": pet_gender,
+            "petGender": pet_gender,
+            "pet_gender": pet_gender,
+            "pet_photo_url": pet.get("pet_photo_url"),
+            "service": app.get("appointment_type") or "General",
+            "date_time": f"{date_display} {time_range}".strip(),
+            "date_display": date_display,
+            "time_display": time_range,
+            "time_range_display": time_range,
+            "date_only": date_display,
+            "doctor": get_profile_display_name(doctor) or "Not Assigned",
+            "assignedDoctor": doctor_id,
+            "branch": branch_name,
+            "branchName": branch_name,
+            "branch_id": app.get("branch_id"),
+            "status": status,
+            "medicalInformation": medical_information,
+            "medical_information": medical_information,
+            "latestRescheduleRequest": latest_reschedule_request,
+            "is_walk_in": False,
+            "sort_date": date_display,
+            "sort_time": str(app.get("appointment_time") or ""),
+        })
+
+    for walkin in walkins:
+        status = (walkin.get("status") or "pending").lower()
+        if not should_include(status):
+            continue
+
+        doctor_id = walkin.get("doctor_id") or walkin.get("assigned_doctor_id")
+        doctor = doctors_by_id.get(str(doctor_id), {}) if doctor_id else {}
+        branch = branches_by_id.get(str(walkin.get("branch_id")), {}) if walkin.get("branch_id") is not None else {}
+        latest_reschedule_request = latest_request_by_target.get(f"walkin-{walkin.get('walkin_id')}")
+        medical_information = medical_information_by_target.get(f"walkin-{walkin.get('walkin_id')}")
+        patient_name = f"{walkin.get('first_name', '')} {walkin.get('last_name', '')}".strip() or "Walk-In Patient"
+        pet_name = walkin.get("pet_name") or "Unknown Pet"
+        time_range = format_display_time_range(walkin.get("appointment_time"))
+        date_display = str(walkin.get("appointment_date") or "")
+        pet_type = (walkin.get("pet_species") or "Unknown").title()
+        pet_breed = (walkin.get("pet_breed") or "Unknown").title()
+        pet_gender = (walkin.get("pet_gender") or "Unknown").title()
+        branch_name = branch.get("branch_name") or branch.get("name") or "Not specified"
+
+        formatted.append({
+            **walkin,
+            "id": f"walkin-{walkin.get('walkin_id')}",
+            "dbId": walkin.get("walkin_id"),
+            "recordType": "walkin",
+            "ownerName": patient_name,
+            "name": patient_name,
+            "patient_name": patient_name,
+            "email": walkin.get("email") or "Not provided",
+            "patientEmail": walkin.get("email") or "Not provided",
+            "patient_email": walkin.get("email") or "Not provided",
+            "walk_in_email": walkin.get("email") or "Not provided",
+            "phone": walkin.get("contact_number") or "Not provided",
+            "patientPhone": walkin.get("contact_number") or "Not provided",
+            "patient_phone": walkin.get("contact_number") or "Not provided",
+            "contact_number": walkin.get("contact_number") or "Not provided",
+            "walk_in_phone": walkin.get("contact_number") or "Not provided",
+            "reasonForVisit": walkin.get("patient_reason") or "Not provided",
+            "patient_reason": walkin.get("patient_reason") or "Not provided",
+            "reason": walkin.get("patient_reason") or "Not provided",
+            "rescheduleReason": (latest_reschedule_request or {}).get("reason") or walkin.get("reschedule_reason") or "Not provided",
+            "reschedule_reason": walkin.get("reschedule_reason"),
+            "pet_name": pet_name,
+            "petName": pet_name,
+            "type": pet_type,
+            "petType": pet_type,
+            "pet_type": pet_type,
+            "pet_species": pet_type,
+            "breed": pet_breed,
+            "petBreed": pet_breed,
+            "pet_breed": pet_breed,
+            "gender": pet_gender,
+            "petGender": pet_gender,
+            "pet_gender": pet_gender,
+            "service": walkin.get("appointment_type") or "General",
+            "date_time": f"{date_display} {time_range}".strip(),
+            "date_display": date_display,
+            "time_display": time_range,
+            "time_range_display": time_range,
+            "date_only": date_display,
+            "doctor": get_profile_display_name(doctor) or "Not Assigned",
+            "assignedDoctor": doctor_id,
+            "branch": branch_name,
+            "branchName": branch_name,
+            "branch_id": walkin.get("branch_id"),
+            "status": status,
+            "medicalInformation": medical_information,
+            "medical_information": medical_information,
+            "latestRescheduleRequest": latest_reschedule_request,
+            "is_walk_in": True,
+            "sort_date": date_display,
+            "sort_time": str(walkin.get("appointment_time") or ""),
+        })
+
+    formatted.sort(
+        key=lambda item: (item.get("sort_date") or "", item.get("sort_time") or "", item.get("id") or ""),
+        reverse=include_history
+    )
+
+    for item in formatted:
+        item.pop("sort_date", None)
+        item.pop("sort_time", None)
+
+    return formatted
+
+
 @app.route('/api/day-availability', methods=['GET'])
 def get_day_availability():
-    return jsonify([
-        {"day_of_week": day, "is_available": value}
-        for day, value in day_availability_store.items()
-    ]), 200
+    try:
+        res = supabase_admin.table('working_days').select('*').execute()
+        formatted_data = [
+            {"day_of_week": row.get('day_of_week'), "is_available": row.get('is_active')}
+            for row in (res.data or [])
+        ]
+        return jsonify(formatted_data), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route('/api/day-availability', methods=['POST'])
 def create_day_availability():
     data = request.get_json() or {}
     day = (data.get('day_of_week') or '').lower()
-    if day not in day_availability_store:
-        return jsonify({"error": "Invalid day_of_week"}), 400
-    day_availability_store[day] = bool(data.get('is_available'))
-    return jsonify({"message": "Day availability saved", "day_of_week": day, "is_available": day_availability_store[day]}), 200
+    is_available = bool(data.get('is_available'))
+    try:
+        supabase_admin.table('working_days').upsert({
+            "day_of_week": day,
+            "is_active": is_available,
+        }).execute()
+        return jsonify({"message": "Day availability saved", "day_of_week": day, "is_available": is_available}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route('/api/day-availability/<day_name>', methods=['PUT'])
 def update_day_availability(day_name):
-    day = (day_name or '').lower()
-    if day not in day_availability_store:
-        return jsonify({"error": "Invalid day"}), 404
     data = request.get_json() or {}
-    day_availability_store[day] = bool(data.get('is_available'))
-    return jsonify({"message": "Day availability updated", "day_of_week": day, "is_available": day_availability_store[day]}), 200
+    is_available = bool(data.get('is_available'))
+    try:
+        supabase_admin.table('working_days').upsert({
+            "day_of_week": (day_name or '').lower(),
+            "is_active": is_available,
+        }).execute()
+        return jsonify({"message": f"{day_name} updated successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
-@app.route('/api/time-slots/<day_name>', methods=['GET'])
-def get_time_slots(day_name):
-    day = (day_name or '').lower()
-    return jsonify({"timeSlots": time_slots_store.get(day, [])}), 200
+@app.route('/api/time-slots/<param>', methods=['GET', 'POST', 'DELETE'])
+def handle_time_slots_api(param):
+    if request.method == 'GET':
+        day = (param or '').lower()
+        try:
+            res = supabase_admin.table('time_slots').select('*').eq('day_of_week', day).execute()
+            return jsonify({"timeSlots": res.data or []}), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
 
+    if request.method == 'POST':
+        day = (param or '').lower()
+        data = request.get_json() or {}
+        slots = data.get('slots', [])
+        try:
+            supabase_admin.table('time_slots').delete().eq('day_of_week', day).execute()
 
-@app.route('/api/time-slots/<day_name>', methods=['POST'])
-def save_time_slots(day_name):
-    day = (day_name or '').lower()
-    slots = (request.get_json() or {}).get('slots', [])
-    normalized = []
-    for idx, slot in enumerate(slots, start=1):
-        normalized.append({
-            "id": slot.get("id") or f"{day}-{idx}",
-            "start_time": slot.get("startTime") or slot.get("start_time"),
-            "end_time": slot.get("endTime") or slot.get("end_time"),
-            "capacity": slot.get("capacity", 1),
-        })
-    time_slots_store[day] = normalized
-    return jsonify({"message": "Time slots saved", "timeSlots": normalized}), 200
+            for slot in slots:
+                start_time_value = slot.get('startTime') or slot.get('start_time') or ''
+                end_time_value = slot.get('endTime') or slot.get('end_time') or ''
 
+                raw_start = datetime.strptime(start_time_value, '%I:%M %p').strftime('%H:%M:%S') if 'M' in start_time_value.upper() else start_time_value
+                raw_end = datetime.strptime(end_time_value, '%I:%M %p').strftime('%H:%M:%S') if 'M' in end_time_value.upper() else end_time_value
 
-@app.route('/api/time-slots/<slot_id>', methods=['DELETE'])
-def delete_time_slot(slot_id):
-    for day, slots in time_slots_store.items():
-        filtered = [slot for slot in slots if str(slot.get("id")) != str(slot_id)]
-        if len(filtered) != len(slots):
-            time_slots_store[day] = filtered
-            return jsonify({"message": "Time slot deleted"}), 200
-    return jsonify({"error": "Time slot not found"}), 404
+                supabase_admin.table('time_slots').insert({
+                    "day_of_week": day,
+                    "start_time": raw_start,
+                    "end_time": raw_end,
+                    "capacity": slot.get('capacity', 1),
+                    "is_active": True,
+                }).execute()
+
+            res = supabase_admin.table('time_slots').select('*').eq('day_of_week', day).execute()
+            return jsonify({"timeSlots": res.data or []}), 200
+        except Exception as e:
+            print("Time slot save error:", str(e))
+            return jsonify({"error": str(e)}), 400
+
+    slot_id = param
+    try:
+        if str(slot_id).startswith('temp-'):
+            return jsonify({"message": "Temp slot removed"}), 200
+
+        supabase_admin.table('time_slots').delete().eq('id', slot_id).execute()
+        return jsonify({"message": "Slot deleted successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route('/api/appointments/booked-slots/<time_slot_id>', methods=['GET'])
 def get_booked_slots(time_slot_id):
     date = request.args.get('date')
-    appointments = supabase_admin.table('appointments').select('*').eq('appointment_date', date).execute().data or []
-    slot = None
-    for slots in time_slots_store.values():
-        slot = next((item for item in slots if str(item.get("id")) == str(time_slot_id)), None)
-        if slot:
-            break
-    if not slot:
-        return jsonify({"bookedCount": 0, "capacity": 1, "availableSlots": 1}), 200
+    try:
+        slot_res = supabase_admin.table('time_slots').select('*').eq('id', time_slot_id).single().execute()
+        if not slot_res.data:
+            return jsonify({"bookedCount": 0, "capacity": 1, "availableSlots": 1}), 200
 
-    slot_time = normalize_db_time(slot.get('start_time'))
-    booked_count = sum(
-        1 for item in appointments
-        if normalize_db_time(item.get("appointment_time")) == slot_time
-    )
-    capacity = slot.get("capacity", 1)
-    return jsonify({
-        "bookedCount": booked_count,
-        "capacity": capacity,
-        "availableSlots": max(capacity - booked_count, 0),
-    }), 200
+        slot = slot_res.data
+        capacity = slot.get('capacity', 1)
+        appointments = supabase_admin.table('appointments').select('appointment_time').eq('appointment_date', date).execute().data or []
+        slot_time = str(slot.get('start_time'))
+        booked_count = sum(1 for item in appointments if str(item.get("appointment_time")) == slot_time)
+
+        return jsonify({
+            "bookedCount": booked_count,
+            "capacity": capacity,
+            "availableSlots": max(capacity - booked_count, 0),
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route('/api/appointments', methods=['POST'])
 def create_admin_appointment():
-    return jsonify({"error": "Admin-side create appointment is not yet supported by this backend flow."}), 400
+    try:
+        created = create_appointment_record(request.get_json() or {}, allow_walk_in=True)
+        return jsonify(created), 200
+    except ValueError as value_error:
+        return jsonify({"error": str(value_error)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route('/api/appointments/table', methods=['GET'])
 def get_appointments_table():
     try:
-        return jsonify({"appointments": load_admin_appointments()}), 200
+        return jsonify({"appointments": build_admin_appointment_rows(include_history=False)}), 200
     except Exception as e:
         print("Appointments table error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -2976,207 +4334,563 @@ def get_appointments_table():
 @app.route('/api/appointments/history', methods=['GET'])
 def get_appointments_history():
     try:
-        history = [
-            item for item in load_admin_appointments()
-            if item.get("status") in ("completed", "cancelled")
-        ]
-        return jsonify({"appointments": history}), 200
+        return jsonify({"appointments": build_admin_appointment_rows(include_history=True)}), 200
     except Exception as e:
         print("Appointments history error:", str(e))
         return jsonify({"error": str(e)}), 400
 
 
-@app.route('/api/appointments/<int:appointment_id>/cancel-with-reason', methods=['PUT'])
+@app.route('/api/appointments/<appointment_id>/cancel-with-reason', methods=['PUT'])
 def cancel_appointment_with_reason(appointment_id):
     data = request.get_json() or {}
     cancel_reason = data.get("cancellation_details") or data.get("cancel_reason") or ""
     try:
-        check = supabase_admin.table('appointments') \
-            .select('status, owner_id, pet_id, appointment_type, appointment_date, appointment_time') \
-            .eq('appointment_id', appointment_id) \
-            .single() \
-            .execute()
-
-        if not check.data:
-            return jsonify({"error": "Appointment not found"}), 404
-
-        if check.data['status'] in ('cancelled', 'completed'):
-            return jsonify({"error": f"Cannot cancel an appointment with status '{check.data['status']}'"}), 400
-
-        appointment = check.data
-
-        supabase_admin.table('appointments').update({
+        table_name, id_column, resolved_id = resolve_appointment_target(
+            appointment_id,
+            data.get("recordType") or data.get("record_type")
+        )
+        supabase_admin.table(table_name).update({
             "status": "cancelled",
             "patient_reason": cancel_reason,
-        }).eq('appointment_id', appointment_id).execute()
+        }).eq(id_column, resolved_id).execute()
 
         email_sent = False
         try:
-            patient = get_single_row('patient_account', 'id', appointment.get('owner_id'))
-            pet = get_single_row('pet_profile', 'pet_id', appointment.get('pet_id'))
-            send_appointment_status_email(
-                'cancelled',
-                patient.get('email') if patient else None,
-                build_display_name(patient or {}),
-                (pet or {}).get('pet_name'),
-                appointment.get('appointment_type'),
-                appointment.get('appointment_date'),
-                appointment.get('appointment_time'),
+            email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+            existing_record = email_context.get("record") or {}
+            email_sent = send_appointment_email_safely(
+                send_cancellation_email,
+                email_context.get("email"),
+                email_context.get("patient_name"),
+                email_context.get("pet_name"),
+                email_context.get("service_name"),
+                existing_record.get("appointment_date"),
+                format_display_time(existing_record.get("appointment_time")),
                 cancel_reason,
+                context="Cancellation notification preparation"
             )
-            email_sent = True
-        except Exception as mail_err:
-            print("Cancel notification email error:", str(mail_err))
+        except Exception as email_error:
+            print(f"Cancellation notification preparation error: {email_error}")
 
-        return jsonify({"message": "Appointment cancelled successfully", "emailSent": email_sent}), 200
+        return jsonify({
+            "message": "Appointment cancelled successfully",
+            "emailSent": email_sent,
+        }), 200
     except Exception as e:
-        print("Cancel with reason error:", str(e))
         return jsonify({"error": str(e)}), 400
 
 
-@app.route('/api/appointments/<int:appointment_id>/reschedule', methods=['POST'])
+@app.route('/api/appointments/<appointment_id>/reschedule', methods=['POST'])
 def create_admin_reschedule_request(appointment_id):
     data = request.get_json() or {}
-    new_date = data.get("new_date")
-    new_time = data.get("new_time")
-    new_time_slot_id = data.get("new_time_slot_id")
-    reschedule_reason = data.get("reason") or data.get("reschedule_reason") or ""
-
-    if not new_time and new_time_slot_id and new_date:
-        day_name = datetime.strptime(new_date, "%Y-%m-%d").strftime("%A").lower()
-        slot = next(
-            (item for item in time_slots_store.get(day_name, []) if str(item.get("id")) == str(new_time_slot_id)),
-            None
+    try:
+        table_name, id_column, resolved_id = resolve_appointment_target(
+            appointment_id,
+            data.get("recordType") or data.get("record_type")
         )
-        if slot:
-            new_time = normalize_db_time(slot.get("start_time"))
+        email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+        existing_record = email_context.get("record") or {}
+        reschedule_reason = data.get("reason") or data.get("reschedule_reason") or None
+        new_date = data.get("new_date")
+        new_time = data.get("new_time")
+        requested_by = parse_uuid_or_none(data.get("requested_by"))
+        target_type = 'walkin' if table_name == 'walkin_appointments' else 'appointment'
 
-    if not new_time:
-        new_time = normalize_db_time(data.get("new_time_slot_display"))
+        for open_status in ('pending', 'needs_new_schedule'):
+            supabase_admin.table('reschedule_requests').update({
+                "status": "cancelled",
+                "responded_at": datetime.utcnow().isoformat(),
+                "response_note": "Superseded by a newer request"
+            }).eq('target_type', target_type).eq('target_id', resolved_id).eq('status', open_status).execute()
 
-    if not new_date or not new_time:
-        return jsonify({"error": "new_date and new_time are required"}), 400
+        insert_res = supabase_admin.table('reschedule_requests').insert({
+            "target_type": target_type,
+            "target_id": resolved_id,
+            "current_appointment_date": existing_record.get("appointment_date"),
+            "current_appointment_time": existing_record.get("appointment_time"),
+            "proposed_appointment_date": new_date,
+            "proposed_appointment_time": new_time,
+            "reason": reschedule_reason,
+            "requested_by": requested_by,
+            "patient_preferred_date": None,
+            "patient_preferred_time": None,
+            "patient_response_type": None,
+        }).execute()
+
+        request_row = (insert_res.data or [{}])[0]
+        if not request_row.get("token"):
+            follow_up_res = supabase_admin.table('reschedule_requests').select('*').eq('target_type', target_type).eq('target_id', resolved_id).eq('status', 'pending').order('created_at', desc=True).limit(1).execute()
+            request_row = (follow_up_res.data or [request_row])[0]
+
+        action_links = build_reschedule_action_links(request_row.get("token"))
+        email_sent = send_appointment_email_safely(
+            send_reschedule_email,
+            email_context.get("email"),
+            email_context.get("patient_name"),
+            email_context.get("pet_name"),
+            email_context.get("service_name"),
+            new_date,
+            format_display_time(new_time),
+            reschedule_reason,
+            action_links,
+            context="Reschedule request email"
+        )
+
+        return jsonify({
+            "message": "Reschedule request emailed to patient" + ("" if email_sent else " (email not sent)"),
+            "emailSent": email_sent,
+            "requestId": request_row.get("request_id")
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/appointments/<appointment_id>/request-reschedule', methods=['POST'])
+def create_patient_reschedule_request(appointment_id):
+    data = request.get_json() or {}
+    try:
+        table_name, id_column, resolved_id = resolve_appointment_target(
+            appointment_id,
+            data.get("recordType") or data.get("record_type")
+        )
+        email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+        existing_record = email_context.get("record") or {}
+        target_type = 'walkin' if table_name == 'walkin_appointments' else 'appointment'
+        requested_by = parse_uuid_or_none(data.get("requested_by"))
+        preferred_date = data.get("new_date")
+        preferred_time = data.get("new_time")
+        patient_note = data.get("reason") or data.get("reschedule_reason") or None
+        clinic_reason = existing_record.get("reschedule_reason") or None
+
+        if not preferred_date or not preferred_time:
+            return jsonify({"error": "Preferred date and time are required"}), 400
+
+        note_parts = []
+        if preferred_date:
+            note_parts.append(f"Preferred date: {preferred_date}")
+        if preferred_time:
+            note_parts.append(f"Preferred time: {preferred_time}")
+        if patient_note:
+            note_parts.append(f"Patient note: {patient_note}")
+        combined_note = " | ".join(note_parts) if note_parts else "Patient requested a new preferred schedule from the appointment details page"
+
+        for open_status in ('pending', 'needs_new_schedule'):
+            supabase_admin.table('reschedule_requests').update({
+                "status": "cancelled",
+                "responded_at": datetime.utcnow().isoformat(),
+                "response_note": "Superseded by a newer patient reschedule request"
+            }).eq('target_type', target_type).eq('target_id', resolved_id).eq('status', open_status).execute()
+
+        insert_res = supabase_admin.table('reschedule_requests').insert({
+            "target_type": target_type,
+            "target_id": resolved_id,
+            "current_appointment_date": existing_record.get("appointment_date"),
+            "current_appointment_time": existing_record.get("appointment_time"),
+            "proposed_appointment_date": existing_record.get("appointment_date"),
+            "proposed_appointment_time": existing_record.get("appointment_time"),
+            "reason": clinic_reason,
+            "requested_by": requested_by,
+            "status": "needs_new_schedule",
+            "patient_preferred_date": preferred_date,
+            "patient_preferred_time": preferred_time,
+            "patient_response_type": "choose_another_date",
+            "responded_at": datetime.utcnow().isoformat(),
+            "response_note": combined_note
+        }).execute()
+
+        request_row = (insert_res.data or [{}])[0]
+
+        return jsonify({
+            "message": "Reschedule request submitted for clinic review",
+            "requestId": request_row.get("request_id"),
+            "status": request_row.get("status") or "needs_new_schedule"
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/reschedule/confirm/<token>', methods=['GET'])
+def confirm_reschedule_request(token):
+    req, state = get_pending_reschedule_request(token)
+
+    if state == "not_found":
+        return render_html_page("Request Not Found", "This reschedule request could not be found.")
+    if state == "expired":
+        return render_html_page("Request Expired", "This reschedule request has expired. Please contact the clinic for a new schedule.")
+    if state == "closed":
+        return render_html_page("Request Already Processed", f"This reschedule request is already marked as {req.get('status')}.")
 
     try:
-        check = supabase_admin.table('appointments') \
-            .select('status, owner_id, pet_id, appointment_type') \
-            .eq('appointment_id', appointment_id) \
-            .single() \
-            .execute()
+        apply_reschedule_to_target(req, req.get("proposed_appointment_date"), req.get("proposed_appointment_time"))
+        supabase_admin.table('reschedule_requests').update({
+            "status": "confirmed",
+            "responded_at": datetime.utcnow().isoformat(),
+            "patient_response_type": "confirm"
+        }).eq('request_id', req.get('request_id')).execute()
 
-        if not check.data:
-            return jsonify({"error": "Appointment not found"}), 404
-
-        if check.data['status'] in ('cancelled', 'completed'):
-            return jsonify({"error": f"Cannot reschedule an appointment with status '{check.data['status']}'"}), 400
-
-        appointment = check.data
-
-        supabase_admin.table('appointments').update({
-            "appointment_date": new_date,
-            "appointment_time": new_time,
-            "patient_reason": reschedule_reason,
-            "status": "pending",
-        }).eq('appointment_id', appointment_id).execute()
-
-        email_sent = False
-        try:
-            patient = get_single_row('patient_account', 'id', appointment.get('owner_id'))
-            pet = get_single_row('pet_profile', 'pet_id', appointment.get('pet_id'))
-            send_appointment_status_email(
-                'rescheduled',
-                patient.get('email') if patient else None,
-                build_display_name(patient or {}),
-                (pet or {}).get('pet_name'),
-                appointment.get('appointment_type'),
-                new_date,
-                new_time,
-                reschedule_reason,
-            )
-            email_sent = True
-        except Exception as mail_err:
-            print("Reschedule notification email error:", str(mail_err))
-
-        return jsonify({"message": "Reschedule request submitted successfully", "emailSent": email_sent}), 200
+        return render_html_page(
+            "Schedule Confirmed",
+            f"Your appointment has been updated to {req.get('proposed_appointment_date')} at {format_display_time(req.get('proposed_appointment_time'))}."
+        )
     except Exception as e:
-        print("Admin reschedule error:", str(e))
-        return jsonify({"error": str(e)}), 400
+        return render_html_page("Something Went Wrong", f"We could not confirm this request right now. {str(e)}")
+
+
+@app.route('/reschedule/cancel/<token>', methods=['GET'])
+def cancel_reschedule_request(token):
+    req, state = get_pending_reschedule_request(token)
+
+    if state == "not_found":
+        return render_html_page("Request Not Found", "This reschedule request could not be found.")
+    if state == "expired":
+        return render_html_page("Request Expired", "This reschedule request has expired. Please contact the clinic if you still need help.")
+    if state == "closed":
+        return render_html_page("Request Already Processed", f"This reschedule request is already marked as {req.get('status')}.")
+
+    try:
+        table_name, id_column, resolved_id = resolve_appointment_target(req.get('target_id'), req.get('target_type'))
+        supabase_admin.table(table_name).update({
+            "status": "cancelled"
+        }).eq(id_column, resolved_id).execute()
+
+        supabase_admin.table('reschedule_requests').update({
+            "status": "cancelled",
+            "responded_at": datetime.utcnow().isoformat(),
+            "response_note": "Cancelled by patient from email link",
+            "patient_response_type": "cancel"
+        }).eq('request_id', req.get('request_id')).execute()
+
+        return render_html_page(
+            "Appointment Cancelled",
+            "Your appointment has been cancelled successfully."
+        )
+    except Exception as e:
+        return render_html_page("Something Went Wrong", f"We could not cancel this appointment right now. {str(e)}")
+
+
+@app.route('/reschedule/choose-another-date/<token>', methods=['GET', 'POST'])
+def choose_another_date(token):
+    req, state = get_pending_reschedule_request(token)
+
+    if state == "not_found":
+        return render_html_page("Request Not Found", "This reschedule request could not be found.")
+    if state == "expired":
+        return render_html_page("Request Expired", "This reschedule request has expired. Please contact the clinic for a new schedule.")
+    if state == "closed":
+        return render_html_page("Request Already Processed", f"This reschedule request is already marked as {req.get('status')}.")
+
+    if request.method == 'GET':
+        return render_choose_another_date_page(req)
+
+    preferred_date = request.form.get('preferred_date') or ''
+    preferred_time = request.form.get('preferred_time') or ''
+    response_note = request.form.get('response_note') or ''
+
+    if not preferred_date or not preferred_time:
+        return render_choose_another_date_page(
+            req,
+            "Please select both a preferred date and an available time slot before sending your preference."
+        )
+
+    note_parts = []
+    if preferred_date:
+        note_parts.append(f"Preferred date: {preferred_date}")
+    if preferred_time:
+        note_parts.append(f"Preferred time: {preferred_time}")
+    if response_note:
+        note_parts.append(f"Patient note: {response_note}")
+
+    combined_note = " | ".join(note_parts) if note_parts else "Patient requested another date from email link"
+
+    try:
+        supabase_admin.table('reschedule_requests').update({
+            "status": "needs_new_schedule",
+            "responded_at": datetime.utcnow().isoformat(),
+            "response_note": combined_note,
+            "patient_preferred_date": preferred_date or None,
+            "patient_preferred_time": preferred_time or None,
+            "patient_response_type": "choose_another_date"
+        }).eq('request_id', req.get('request_id')).execute()
+
+        return render_html_page(
+            "Preference Sent",
+            "Your request for another date has been sent to the clinic. They can now review your preferred schedule."
+        )
+    except Exception as e:
+        return render_html_page("Something Went Wrong", f"We could not save your response right now. {str(e)}")
 
 
 @app.route('/api/available-time-slots', methods=['GET'])
 def get_available_time_slots():
-    date = request.args.get('date')
+    date = (request.args.get('date') or '').strip()
     if not date:
         return jsonify({"timeSlots": []}), 200
 
-    day_name = datetime.strptime(date, "%Y-%m-%d").strftime("%A").lower()
-    slots = time_slots_store.get(day_name, [])
-    appointments = supabase_admin.table('appointments').select('*').eq('appointment_date', date).execute().data or []
-    time_slots = []
-    for slot in slots:
-        display = f"{slot.get('start_time')} - {slot.get('end_time')}"
-        slot_time = normalize_db_time(slot.get("start_time"))
-        booked_count = sum(
-            1 for item in appointments
-            if normalize_db_time(item.get("appointment_time")) == slot_time
-        )
-        capacity = slot.get("capacity", 1)
-        time_slots.append({
+    try:
+        selected_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Expected YYYY-MM-DD."}), 400
+
+    day_name = selected_date.strftime("%A").lower()
+
+    try:
+        special_dates_res = supabase_admin.table('special_dates').select('event_date').eq('event_date', date).execute()
+        if special_dates_res.data:
+            return jsonify({"timeSlots": []}), 200
+    except Exception as e:
+        print(f"Special dates lookup warning: {e}")
+
+    day_res = supabase_admin.table('working_days').select('day_of_week,is_active').eq('day_of_week', day_name).limit(1).execute()
+    day_row = (day_res.data or [None])[0]
+    if not day_row or not day_row.get('is_active'):
+        return jsonify({"timeSlots": []}), 200
+
+    slots_res = supabase_admin.table('time_slots').select('*').eq('day_of_week', day_name).order('start_time').execute()
+    slots = []
+    for slot in (slots_res.data or []):
+        if slot.get('is_active') is False:
+            continue
+        slots.append({
             "id": slot.get("id"),
             "start_time": slot.get("start_time"),
             "end_time": slot.get("end_time"),
-            "availableSlots": max(capacity - booked_count, 0),
+            "displayText": format_display_time_range(slot.get("start_time")),
+            "capacity": slot.get("capacity") or 1,
+            "availableSlots": slot.get("capacity") or 1,
         })
-    return jsonify({"timeSlots": time_slots}), 200
+
+    return jsonify({"timeSlots": slots}), 200
 
 
-@app.route('/api/appointments/<int:appointment_id>/assign-doctor', methods=['PUT'])
-def assign_doctor(appointment_id):
-    doctor_id = (request.get_json() or {}).get("doctorId")
+@app.route('/api/reschedule-requests', methods=['GET'])
+def get_reschedule_requests():
+    target_type = request.args.get('targetType')
+    target_id = request.args.get('targetId')
+
     try:
-        response = supabase_admin.table('appointments') \
-            .update({"assigned_doctor_id": doctor_id}) \
-            .eq('appointment_id', appointment_id) \
-            .execute()
-        return jsonify({"message": "Doctor assigned successfully", "appointment": response.data[0] if response.data else None}), 200
+        query = supabase_admin.table('reschedule_requests').select('*').order('created_at', desc=True)
+
+        if target_type:
+            query = query.eq('target_type', target_type)
+
+        if target_id is not None:
+            query = query.eq('target_id', int(target_id))
+
+        res = query.execute()
+        return jsonify({"requests": res.data or []}), 200
     except Exception as e:
-        print("Assign doctor warning:", str(e))
-        return jsonify({"message": "Doctor assignment was accepted for UI flow, but could not be persisted.", "warning": str(e)}), 200
+        return jsonify({"error": str(e)}), 400
 
 
-@app.route('/api/special-dates', methods=['GET'])
-def get_special_dates():
-    return jsonify({"specialDates": special_dates_store}), 200
+@app.route('/api/reschedule-requests/<int:request_id>/withdraw', methods=['PUT'])
+def withdraw_reschedule_request(request_id):
+    try:
+        req = get_reschedule_request_by_id(request_id)
+        if not req:
+            return jsonify({"error": "Reschedule request not found"}), 404
+
+        current_status = (req.get('status') or '').strip().lower()
+        if current_status not in ('pending', 'needs_new_schedule'):
+            return jsonify({"error": f"Only open reschedule requests can be withdrawn. Current status: {req.get('status') or 'unknown'}"}), 400
+
+        existing_note = (req.get('response_note') or '').strip()
+        note_parts = [part for part in [existing_note, 'Withdrawn by patient from appointment details page'] if part]
+        combined_note = " | ".join(note_parts)
+
+        supabase_admin.table('reschedule_requests').update({
+            "status": "cancelled",
+            "responded_at": datetime.utcnow().isoformat(),
+            "response_note": combined_note,
+            "patient_response_type": "withdraw"
+        }).eq('request_id', request_id).execute()
+
+        return jsonify({
+            "message": "Reschedule request withdrawn successfully",
+            "status": "cancelled"
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
 
-@app.route('/api/special-dates', methods=['POST'])
-def save_special_dates():
+@app.route('/api/reschedule-requests/<int:request_id>/review', methods=['PUT'])
+def review_reschedule_request(request_id):
     data = request.get_json() or {}
-    event = {"event_name": data.get("event_name"), "event_date": data.get("event_date")}
-    special_dates_store.append(event)
-    return jsonify({"message": "Special date saved", "specialDate": event}), 200
+    action = (data.get('action') or '').strip().lower()
+    admin_note = (data.get('note') or '').strip()
 
-
-@app.route('/api/special-dates/<event_date>', methods=['DELETE'])
-def delete_special_dates(event_date):
-    global special_dates_store
-    special_dates_store = [item for item in special_dates_store if item.get("event_date") != event_date]
-    return jsonify({"message": "Special date deleted"}), 200
-
-
-@app.route('/api/appointments/<int:appointment_id>/status', methods=['PUT'])
-def update_admin_appointment_status(appointment_id):
-    status = ((request.get_json() or {}).get("status") or "").lower()
-    if status not in ("pending", "completed", "cancelled", "scheduled"):
-        return jsonify({"error": "Invalid status"}), 400
     try:
-        response = supabase_admin.table('appointments') \
-            .update({"status": status}) \
-            .eq('appointment_id', appointment_id) \
-            .execute()
-        return jsonify({"message": "Appointment status updated", "appointment": response.data[0] if response.data else None}), 200
+        req = get_reschedule_request_by_id(request_id)
+        if not req:
+            return jsonify({"error": "Reschedule request not found"}), 404
+
+        if req.get('status') in ('confirmed', 'declined', 'cancelled', 'expired'):
+            return jsonify({"error": f"Request is already {req.get('status')}"}), 400
+
+        existing_note = (req.get('response_note') or '').strip()
+        note_parts = [part for part in [existing_note, admin_note] if part]
+        combined_note = " | ".join(note_parts) if note_parts else None
+        email_sent = None
+
+        if action == 'accept':
+            preferred_date = req.get('patient_preferred_date')
+            preferred_time = req.get('patient_preferred_time')
+
+            if not preferred_date or not preferred_time:
+                return jsonify({"error": "Patient preference is missing a preferred date or time"}), 400
+
+            table_name, id_column, resolved_id = apply_reschedule_to_target(req, preferred_date, preferred_time)
+            supabase_admin.table('reschedule_requests').update({
+                "status": "confirmed",
+                "response_note": combined_note,
+            }).eq('request_id', request_id).execute()
+
+            try:
+                email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+                email_sent = send_appointment_email_safely(
+                    send_reschedule_review_email,
+                    email_context.get("email"),
+                    email_context.get("patient_name"),
+                    email_context.get("pet_name"),
+                    email_context.get("service_name"),
+                    preferred_date,
+                    format_display_time(preferred_time),
+                    'accepted',
+                    admin_note or None,
+                    context="Reschedule accept email"
+                )
+            except Exception as email_error:
+                print(f"Reschedule accept email error: {email_error}")
+                email_sent = False
+
+            return jsonify({
+                "message": "Patient preferred schedule accepted",
+                "emailSent": email_sent
+            }), 200
+
+        if action == 'decline':
+            supabase_admin.table('reschedule_requests').update({
+                "status": "declined",
+                "response_note": combined_note,
+            }).eq('request_id', request_id).execute()
+
+            try:
+                table_name, id_column, resolved_id = resolve_appointment_target(req.get('target_id'), req.get('target_type'))
+                email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+                email_sent = send_appointment_email_safely(
+                    send_reschedule_review_email,
+                    email_context.get("email"),
+                    email_context.get("patient_name"),
+                    email_context.get("pet_name"),
+                    email_context.get("service_name"),
+                    req.get('patient_preferred_date'),
+                    format_display_time(req.get('patient_preferred_time')),
+                    'declined',
+                    admin_note or None,
+                    context="Reschedule decline email"
+                )
+            except Exception as email_error:
+                print(f"Reschedule decline email error: {email_error}")
+                email_sent = False
+
+            return jsonify({
+                "message": "Patient preferred schedule declined",
+                "emailSent": email_sent
+            }), 200
+
+        return jsonify({"error": "Invalid review action"}), 400
     except Exception as e:
-        print("Update appointment status error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/appointments/<appointment_id>/assign-doctor', methods=['PUT'])
+def assign_doctor(appointment_id):
+    data = request.get_json() or {}
+    doctor_id = data.get("doctorId")
+    try:
+        table_name, id_column, resolved_id = resolve_appointment_target(
+            appointment_id,
+            data.get("recordType") or data.get("record_type")
+        )
+        try:
+            supabase_admin.table(table_name).update({"doctor_id": doctor_id}).eq(id_column, resolved_id).execute()
+        except Exception as update_error:
+            if 'doctor_id' not in str(update_error):
+                raise
+            supabase_admin.table(table_name).update({"assigned_doctor_id": doctor_id}).eq(id_column, resolved_id).execute()
+        return jsonify({"message": "Doctor assigned successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/special-dates', methods=['GET', 'POST'])
+def handle_special_dates():
+    if request.method == 'GET':
+        try:
+            res = supabase_admin.table('special_dates').select('*').order('event_date').execute()
+            return jsonify({"specialDates": res.data}), 200
+        except Exception as e:
+            print("Special dates fetch error:", e)
+            return jsonify({"specialDates": []}), 200
+
+    data = request.get_json() or {}
+    try:
+        supabase_admin.table('special_dates').insert({
+            "event_name": data.get('event_name'),
+            "event_date": data.get('event_date')
+        }).execute()
+        return jsonify({"message": "Special date added successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/special-dates/<date>', methods=['DELETE'])
+def delete_special_date(date):
+    try:
+        supabase_admin.table('special_dates').delete().eq('event_date', date).execute()
+        return jsonify({"message": "Special date deleted successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/appointments/<appointment_id>/status', methods=['PUT'])
+def update_admin_appointment_status(appointment_id):
+    data = request.get_json() or {}
+    status = (data.get("status") or "").lower()
+    try:
+        table_name, id_column, resolved_id = resolve_appointment_target(
+            appointment_id,
+            data.get("recordType") or data.get("record_type")
+        )
+        current_res = supabase_admin.table(table_name).select('*').eq(id_column, resolved_id).single().execute()
+        current_record = current_res.data or {}
+        supabase_admin.table(table_name).update({"status": status}).eq(id_column, resolved_id).execute()
+
+        email_sent = None
+        if status == 'confirmed':
+            try:
+                email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+                existing_record = email_context.get("record") or current_record
+                assigned_doctor = get_assigned_doctor_name_from_record(existing_record)
+                email_sent = send_appointment_email_safely(
+                    send_appointment_confirmed_email,
+                    email_context.get("email"),
+                    email_context.get("patient_name"),
+                    email_context.get("pet_name"),
+                    email_context.get("service_name"),
+                    existing_record.get("appointment_date"),
+                    format_display_time(existing_record.get("appointment_time")),
+                    assigned_doctor,
+                    context="Appointment confirmation email preparation"
+                )
+            except Exception as email_error:
+                print(f"Appointment confirmation email preparation error: {email_error}")
+                email_sent = False
+
+        return jsonify({
+            "message": "Appointment status updated",
+            "emailSent": email_sent,
+        }), 200
+    except Exception as e:
         return jsonify({"error": str(e)}), 400
 
 
@@ -3185,20 +4899,19 @@ def update_admin_appointment_status(appointment_id):
 # -----------------------------------------------
 @app.route('/forgot-password', methods=['POST'])
 def forgot_password():
-    data  = request.get_json()
-    email = data.get('email')
+    data  = request.get_json() or {}
+    email = normalize_email_address(data.get('email'))
 
     if not email:
         return jsonify({"error": "Email is required"}), 400
 
     try:
-        user_check = supabase_admin.table('patient_account') \
-            .select('id') \
-            .eq('email', email) \
-            .execute()
-
-        if not user_check.data:
-            return jsonify({"message": "If this email exists, an OTP has been sent."}), 200
+        account = find_account_by_email(email)
+        if not account:
+            return jsonify({
+                "message": "If this email exists, an OTP has been sent.",
+                "otpSent": False
+            }), 200
 
         otp        = ''.join(random.choices(string.digits, k=6))
         expires_at = datetime.utcnow() + timedelta(minutes=10)
@@ -3207,16 +4920,19 @@ def forgot_password():
             "otp":        otp,
             "expires_at": expires_at,
             "verified":   False,
-            "mode":       "passwordReset",
-            "sent_at":    datetime.utcnow(),
+            "account_type": account["account_type"],
+            "user_id": account["user_id"]
         }
 
-        send_otp_email(email, otp, subject='Your Password Reset OTP', purpose='password reset')
+        send_otp_email(email, otp)
 
-        return jsonify({"message": "OTP sent successfully!"}), 200
+        return jsonify({
+            "message": "OTP sent successfully!",
+            "otpSent": True
+        }), 200
 
     except Exception as e:
-        print("Forgot password error:", str(e))
+        print("Forgot password error:", e)
         return jsonify({"error": str(e)}), 400
 
 
@@ -3276,49 +4992,46 @@ def verify_otp():
 # -----------------------------------------------
 @app.route('/resend-otp', methods=['POST'])
 def resend_otp():
-    data  = request.get_json()
-    email = data.get('email')
-    mode  = data.get('mode', 'passwordReset')
+    data = request.get_json() or {}
+    email = normalize_email_address(data.get('email'))
+    mode = (data.get('mode') or 'passwordReset').strip()
 
     if not email:
         return jsonify({"error": "Email is required"}), 400
 
+    if mode == 'emailConfirmation':
+        return jsonify({
+            "error": "Account confirmation resend is not available in this flow yet. Please use the latest confirmation email link."
+        }), 400
+
     try:
-        user_check = supabase_admin.table('patient_account') \
-            .select('id') \
-            .eq('email', email) \
-            .execute()
-
-        if not user_check.data:
-            return jsonify({"error": "No account found with this email."}), 400
-
-        existing = otp_store.get(email)
-        if existing and 'sent_at' in existing:
-            elapsed = (datetime.utcnow() - existing['sent_at']).total_seconds()
-            if elapsed < RESEND_COOLDOWN_SECONDS:
-                wait = int(RESEND_COOLDOWN_SECONDS - elapsed)
-                return jsonify({"error": f"Please wait {wait} second(s) before requesting a new OTP."}), 429
+        account = find_account_by_email(email)
+        if not account:
+            return jsonify({
+                "message": "If this email exists, a new OTP has been sent.",
+                "otpSent": False
+            }), 200
 
         otp        = ''.join(random.choices(string.digits, k=6))
         expires_at = datetime.utcnow() + timedelta(minutes=10)
 
         otp_store[email] = {
-            "otp":        otp,
+            "otp": otp,
             "expires_at": expires_at,
-            "verified":   False,
-            "mode":       mode,
-            "sent_at":    datetime.utcnow(),
+            "verified": False,
+            "account_type": account["account_type"],
+            "user_id": account["user_id"]
         }
 
-        subject = 'Confirm Your Email' if mode == 'emailConfirmation' else 'Your Password Reset OTP'
-        purpose = 'email confirmation' if mode == 'emailConfirmation' else 'password reset'
+        send_otp_email(email, otp)
 
-        send_otp_email(email, otp, subject=subject, purpose=purpose)
-
-        return jsonify({"message": "OTP resent successfully!"}), 200
+        return jsonify({
+            "message": "OTP resent successfully!",
+            "otpSent": True
+        }), 200
 
     except Exception as e:
-        print("Resend OTP error:", str(e))
+        print("Resend OTP error:", e)
         return jsonify({"error": str(e)}), 400
 
 
@@ -3327,8 +5040,8 @@ def resend_otp():
 # -----------------------------------------------
 @app.route('/change-password', methods=['POST'])
 def change_password():
-    data         = request.get_json()
-    email        = data.get('email')
+    data         = request.get_json() or {}
+    email        = normalize_email_address(data.get('email'))
     new_password = data.get('new_password')
 
     if not email or not new_password:
@@ -3340,22 +5053,24 @@ def change_password():
         return jsonify({"error": "OTP not verified. Please complete verification first."}), 403
 
     try:
-        user_check = supabase_admin.table('patient_account') \
-            .select('id') \
-            .eq('email', email) \
-            .single() \
-            .execute()
+        user_id = stored.get('user_id')
 
-        user_id = user_check.data['id']
+        if not user_id:
+            account = find_account_by_email(email)
+            if not account:
+                return jsonify({"error": "Account not found"}), 404
+            user_id = account['user_id']
 
-        supabase_admin.auth.admin.update_user_by_id(user_id, {"password": new_password})
+        supabase_admin.auth.admin.update_user_by_id(user_id, {
+            "password": new_password
+        })
 
         del otp_store[email]
 
         return jsonify({"message": "Password changed successfully!"}), 200
 
     except Exception as e:
-        print("Change password error:", str(e))
+        print("Change password error:", e)
         return jsonify({"error": str(e)}), 400
 
 

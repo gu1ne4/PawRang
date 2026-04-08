@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import './UserStyles.css';
 import API_URL from '../API';
+import { formatPetAge } from '../utils/formatPetAge';
 
 import {
   IoPawOutline, IoCalendarOutline, IoChevronBackCircle, IoChevronForwardCircle,
@@ -36,6 +37,7 @@ interface Pet {
   pet_breed: string;
   pet_gender: string;
   age: string;
+  birthday?: string | null;
   pet_photo_url: string | null;
 }
 
@@ -44,6 +46,37 @@ interface Branch {
   branch_name: string;
   address: string;
 }
+
+interface DayAvailabilityMap {
+  [key: string]: boolean;
+}
+
+interface TimeSlotRecord {
+  id: number | string;
+  start_time: string;
+  end_time: string;
+  is_available?: boolean;
+}
+
+interface SpecialDateRecord {
+  event_date?: string;
+}
+
+const normalizeBranches = (payload: any): Branch[] => {
+  const rawBranches = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.branches)
+      ? payload.branches
+      : [];
+
+  return rawBranches
+    .map((branch: any) => ({
+      branch_id: Number(branch?.branch_id ?? branch?.id ?? 0),
+      branch_name: String(branch?.branch_name ?? branch?.name ?? '').trim(),
+      address: String(branch?.address ?? '').trim(),
+    }))
+    .filter((branch: Branch) => branch.branch_id > 0 && branch.branch_name !== '');
+};
 
 interface Service {
   id: number;
@@ -65,23 +98,29 @@ interface ServiceOption {
 interface AlertConfig {
   type: 'info' | 'success' | 'error' | 'confirm';
   title: string;
-  message: string;
+  message: string | React.ReactNode;
   onConfirm?: () => void;
   showCancel: boolean;
   confirmText: string;
 }
 
-// ─── Static data ──────────────────────────────────────────────────────────────
+type BookingConfirmStage = 'terms' | 'submitting' | 'submitted';
 
-const clinicHours: Record<string, string[]> = {
-  Monday:    ['8:00AM - 9:00AM','9:00AM - 10:00AM','10:00AM - 11:00AM','11:00AM - 12:00PM','1:00PM - 2:00PM','2:00PM - 3:00PM','3:00PM - 4:00PM','4:00PM - 5:00PM'],
-  Tuesday:   ['8:00AM - 9:00AM','9:00AM - 10:00AM','10:00AM - 11:00AM','11:00AM - 12:00PM','1:00PM - 2:00PM','2:00PM - 3:00PM','3:00PM - 4:00PM','4:00PM - 5:00PM'],
-  Wednesday: ['8:00AM - 9:00AM','9:00AM - 10:00AM','10:00AM - 11:00AM','11:00AM - 12:00PM','1:00PM - 2:00PM','2:00PM - 3:00PM','3:00PM - 4:00PM','4:00PM - 5:00PM'],
-  Thursday:  ['8:00AM - 9:00AM','9:00AM - 10:00AM','10:00AM - 11:00AM','11:00AM - 12:00PM','1:00PM - 2:00PM','2:00PM - 3:00PM','3:00PM - 4:00PM','4:00PM - 5:00PM'],
-  Friday:    ['8:00AM - 9:00AM','9:00AM - 10:00AM','10:00AM - 11:00AM','11:00AM - 12:00PM','1:00PM - 2:00PM','2:00PM - 3:00PM','3:00PM - 4:00PM','4:00PM - 5:00PM'],
-  Saturday:  [],
-  Sunday:    [],
-};
+interface BookingDraft {
+  step: number;
+  selectedServiceId: number | null;
+  selectedGroomingOptionIds: string[];
+  selectedLabOptionIds: string[];
+  currentCardIndex: number;
+  expandedService: number | null;
+}
+
+interface BookingReturnState {
+  newPetId?: number;
+  returnFromPetCreate?: boolean;
+}
+
+// ─── Static data ──────────────────────────────────────────────────────────────
 
 const groomingOptions: ServiceOption[] = [
   { id:'g1', name:'Basic Grooming',  price:'₱500',  description:'Bath, brush, nail trim' },
@@ -130,13 +169,79 @@ const services: Service[] = [
 
 const DEFAULT_PET_IMG = 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400';
 const getToken = () => localStorage.getItem('access_token') ?? '';
-const getErrorMessage = (error: unknown, fallback: string) =>
-  error instanceof Error ? error.message : fallback;
+const isMobileViewport = () =>
+  typeof window !== 'undefined' && window.innerWidth <= 768;
+const BOOKING_DRAFT_KEY = 'userAppointmentBookingDraft';
+const DEFAULT_SUBMITTED_BOOKING_MESSAGE =
+  'Your appointment is under review. You will receive an email once it is confirmed.';
+
+const parseResponseBody = async (response: Response): Promise<any> => {
+  const text = await response.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+};
+
+const getErrorMessage = (payload: any, fallback: string): string => {
+  if (typeof payload === 'string' && payload.trim()) return payload;
+  if (payload && typeof payload === 'object') {
+    if (typeof payload.error === 'string' && payload.error.trim()) return payload.error;
+    if (typeof payload.message === 'string' && payload.message.trim()) return payload.message;
+  }
+  return fallback;
+};
+
+const requestJson = async <T,>(url: string, options?: RequestInit): Promise<T> => {
+  const response = await fetch(url, options);
+  const payload = await parseResponseBody(response);
+
+  if (!response.ok) {
+    throw new Error(getErrorMessage(payload, `Request failed with status ${response.status}`));
+  }
+
+  return (payload ?? {}) as T;
+};
+
+const apiClient = {
+  async get<T>(url: string, options?: RequestInit): Promise<{ data: T }> {
+    const data = await requestJson<T>(url, { ...(options ?? {}), method: 'GET' });
+    return { data };
+  },
+  async post<T>(url: string, body?: unknown, options?: RequestInit): Promise<{ data: T }> {
+    const headers = new Headers(options?.headers);
+    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+
+    const response = await fetch(url, {
+      ...(options ?? {}),
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body ?? {}),
+    });
+    const payload = await parseResponseBody(response);
+
+    if (!response.ok) {
+      const error: any = new Error(getErrorMessage(payload, `Request failed with status ${response.status}`));
+      error.response = { data: payload, status: response.status };
+      throw error;
+    }
+
+    return { data: (payload ?? {}) as T };
+  },
+};
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const UserAppointmentBook: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [isMobileCarousel, setIsMobileCarousel] = useState(isMobileViewport);
+  const pageContainerRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const progressStepRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   // ── Session — read once, no redirect ─────────────────────────────────────
   const [currentUser] = useState<User | null>(() => {
@@ -165,6 +270,11 @@ const UserAppointmentBook: React.FC = () => {
   const [selectedBranch,          setSelectedBranch]          = useState<Branch | null>(null);
   const [selectedDate,            setSelectedDate]            = useState<Date | null>(null);
   const [selectedTime,            setSelectedTime]            = useState<string | null>(null);
+  const [dayAvailability,         setDayAvailability]         = useState<DayAvailabilityMap>({});
+  const [specialDates,            setSpecialDates]            = useState<string[]>([]);
+  const [dayTimeSlots,            setDayTimeSlots]            = useState<string[]>([]);
+  const [loadingAvailability,     setLoadingAvailability]     = useState(false);
+  const [loadingTimeSlots,        setLoadingTimeSlots]        = useState(false);
 
   // ── Grooming prefs ────────────────────────────────────────────────────────
   const [selectedHaircutStyle,     setSelectedHaircutStyle]     = useState<string | null>(null);
@@ -183,46 +293,218 @@ const UserAppointmentBook: React.FC = () => {
   // ── Carousel ──────────────────────────────────────────────────────────────
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [expandedService,  setExpandedService]  = useState<number | null>(null);
-  const cardRef    = useRef<HTMLDivElement | null>(null);
-  const panelWidth = 280;
+  const touchStartX = useRef<number | null>(null);
+  const touchCurrentX = useRef<number | null>(null);
 
   // ── Modals ────────────────────────────────────────────────────────────────
   const [alertVisible,        setAlertVisible]        = useState(false);
   const [alertConfig,         setAlertConfig]         = useState<AlertConfig>({ type:'info', title:'', message:'', showCancel:false, confirmText:'OK' });
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
+  const [confirmModalStage,   setConfirmModalStage]   = useState<BookingConfirmStage>('terms');
+  const [submittedBookingMessage, setSubmittedBookingMessage] = useState(DEFAULT_SUBMITTED_BOOKING_MESSAGE);
   const [isChecked,           setIsChecked]           = useState(false);
-  const [isSubmitting,        setIsSubmitting]        = useState(false);
+  const restoredDraftRef = useRef(false);
+  const handledReturnedPetRef = useRef<number | null>(null);
+
+  const buildHeaders = (includeJson = false): HeadersInit => {
+    const headers: Record<string, string> = {};
+    const token = getToken();
+
+    if (includeJson) headers['Content-Type'] = 'application/json';
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    return headers;
+  };
 
   // ── Fetch pets ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentUser?.id) return;
+    let isCancelled = false;
+
     setLoadingPets(true);
-    fetch(`${API_URL}/pets/user/${currentUser.id}`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
+    requestJson<{ pets?: Pet[] }>(`${API_URL}/pets/user/${currentUser.id}`, {
+      headers: buildHeaders(),
     })
-      .then(async res => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Failed to fetch pets');
-        setPets(data.pets ?? []);
+      .then(data => {
+        if (!isCancelled) setPets(data.pets ?? []);
       })
-      .catch(err => console.error('Failed to fetch pets:', err))
-      .finally(() => setLoadingPets(false));
+      .catch(() => {
+        if (!isCancelled) setPets([]);
+      })
+      .finally(() => {
+        if (!isCancelled) setLoadingPets(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (restoredDraftRef.current) return;
+
+    const rawDraft = sessionStorage.getItem(BOOKING_DRAFT_KEY);
+    if (!rawDraft) {
+      restoredDraftRef.current = true;
+      return;
+    }
+
+    try {
+      const draft = JSON.parse(rawDraft) as BookingDraft;
+      const restoredService = services.find(service => service.id === draft.selectedServiceId) ?? null;
+      const restoredGroomingOptions = groomingOptions.filter(option =>
+        draft.selectedGroomingOptionIds.includes(option.id),
+      );
+      const restoredLabOptions = laboratoryOptions.filter(option =>
+        draft.selectedLabOptionIds.includes(option.id),
+      );
+
+      setSelectedService(restoredService);
+      setSelectedGroomingOptions(restoredGroomingOptions);
+      setSelectedLabOptions(restoredLabOptions);
+      setCurrentCardIndex(draft.currentCardIndex ?? 0);
+      setExpandedService(draft.expandedService ?? null);
+      setStep(draft.step ?? 2);
+    } catch (err) {
+      console.error('Failed to restore booking draft:', err);
+    } finally {
+      sessionStorage.removeItem(BOOKING_DRAFT_KEY);
+      restoredDraftRef.current = true;
+    }
+  }, []);
 
   // ── Fetch branches ────────────────────────────────────────────────────────
   useEffect(() => {
+    let isCancelled = false;
+
     setLoadingBranches(true);
-    fetch(`${API_URL}/branches`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
+    requestJson<any>(`${API_URL}/branches`, {
+      headers: buildHeaders(),
     })
-      .then(async res => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Failed to fetch branches');
-        setBranches(data.branches ?? []);
+      .then(data => {
+        if (!isCancelled) setBranches(normalizeBranches(data));
       })
-      .catch(err => console.error('Failed to fetch branches:', err))
-      .finally(() => setLoadingBranches(false));
+      .catch(() => {
+        if (!isCancelled) setBranches([]);
+      })
+      .finally(() => {
+        if (!isCancelled) setLoadingBranches(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    setLoadingAvailability(true);
+    Promise.allSettled([
+      requestJson<any[]>(`${API_URL}/api/day-availability`),
+      requestJson<{ specialDates?: SpecialDateRecord[] }>(`${API_URL}/api/special-dates`),
+    ])
+      .then(([availabilityResult, specialDatesResult]) => {
+        if (isCancelled) return;
+
+        const rawAvailability = availabilityResult.status === 'fulfilled' && Array.isArray(availabilityResult.value)
+          ? availabilityResult.value
+          : [];
+        const nextAvailability: DayAvailabilityMap = {};
+
+        rawAvailability.forEach((day: any) => {
+          const key = String(day?.day_of_week ?? '').trim().toLowerCase();
+          if (key) nextAvailability[key] = Boolean(day?.is_available);
+        });
+
+        const nextSpecialDates = specialDatesResult.status === 'fulfilled' && Array.isArray(specialDatesResult.value?.specialDates)
+          ? specialDatesResult.value.specialDates
+              .map((event: SpecialDateRecord) => String(event?.event_date ?? '').trim())
+              .filter(Boolean)
+          : [];
+
+        setDayAvailability(nextAvailability);
+        setSpecialDates(nextSpecialDates);
+      })
+      .finally(() => {
+        if (!isCancelled) setLoadingAvailability(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedDate) {
+      setDayTimeSlots([]);
+      return;
+    }
+
+    const dayName = getDayName(selectedDate);
+    if (!dayName || !dayAvailability[dayName.toLowerCase()]) {
+      setDayTimeSlots([]);
+      return;
+    }
+
+    let isCancelled = false;
+    setLoadingTimeSlots(true);
+    requestJson<{ timeSlots?: TimeSlotRecord[] }>(`${API_URL}/api/time-slots/${dayName.toLowerCase()}`)
+      .then(data => {
+        if (isCancelled) return;
+
+        const rawSlots = Array.isArray(data?.timeSlots) ? data.timeSlots : [];
+        const formattedSlots = rawSlots
+          .filter((slot: TimeSlotRecord) => slot?.start_time && slot?.end_time && slot?.is_available !== false)
+          .map((slot: TimeSlotRecord) => `${formatSlotTime(slot.start_time)} - ${formatSlotTime(slot.end_time)}`);
+
+        setDayTimeSlots(formattedSlots);
+        setSelectedTime(prev => (prev && formattedSlots.includes(prev) ? prev : null));
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setDayTimeSlots([]);
+          setSelectedTime(null);
+        }
+      })
+      .finally(() => {
+        if (!isCancelled) setLoadingTimeSlots(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedDate, dayAvailability]);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobileCarousel(isMobileViewport());
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    pageContainerRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    contentRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [step]);
+
+  useEffect(() => {
+    const returnState = location.state as BookingReturnState | null;
+    const newPetId = returnState?.newPetId;
+
+    if (!returnState?.returnFromPetCreate || !newPetId || loadingPets || pets.length === 0) return;
+    if (handledReturnedPetRef.current === newPetId) return;
+
+    const createdPet = pets.find(pet => pet.pet_id === newPetId);
+    if (!createdPet) return;
+
+    handledReturnedPetRef.current = newPetId;
+    setSelectedPet(createdPet);
+    setStep(3);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [loadingPets, location.pathname, location.state, navigate, pets]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Helpers
@@ -239,19 +521,52 @@ const UserAppointmentBook: React.FC = () => {
   };
 
   const showAlert = (
-    type: AlertConfig['type'], title: string, message: string,
+    type: AlertConfig['type'], title: string, message: string | React.ReactNode,
     onConfirm?: () => void, showCancel = false, confirmText = 'OK',
   ) => {
     setAlertConfig({ type, title, message, onConfirm, showCancel, confirmText });
     setAlertVisible(true);
   };
 
+  const openConfirmModal = () => {
+    setIsChecked(false);
+    setConfirmModalStage('terms');
+    setSubmittedBookingMessage(DEFAULT_SUBMITTED_BOOKING_MESSAGE);
+    setConfirmModalVisible(true);
+  };
+
+  const closeConfirmModal = () => {
+    if (confirmModalStage === 'submitting') return;
+    setConfirmModalVisible(false);
+    setConfirmModalStage('terms');
+    setSubmittedBookingMessage(DEFAULT_SUBMITTED_BOOKING_MESSAGE);
+    setIsChecked(false);
+  };
+
   const handleLogout = () => {
-    showAlert('confirm', 'Log Out', 'Are you sure you want to log out?', () => {
-      localStorage.removeItem('userSession');
-      localStorage.removeItem('access_token');
-      navigate('/login');
-    }, true, 'Log Out');
+    localStorage.removeItem('userSession');
+    localStorage.removeItem('access_token');
+    navigate('/login');
+  };
+
+  const persistBookingDraft = () => {
+    const draft: BookingDraft = {
+      step,
+      selectedServiceId: selectedService?.id ?? null,
+      selectedGroomingOptionIds: selectedGroomingOptions.map(option => option.id),
+      selectedLabOptionIds: selectedLabOptions.map(option => option.id),
+      currentCardIndex,
+      expandedService,
+    };
+
+    sessionStorage.setItem(BOOKING_DRAFT_KEY, JSON.stringify(draft));
+  };
+
+  const handleAddPetFromBooking = () => {
+    persistBookingDraft();
+    navigate('/user/pet-profile', {
+      state: { returnToBooking: true },
+    });
   };
 
   const getDayName = (date: Date | null) => {
@@ -259,9 +574,24 @@ const UserAppointmentBook: React.FC = () => {
     return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][date.getDay()];
   };
 
-  const getTimeSlots = () => {
-    const d = getDayName(selectedDate);
-    return d ? clinicHours[d] ?? [] : [];
+  const toDateKey = (date: Date | null) => {
+    if (!date) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatSlotTime = (timeStr: string) => {
+    const [rawHours, rawMinutes] = String(timeStr ?? '').split(':');
+    const hours = Number(rawHours);
+    const minutes = rawMinutes ?? '00';
+
+    if (Number.isNaN(hours)) return timeStr;
+
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHour = hours % 12 || 12;
+    return `${displayHour}:${minutes} ${period}`;
   };
 
   const formatDate = (date: Date | null) => {
@@ -320,13 +650,38 @@ const UserAppointmentBook: React.FC = () => {
     }
   };
 
-  const getVisibleCards = () => {
-    const cards: { service: Service; position: number }[] = [];
-    for (let i = -1; i <= 1; i++) {
-      const idx = currentCardIndex + i;
-      if (idx >= 0 && idx < services.length) cards.push({ service: services[idx], position: i });
-    }
-    return cards;
+  const goToPreviousService = () => {
+    if (currentCardIndex === 0) return;
+    setCurrentCardIndex(prev => prev - 1);
+    setExpandedService(null);
+  };
+
+  const goToNextService = () => {
+    if (currentCardIndex === services.length - 1) return;
+    setCurrentCardIndex(prev => prev + 1);
+    setExpandedService(null);
+  };
+
+  const handleCarouselTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    touchStartX.current = event.touches[0].clientX;
+    touchCurrentX.current = event.touches[0].clientX;
+  };
+
+  const handleCarouselTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    touchCurrentX.current = event.touches[0].clientX;
+  };
+
+  const handleCarouselTouchEnd = () => {
+    if (touchStartX.current === null || touchCurrentX.current === null) return;
+
+    const deltaX = touchStartX.current - touchCurrentX.current;
+    const swipeThreshold = 45;
+
+    if (deltaX > swipeThreshold) goToNextService();
+    if (deltaX < -swipeThreshold) goToPreviousService();
+
+    touchStartX.current = null;
+    touchCurrentX.current = null;
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -389,10 +744,10 @@ const UserAppointmentBook: React.FC = () => {
         if (medicalAnswers.medications72h && !medicationDetails.trim()) { showAlert('info','Incomplete','Please specify the medications given'); return; }
         setStep(7);
       } else {
-        setConfirmModalVisible(true);
+        openConfirmModal();
       }
     } else if (step === 7) {
-      setConfirmModalVisible(true);
+      openConfirmModal();
     }
   };
 
@@ -402,7 +757,7 @@ const UserAppointmentBook: React.FC = () => {
 
   const handleConfirmBooking = async () => {
     if (!currentUser || !selectedPet || !selectedDate || !selectedTime || !selectedBranch || !selectedService) return;
-    setIsSubmitting(true);
+    setConfirmModalStage('submitting');
 
     try {
       let typeLabel = selectedService.name;
@@ -410,101 +765,74 @@ const UserAppointmentBook: React.FC = () => {
         typeLabel = `Pet Grooming (${selectedGroomingOptions.map(o => o.name).join(', ')})`;
       if (selectedService.id === 8 && selectedLabOptions.length)
         typeLabel = `Laboratory Tests (${selectedLabOptions.map(o => o.name).join(', ')})`;
-
-      const apptRes = await fetch(`${API_URL}/appointments`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${getToken()}`,
-        },
-        body: JSON.stringify({
-          owner_id: currentUser.id,
-          pet_id: Number(selectedPet.pet_id),
+      
+      // appointments POST — cast ids to Number
+      const apptRes = await apiClient.post(
+        `${API_URL}/appointments`,
+        {
+          owner_id:         currentUser.id,
+          pet_id:           Number(selectedPet.pet_id),       // ← fix bigint error
           appointment_type: typeLabel,
           appointment_date: selectedDate.toISOString().split('T')[0],
           appointment_time: toDbTime(selectedTime),
-          branch_id: Number(selectedBranch.branch_id),
-          patient_reason: additionalNotes,
-        }),
-      });
-      const apptData = await apptRes.json().catch(() => ({}));
-      if (!apptRes.ok) throw new Error(apptData.error || 'Failed to create appointment');
-      const appointmentId: number = apptData.appointment_id;
-
-      const medicalRes = await fetch(`${API_URL}/medical-information`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${getToken()}`,
+          branch_id:        Number(selectedBranch.branch_id), // ← fix bigint error
+          patient_reason:   additionalNotes,
         },
-        body: JSON.stringify({
-          appointment_id: appointmentId,
-          on_medication: medicalAnswers.medications72h ?? false,
-          medication_details: medicationDetails,
-          flea_tick_prevention: medicalAnswers.fleaPrevention ?? false,
-          is_vaccinated: medicalAnswers.catVaccinations ?? false,
-          is_pregnant: !(medicalAnswers.notPregnant ?? true),
-          additional_notes: additionalNotes,
-          has_allergies: false,
-          has_skin_condition: false,
-          been_groomed_before: false,
-        }),
-      });
-      const medicalData = await medicalRes.json().catch(() => ({}));
-      if (!medicalRes.ok) throw new Error(medicalData.error || 'Failed to save medical information');
+        { headers: { Authorization: `Bearer ${getToken()}` } },
+      );
+      const appointmentId: number = apptRes.data.appointment_id;
+      const bookingEmailSent = apptRes.data?.emailSent !== false;
+
+      // medical-information POST — add the three NOT NULL fields
+      await apiClient.post(
+        `${API_URL}/medical-information`,
+        {
+          appointment_id:       appointmentId,
+          on_medication:        medicalAnswers.medications72h  ?? false,
+          medication_details:   medicationDetails,
+          flea_tick_prevention: medicalAnswers.fleaPrevention  ?? false,
+          is_vaccinated:        medicalAnswers.catVaccinations ?? false,
+          is_pregnant:          !(medicalAnswers.notPregnant   ?? true),
+          additional_notes:     additionalNotes,
+          has_allergies:        false,       // ← fix NOT NULL constraint
+          has_skin_condition:   false,       // ← fix NOT NULL constraint
+          been_groomed_before:  false,       // ← fix NOT NULL constraint
+        },
+        { headers: { Authorization: `Bearer ${getToken()}` } },
+      );
 
       if (selectedService.id === 1 && selectedHaircutStyle) {
         let referenceUrl: string | undefined;
         if (haircutImageBase64) {
           try {
-            const uploadRes = await fetch(`${API_URL}/upload-pet-photo`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${getToken()}`,
-              },
-              body: JSON.stringify({
-                file: haircutImageBase64,
-                file_name: `haircut_ref_${appointmentId}.jpg`,
-                mime_type: haircutImageMime,
-              }),
-            });
-            const uploadData = await uploadRes.json().catch(() => ({}));
-            if (!uploadRes.ok) throw new Error(uploadData.error || 'Failed to upload haircut reference');
-            referenceUrl = uploadData.photoUrl;
-          } catch {
-            referenceUrl = undefined;
-          }
+            const upRes = await apiClient.post(
+              `${API_URL}/upload-pet-photo`,
+              { file: haircutImageBase64, file_name: `haircut_ref_${appointmentId}.jpg`, mime_type: haircutImageMime },
+              { headers: { Authorization: `Bearer ${getToken()}` } },
+            );
+            referenceUrl = upRes.data.photoUrl;
+          } catch { /* non-fatal */ }
         }
         const styleName = haircutStyles.find(h => h.id === selectedHaircutStyle)?.name ?? selectedHaircutStyle;
-        const groomingRes = await fetch(`${API_URL}/grooming-details`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${getToken()}`,
-          },
-          body: JSON.stringify({
-            appointment_id: appointmentId,
-            haircut_style: styleName,
-            haircut_description: customHaircutDescription || undefined,
-            haircut_reference_url: referenceUrl,
-          }),
-        });
-        const groomingData = await groomingRes.json().catch(() => ({}));
-        if (!groomingRes.ok) throw new Error(groomingData.error || 'Failed to save grooming details');
+        await apiClient.post(
+          `${API_URL}/grooming-details`,
+          { appointment_id: appointmentId, haircut_style: styleName, haircut_description: customHaircutDescription || undefined, haircut_reference_url: referenceUrl },
+          { headers: { Authorization: `Bearer ${getToken()}` } },
+        );
       }
 
-      setIsSubmitting(false);
-      setConfirmModalVisible(false);
-      showAlert(
-        'success',
-        'Appointment Submitted!',
-        'Your appointment is under review. You will receive an email once it is confirmed.',
-        () => navigate('/user/home'),
+      setSubmittedBookingMessage(
+        bookingEmailSent
+          ? 'Your appointment is under review. A booking confirmation email has been sent, and we will email you again once it is confirmed.'
+          : 'Your appointment is under review. The request was submitted successfully, but the booking confirmation email could not be sent right now.',
       );
-    } catch (err) {
-      setIsSubmitting(false);
-      showAlert('error', 'Booking Failed', getErrorMessage(err, 'Something went wrong. Please try again.'));
+      setConfirmModalStage('submitted');
+      setIsChecked(false);
+    } catch (err: any) {
+      setConfirmModalVisible(false);
+      setConfirmModalStage('terms');
+      setSubmittedBookingMessage(DEFAULT_SUBMITTED_BOOKING_MESSAGE);
+      showAlert('error','Booking Failed', err.response?.data?.error ?? 'Something went wrong. Please try again.');
       console.log(err);
     }
   };
@@ -536,14 +864,26 @@ const UserAppointmentBook: React.FC = () => {
       ) ?? ''
     : '';
 
-  const timeSlots = getTimeSlots();
+  const timeSlots = dayTimeSlots;
+  const progressSteps = getProgressSteps();
+
+  useEffect(() => {
+    const activeNode = progressStepRefs.current[step];
+    if (!activeNode) return;
+
+    activeNode.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'center',
+    });
+  }, [step]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="user-appointment-container">
+    <div className="user-appointment-container" ref={pageContainerRef}>
 
       {/* ── Alert Modal ── */}
       {alertVisible && (
@@ -555,7 +895,11 @@ const UserAppointmentBook: React.FC = () => {
               {!['success','error'].includes(alertConfig.type) && <IoInformationCircleOutline size={55} color="#3d67ee" />}
             </div>
             <h3 className="modal-title">{alertConfig.title}</h3>
-            <div className="modal-message"><p>{alertConfig.message}</p></div>
+            <div className="modal-message">
+              {typeof alertConfig.message === 'string'
+                ? <p>{alertConfig.message}</p>
+                : alertConfig.message}
+            </div>
             <div className="modal-actions">
               {alertConfig.showCancel && (
                 <button className="modal-btn modal-btn-cancel" onClick={() => setAlertVisible(false)}>Cancel</button>
@@ -571,42 +915,70 @@ const UserAppointmentBook: React.FC = () => {
         </div>
       )}
 
-      {/* ── Submitting overlay ── */}
-      {isSubmitting && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <IoHourglassOutline size={55} color="#3d67ee" />
-            <h3 className="modal-title">Submitting…</h3>
-            <p className="modal-message">Please wait while we book your appointment.</p>
-          </div>
-        </div>
-      )}
-
       {/* ── Confirmation Modal ── */}
       {confirmModalVisible && (
-        <div className="modal-overlay" onClick={() => setConfirmModalVisible(false)}>
+        <div className="modal-overlay" onClick={closeConfirmModal}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <button className="modal-close-btn" onClick={() => setConfirmModalVisible(false)}>
-              <IoClose size={24} color="#999" />
-            </button>
-            <div className="confirmation-icon"><IoHourglassOutline size={70} color="#3d67ee" /></div>
-            <h2 className="confirmation-title">Appointment Under Review</h2>
-            <p className="confirmation-text">
-              Your appointment will be reviewed by our team. You will receive an email once it is confirmed.
-            </p>
-            <div className="checkbox-container">
-              <label className="checkbox-label">
-                <input type="checkbox" checked={isChecked} onChange={e => setIsChecked(e.target.checked)} className="checkbox-input" />
-                <span className="checkbox-text">I understand</span>
-              </label>
-            </div>
-            <button
-              className={`confirmation-btn ${!isChecked ? 'disabled' : ''}`}
-              onClick={handleConfirmBooking}
-              disabled={!isChecked || isSubmitting}
-            >
-              Confirm Booking
-            </button>
+            {confirmModalStage !== 'submitting' && (
+              <button className="modal-close-btn" onClick={closeConfirmModal}>
+                <IoClose size={24} color="#999" />
+              </button>
+            )}
+
+            {confirmModalStage === 'terms' && (
+              <>
+                <div className="confirmation-icon"><IoHourglassOutline size={70} color="#3d67ee" /></div>
+                <h2 className="confirmation-title">Appointment Under Review</h2>
+                <p className="confirmation-text">
+                  Your appointment will be reviewed by our team. We will send a booking confirmation email after submission, and another update once it is confirmed.
+                </p>
+                <div className="checkbox-container">
+                  <label className="checkbox-label">
+                    <input type="checkbox" checked={isChecked} onChange={e => setIsChecked(e.target.checked)} className="checkbox-input" />
+                    <span className="checkbox-text">I understand</span>
+                  </label>
+                </div>
+                <button
+                  className={`confirmation-btn ${!isChecked ? 'disabled' : ''}`}
+                  onClick={handleConfirmBooking}
+                  disabled={!isChecked}
+                >
+                  Confirm Booking
+                </button>
+              </>
+            )}
+
+            {confirmModalStage === 'submitting' && (
+              <>
+                <div className="confirmation-icon"><IoHourglassOutline size={70} color="#3d67ee" /></div>
+                <h2 className="confirmation-title">Submitting Appointment</h2>
+                <p className="confirmation-text">
+                  Please wait while we finalize your booking.
+                </p>
+                <button className="confirmation-btn disabled" disabled>
+                  Processing...
+                </button>
+              </>
+            )}
+
+            {confirmModalStage === 'submitted' && (
+              <>
+                <div className="confirmation-icon"><IoCheckmark size={70} color="#2e9e0c" /></div>
+                <h2 className="confirmation-title">Appointment Submitted!</h2>
+                <p className="confirmation-text">
+                  {submittedBookingMessage}
+                </p>
+                <button
+                  className="confirmation-btn"
+                  onClick={() => {
+                    closeConfirmModal();
+                    navigate('/user/home');
+                  }}
+                >
+                  Go to Home
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -619,16 +991,27 @@ const UserAppointmentBook: React.FC = () => {
         showAlert={showAlert}
       />
 
-      <div className="appointment-content">
+      <div className="appointment-content" ref={contentRef}>
 
         {/* Progress bar */}
         <div className="progress-container">
           <div className="progress-steps">
-            {getProgressSteps().map((s, i, arr) => (
+            {progressSteps.map((s, i, arr) => (
               <React.Fragment key={s.n}>
-                <div className="step-item">
-                  <div className={`step-circle ${step >= s.n ? 'active' : ''}`}><span>{s.n}</span></div>
-                  <span className={`step-label ${step === s.n ? 'active' : ''}`}>{s.l}</span>
+                <div
+                  className={`progress-step-segment ${
+                    step === s.n ? 'current' : step > s.n ? 'completed' : 'upcoming'
+                  }`}
+                  ref={node => {
+                    progressStepRefs.current[s.n] = node;
+                  }}
+                >
+                  <div className={`step-item ${step === s.n ? 'current' : ''}`}>
+                    <div className="step-circle-shell">
+                      <div className={`step-circle ${step >= s.n ? 'active' : ''}`}><span>{s.n}</span></div>
+                    </div>
+                    <span className={`step-label ${step === s.n ? 'active' : ''}`}>{s.l}</span>
+                  </div>
                 </div>
                 {i < arr.length - 1 && <div className={`step-line ${step > s.n ? 'active' : ''}`} />}
               </React.Fragment>
@@ -641,79 +1024,95 @@ const UserAppointmentBook: React.FC = () => {
         {/* ══ STEP 1 — Service ══ */}
         {step === 1 && (
           <div className="step-content">
-            <div className="service-carousel">
-              <div className="carousel-controls">
-                <button className="carousel-arrow" onClick={() => { if (currentCardIndex > 0) { setCurrentCardIndex(c => c-1); setExpandedService(null); }}} disabled={currentCardIndex === 0}>
+            <p className="service-instruction">Click to select an appointment.</p>
+
+            <div className="service-carousel-shell">
+              <div
+                className="service-carousel"
+                onTouchStart={handleCarouselTouchStart}
+                onTouchMove={handleCarouselTouchMove}
+                onTouchEnd={handleCarouselTouchEnd}
+              >
+                <div className="carousel-viewport">
+                  <div
+                    className="carousel-track"
+                    style={{
+                      transform: `translateX(calc(50% - ${isMobileCarousel ? 143 : 130}px - ${currentCardIndex * (isMobileCarousel ? 304 : 288)}px))`,
+                    }}
+                  >
+                    {services.map((service, index) => {
+                      const isSelected = selectedService?.id === service.id;
+                      const isActive = currentCardIndex === index;
+
+                      return (
+                        <div
+                          key={service.id}
+                          className={`service-card-wrapper ${isActive ? 'center-card' : ''}`}
+                          aria-hidden={!isActive}
+                        >
+                          <button
+                            className={`service-card ${isSelected ? 'selected' : ''} ${isActive ? 'active' : 'inactive'}`}
+                            onClick={() => handleServiceSelect(service)}
+                            disabled={!isActive}
+                          >
+                            <div className="service-icon">{getIconComponent(service.icon)}</div>
+                            <h3 className="service-name">{service.name}</h3>
+                            <div className="service-description">{service.description.map((l,i) => <p key={i}>{l}</p>)}</div>
+                            {service.basePrice && <p className="service-price">{service.basePrice}</p>}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="service-carousel-nav">
+                <button className="carousel-arrow" onClick={goToPreviousService} disabled={currentCardIndex === 0} aria-label="Previous service">
                   <IoChevronBackCircle size={50} color={currentCardIndex === 0 ? '#ccc' : '#3d67ee'} />
                 </button>
-              </div>
-
-              <div className="carousel-cards">
-                {getVisibleCards().map(({ service, position }) => {
-                  const isSelected = selectedService?.id === service.id;
-                  return (
-                    <div
-                      key={service.id}
-                      className={`service-card-wrapper ${position === 0 ? 'center-card' : ''}`}
-                      style={{ transform:`scale(${position===0?1:0.85})`, opacity:position===0?1:0.5, zIndex:position===0?30:position===-1?20:10 }}
-                      ref={position === 0 ? cardRef : null}
-                    >
-                      <button
-                        className={`service-card ${isSelected ? 'selected' : ''}`}
-                        onClick={() => handleServiceSelect(service)}
-                        disabled={position !== 0}
-                      >
-                        <div className="service-icon">{getIconComponent(service.icon)}</div>
-                        <h3 className="service-name">{service.name}</h3>
-                        <div className="service-description">{service.description.map((l,i) => <p key={i}>{l}</p>)}</div>
-                        {service.basePrice && <p className="service-price">{service.basePrice}</p>}
-                      </button>
-
-                      {position === 0 && service.hasOptions && expandedService === service.id && (
-                        <div className="options-panel" style={{ left:210, top:0, width:panelWidth }}>
-                          <h3 className="options-title">{service.id === 1 ? 'Grooming Options' : 'Lab Options'}</h3>
-                          <div className="options-list">
-                            {(service.id === 1 ? groomingOptions : laboratoryOptions).map(opt => {
-                              const isSel = service.id === 1
-                                ? selectedGroomingOptions.some(o => o.id === opt.id)
-                                : selectedLabOptions.some(o => o.id === opt.id);
-                              return (
-                                <button
-                                  key={opt.id}
-                                  className={`option-item ${isSel ? 'selected' : ''}`}
-                                  onClick={() => {
-                                    if (service.id === 1) {
-                                      setSelectedGroomingOptions(prev => prev.some(o => o.id === opt.id) ? prev.filter(o => o.id !== opt.id) : [...prev, opt]);
-                                    } else {
-                                      setSelectedLabOptions(prev => {
-                                        if (prev.some(o => o.id === opt.id)) return prev.filter(o => o.id !== opt.id);
-                                        if (prev.length >= 3) { showAlert('info','Max 3','You can only select up to 3 lab tests'); return prev; }
-                                        return [...prev, opt];
-                                      });
-                                    }
-                                  }}
-                                >
-                                  <h4 className="option-name">{opt.name}</h4>
-                                  <p className="option-description">{opt.description}</p>
-                                  <p className="option-price">{opt.price}</p>
-                                </button>
-                              );
-                            })}
-                          </div>
-                          {service.id === 8 && <p className="lab-limit-note">Select up to 3 tests</p>}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="carousel-controls">
-                <button className="carousel-arrow" onClick={() => { if (currentCardIndex < services.length-1) { setCurrentCardIndex(c => c+1); setExpandedService(null); }}} disabled={currentCardIndex === services.length-1}>
+                <button className="carousel-arrow" onClick={goToNextService} disabled={currentCardIndex === services.length-1} aria-label="Next service">
                   <IoChevronForwardCircle size={50} color={currentCardIndex === services.length-1 ? '#ccc' : '#3d67ee'} />
                 </button>
               </div>
             </div>
+
+            {selectedService?.hasOptions && expandedService === selectedService.id && (
+              <div className="options-panel service-options-panel">
+                <h3 className="options-title">{selectedService.id === 1 ? 'Grooming Options' : 'Lab Options'}</h3>
+                <div className="options-list">
+                  {(selectedService.id === 1 ? groomingOptions : laboratoryOptions).map(opt => {
+                    const isSel = selectedService.id === 1
+                      ? selectedGroomingOptions.some(o => o.id === opt.id)
+                      : selectedLabOptions.some(o => o.id === opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        className={`option-item ${isSel ? 'selected' : ''}`}
+                        onClick={() => {
+                          if (selectedService.id === 1) {
+                            setSelectedGroomingOptions(prev =>
+                              prev.some(o => o.id === opt.id) ? [] : [opt],
+                            );
+                          } else {
+                            setSelectedLabOptions(prev => {
+                              if (prev.some(o => o.id === opt.id)) return prev.filter(o => o.id !== opt.id);
+                              if (prev.length >= 3) { showAlert('info','Max 3','You can only select up to 3 lab tests'); return prev; }
+                              return [...prev, opt];
+                            });
+                          }
+                        }}
+                      >
+                        <h4 className="option-name">{opt.name}</h4>
+                        <p className="option-description">{opt.description}</p>
+                        <p className="option-price">{opt.price}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedService.id === 8 && <p className="lab-limit-note">Select up to 3 tests</p>}
+              </div>
+            )}
 
             {selectedService && (
               <div className="selected-services">
@@ -769,10 +1168,10 @@ const UserAppointmentBook: React.FC = () => {
                     <img src={pet.pet_photo_url ?? DEFAULT_PET_IMG} alt={pet.pet_name} className="pet-image" />
                     <h3 className="pet-name">{pet.pet_name}</h3>
                     <p className="pet-details">{pet.pet_species} • {pet.pet_breed}</p>
-                    <p className="pet-details">{pet.pet_gender} • {pet.age} yrs</p>
+                    <p className="pet-details">{pet.pet_gender} • {formatPetAge(pet.age, pet.birthday)}</p>
                   </button>
                 ))}
-                <button className="add-pet-card" onClick={() => navigate('/user/pet-profile')}>
+                <button className="add-pet-card" onClick={handleAddPetFromBooking}>
                   <div className="add-pet-icon"><IoAdd size={50} color="#3d67ee" /></div>
                   <span className="add-pet-text">Add Pet</span>
                 </button>
@@ -833,7 +1232,7 @@ const UserAppointmentBook: React.FC = () => {
           <div className="step-content">
             {loadingBranches
               ? <p style={{ textAlign:'center', color:'#999', padding:40 }}>Loading branches…</p>
-              : (
+              : branches.length > 0 ? (
                 <div className="branches-grid">
                   {branches.map(branch => (
                     <button
@@ -846,6 +1245,8 @@ const UserAppointmentBook: React.FC = () => {
                     </button>
                   ))}
                 </div>
+              ) : (
+                <p style={{ textAlign:'center', color:'#999', padding:40 }}>No branches available right now.</p>
               )}
             <div className="action-buttons-row">
               <button className="btn-secondary" onClick={handleBack}>Back</button>
@@ -859,7 +1260,7 @@ const UserAppointmentBook: React.FC = () => {
           <div className="step-content">
             {loadingBranches
               ? <p style={{ textAlign:'center', color:'#999', padding:40 }}>Loading branches…</p>
-              : (
+              : branches.length > 0 ? (
                 <div className="branches-grid">
                   {branches.map(branch => (
                     <button
@@ -872,6 +1273,8 @@ const UserAppointmentBook: React.FC = () => {
                     </button>
                   ))}
                 </div>
+              ) : (
+                <p style={{ textAlign:'center', color:'#999', padding:40 }}>No branches available right now.</p>
               )}
             <div className="action-buttons-row">
               <button className="btn-secondary" onClick={handleBack}>Back</button>
@@ -898,23 +1301,32 @@ const UserAppointmentBook: React.FC = () => {
                     minDate={new Date()}
                     maxDate={(() => { const d = new Date(); d.setMonth(d.getMonth()+2); return d; })()}
                     tileDisabled={({ date, view }) => {
-                      if (view === 'month') { const d = getDayName(date); return d ? !clinicHours[d]?.length : true; }
-                      return false;
+                      if (view !== 'month') return false;
+
+                      const dayName = getDayName(date);
+                      const dateKey = toDateKey(date);
+                      const isPast = date < new Date(new Date().setHours(0, 0, 0, 0));
+                      const isEnabledDay = dayName ? Boolean(dayAvailability[dayName.toLowerCase()]) : false;
+                      const isSpecialDate = specialDates.includes(dateKey);
+
+                      return loadingAvailability || isPast || !isEnabledDay || isSpecialDate;
                     }}
                   />
                 </div>
               </div>
               <div className="time-slots-wrapper">
-                <h3 className="time-slots-title">Available Time Slots</h3>
+                <h3 className="time-slots-title">Clinic Time Slots</h3>
                 {!selectedDate
                   ? <div className="time-slots-empty"><p>Select a date first</p></div>
+                  : loadingTimeSlots
+                    ? <div className="time-slots-empty"><p>Loading time slots…</p></div>
                   : timeSlots.length > 0
                     ? <div className="time-slots-grid">
                         {timeSlots.map((t,i) => (
                           <button key={i} className={`time-slot-btn ${selectedTime===t?'selected':''}`} onClick={() => setSelectedTime(t)}>{t}</button>
                         ))}
                       </div>
-                    : <div className="time-slots-empty"><p>No slots available for this date</p></div>
+                    : <div className="time-slots-empty"><p>No configured time slots for this date</p></div>
                 }
               </div>
             </div>
@@ -1018,17 +1430,6 @@ const UserAppointmentBook: React.FC = () => {
                 </div>
               )}
 
-              <div className="confirmation-card">
-                <div className="card-header"><IoMedicalOutline size={22} color="#3d67ee" /><h3>Medical Information</h3></div>
-                <div className="card-details">
-                  <div className="detail-row"><span className="detail-label">Medications (72h)</span><span className="detail-value">{medicalAnswers.medications72h ? `Yes — ${medicationDetails}` : 'No'}</span></div>
-                  <div className="detail-row"><span className="detail-label">Flea/Tick Prev.</span><span className="detail-value">{medicalAnswers.fleaPrevention ? 'Yes' : 'No'}</span></div>
-                  <div className="detail-row"><span className="detail-label">Vaccinations</span><span className="detail-value">{medicalAnswers.catVaccinations ? 'Yes' : 'No'}</span></div>
-                  <div className="detail-row"><span className="detail-label">Not Pregnant</span><span className="detail-value">{medicalAnswers.notPregnant ? 'Yes' : 'No'}</span></div>
-                  {additionalNotes && <div className="detail-row"><span className="detail-label">Notes</span><span className="detail-value">{additionalNotes}</span></div>}
-                </div>
-              </div>
-
               {selectedDate && selectedTime && selectedBranch && (
                 <div className="confirmation-card">
                   <div className="card-header"><IoCalendarOutline size={22} color="#3d67ee" /><h3>Appointment Details</h3></div>
@@ -1054,6 +1455,17 @@ const UserAppointmentBook: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              <div className="confirmation-card">
+                <div className="card-header"><IoMedicalOutline size={22} color="#3d67ee" /><h3>Medical Information</h3></div>
+                <div className="card-details">
+                  <div className="detail-row"><span className="detail-label">Medications (72h)</span><span className="detail-value">{medicalAnswers.medications72h ? `Yes — ${medicationDetails}` : 'No'}</span></div>
+                  <div className="detail-row"><span className="detail-label">Flea/Tick Prev.</span><span className="detail-value">{medicalAnswers.fleaPrevention ? 'Yes' : 'No'}</span></div>
+                  <div className="detail-row"><span className="detail-label">Vaccinations</span><span className="detail-value">{medicalAnswers.catVaccinations ? 'Yes' : 'No'}</span></div>
+                  <div className="detail-row"><span className="detail-label">Not Pregnant</span><span className="detail-value">{medicalAnswers.notPregnant ? 'Yes' : 'No'}</span></div>
+                  {additionalNotes && <div className="detail-row"><span className="detail-label">Notes</span><span className="detail-value">{additionalNotes}</span></div>}
+                </div>
+              </div>
             </div>
 
             <div className="action-buttons-row">

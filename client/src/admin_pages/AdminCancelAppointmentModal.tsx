@@ -42,41 +42,35 @@ const CANCELLATION_REASONS = [
 
 const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, currentUserId }: any) => {
   const [selectedReason, setSelectedReason] = useState('');
-  const [customReason, setCustomReason] = useState('');
-  const [generatedExplanation, setGeneratedExplanation] = useState('');
+  const [emailMessage, setEmailMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const MESSAGE_LIMIT = 500;
+  const appointmentEmail = appointment?.patient_email || appointment?.patientEmail || appointment?.email || appointment?.walk_in_email || '';
+  const appointmentPetName = appointment?.pet_name || appointment?.petName || 'Unknown Pet';
+  const appointmentPetType = appointment?.pet_type || appointment?.petType || appointment?.type || 'Unknown';
+  const generatedExplanation = emailMessage;
 
   // Reset state when modal opens/closes
   useEffect(() => {
     if (visible) {
       setSelectedReason('');
-      setCustomReason('');
-      setGeneratedExplanation('');
+      setEmailMessage('');
     }
   }, [visible]);
 
-  // Update generated explanation when reason changes
+  // Prefill the email body from the selected reason, but keep it editable.
   useEffect(() => {
     if (selectedReason) {
       const reason = CANCELLATION_REASONS.find(r => r.id === selectedReason);
-      if (reason) {
-        if (selectedReason === 'specific') {
-          setGeneratedExplanation(customReason);
-        } else {
-          setGeneratedExplanation(reason.template);
-        }
-      }
+      setEmailMessage(reason?.template || '');
     } else {
-      setGeneratedExplanation('');
+      setEmailMessage('');
     }
-  }, [selectedReason, customReason]);
+  }, [selectedReason]);
 
   const handleReasonChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const reasonId = e.target.value;
     setSelectedReason(reasonId);
-    if (reasonId !== 'specific') {
-      setCustomReason('');
-    }
   };
 
   const handleSubmit = async () => {
@@ -86,8 +80,8 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
       return;
     }
 
-    if (selectedReason === 'specific' && !customReason.trim()) {
-      window.alert('Error: Please enter the specific reason for cancellation');
+    if (!emailMessage.trim()) {
+      window.alert('Error: Please enter the email message for the patient');
       return;
     }
 
@@ -96,7 +90,7 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
     try {
       const cancellationData = {
         cancellation_reason: selectedReason,
-        cancellation_details: generatedExplanation,
+        cancellation_details: emailMessage.trim(),
         cancelled_by: currentUserId || null
       };
 
@@ -121,7 +115,7 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
 
   return (
     <div className="modalOverlay">
-      <div className="modalContainer" style={{ width: '60%', maxWidth: '600px', display: 'flex', flexDirection: 'column', padding: '30px' }}>
+      <div className="modalContainer" style={{ width: '60%', maxWidth: '600px', display: 'flex', flexDirection: 'column', padding: '30px', height: 'auto', maxHeight: '78vh' }}>
         
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -131,7 +125,7 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
           </button>
         </div>
 
-        <div style={{ overflowY: 'auto', flex: 1, paddingRight: '10px' }}>
+        <div style={{ overflowY: 'auto', flex: '0 1 auto', maxHeight: 'calc(78vh - 140px)', paddingRight: '10px' }}>
           
           {/* Appointment Summary */}
           {appointment && (
@@ -145,7 +139,7 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <span style={{ fontSize: '12px', color: '#666' }}>Email:</span>
-                <span style={{ fontSize: '12px', fontWeight: '600' }}>{appointment.patient_email}</span>
+                <span style={{ fontSize: '12px', fontWeight: '600' }}>{appointmentEmail || 'No email on record'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <span style={{ fontSize: '12px', color: '#666' }}>Service:</span>
@@ -157,7 +151,7 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: '12px', color: '#666' }}>Pet:</span>
-                <span style={{ fontSize: '12px', fontWeight: '600' }}>{appointment.pet_name} ({appointment.pet_type})</span>
+                <span style={{ fontSize: '12px', fontWeight: '600' }}>{appointmentPetName} ({appointmentPetType})</span>
               </div>
             </div>
           )}
@@ -182,28 +176,36 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
             </select>
           </div>
 
-          {/* Custom Reason Input */}
-          {selectedReason === 'specific' && (
+          {selectedReason && (
             <div className="formGroup" style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '14px' }}>
-                Specific Reason <span style={{ color: '#d32f2f' }}>*</span>
-              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <label style={{ display: 'block', fontWeight: '600', fontSize: '14px' }}>
+                  Email message to be sent to patient <span style={{ color: '#d32f2f' }}>*</span>
+                </label>
+                <span style={{ fontSize: '11px', color: emailMessage.length >= MESSAGE_LIMIT ? '#d32f2f' : '#999' }}>
+                  {emailMessage.length}/{MESSAGE_LIMIT}
+                </span>
+              </div>
               <textarea
                 className="formInput"
-                style={{ height: '80px', width: '100%', resize: 'vertical' }}
-                value={customReason}
-                onChange={(e) => setCustomReason(e.target.value)}
-                placeholder="Please explain the specific reason for cancellation..."
-                maxLength={300}
+                style={{ height: '110px', width: '100%', resize: 'vertical' }}
+                value={emailMessage}
+                onChange={(e) => setEmailMessage(e.target.value.slice(0, MESSAGE_LIMIT))}
+                placeholder={
+                  selectedReason === 'specific'
+                    ? 'Write the message that should be emailed to the patient.'
+                    : 'You can edit the prepared message before sending it.'
+                }
+                maxLength={MESSAGE_LIMIT}
               />
-              <div style={{ fontSize: '11px', color: '#999', textAlign: 'right', marginTop: '5px' }}>
-                {customReason.length}/300
+              <div style={{ fontSize: '11px', color: '#666', marginTop: '5px' }}>
+                The selected reason still categorizes the cancellation. You can edit the actual email wording here.
               </div>
             </div>
           )}
 
           {/* Generated Explanation Preview */}
-          {generatedExplanation && (
+          {selectedReason && (
             <div className="formGroup" style={{ marginTop: '20px' }}>
               <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '14px' }}>
                 📧 Email to be sent to patient:
@@ -225,7 +227,7 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
               }}>
                 <IoMailOutline size={18} color="#1976d2" />
                 <span style={{ fontSize: '12px', color: '#1976d2', fontWeight: '600' }}>
-                  Email will be sent to: {appointment?.patient_email || 'No email on record'}
+                  Email will be sent to: {appointmentEmail || 'No email on record'}
                 </span>
               </div>
             </div>
@@ -248,12 +250,12 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
           
           <button 
             onClick={handleSubmit} 
-            disabled={!selectedReason || (selectedReason === 'specific' && !customReason) || loading}
+            disabled={!selectedReason || !emailMessage.trim() || loading}
             style={{ 
               flex: 1, padding: '12px 20px', borderRadius: '8px', border: 'none',
               fontWeight: '600', color: 'white', fontSize: '14px',
-              backgroundColor: (!selectedReason || (selectedReason === 'specific' && !customReason)) ? '#ccc' : '#d32f2f',
-              cursor: (!selectedReason || (selectedReason === 'specific' && !customReason) || loading) ? 'not-allowed' : 'pointer'
+              backgroundColor: (!selectedReason || !emailMessage.trim()) ? '#ccc' : '#d32f2f',
+              cursor: (!selectedReason || !emailMessage.trim() || loading) ? 'not-allowed' : 'pointer'
             }}
           >
             {loading ? 'Processing...' : 'Confirm Cancellation'}

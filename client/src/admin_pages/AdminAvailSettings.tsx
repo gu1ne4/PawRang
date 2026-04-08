@@ -7,7 +7,8 @@ import {
   IoPersonOutline, IoMedkitOutline, IoCalendarClearOutline, IoCalendarOutline,
   IoTodayOutline, IoTimeOutline, IoDocumentTextOutline, IoSettingsOutline,
   IoLogOutOutline, IoNotifications, IoCheckmarkCircleOutline, IoCloseCircleOutline,
-  IoAlertCircleOutline, IoChevronUp, IoChevronDown, IoTrashOutline, IoClose
+  IoAlertCircleOutline, IoChevronUp, IoChevronDown, IoTrashOutline, IoClose,
+  IoChevronBack, IoChevronForward // 🟢 Restored Custom Calendar Icons
 } from 'react-icons/io5';
 
 // Import your merged CSS file
@@ -38,7 +39,117 @@ interface ModalConfigType {
 }
 
 // ==========================================
-//  TIME SELECTOR COMPONENT (Converted for Web)
+//  0. CUSTOM CALENDAR COMPONENT (Restored)
+// ==========================================
+const CustomCalendar = ({ selectedDate, onSelectDate, bookedDates = {}, availableDays = null, disablePastDates = false }: any) => {
+    const [currentMonth, setCurrentMonth] = useState(new Date());
+
+    const todayDate = new Date();
+    const minMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+    const maxMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 1);
+
+    const canGoPrev = currentMonth > minMonth;
+    const canGoNext = currentMonth < maxMonth;
+
+    const nextMonth = () => { if (canGoNext) setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1)); };
+    const prevMonth = () => { if (canGoPrev) setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1)); };
+
+    const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    const getFirstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+
+    const todayStr = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
+
+    const renderDays = () => {
+        const daysInMonth = getDaysInMonth(currentMonth);
+        const firstDay = getFirstDayOfMonth(currentMonth);
+        const days = [];
+        const monthStr = String(currentMonth.getMonth() + 1).padStart(2, '0');
+        const yearStr = currentMonth.getFullYear();
+
+        for (let i = 0; i < firstDay; i++) {
+            days.push(<div key={`empty-${i}`} style={{ width: '40px', height: '40px' }}></div>);
+        }
+
+        const dayNamesList = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+        for (let i = 1; i <= daysInMonth; i++) {
+            const dayStr = String(i).padStart(2, '0');
+            const fullDate = `${yearStr}-${monthStr}-${dayStr}`;
+            
+            const dayOfWeek = new Date(yearStr, currentMonth.getMonth(), i).getDay();
+            const dayName = dayNamesList[dayOfWeek];
+
+            const isSelected = selectedDate === fullDate;
+            const isToday = fullDate === todayStr; 
+            const hasAppointment = bookedDates[fullDate];
+
+            const isPast = disablePastDates && fullDate < todayStr;
+            const isUnavailableDay = availableDays && availableDays[dayName] === false;
+            const isDisabled = isPast || isUnavailableDay;
+
+            let bgColor = 'transparent';
+            let textColor = isDisabled ? '#d3d3d3' : '#333';
+            let fontWeight = '400';
+            let cursor = isDisabled ? 'not-allowed' : 'pointer';
+
+            if (!isDisabled) {
+                if (isSelected) {
+                    bgColor = '#3d67ee';     
+                    textColor = 'white';
+                    fontWeight = '600';
+                } else if (isToday) {
+                    bgColor = '#f0f7ff';     
+                    textColor = '#3d67ee';   
+                    fontWeight = '700';
+                }
+            }
+
+            days.push(
+                <div 
+                    key={i} 
+                    onClick={() => !isDisabled && onSelectDate(isSelected ? '' : fullDate)}
+                    style={{
+                        width: '40px', height: '40px', display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', justifyContent: 'center', cursor: cursor,
+                        backgroundColor: bgColor, color: textColor,
+                        borderRadius: '50%', position: 'relative',
+                        fontSize: '14px', fontWeight: fontWeight,
+                        transition: 'all 0.2s ease', opacity: isDisabled ? 0.6 : 1
+                    }}
+                >
+                    {i}
+                    {hasAppointment && (
+                        <div style={{ 
+                            width: '5px', height: '5px', 
+                            backgroundColor: isSelected ? 'white' : (isDisabled ? '#ccc' : '#3d67ee'), 
+                            borderRadius: '50%', position: 'absolute', bottom: '2px' 
+                        }}></div>
+                    )}
+                </div>
+            );
+        }
+        return days;
+    };
+
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+    return (
+        <div style={{ width: '100%', userSelect: 'none' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', padding: '0 10px' }}>
+                <button onClick={prevMonth} type="button" disabled={!canGoPrev} style={{ background: 'none', border: 'none', cursor: canGoPrev ? 'pointer' : 'not-allowed', color: canGoPrev ? '#3d67ee' : '#ccc', display: 'flex', alignItems: 'center' }}><IoChevronBack size={18} /></button>
+                <h3 style={{ fontSize: '18px', fontWeight: '700', margin: 0, color: '#111' }}>{monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}</h3>
+                <button onClick={nextMonth} type="button" disabled={!canGoNext} style={{ background: 'none', border: 'none', cursor: canGoNext ? 'pointer' : 'not-allowed', color: canGoNext ? '#3d67ee' : '#ccc', display: 'flex', alignItems: 'center' }}><IoChevronForward size={18} /></button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '5px', textAlign: 'center', marginBottom: '15px' }}>
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (<div key={day} style={{ fontSize: '12px', color: '#a0a0a0', fontWeight: '600' }}>{day}</div>))}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px 5px', justifyItems: 'center', minHeight: '200px' }}>{renderDays()}</div>
+        </div>
+    );
+};
+
+// ==========================================
+//  TIME SELECTOR COMPONENT
 // ==========================================
 const TimeSelector = ({ label, value, onChange }: any) => {
   const parseTime = (timeStr: string) => {
@@ -120,6 +231,35 @@ const TimeSelector = ({ label, value, onChange }: any) => {
   );
 };
 
+// 🟢 NEW: Helper to convert 12h time (9:00 AM) to 24h time (09:00:00) for Supabase
+const formatTo24Hour = (timeStr: string) => {
+    if (!timeStr) return '';
+    if (!timeStr.includes('AM') && !timeStr.includes('PM')) {
+      return timeStr.length === 5 ? `${timeStr}:00` : timeStr;
+    }
+    const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+    if (match) {
+      let hours = parseInt(match[1], 10);
+      const minutes = match[2];
+      const ampm = match[3].toUpperCase();
+      if (ampm === 'PM' && hours < 12) hours += 12;
+      if (ampm === 'AM' && hours === 12) hours = 0;
+      return `${hours.toString().padStart(2, '0')}:${minutes}:00`;
+    }
+    return timeStr;
+};
+
+// Helper to format back to AM/PM for the UI
+const formatToAMPM = (timeStr: string) => {
+    if (!timeStr) return '';
+    if (timeStr.includes('AM') || timeStr.includes('PM')) return timeStr;
+    const [hours, minutes] = timeStr.split(':');
+    let h = parseInt(hours, 10);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return `${h.toString().padStart(2, '0')}:${minutes} ${ampm}`;
+};
+
 // ==========================================
 //  MAIN COMPONENT
 // ==========================================
@@ -133,7 +273,7 @@ export default function AdminAvailSettings() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
-  const [showAppointmentsDropdown, setShowAppointmentsDropdown] = useState(true); // Default open for this section
+  const [showAppointmentsDropdown, setShowAppointmentsDropdown] = useState(true);
 
   // LOGOUT POPUP STATE
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
@@ -403,16 +543,27 @@ export default function AdminAvailSettings() {
     }
   };
 
+  // 🟢 RESTORED: Fixed Database Save function with 24-hour conversion & Temp ID blocking
   const saveTimeSlotsToDatabase = async () => {
     if (!currentEditingDay) { setModalVisible(false); return; }
     
     try {
       const currentSlots = timeSlotsByDay[currentEditingDay] || [];
-      const slotsToSave = currentSlots.map((slot: any) => ({
-        startTime: slot.startTime,
-        endTime: slot.endTime,
-        capacity: slot.capacity || 1
-      }));
+      const slotsToSave = currentSlots.map((slot: any) => {
+        // Send snake_case and 24-hour time formatting to avoid Supabase 400 Errors
+        const payload: any = {
+          start_time: formatTo24Hour(slot.startTime),
+          end_time: formatTo24Hour(slot.endTime),
+          capacity: slot.capacity || 1
+        };
+        
+        // Prevent 'temp-' generated IDs from crashing the database
+        if (slot.id && !String(slot.id).startsWith('temp-')) {
+          payload.id = slot.id;
+        }
+        
+        return payload;
+      });
       
       await availabilityService.saveTimeSlots(currentEditingDay, slotsToSave);
       
@@ -478,14 +629,14 @@ export default function AdminAvailSettings() {
           {/* LEFT SIDE (Calendar & Events) */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '20px', minWidth: '300px' }}>
             
-            {/* Calendar Placeholder / Reference */}
+            {/* 🟢 RESTORED: Custom Calendar replaces standard date input */}
             <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '20px', boxShadow: '0 0 18px rgba(0,0,0,0.05)' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '15px', color: '#333' }}>Check Booked Dates</h3>
-                <input 
-                    type="date" 
-                    value={selectedCalendarDate} 
-                    onChange={(e) => setSelectedCalendarDate(e.target.value)} 
-                    style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ccc', boxSizing: 'border-box' }}
+                <CustomCalendar 
+                    selectedDate={selectedCalendarDate} 
+                    onSelectDate={setSelectedCalendarDate} 
+                    bookedDates={bookedDates} 
+                    availableDays={dayAvailability} /* 🟢 NEW: Grays out toggled-off days! */
                 />
                 <div style={{ marginTop: '15px', fontSize: '12px', color: '#888', fontStyle: 'italic' }}>
                     <p>Use this reference tool to see which dates have active appointments before closing slots.</p>
@@ -619,8 +770,8 @@ export default function AdminAvailSettings() {
                           ) : (
                             timeSlotsByDay[currentEditingDay]?.map((item: any) => (
                               <tr key={item.id}>
-                                <td>{item.startTime}</td>
-                                <td>{item.endTime}</td>
+                                <td>{formatToAMPM(item.startTime)}</td>
+                                <td>{formatToAMPM(item.endTime)}</td>
                                 <td style={{ textAlign: 'center' }}>{item.capacity || 1}</td>
                                 <td style={{ textAlign: 'right' }}>
                                   <button onClick={() => deleteSlot(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
@@ -678,7 +829,7 @@ export default function AdminAvailSettings() {
             <div className="modalContainer" style={{ width: '40%', maxWidth: '400px', padding: '30px' }}>
               <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '15px' }}>Delete Time Slot</h2>
               <p style={{ fontSize: '16px', marginBottom: '25px', color: '#555' }}>
-                Are you sure you want to delete {slotToDelete ? `${slotToDelete.startTime} - ${slotToDelete.endTime}` : 'this time slot'}?
+                Are you sure you want to delete {slotToDelete ? `${formatToAMPM(slotToDelete.startTime)} - ${formatToAMPM(slotToDelete.endTime)}` : 'this time slot'}?
               </p>
               
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>

@@ -14,14 +14,14 @@ export default function ConfirmOTP() {
     const mode = (location.state as { email: string; mode?: string } | undefined)?.mode || 'passwordReset'
     const isEmailConfirmation = mode === 'emailConfirmation'
 
-    const [otp, setOtp] = useState(['', '', '', '', '', ''])
+    const [otp, setOtp] = useState<string[]>(['', '', '', '', '', ''])
     const [otpError, setOtpError] = useState('')
     const [serverError, setServerError] = useState('')
     const [serverSuccess, setServerSuccess] = useState('')
     const [isLoading, setIsLoading] = useState(false)
     const [isResending, setIsResending] = useState(false)
-    const [expirySeconds, setExpirySeconds] = useState(OTP_EXPIRY_SECONDS)
-    const [resendCooldown, setResendCooldown] = useState(RESEND_COOLDOWN_SECS)
+    const [expirySeconds, setExpirySeconds] = useState<number>(OTP_EXPIRY_SECONDS)
+    const [resendCooldown, setResendCooldown] = useState<number>(RESEND_COOLDOWN_SECS)
 
     const expiryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
     const resendIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -40,7 +40,7 @@ export default function ConfirmOTP() {
         clearInterval(expiryIntervalRef.current!)
         setExpirySeconds(OTP_EXPIRY_SECONDS)
         expiryIntervalRef.current = setInterval(() => {
-            setExpirySeconds(prev => {
+            setExpirySeconds((prev: number) => {
                 if (prev <= 1) {
                     clearInterval(expiryIntervalRef.current!)
                     return 0
@@ -54,7 +54,7 @@ export default function ConfirmOTP() {
         clearInterval(resendIntervalRef.current!)
         setResendCooldown(RESEND_COOLDOWN_SECS)
         resendIntervalRef.current = setInterval(() => {
-            setResendCooldown(prev => {
+            setResendCooldown((prev: number) => {
                 if (prev <= 1) {
                     clearInterval(resendIntervalRef.current!)
                     return 0
@@ -65,8 +65,9 @@ export default function ConfirmOTP() {
     }
 
     function formatTime(secs: number) {
-        const m = Math.floor(secs / 60).toString().padStart(2, '0')
-        const s = (secs % 60).toString().padStart(2, '0')
+        const totalSeconds = Number(secs) || 0
+        const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0')
+        const s = (totalSeconds % 60).toString().padStart(2, '0')
         return `${m}:${s}`
     }
 
