@@ -137,6 +137,9 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
     const CHAR_LIMIT = 500;
     const selectedReasonOption = RESCHEDULE_REASONS.find(reason => reason.id === selectedReason);
     const generatedExplanation = emailMessage;
+    const requiresEmailMessage = Boolean(selectedReason);
+    const isReasonMessageInvalid = requiresEmailMessage && !emailMessage.trim();
+    const isSubmitDisabled = !selectedDate || !selectedTimeSlot || loading || isReasonMessageInvalid;
 
     useEffect(() => {
         if (visible) {
@@ -195,7 +198,7 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
 
     const handleSubmit = async () => {
         if (!selectedDate || !selectedTimeSlot) return;
-        if (selectedReason && !emailMessage.trim()) return;
+        if (isReasonMessageInvalid) return;
         setLoading(true);
         try {
             await onSubmit({
@@ -407,10 +410,10 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
                         style={{ flex: 1, padding: '12px', backgroundColor: '#f5f5f5', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#666', fontWeight: '600' }}>
                         Cancel
                     </button>
-                    <button onClick={handleSubmit} disabled={!selectedDate || !selectedTimeSlot || loading || (selectedReason && !emailMessage.trim())}
+                    <button onClick={handleSubmit} disabled={isSubmitDisabled}
                         style={{ flex: 1, padding: '12px', borderRadius: '8px', border: 'none', fontWeight: '600', color: 'white',
-                            backgroundColor: (!selectedDate || !selectedTimeSlot || loading || (selectedReason && !emailMessage.trim())) ? '#ccc' : '#3d67ee',
-                            cursor: (!selectedDate || !selectedTimeSlot || loading || (selectedReason && !emailMessage.trim())) ? 'not-allowed' : 'pointer' }}>
+                            backgroundColor: isSubmitDisabled ? '#ccc' : '#3d67ee',
+                            cursor: isSubmitDisabled ? 'not-allowed' : 'pointer' }}>
                         {loading ? 'Sending...' : 'Send Reschedule Request'}
                     </button>
                 </div>
