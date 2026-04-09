@@ -33,7 +33,7 @@ import {
 
 import Navbar from '../reusable_components/NavBar';
 import NotificationsAllModal from '../reusable_components/NotificationsAllModal';
-import type { NotificationsModalRef } from '../reusable_components/NotificationsAllModal';
+import type { Notification, NotificationsModalRef } from '../reusable_components/NotificationsAllModal';
 
 // ========== INTERFACES ==========
 
@@ -239,6 +239,53 @@ const AdminDashboard: React.FC = () => {
       color: '#8b5cf6'
     },
   ];
+
+  const getNotificationType = (icon: NotificationItem['icon']): Notification['type'] => {
+    switch (icon) {
+      case 'warning':
+        return 'warning';
+      case 'document':
+        return 'success';
+      default:
+        return 'info';
+    }
+  };
+
+  const getNotificationTimestamp = (timeLabel: string): Date => {
+    const now = new Date();
+    const normalized = timeLabel.toLowerCase().trim();
+    const match = normalized.match(/(\d+)\s*(min|mins|minute|minutes|hour|hours|day|days)/);
+
+    if (!match) {
+      return now;
+    }
+
+    const amount = Number(match[1]);
+    const unit = match[2];
+    const timestamp = new Date(now);
+
+    if (unit.startsWith('min')) {
+      timestamp.setMinutes(now.getMinutes() - amount);
+      return timestamp;
+    }
+
+    if (unit.startsWith('hour')) {
+      timestamp.setHours(now.getHours() - amount);
+      return timestamp;
+    }
+
+    timestamp.setDate(now.getDate() - amount);
+    return timestamp;
+  };
+
+  const dashboardNotifications: Notification[] = notificationItems.map((item) => ({
+    id: String(item.id),
+    title: item.title,
+    message: item.description,
+    type: getNotificationType(item.icon),
+    timestamp: getNotificationTimestamp(item.time),
+    read: false,
+  }));
 
   // Recent Clinic Visits Data
   const recentVisitsData: VisitData[] = [
@@ -758,6 +805,7 @@ const AdminDashboard: React.FC = () => {
       {/* Notifications Modal */}
       <NotificationsAllModal 
         ref={notificationsModalRef}
+        notifications={dashboardNotifications}
         onNotificationClick={(notification) => {
           if (notification.link) navigate(notification.link);
         }}

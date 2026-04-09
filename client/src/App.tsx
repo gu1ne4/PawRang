@@ -43,8 +43,8 @@ function App() {
         <Route path="/user/book-appointment" element={<UserAppointmentBook />} />
         <Route path="/user/profile" element={<UserProfile />} />
 
-        <Route path="/admin/home" element={<AdminHome />} />
-        <Route path="/admin/dashboard" element={<AdminDashboard />} />
+        <Route path="/admin/home" element={<AdminDashboard />} />
+        <Route path="/admin/dashboard" element={<AdminHome />} />
         <Route path="/admin/users" element={<AdminUserAccPage />} />
         <Route path="/admin/settings" element={<AdminSettingsPage />} />
         <Route path="/admin/audit" element={<AdminAuditPage />} />
@@ -56,7 +56,7 @@ function App() {
         <Route path="/admin/cancel-appointment" element={<AdminCancelAppointmentModal />} />
 
         <Route path="/Home" element={<Navigate to="/admin/home" replace />} />
-        <Route path="/Accounts" element={<Navigate to="/admin/home" replace />} />
+        <Route path="/Accounts" element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="/UserAccounts" element={<Navigate to="/admin/users" replace />} />
         <Route path="/Schedule" element={<Navigate to="/admin/schedule" replace />} />
         <Route path="/AvailSettings" element={<Navigate to="/admin/availability" replace />} />
@@ -65,8 +65,8 @@ function App() {
         <Route path="/Settings" element={<Navigate to="/admin/settings" replace />} />
 
 
-        <Route path="/home" element={<Navigate to="/admin/dashboard" replace />} />
-        <Route path="/accounts" element={<Navigate to="/admin/home" replace />} />
+        <Route path="/home" element={<Navigate to="/admin/home" replace />} />
+        <Route path="/accounts" element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="/useraccounts" element={<Navigate to="/admin/users" replace />} />
         <Route path="/schedule" element={<Navigate to="/admin/schedule" replace />} />
         <Route path="/availSettings" element={<Navigate to="/admin/availability" replace />} />

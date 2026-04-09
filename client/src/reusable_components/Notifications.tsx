@@ -41,9 +41,6 @@ const Notifications: React.FC<NotificationsProps> = ({
   // Ref for the modal component
   const modalRef = useRef<NotificationsModalRef>(null);
 
-  // Ref for the modal component
-  const modalRef = useRef<NotificationsModalRef>(null);
-
   const popupRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: 0, right: 0 });
 

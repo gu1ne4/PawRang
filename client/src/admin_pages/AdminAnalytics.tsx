@@ -8,8 +8,6 @@ import {
 import './AnalyticsStyles.css';
 import Navbar from '../reusable_components/NavBar';
 import userImg from '../assets/userAvatar.jpg';
-import NotificationsAllModal from '../reusable_components/NotificationsAllModal';
-import type { NotificationsModalRef } from '../reusable_components/NotificationsAllModal';
 import Notifications from '../reusable_components/Notifications';
 
 // Icons
@@ -630,7 +628,6 @@ const AiInsightsPanel: React.FC = () => {
 // ==================== MAIN DASHBOARD ====================
 const AdminAnalytics: React.FC = () => {
   const navigate = useNavigate();
-  const notificationsModalRef = useRef<NotificationsModalRef>(null);
   
   const totalRevenue = 248500;
   const totalTransactions = 342;
@@ -717,13 +714,6 @@ const AdminAnalytics: React.FC = () => {
           <AiInsightsPanel />
         </div>
       </div>
-
-      <NotificationsAllModal 
-        ref={notificationsModalRef}
-        onNotificationClick={(notification) => {
-          if (notification.link) navigate(notification.link);
-        }}
-      />
     </div>
   );
 };

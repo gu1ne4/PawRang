@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
-import { IoCloudUploadOutline, IoDownloadOutline, IoAlertCircleOutline, IoCloseOutline } from 'react-icons/io5';
+import React, { useId, useRef, useState } from 'react';
+import { IoAlertCircleOutline, IoCloudUploadOutline, IoDownloadOutline } from 'react-icons/io5';
 
 interface ImportButtonProps {
-  onImport: (file: File) => void;
+  onImport: (file: File) => boolean | void | Promise<boolean | void>;
   buttonClassName?: string;
   iconClassName?: string;
   accept?: string;
@@ -20,7 +20,9 @@ const ImportButton: React.FC<ImportButtonProps> = ({
 }) => {
   const [showModal, setShowModal] = useState<boolean>(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isImporting, setIsImporting] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputId = useId();
 
   // Default template columns if none provided
   const defaultColumns = [
@@ -34,6 +36,11 @@ const ImportButton: React.FC<ImportButtonProps> = ({
   ];
 
   const columns = templateColumns || defaultColumns;
+  const supportedFormatsText = accept
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .join(', ');
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -42,17 +49,24 @@ const ImportButton: React.FC<ImportButtonProps> = ({
     }
   };
 
-  const handleImportSubmit = () => {
+  const handleImportSubmit = async () => {
     if (!selectedFile) {
       alert('Please select a file to import.');
       return;
     }
-    onImport(selectedFile);
-    setShowModal(false);
-    setSelectedFile(null);
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+
+    try {
+      setIsImporting(true);
+      const result = await onImport(selectedFile);
+      if (result !== false) {
+        setShowModal(false);
+        setSelectedFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      }
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -60,10 +74,6 @@ const ImportButton: React.FC<ImportButtonProps> = ({
     if (onDownloadTemplate) {
       onDownloadTemplate();
     }
-  };
-
-  const triggerFileInput = () => {
-    fileInputRef.current?.click();
   };
 
   return (
@@ -104,15 +114,15 @@ const ImportButton: React.FC<ImportButtonProps> = ({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  id="fileUpload"
+                  id={fileInputId}
                   accept={accept}
                   onChange={handleFileSelect}
                   style={{ display: 'none' }}
                 />
-                <label htmlFor="fileUpload" className="invFileUploadLabel" onClick={triggerFileInput}>
+                <label htmlFor={fileInputId} className="invFileUploadLabel">
                   <IoCloudUploadOutline size={32} />
                   <span>{selectedFile ? selectedFile.name : 'Click to select file'}</span>
-                  <span className="invFileHint">Supported formats: .csv, .xlsx, .xls</span>
+                  <span className="invFileHint">Supported formats: {supportedFormatsText}</span>
                 </label>
               </div>
             </div>
@@ -128,13 +138,47 @@ const ImportButton: React.FC<ImportButtonProps> = ({
             </div>
             
             <div className="invModalFooter">
-              <button className="invCancelBtn" onClick={() => setShowModal(false)}>
+              <button className="invCancelBtn" onClick={() => setShowModal(false)} disabled={isImporting}>
                 Cancel
               </button>
-              <button className="invSubmitBtn" onClick={handleImportSubmit}>
-                Import
+              <button className="invSubmitBtn" onClick={handleImportSubmit} disabled={isImporting}>
+                {isImporting ? 'Importing...' : 'Import'}
               </button>
             </div>
+
+            {isImporting && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'rgba(255, 255, 255, 0.82)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  borderRadius: '16px',
+                  zIndex: 20,
+                }}
+              >
+                <div
+                  style={{
+                    width: '38px',
+                    height: '38px',
+                    border: '4px solid #d7e3f4',
+                    borderTopColor: '#1e3a5f',
+                    borderRadius: '50%',
+                    animation: 'spin 0.9s linear infinite',
+                  }}
+                />
+                <div style={{ fontWeight: 600, color: '#1e3a5f', fontSize: '15px' }}>
+                  Loading inventory import...
+                </div>
+                <style>
+                  {`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}
+                </style>
+              </div>
+            )}
           </div>
         </div>
       )}

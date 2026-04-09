@@ -37,22 +37,26 @@ const ExportButton: React.FC<ExportButtonProps> = ({
   }, [showExportDropdown]);
 
   const handleExportInventoryMovement = async () => {
-    let movementLogs = logs;
-    
-    if (type === 'inventory' && logs.length === 0) {
-      const { MOCK_LOGS } = await import('../global_pages/GlobalInventoryLogs');
-      movementLogs = MOCK_LOGS;
+    if (logs.length === 0) {
+      alert('No inventory movement logs available to export yet.');
+      setShowExportDropdown(false);
+      return;
     }
     
     const { exportInventoryMovementExcel } = await import('../global_pages/pdf_generation/InventoryMovementExcel');
-    await exportInventoryMovementExcel(movementLogs);
+    await exportInventoryMovementExcel(logs);
     setShowExportDropdown(false);
   };
 
   const handleExportInventoryStock = async () => {
-    const { MOCK_PRODUCTS } = await import('../global_pages/GlobalInventory');
+    if (products.length === 0) {
+      alert('No inventory stock data available to export yet.');
+      setShowExportDropdown(false);
+      return;
+    }
+
     const { exportInventoryData } = await import('../global_pages/pdf_generation/ExportInventoryExcel');
-    await exportInventoryData(MOCK_PRODUCTS);
+    await exportInventoryData(products);
     setShowExportDropdown(false);
   };
 
@@ -72,16 +76,7 @@ const generateSalesReport = async () => {
     return;
   }
 
-  // Get sales data - use passed logs or import mock logs
-  let allSales: any[] = [];
-  
-  if (type === 'logs' && logs.length > 0) {
-    allSales = logs.filter(log => log.type === 'OUT' && log.reason === 'Sale');
-  } else {
-    // For inventory type, import mock logs
-    const { MOCK_LOGS } = await import('../global_pages/GlobalInventoryLogs');
-    allSales = MOCK_LOGS.filter(log => log.type === 'OUT' && log.reason === 'Sale');
-  }
+  const allSales = logs.filter(log => log.type === 'OUT' && log.reason === 'Sale');
 
   if (allSales.length === 0) {
     alert('No sales records found at all! Make sure you have logs with type="OUT" and reason="Sale"');
