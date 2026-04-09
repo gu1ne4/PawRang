@@ -24,8 +24,10 @@ import {
   IoDocumentTextOutline as IoDocumentText, 
   IoLayersOutline,  
   IoFileTrayFullOutline,
+  IoReceipt,
   IoArrowDownOutline,
-  IoArrowUpOutline
+  IoArrowUpOutline,
+  IoReceiptOutline
 } from 'react-icons/io5';
 
 interface NavbarProps {
@@ -65,17 +67,14 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
     return location.pathname === path;
   };
 
-  // Check if any appointment sub-page is active
   const isAppointmentsActive = (): boolean => {
     return isActive('/schedule') || isActive('/availSettings') || isActive('/history');
   };
 
-  // Check if any account sub-page is active
   const isAccountActive = (): boolean => {
     return isActive('/accounts') || isActive('/useraccounts');
   };
 
-  // Check if any inventory sub-page is active
   const isInventoryActive = (): boolean => {
     return isActive('/manage-inventory') || isActive('/inventory-logs') || isActive('/inventory-in') || isActive('/inventory-out') || isActive('/inventory-archive');
   };
@@ -434,6 +433,18 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
                 >
                   <IoDocumentText size={isCollapsed ? 20 : 16} />
                   {!isCollapsed && <span>Patient Records</span>}
+                </button>
+              </div>
+
+              <div className="navMenuSection">
+                <button 
+                  className={`navBtn ${isActive('/billing') ? 'active' : ''}`} 
+                  onClick={() => navigate('/billing')}
+                  onMouseEnter={(e) => handleMouseEnter(e, 'Billing')}
+                  onMouseLeave={handleMouseLeave}
+                >
+                  <IoReceiptOutline size={isCollapsed ? 20 : 16} />
+                  {!isCollapsed && <span>Billing</span>}
                 </button>
               </div>
 

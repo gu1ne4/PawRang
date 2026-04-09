@@ -39,6 +39,7 @@ import GlobalEMR from './global_pages/GlobalEMR'
 import GlobalInventoryLogs from './global_pages/GlobalInventoryLogs';
 import GlobalInventoryArchive from './global_pages/GlobalInventoryArchive';
 import AdminAnalytics from './admin_pages/AdminAnalytics';
+import GlobalBilling from './global_pages/GlobalBilling';
 
 function App() {
   return (
@@ -81,6 +82,7 @@ function App() {
         <Route path="/inventory-out" element={<GlobalInventoryOUT/>} />
         <Route path="/inventory-logs" element={<GlobalInventoryLogs/>} />
         <Route path="/inventory-archive" element={<GlobalInventoryArchive/>} />
+        <Route path='/billing' element={<GlobalBilling/>} />
 
 
 

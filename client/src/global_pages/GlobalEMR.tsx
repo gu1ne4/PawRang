@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Navbar from '../reusable_components/NavBar';
 import Notifications from '../reusable_components/Notifications';
@@ -8,6 +8,7 @@ import { CiMedicalClipboard } from "react-icons/ci";
 import { FaEye } from "react-icons/fa";
 import { TbReportMedical } from "react-icons/tb";
 import RichTextEditor from '../reusable_components/RichTextEditor';
+import { FaFilePdf } from "react-icons/fa6";
 
 import './GlobalEMR.css';
 import './GlobalEMR2.css';
@@ -45,7 +46,7 @@ import {
   IoMedkitOutline,
   IoCalendarOutline,
   IoTimeSharp,
-  IoSearchCircleOutline,
+  IoReceipt,
   IoChevronUpOutline,
   IoChevronDownOutline
 } from 'react-icons/io5';
@@ -115,6 +116,9 @@ interface VisitHistory {
   };
   labResults?: LabResult[];
   prescriptions?: Prescription[];
+  selectedServices?: ServiceItem[];
+  appointmentId?: string;
+  vaccinationDetails?: VaccinationDetails;
 }
 
 interface PetDetails {
@@ -196,6 +200,32 @@ interface MedicationTemplate {
   instructions: string;
 }
 
+interface AppointmentRecord {
+  id: string;
+  date: string;
+  time: string;
+  veterinarian: string;
+  reason: string;
+  services: ServiceItem[];
+  status: 'scheduled' | 'completed' | 'cancelled';
+}
+
+interface VaccinationDetails {
+  vaccineName: string;
+  doseVolume: string;
+  injectionSite: string;
+  manufacturer: string;
+  dateAdministered: string;
+  nextDueDate: string;
+}
+
+interface ServiceItem {
+  id: string;
+  name: string;
+  price: number;
+  description?: string;
+}
+
 type ViewMode = 'list' | 'add' | 'edit';
 type Species = 'Dog' | 'Cat';
 type Gender = 'Male' | 'Female';
@@ -214,8 +244,7 @@ const CAT_BREEDS = [
   'N/A', 'Others'
 ];
 const REASONS = [
-  'Routine Checkup', 'Vaccination', 'Sick Visit', 'Injury', 
-  'Surgery', 'Dental Care', 'Grooming', 'Follow-up', 'Emergency', 'Laboratory', 'Others'
+  'Checkup or Consultation', 'Vaccination', 'Surgery', 'Dental Cleaning', 'Grooming', 'Emergency', 'Laboratory'
 ];
 const LAB_TEST_TYPES = [
   'Complete Blood Count (CBC)',
@@ -232,6 +261,51 @@ const LAB_TEST_TYPES = [
   'Other'
 ];
 const VETERINARIANS = ['Dr. Sarah Johnson', 'Dr. Michael Chen', 'Dr. Emily Rodriguez', 'Dr. James Wilson'];
+
+const AVAILABLE_SERVICES: ServiceItem[] = [
+  { id: 's1', name: 'Consultation', price: 0, description: 'Standard veterinary consultation' },
+  { id: 's2', name: 'Vaccination', price: 0, description: 'Annual vaccination' },
+  { id: 's3', name: 'Laboratory Test', price: 0, description: 'Blood work and lab tests' },
+  { id: 's4', name: 'X-Ray', price: 0, description: 'Radiology services' },
+  { id: 's5', name: 'Ultrasound', price: 0, description: 'Ultrasound examination' },
+  { id: 's6', name: 'Surgery', price: 0, description: 'Surgical procedure' },
+  { id: 's7', name: 'Dental Cleaning', price: 0, description: 'Professional dental cleaning' },
+  { id: 's8', name: 'Grooming', price: 0, description: 'Basic grooming services' },
+];
+
+// Mock appointment data
+const MOCK_APPOINTMENTS: AppointmentRecord[] = [
+  {
+    id: 'app1',
+    date: '2024-03-25',
+    time: '10:00 AM',
+    veterinarian: 'Dr. Sarah Johnson',
+    reason: 'Routine Checkup',
+    services: [{ id: 's1', name: 'Consultation', price: 500 }],
+    status: 'scheduled'
+  },
+  {
+    id: 'app2',
+    date: '2024-03-28',
+    time: '2:30 PM',
+    veterinarian: 'Dr. Michael Chen',
+    reason: 'Vaccination',
+    services: [
+      { id: 's1', name: 'Consultation', price: 500 },
+      { id: 's2', name: 'Vaccination', price: 800 }
+    ],
+    status: 'scheduled'
+  },
+  {
+    id: 'app3',
+    date: '2024-04-02',
+    time: '11:15 AM',
+    veterinarian: 'Dr. Emily Rodriguez',
+    reason: 'Follow-up',
+    services: [{ id: 's1', name: 'Consultation', price: 500 }],
+    status: 'scheduled'
+  }
+];
 
 // Medication templates database with "Other" option
 const MEDICATION_TEMPLATES: MedicationTemplate[] = [
@@ -493,6 +567,13 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
 
   const [showLabPanel, setShowLabPanel] = useState<boolean>(false);
   
+  // Appointment/Walk-in States
+  const [visitType, setVisitType] = useState<'appointment' | 'walkin'>('walkin');
+  const [selectedAppointment, setSelectedAppointment] = useState<AppointmentRecord | null>(null);
+  const [appointmentRecords, setAppointmentRecords] = useState<AppointmentRecord[]>([]);
+  const [selectedServices, setSelectedServices] = useState<ServiceItem[]>([]);
+  const [showServicesPanel, setShowServicesPanel] = useState<boolean>(false);
+  
   // UI State
   const [searchVisible, setSearchVisible] = useState<boolean>(false);
   const [filterVisible, setFilterVisible] = useState<boolean>(false);
@@ -514,7 +595,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   const [visitDoctorFilter, setVisitDoctorFilter] = useState<string>('');
   const [petStatusFilter, setPetStatusFilter] = useState<string>('all');
   const [showModeOverlay, setShowModeOverlay] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'info' | 'visits'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'visits' | 'medicalHistory'>('info');
   const [petImage, setPetImage] = useState<string>('');
   const [petImageFile, setPetImageFile] = useState<File | null>(null);
   const [lastWeight, setLastWeight] = useState<{ value: number; unit: 'kg' | 'lbs' } | null>(null);
@@ -544,7 +625,8 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
       additionalFindings: ''
     },
     labResults: [],
-    prescriptions: []
+    prescriptions: [],
+    selectedServices: []
   });
 
   // Modal States
@@ -592,7 +674,22 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   const [ownerLastName, setOwnerLastName] = useState<string>('');
   const [ownerEmail, setOwnerEmail] = useState<string>('');
   const [ownerContact, setOwnerContact] = useState<string>('');
-  
+
+  // Medical History Filter States
+  const [medicalHistoryFilter, setMedicalHistoryFilter] = useState<'all' | 'lab' | 'prescription' | 'vaccination'>('all');
+  const [medicalHistorySearch, setMedicalHistorySearch] = useState<string>('');
+
+  // Vaccination Details State
+  const [showVaccinationDetails, setShowVaccinationDetails] = useState<boolean>(false);
+  const [vaccinationDetails, setVaccinationDetails] = useState<VaccinationDetails>({
+    vaccineName: '',
+    doseVolume: '',
+    injectionSite: '',
+    manufacturer: '',
+    dateAdministered: new Date().toISOString().split('T')[0],
+    nextDueDate: ''
+  });
+    
   // Form Errors
   const [formErrors, setFormErrors] = useState<FormErrors>({});
 
@@ -646,7 +743,36 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     }
   };
 
+  const isVaccinationSelected = () => {
+    const isReasonVaccination = newVisit.reason === 'Vaccination';
+    const isServiceVaccination = selectedServices.some(service => service.name === 'Vaccination');
+    return isReasonVaccination || isServiceVaccination;
+  };
 
+  const fetchAppointmentsForPet = async (petId: string) => {
+    setAppointmentRecords(MOCK_APPOINTMENTS);
+  };
+
+  const toggleService = (service: ServiceItem) => {
+    setSelectedServices(prev => {
+      const exists = prev.find(s => s.id === service.id);
+      if (exists) {
+        return prev.filter(s => s.id !== service.id);
+      } else {
+        return [...prev, service];
+      }
+    });
+  };
+
+  const isLaboratorySelected = () => {
+    const isReasonLaboratory = newVisit.reason === 'Laboratory';
+    const isServiceLaboratory = selectedServices.some(service => service.name === 'Laboratory Test');
+    return isReasonLaboratory || isServiceLaboratory;
+  };
+
+  const getTotalServicesPrice = () => {
+    return selectedServices.reduce((total, service) => total + service.price, 0);
+  };
 
   const addPrescriptionFromTemplate = (medication: MedicationTemplate) => {
     if (medication.id === 'other') {
@@ -887,71 +1013,107 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   };
 
   const addNewVisit = () => {
-    const now = new Date();
-    
-    let lastWeightValue = null;
-    if (visitHistory.length > 0) {
-      const lastVisit = visitHistory[visitHistory.length - 1];
-      lastWeightValue = { value: lastVisit.weight, unit: lastVisit.weightUnit };
-    }
-    
-    const finalWeight = newVisit.sameAsLastWeight && lastWeightValue 
-      ? lastWeightValue.value 
-      : parseFloat(newVisit.weight.toString()) || 0;
-    const finalWeightUnit = newVisit.sameAsLastWeight && lastWeightValue 
-      ? lastWeightValue.unit 
-      : newVisit.weightUnit;
-    
-    const newVisitEntry: VisitHistory = {
-      id: Date.now().toString(),
-      date: now.toLocaleDateString(),
-      time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      veterinarian: newVisit.veterinarian,
-      reason: newVisit.reason,
-      doctorRemarks: newVisit.doctorRemarks,
-      weight: finalWeight,
-      weightUnit: finalWeightUnit,
-      sameAsLastWeight: newVisit.sameAsLastWeight,
-      neutered: newVisit.neutered,
-      vaccinated: newVisit.vaccinated,
-      deceased: newVisit.deceased,
-      clinicalExam: newVisit.clinicalExam,
-      labResults: newVisit.labResults,
-      prescriptions: newVisit.prescriptions
-    };
-    setVisitHistory([...visitHistory, newVisitEntry]);
-    
-    if (newVisit.neutered && !neutered) setNeutered(true);
-    if (newVisit.vaccinated && !vaccinated) setVaccinated(true);
-    if (newVisit.deceased && !deceased) setDeceased(true);
-    
-    setShowAddVisit(false);
-    setShowPrescriptionPanel(false);
-    setNewVisit({
-      id: '',
-      date: '',
-      time: '',
-      veterinarian: VETERINARIANS[0],
-      reason: REASONS[0],
-      doctorRemarks: '',
-      weight: 0,
-      weightUnit: 'kg',
-      sameAsLastWeight: false,
-      neutered: false,
-      vaccinated: false,
-      deceased: false,
-      clinicalExam: {
-        length: 0,
-        lengthUnit: 'cm',
-        temperature: 0,
-        tempUnit: 'C',
-        heartRate: '',
-        breathingRate: '',
-        additionalFindings: ''
+    // Show confirmation dialog first
+    showAlert(
+      'confirm',
+      'Confirm Add Visit',
+      `Are you sure you want to add a new visit record for ${petName}?`,
+      () => {
+        // Proceed with adding the visit
+        const now = new Date();
+        
+        let lastWeightValue = null;
+        if (visitHistory.length > 0) {
+          const lastVisit = visitHistory[visitHistory.length - 1];
+          lastWeightValue = { value: lastVisit.weight, unit: lastVisit.weightUnit };
+        }
+        
+        const finalWeight = newVisit.sameAsLastWeight && lastWeightValue 
+          ? lastWeightValue.value 
+          : parseFloat(newVisit.weight.toString()) || 0;
+        const finalWeightUnit = newVisit.sameAsLastWeight && lastWeightValue 
+          ? lastWeightValue.unit 
+          : newVisit.weightUnit;
+        
+        const newVisitEntry: VisitHistory = {
+          id: Date.now().toString(),
+          date: visitType === 'appointment' && selectedAppointment 
+            ? selectedAppointment.date 
+            : now.toLocaleDateString(),
+          time: visitType === 'appointment' && selectedAppointment 
+            ? selectedAppointment.time 
+            : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          veterinarian: visitType === 'appointment' && selectedAppointment
+            ? selectedAppointment.veterinarian
+            : newVisit.veterinarian,
+          reason: visitType === 'appointment' && selectedAppointment
+            ? selectedAppointment.reason
+            : newVisit.reason,
+          doctorRemarks: newVisit.doctorRemarks,
+          weight: finalWeight,
+          weightUnit: finalWeightUnit,
+          sameAsLastWeight: newVisit.sameAsLastWeight,
+          neutered: newVisit.neutered,
+          vaccinated: newVisit.vaccinated,
+          deceased: newVisit.deceased,
+          clinicalExam: newVisit.clinicalExam,
+          labResults: newVisit.labResults,
+          prescriptions: newVisit.prescriptions,
+          selectedServices: selectedServices,
+          appointmentId: selectedAppointment?.id,
+          vaccinationDetails: isVaccinationSelected() && showVaccinationDetails ? vaccinationDetails : undefined
+        };
+        setVisitHistory([...visitHistory, newVisitEntry]);
+        
+        if (newVisit.neutered && !neutered) setNeutered(true);
+        if (newVisit.vaccinated && !vaccinated) setVaccinated(true);
+        if (newVisit.deceased && !deceased) setDeceased(true);
+        
+        setShowAddVisit(false);
+        setShowPrescriptionPanel(false);
+        setShowLabPanel(false);
+        setShowServicesPanel(false);
+        setSelectedServices([]);
+        setSelectedAppointment(null);
+        setVisitType('walkin');
+        setShowVaccinationDetails(false);
+        setVaccinationDetails({
+          vaccineName: '',
+          doseVolume: '',
+          injectionSite: '',
+          manufacturer: '',
+          dateAdministered: new Date().toISOString().split('T')[0],
+          nextDueDate: ''
+        });
+        setNewVisit({
+          id: '',
+          date: '',
+          time: '',
+          veterinarian: VETERINARIANS[0],
+          reason: REASONS[0],
+          doctorRemarks: '',
+          weight: 0,
+          weightUnit: 'kg',
+          sameAsLastWeight: false,
+          neutered: false,
+          vaccinated: false,
+          deceased: false,
+          clinicalExam: {
+            length: 0,
+            lengthUnit: 'cm',
+            temperature: 0,
+            tempUnit: 'C',
+            heartRate: '',
+            breathingRate: '',
+            additionalFindings: ''
+          },
+          labResults: [],
+          prescriptions: [],
+          selectedServices: []
+        });
       },
-      labResults: [],
-      prescriptions: []
-    });
+      true  // Show cancel button
+    );
   };
 
   const selectPet = (pet: SearchResult) => {
@@ -1024,6 +1186,9 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
           const lastVisit = record.visitHistory[record.visitHistory.length - 1];
           setLastWeight({ value: lastVisit.weight, unit: lastVisit.weightUnit });
         }
+        
+        // Fetch appointments for this pet
+        fetchAppointmentsForPet(record.patientId);
       }
       
       setViewMode('edit');
@@ -1122,6 +1287,18 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     setActiveTab('info');
     setLastWeight(null);
     setExpandedVisitId(null);
+    setSelectedServices([]);
+    setSelectedAppointment(null);
+    setVisitType('walkin');
+    setShowVaccinationDetails(false);
+    setVaccinationDetails({
+      vaccineName: '',
+      doseVolume: '',
+      injectionSite: '',
+      manufacturer: '',
+      dateAdministered: new Date().toISOString().split('T')[0],
+      nextDueDate: ''
+    });
   };
 
   useEffect(() => {
@@ -1135,6 +1312,70 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
       return () => clearTimeout(timer);
     }
   }, [autoOpenAddMode, locationState?.autoOpenAddMode]);
+
+  // Filter Medical History tabs
+useEffect(() => {
+  const searchInput = document.getElementById('medicalHistorySearch') as HTMLInputElement;
+  const filterChips = document.querySelectorAll('.emrFilterChip');
+  
+  const filterHistory = () => {
+    const searchTerm = searchInput?.value.toLowerCase() || '';
+    const activeFilter = document.querySelector('.emrFilterChipActive')?.getAttribute('data-filter') || 'all';
+    
+    const sections = document.querySelectorAll('.emrHistorySection');
+    
+    sections.forEach(section => {
+      const category = section.getAttribute('data-category');
+      let hasVisibleItems = false;
+      
+      // Filter by category
+      if (activeFilter !== 'all' && category !== activeFilter) {
+        (section as HTMLElement).style.display = 'none';
+        return;
+      } else {
+        (section as HTMLElement).style.display = '';
+      }
+      
+      // Filter by search term
+      const cards = section.querySelectorAll('.emrHistoryCard');
+      cards.forEach(card => {
+        const cardText = card.textContent?.toLowerCase() || '';
+        if (searchTerm === '' || cardText.includes(searchTerm)) {
+          (card as HTMLElement).style.display = '';
+          hasVisibleItems = true;
+        } else {
+          (card as HTMLElement).style.display = 'none';
+        }
+      });
+      
+      // Hide section if no visible items
+      if (!hasVisibleItems && searchTerm !== '') {
+        (section as HTMLElement).style.display = 'none';
+      } else if (activeFilter === 'all' || category === activeFilter) {
+        (section as HTMLElement).style.display = '';
+      }
+    });
+  };
+  
+  // Add event listeners
+  if (searchInput) {
+    searchInput.addEventListener('input', filterHistory);
+  }
+  
+  filterChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      filterChips.forEach(c => c.classList.remove('emrFilterChipActive'));
+      chip.classList.add('emrFilterChipActive');
+      filterHistory();
+    });
+  });
+  
+  return () => {
+    if (searchInput) {
+      searchInput.removeEventListener('input', filterHistory);
+    }
+  };
+}, [visitHistory]);
 
   const handleReturnToList = () => {
     clearFilters();
@@ -1162,6 +1403,11 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
       localStorage.removeItem('userSession');
       navigate('/login');
     }, true);
+  };
+
+  const handleCreateInvoice = (visit: VisitHistory) => {
+    console.log('Create invoice for visit:', visit);
+    showAlert('info', 'Coming Soon', 'Invoice feature will be available soon.');
   };
 
   const handleCancel = (): void => {
@@ -1345,6 +1591,45 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     const matchesDoctor = visitDoctorFilter === '' || visit.veterinarian === visitDoctorFilter;
     return matchesSearch && matchesDate && matchesDoctor;
   });
+
+  // Medical History filtered data
+const filteredLabResults = visitHistory.flatMap(visit => 
+  (visit.labResults || []).map(lab => ({
+    ...lab,
+    visitDate: visit.date,
+    visitId: visit.id,
+    veterinarian: visit.veterinarian
+  }))
+).filter(lab => {
+  if (medicalHistorySearch === '') return true;
+  const searchLower = medicalHistorySearch.toLowerCase();
+  return lab.testType.toLowerCase().includes(searchLower) ||
+         lab.interpretation?.toLowerCase().includes(searchLower) ||
+         lab.veterinarian.toLowerCase().includes(searchLower);
+});
+
+const filteredPrescriptionsVisits = visitHistory.filter(visit => 
+  visit.prescriptions && 
+  visit.prescriptions.length > 0 && 
+  visit.prescriptions.some(p => p.medicationName && p.medicationName.trim() !== '')
+).filter(visit => {
+  if (medicalHistorySearch === '') return true;
+  const searchLower = medicalHistorySearch.toLowerCase();
+  const hasMatchingMedication = (visit.prescriptions || []).some(p => 
+    p.medicationName?.toLowerCase().includes(searchLower) ||
+    p.dosage?.toLowerCase().includes(searchLower) ||
+    p.instructions?.toLowerCase().includes(searchLower)
+  );
+  return visit.veterinarian.toLowerCase().includes(searchLower) || hasMatchingMedication;
+});
+
+const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetails).filter(visit => {
+  if (medicalHistorySearch === '') return true;
+  const searchLower = medicalHistorySearch.toLowerCase();
+  return visit.vaccinationDetails?.vaccineName.toLowerCase().includes(searchLower) ||
+         visit.veterinarian.toLowerCase().includes(searchLower) ||
+         visit.vaccinationDetails?.manufacturer?.toLowerCase().includes(searchLower);
+});
 
   const breedOptions = species === 'Dog' ? DOG_BREEDS : CAT_BREEDS;
 
@@ -1992,6 +2277,12 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
                 >
                   <HiOutlineClipboardDocumentList size={14} /> Visit Records
                 </button>
+                <button 
+                  className={`emrTabBtn ${activeTab === 'medicalHistory' ? 'emrTabActive' : ''}`}
+                  onClick={() => setActiveTab('medicalHistory')}
+                >
+                  <IoMedicalOutline size={14} /> Medical History
+                </button>
               </div>
 
               <div className="emrFormContent">
@@ -2379,8 +2670,30 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
                                 <div className="emrVisitDate">
                                   <IoTimeOutline size={14} />
                                   <span>{visit.date} at {visit.time}</span>
+                                  {visit.appointmentId && (
+                                    <span className="emrStatusActive" style={{ marginLeft: '8px', fontSize: '10px' }}>
+                                      <IoCalendarOutline size={10} /> Appointment
+                                    </span>
+                                  )}
+                                  {visit.selectedServices && visit.selectedServices.length > 0 && (
+                                    <span className="emrStatusActive" style={{ marginLeft: '8px', fontSize: '10px', backgroundColor: '#e3f2fd', color: '#1565c0' }}>
+                                      <IoListOutline size={10} /> {visit.selectedServices.length} Service(s)
+                                    </span>
+                                  )}
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                  {/* Create Invoice Button */}
+                                  <button 
+                                    className="emrCreateInvoiceBtn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCreateInvoice(visit);
+                                    }}
+                                    title="Create Invoice"
+                                  >
+                                    <IoReceipt size={14} /> Create Invoice
+                                  </button>
+                                  
                                   {(visit.prescriptions && visit.prescriptions.length > 0 && 
                                     visit.prescriptions.some(p => p.medicationName && p.medicationName.trim() !== '')) && (
                                     <button 
@@ -2405,6 +2718,31 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
                               <div className="emrVisitDetails">
                                 <div><strong>Veterinarian:</strong> {visit.veterinarian}</div>
                                 <div><strong>Reason:</strong> {visit.reason}</div>
+                                {visit.selectedServices && visit.selectedServices.length > 0 && (
+                                  <div className="emrFullWidth">
+                                    <strong>Services Provided:</strong>
+                                    <div className="emrServicesList">
+                                      {visit.selectedServices.map((service, idx) => (
+                                        <span key={service.id} className="emrServiceTag">
+                                          {service.name}
+                                          {idx < visit.selectedServices.length - 1 && ', '}
+                                        </span>
+                                      ))}
+                                      <span className="emrServicesTotalPrice">
+                                        (₱{visit.selectedServices.reduce((sum, s) => sum + s.price, 0).toLocaleString()})
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
+                                {visit.vaccinationDetails && (
+                                  <div className="emrFullWidth">
+                                    <strong>Vaccination Details:</strong>
+                                    <div className="emrVaccinationSummary">
+                                      <span>💉 {visit.vaccinationDetails.vaccineName}</span>
+                                      <span>📅 {visit.vaccinationDetails.dateAdministered}</span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
                             {expandedVisitId === visit.id && (
@@ -2422,6 +2760,55 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
                                       )}
                                     </>
                                   )}
+                                  
+                                  {/* Display all services in expanded view with more details */}
+                                  {visit.selectedServices && visit.selectedServices.length > 0 && (
+                                    <div className="emrFullWidth">
+                                      <strong>Additional Services:</strong>
+                                      <div className="emrServicesDetailedList">
+                                        <table className="emrServicesTable">
+                                          <thead>
+                                            <tr>
+                                              <th>Service</th>
+                                              <th>Description</th>
+                                              <th>Price</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {visit.selectedServices.map(service => (
+                                              <tr key={service.id}>
+                                                <td>{service.name}</td>
+                                                <td className="emrServiceDescCell">{service.description || '—'}</td>
+                                                <td className="emrServicePriceCell">₱{service.price.toLocaleString()}</td>
+                                              </tr>
+                                            ))}
+                                            <tr className="emrServicesTotalRow">
+                                              <td colSpan={2}><strong>Total</strong></td>
+                                              <td className="emrServicePriceCell">
+                                                <strong>₱{visit.selectedServices.reduce((sum, s) => sum + s.price, 0).toLocaleString()}</strong>
+                                              </td>
+                                            </tr>
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {/* Vaccination Details */}
+                                  {visit.vaccinationDetails && (
+                                    <div className="emrFullWidth">
+                                      <strong>Vaccination Details:</strong>
+                                      <div className="emrVaccinationDetailsExpanded">
+                                        <div><strong>Vaccine Name:</strong> {visit.vaccinationDetails.vaccineName}</div>
+                                        <div><strong>Dose/Volume:</strong> {visit.vaccinationDetails.doseVolume || 'N/A'}</div>
+                                        <div><strong>Injection Site:</strong> {visit.vaccinationDetails.injectionSite || 'N/A'}</div>
+                                        <div><strong>Manufacturer:</strong> {visit.vaccinationDetails.manufacturer || 'N/A'}</div>
+                                        <div><strong>Date Administered:</strong> {visit.vaccinationDetails.dateAdministered}</div>
+                                        <div><strong>Next Due Date:</strong> {visit.vaccinationDetails.nextDueDate || 'N/A'}</div>
+                                      </div>
+                                    </div>
+                                  )}
+                                  
                                   {visit.prescriptions && visit.prescriptions.length > 0 && (
                                     <div className="emrFullWidth">
                                       <strong>Prescriptions:</strong>
@@ -2466,11 +2853,242 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
                     </button>
                   </div>
                 )}
+
+{activeTab === 'medicalHistory' && (
+  <div className="emrMedicalHistoryContainer">
+    {/* Filter/Search Section */}
+    <div className="emrMedicalHistoryFilters">
+      <div className="emrSearchInputWrapper emrSmallSearch">
+        <IoSearchSharp size={14} className="emrSearchIconSmall" />
+        <input
+          type="text"
+          placeholder="Search medical records..."
+          value={medicalHistorySearch}
+          onChange={(e) => setMedicalHistorySearch(e.target.value)}
+          className="emrSearchInputSmall"
+        />
+      </div>
+      <div className="emrFilterGroup">
+        <button 
+          className={`emrFilterChip ${medicalHistoryFilter === 'all' ? 'emrFilterChipActive' : ''}`}
+          onClick={() => setMedicalHistoryFilter('all')}
+        >
+          All
+        </button>
+        <button 
+          className={`emrFilterChip ${medicalHistoryFilter === 'lab' ? 'emrFilterChipActive' : ''}`}
+          onClick={() => setMedicalHistoryFilter('lab')}
+        >
+          <ImLab size={12} /> Lab Results
+        </button>
+        <button 
+          className={`emrFilterChip ${medicalHistoryFilter === 'prescription' ? 'emrFilterChipActive' : ''}`}
+          onClick={() => setMedicalHistoryFilter('prescription')}
+        >
+          <TbReportMedical size={12} /> Prescriptions
+        </button>
+        <button 
+          className={`emrFilterChip ${medicalHistoryFilter === 'vaccination' ? 'emrFilterChipActive' : ''}`}
+          onClick={() => setMedicalHistoryFilter('vaccination')}
+        >
+          <IoMedicalOutline size={12} /> Vaccinations
+        </button>
+      </div>
+    </div>
+
+    <div className="emrMedicalHistoryContent">
+      {/* Lab Results Section - Only show when filter is 'all' or 'lab' */}
+      {(medicalHistoryFilter === 'all' || medicalHistoryFilter === 'lab') && (
+        <div className="emrHistorySection">
+          <div className="emrHistorySectionHeader">
+            <ImLab size={18} />
+            <h4>Laboratory Results</h4>
+            <span className="emrHistoryCount">{filteredLabResults.length} records</span>
+          </div>
+          <div className="emrHistoryItems">
+            {filteredLabResults.length > 0 ? (
+              filteredLabResults.map((lab, idx) => (
+                <div key={lab.id} className="emrHistoryCard">
+                  <div className="emrHistoryCardHeader">
+                    <div className="emrHistoryCardTitle">
+                      <strong>{lab.testType}</strong>
+                      <span className="emrHistoryDate">{lab.visitDate}</span>
+                    </div>
+                    <div className="emrHistoryCardActions">
+                      {lab.fileData && (
+                        <button 
+                          className="emrViewFileBtn"
+                          onClick={() => {
+                            const win = window.open();
+                            if (win) {
+                              win.document.write(`<img src="${lab.fileData}" style="max-width: 100%;" />`);
+                            }
+                          }}
+                        >
+                          <IoEyeOutline size={12} /> View File
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="emrHistoryCardBody">
+                    <div className="emrHistoryDetail">
+                      <span className="emrHistoryLabel">Veterinarian:</span>
+                      <span>{lab.veterinarian}</span>
+                    </div>
+                    {lab.interpretation && (
+                      <div className="emrHistoryDetail">
+                        <span className="emrHistoryLabel">Interpretation:</span>
+                        <span>{lab.interpretation}</span>
+                      </div>
+                    )}
+                    {lab.fileName && (
+                      <div className="emrHistoryDetail">
+                        <span className="emrHistoryLabel">File:</span>
+                        <span>{lab.fileName}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="emrHistoryEmpty">
+                <ImLab size={32} />
+                <p>No laboratory results recorded yet</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Prescriptions Section - Grouped by Visit - Only show when filter is 'all' or 'prescription' */}
+      {(medicalHistoryFilter === 'all' || medicalHistoryFilter === 'prescription') && (
+        <div className="emrHistorySection">
+          <div className="emrHistorySectionHeader">
+            <TbReportMedical size={18} />
+            <h4>Prescriptions</h4>
+            <span className="emrHistoryCount">{filteredPrescriptionsVisits.length} visits</span>
+          </div>
+          <div className="emrHistoryItems">
+            {filteredPrescriptionsVisits.length > 0 ? (
+              filteredPrescriptionsVisits.map((visit, idx) => (
+                <div key={visit.id} className="emrHistoryCard">
+                  <div className="emrHistoryCardHeader">
+                    <div className="emrHistoryCardTitle">
+                      <strong>Visit #{idx + 1}</strong>
+                      <span className="emrHistoryDate">{visit.date}</span>
+                    </div>
+                    <div className="emrHistoryCardActions">
+                      <button 
+                        className="emrViewPrescriptionBtn"
+                        onClick={() => handleViewPrescription(visit)}
+                      >
+                        <FaFilePdf size={12} /> View All Prescriptions
+                      </button>
+                    </div>
+                  </div>
+                  <div className="emrHistoryCardBody">
+                    <div className="emrHistoryDetail">
+                      <span className="emrHistoryLabel">Veterinarian:</span>
+                      <span>{visit.veterinarian}</span>
+                    </div>
+                    <div className="emrHistoryDetail">
+                      <span className="emrHistoryLabel">Medications:</span>
+                      <div className="emrPrescriptionsList">
+                        {(visit.prescriptions || [])
+                          .filter(p => p.medicationName && p.medicationName.trim() !== '')
+                          .map((pres) => (
+                            <div key={pres.id} className="emrPrescriptionItemCompact">
+                              <strong>{pres.medicationName}</strong>
+                              {pres.dosage && <span> - {pres.dosage}</span>}
+                              {pres.frequency && <span> - {pres.frequency}</span>}
+                              {pres.duration && <span> - {pres.duration}</span>}
+                              {pres.instructions && (
+                                <div className="emrPrescriptionInstructionsCompact">
+                                  📝 {pres.instructions}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="emrHistoryEmpty">
+                <TbReportMedical size={32} />
+                <p>No prescriptions recorded yet</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Vaccinations Section - Only show when filter is 'all' or 'vaccination' */}
+      {(medicalHistoryFilter === 'all' || medicalHistoryFilter === 'vaccination') && (
+        <div className="emrHistorySection">
+          <div className="emrHistorySectionHeader">
+            <IoMedicalOutline size={18} />
+            <h4>Vaccination History</h4>
+            <span className="emrHistoryCount">{filteredVaccinations.length} records</span>
+          </div>
+          <div className="emrHistoryItems">
+            {filteredVaccinations.length > 0 ? (
+              filteredVaccinations.map((visit, idx) => (
+                <div key={visit.id} className="emrHistoryCard">
+                  <div className="emrHistoryCardHeader">
+                    <div className="emrHistoryCardTitle">
+                      <strong>{visit.vaccinationDetails!.vaccineName}</strong>
+                      <span className="emrHistoryDate">{visit.date}</span>
+                    </div>
+                  </div>
+                  <div className="emrHistoryCardBody">
+                    <div className="emrHistoryDetail">
+                      <span className="emrHistoryLabel">Veterinarian:</span>
+                      <span>{visit.veterinarian}</span>
+                    </div>
+                    <div className="emrHistoryDetail">
+                      <span className="emrHistoryLabel">Dose/Volume:</span>
+                      <span>{visit.vaccinationDetails!.doseVolume || 'N/A'}</span>
+                    </div>
+                    <div className="emrHistoryDetail">
+                      <span className="emrHistoryLabel">Injection Site:</span>
+                      <span>{visit.vaccinationDetails!.injectionSite || 'N/A'}</span>
+                    </div>
+                    <div className="emrHistoryDetail">
+                      <span className="emrHistoryLabel">Manufacturer:</span>
+                      <span>{visit.vaccinationDetails!.manufacturer || 'N/A'}</span>
+                    </div>
+                    <div className="emrHistoryDetail">
+                      <span className="emrHistoryLabel">Date Administered:</span>
+                      <span>{visit.vaccinationDetails!.dateAdministered}</span>
+                    </div>
+                    {visit.vaccinationDetails!.nextDueDate && (
+                      <div className="emrHistoryDetail">
+                        <span className="emrHistoryLabel">Next Due Date:</span>
+                        <span>{visit.vaccinationDetails!.nextDueDate}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="emrHistoryEmpty">
+                <IoMedicalOutline size={32} />
+                <p>No vaccination records yet</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+)}
               </div>
 
               <div className="emrFormActions">
                 <button className="emrReturnBtn" onClick={handleGeneratePDF}>
-                  <IoDocumentTextOutline size={14} /> Generate PDF Record
+                  <FaFilePdf size={14} /> Generate PDF Medical Record
                 </button>
                 <div style={{ flex: 1 }} />
                 <button className="emrCancelBtn" onClick={handleCancel}>
@@ -2542,10 +3160,10 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
         </div>
       )}
 
-      {/* Add Visit Modal with Prescription and Laboratory Panels */}
+      {/* Add Visit Modal with Appointment Selection */}
       {showAddVisit && !deceased && (
         <div className="emrModalOverlay" onClick={() => setShowAddVisit(false)}>
-          <div className={`emrAddVisitModalSplit ${(showPrescriptionPanel || (newVisit.reason === 'Laboratory' && showLabPanel)) ? 'withPanel' : ''}`} onClick={e => e.stopPropagation()}>
+          <div className={`emrAddVisitModalSplit ${(showPrescriptionPanel || showLabPanel || showServicesPanel) ? 'withPanel' : ''}`} onClick={e => e.stopPropagation()}>
             {/* Left Panel - Main Form */}
             <div className="emrAddVisitLeftPanel">
               <div className="emrModalHeader">
@@ -2553,223 +3171,457 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
                 <button className="emrModalClose" onClick={() => setShowAddVisit(false)}>×</button>
               </div>
               <div className="emrAddVisitContent">
-                {/* Basic Information */}
-                <div className="emrFormRow">
-                  <div className="emrFormGroup">
-                    <label>Veterinarian</label>
-                    <select
-                      value={newVisit.veterinarian}
-                      onChange={(e) => setNewVisit({...newVisit, veterinarian: e.target.value})}
-                      className="emrFormSelect"
-                    >
-                      {VETERINARIANS.map(doc => (
-                        <option key={doc} value={doc}>{doc}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="emrFormGroup">
-                    <label>Reason</label>
-                    <select
-                      value={newVisit.reason}
-                      onChange={(e) => setNewVisit({...newVisit, reason: e.target.value})}
-                      className="emrFormSelect"
-                    >
-                      {REASONS.map(reason => (
-                        <option key={reason} value={reason}>{reason}</option>
-                      ))}
-                    </select>
+                {/* Visit Type Selection */}
+                <div className="emrFormSection">
+                  <h4>Visit Type</h4>
+                  <div className="emrFormRow">
+                    <div className="emrFormGroup emrFullWidth">
+                      <div className="emrToggleGroupFull">
+                        <button 
+                          type="button"
+                          className={`emrToggleBtnFull ${visitType === 'walkin' ? 'emrToggleActiveFull' : ''}`}
+                          onClick={() => {
+                            setVisitType('walkin');
+                            setSelectedAppointment(null);
+                          }}
+                        >
+                          <IoTimeSharp size={14} /> Walk-in
+                        </button>
+                        <button 
+                          type="button"
+                          className={`emrToggleBtnFull ${visitType === 'appointment' ? 'emrToggleActiveFull' : ''}`}
+                          onClick={() => {
+                            setVisitType('appointment');
+                            if (appointmentRecords.length === 0 && patientId) {
+                              fetchAppointmentsForPet(patientId);
+                            }
+                          }}
+                        >
+                          <IoCalendarOutline size={14} /> Appointment
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
-{/* Clinical Exam Section */}
-<div className="emrFormSection">
-  <h4>Clinical Examination</h4>
-  <div className="emrFormRow" style={{ justifyContent: 'space-between', gap: '12px' }}>
-    {/* Weight Section */}
-    <div className="emrFormGroup" style={{ flex: 1 }}>
-      <label>Weight</label>
-      <div className="emrWeightInputWrapper">
-        <input
-          type="text"
-          value={newVisit.sameAsLastWeight && getLastWeight() 
-            ? getLastWeight()?.value || '' 
-            : newVisit.weight || ''}
-          onChange={(e) => {
-            const value = e.target.value;
-            if (value === '' || /^\d*\.?\d*$/.test(value)) {
-              setNewVisit({...newVisit, weight: parseFloat(value) || 0, sameAsLastWeight: false});
-            }
-          }}
-          placeholder="0.0"
-          className="emrWeightInput"
-          disabled={newVisit.sameAsLastWeight}
-        />
-        <div className="emrWeightUnitSelect">
-          <button
-            type="button"
-            className={`emrWeightUnitBtn ${newVisit.weightUnit === 'kg' ? 'emrWeightUnitActive' : ''}`}
-            onClick={() => setNewVisit({...newVisit, weightUnit: 'kg', sameAsLastWeight: false})}
-          >
-            kg
-          </button>
-          <button
-            type="button"
-            className={`emrWeightUnitBtn ${newVisit.weightUnit === 'lbs' ? 'emrWeightUnitActive' : ''}`}
-            onClick={() => setNewVisit({...newVisit, weightUnit: 'lbs', sameAsLastWeight: false})}
-          >
-            lbs
-          </button>
-        </div>
-      </div>
-      {getLastWeight() && (
-        <label className="emrCheckboxLabel" style={{ marginTop: '8px', marginLeft: '4px' }}>
-          <input
-            type="checkbox"
-            checked={newVisit.sameAsLastWeight}
-            onChange={(e) => setNewVisit({...newVisit, sameAsLastWeight: e.target.checked})}
-            style={{marginRight: '10px'}}
-          />
-          Same as last appointment ({getLastWeight()?.value} {getLastWeight()?.unit})
-        </label>
-      )}
-    </div>
 
-    {/* Length Section */}
-    <div className="emrFormGroup" style={{ flex: 1 }}>
-      <label>Length</label>
-      <div className="emrWeightInputWrapper">
-        <input
-          type="text"
-          value={newVisit.clinicalExam?.length || ''}
-          onChange={(e) => {
-            const value = e.target.value;
-            if (value === '' || /^\d*\.?\d*$/.test(value)) {
-              setNewVisit({
-                ...newVisit, 
-                clinicalExam: { ...newVisit.clinicalExam!, length: parseFloat(value) || 0 }
-              });
-            }
-          }}
-          placeholder="0.0"
-          className="emrWeightInput"
-        />
-        <div className="emrWeightUnitSelect">
-          <button
-            type="button"
-            className={`emrWeightUnitBtn ${newVisit.clinicalExam?.lengthUnit === 'cm' ? 'emrWeightUnitActive' : ''}`}
-            onClick={() => setNewVisit({
-              ...newVisit,
-              clinicalExam: { ...newVisit.clinicalExam!, lengthUnit: 'cm' }
-            })}
-          >
-            cm
-          </button>
-          <button
-            type="button"
-            className={`emrWeightUnitBtn ${newVisit.clinicalExam?.lengthUnit === 'inches' ? 'emrWeightUnitActive' : ''}`}
-            onClick={() => setNewVisit({
-              ...newVisit,
-              clinicalExam: { ...newVisit.clinicalExam!, lengthUnit: 'inches' }
-            })}
-          >
-            inches
-          </button>
-        </div>
-      </div>
-    </div>
+                {/* Appointment Selection - Only show when Appointment is selected */}
+                {visitType === 'appointment' && (
+                  <div className="emrFormSection">
+                    <h4>Select Appointment</h4>
+                    <div className="emrFormRow">
+                      <div className="emrFormGroup emrFullWidth">
+                        {appointmentRecords.filter(app => app.status === 'scheduled').length > 0 ? (
+                          <div className="emrAppointmentList">
+                            {appointmentRecords.filter(app => app.status === 'scheduled').map(app => (
+                              <div 
+                                key={app.id}
+                                className={`emrAppointmentItem ${selectedAppointment?.id === app.id ? 'emrAppointmentSelected' : ''}`}
+                                onClick={() => {
+                                  setSelectedAppointment(app);
+                                  setNewVisit({
+                                    ...newVisit,
+                                    veterinarian: app.veterinarian,
+                                    reason: app.reason
+                                  });
+                                }}
+                              >
+                                <div className="emrAppointmentInfo">
+                                  <div className="emrAppointmentDate">
+                                    <IoCalendarOutline size={14} />
+                                    <strong>{app.date}</strong> at <strong>{app.time}</strong>
+                                  </div>
+                                  <div className="emrAppointmentDetails">
+                                    <span>{app.veterinarian}</span>
+                                    <span>•</span>
+                                    <span>{app.reason}</span>
+                                  </div>
+                                  {app.services && app.services.length > 0 && (
+                                    <div className="emrAppointmentServices">
+                                      <small>Included Services: {app.services.map(s => s.name).join(', ')}</small>
+                                    </div>
+                                  )}
+                                </div>
+                                {selectedAppointment?.id === app.id && (
+                                  <div className="emrAppointmentCheck">
+                                    <IoCheckmarkCircleOutline size={20} color="#2e9e0c" />
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="emrNoAppointments">
+                            <p>No upcoming appointments found</p>
+                            <button 
+                              type="button"
+                              className="emrBlackBtn"
+                              onClick={() => setVisitType('walkin')}
+                              style={{ marginTop: '8px' }}
+                            >
+                              Switch to Walk-in
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
-    {/* Temperature Section */}
-    <div className="emrFormGroup" style={{ flex: 1 }}>
-      <label>Temperature</label>
-      <div className="emrWeightInputWrapper">
-        <input
-          type="text"
-          value={newVisit.clinicalExam?.temperature || ''}
-          onChange={(e) => {
-            const value = e.target.value;
-            if (value === '' || /^\d*\.?\d*$/.test(value)) {
-              setNewVisit({
-                ...newVisit,
-                clinicalExam: { ...newVisit.clinicalExam!, temperature: parseFloat(value) || 0 }
-              });
-            }
-          }}
-          placeholder="0.0"
-          className="emrWeightInput"
-        />
-        <div className="emrWeightUnitSelect">
-          <button
-            type="button"
-            className={`emrWeightUnitBtn ${newVisit.clinicalExam?.tempUnit === 'C' ? 'emrWeightUnitActive' : ''}`}
-            onClick={() => setNewVisit({
-              ...newVisit,
-              clinicalExam: { ...newVisit.clinicalExam!, tempUnit: 'C' }
-            })}
-          >
-            °C
-          </button>
-          <button
-            type="button"
-            className={`emrWeightUnitBtn ${newVisit.clinicalExam?.tempUnit === 'F' ? 'emrWeightUnitActive' : ''}`}
-            onClick={() => setNewVisit({
-              ...newVisit,
-              clinicalExam: { ...newVisit.clinicalExam!, tempUnit: 'F' }
-            })}
-          >
-            °F
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+                {/* Basic Information */}
+                <div className="emrFormSection">
+                  <h4>Visit Details</h4>
+                  <div className="emrFormRow">
+                    <div className="emrFormGroup">
+                      <label>Veterinarian</label>
+                      <select
+                        value={newVisit.veterinarian}
+                        onChange={(e) => setNewVisit({...newVisit, veterinarian: e.target.value})}
+                        className="emrFormSelect"
+                        disabled={visitType === 'appointment' && selectedAppointment !== null}
+                      >
+                        {VETERINARIANS.map(doc => (
+                          <option key={doc} value={doc}>{doc}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="emrFormGroup">
+                      <label>Reason</label>
+                      <select
+                        value={newVisit.reason}
+                        onChange={(e) => setNewVisit({...newVisit, reason: e.target.value})}
+                        className="emrFormSelect"
+                        disabled={visitType === 'appointment' && selectedAppointment !== null}
+                      >
+                        {REASONS.map(reason => (
+                          <option key={reason} value={reason}>{reason}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  
+                  {/* Display selected services summary - No pricing */}
+                  {selectedServices.length > 0 && (
+                    <div className="emrSelectedServicesDisplay" style={{ marginTop: '12px', padding: '10px', backgroundColor: '#e8f5e9', borderRadius: '8px', borderLeft: '3px solid #2e9e0c' }}>
+                      <div>
+                        <strong style={{ fontSize: '12px', color: '#2e7d32' }}>Additional Services Selected:</strong>
+                        <div style={{ marginTop: '4px' }}>
+                          {selectedServices.map((service, idx) => (
+                            <span key={service.id} style={{ fontSize: '11px', color: '#555', marginRight: '12px', display: 'inline-block' }}>
+                              • {service.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
-  <div className="emrFormRow">
-    <div className="emrFormGroup">
-      <label>Heart Rate (per minute)</label>
-      <input
-        type="text"
-        value={newVisit.clinicalExam?.heartRate || ''}
-        onChange={(e) => setNewVisit({
-          ...newVisit,
-          clinicalExam: { ...newVisit.clinicalExam!, heartRate: e.target.value }
-        })}
-        placeholder="e.g., 80-120 or 100"
-        className="emrFormInput"
-      />
-      <small className="emrHelperText">Format: 80-120 (range) or 100 (single value)</small>
-    </div>
+                {/* Additional Services Section */}
+                <div className="emrFormSection">
+                  <div className="emrFormRow">
+                    <div className="emrFormGroup emrFullWidth">
+                      <button 
+                        type="button"
+                        className="emrCreatePrescriptionBtn"
+                        onClick={() => {
+                          // Close other panels, toggle services panel
+                          setShowPrescriptionPanel(false);
+                          setShowLabPanel(false);
+                          setShowServicesPanel(!showServicesPanel);
+                        }}
+                        style={{ background: 'linear-gradient(135deg, #3d67ee, #0738D9)' }}
+                      >
+                        <IoListOutline size={16} /> 
+                        {showServicesPanel ? 'Hide Additional Services' : 'Add Additional Services'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
 
-    <div className="emrFormGroup">
-      <label>Breathing Rate (per minute)</label>
-      <input
-        type="text"
-        value={newVisit.clinicalExam?.breathingRate || ''}
-        onChange={(e) => setNewVisit({
-          ...newVisit,
-          clinicalExam: { ...newVisit.clinicalExam!, breathingRate: e.target.value }
-        })}
-        placeholder="e.g., 15-30 or 20"
-        className="emrFormInput"
-      />
-      <small className="emrHelperText">Format: 15-30 (range) or 20 (single value)</small>
-    </div>
-  </div>
+                {/* Vaccination Details Section - Shows when Vaccination is selected as reason or service */}
+                {isVaccinationSelected() && (
+                  <div className="emrFormSection">
+                    <div className="emrSectionHeaderWithBtn">
+                      <h4>
+                        <IoMedicalOutline size={16} /> Vaccination Details
+                      </h4>
+                      <button
+                        type="button"
+                        className="emrToggleBtn"
+                        onClick={() => setShowVaccinationDetails(!showVaccinationDetails)}
+                      >
+                        {showVaccinationDetails ? 'Hide Details' : 'Add Vaccination Details'}
+                      </button>
+                    </div>
+                    
+                    {showVaccinationDetails && (
+                      <div className="emrVaccinationDetailsContainer" style={{ marginTop: '12px' }}>
+                        <div className="emrFormRow">
+                          <div className="emrFormGroup">
+                            <label>Vaccine Name <span className="emrRequired">*</span></label>
+                            <select
+                              value={vaccinationDetails.vaccineName}
+                              onChange={(e) => setVaccinationDetails({...vaccinationDetails, vaccineName: e.target.value})}
+                              className="emrFormSelect"
+                            >
+                              <option value="">Select vaccine</option>
+                              <option value="Anti-Rabies">Anti-Rabies</option>
+                              <option value="5-in-1 (DHPPi)">5-in-1 (DHPPi)</option>
+                              <option value="6-in-1 (DHPPiL)">6-in-1 (DHPPiL)</option>
+                              <option value="Bordetella (Kennel Cough)">Bordetella (Kennel Cough)</option>
+                              <option value="Leptospirosis">Leptospirosis</option>
+                              <option value="Canine Influenza">Canine Influenza</option>
+                              <option value="Feline Leukemia (FeLV)">Feline Leukemia (FeLV)</option>
+                              <option value="Feline Calicivirus">Feline Calicivirus</option>
+                              <option value="Feline Panleukopenia">Feline Panleukopenia</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          </div>
+                          <div className="emrFormGroup">
+                            <label>Dose / Volume</label>
+                            <input
+                              type="text"
+                              value={vaccinationDetails.doseVolume}
+                              onChange={(e) => setVaccinationDetails({...vaccinationDetails, doseVolume: e.target.value})}
+                              placeholder="e.g., 1 mL"
+                              className="emrFormInput"
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="emrFormRow">
+                          <div className="emrFormGroup">
+                            <label>Injection Site</label>
+                            <select
+                              value={vaccinationDetails.injectionSite}
+                              onChange={(e) => setVaccinationDetails({...vaccinationDetails, injectionSite: e.target.value})}
+                              className="emrFormSelect"
+                            >
+                              <option value="">Select injection site</option>
+                              <option value="Left hind leg">Left hind leg</option>
+                              <option value="Right hind leg">Right hind leg</option>
+                              <option value="Left front leg">Left front leg</option>
+                              <option value="Right front leg">Right front leg</option>
+                              <option value="Scruff (neck)">Scruff (neck)</option>
+                              <option value="Subcutaneous (SC)">Subcutaneous (SC)</option>
+                              <option value="Intramuscular (IM)">Intramuscular (IM)</option>
+                            </select>
+                          </div>
+                          <div className="emrFormGroup">
+                            <label>Manufacturer / Brand</label>
+                            <input
+                              type="text"
+                              value={vaccinationDetails.manufacturer}
+                              onChange={(e) => setVaccinationDetails({...vaccinationDetails, manufacturer: e.target.value})}
+                              placeholder="e.g., Merck, Zoetis, Boehringer"
+                              className="emrFormInput"
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="emrFormRow">
+                          <div className="emrFormGroup">
+                            <label>Date Administered</label>
+                            <input
+                              type="date"
+                              value={vaccinationDetails.dateAdministered}
+                              onChange={(e) => setVaccinationDetails({...vaccinationDetails, dateAdministered: e.target.value})}
+                              className="emrFormInput"
+                              max={new Date().toISOString().split('T')[0]}
+                            />
+                          </div>
+                          <div className="emrFormGroup">
+                            <label>Next Due Date (if applicable)</label>
+                            <input
+                              type="date"
+                              value={vaccinationDetails.nextDueDate}
+                              onChange={(e) => setVaccinationDetails({...vaccinationDetails, nextDueDate: e.target.value})}
+                              className="emrFormInput"
+                              min={vaccinationDetails.dateAdministered}
+                            />
+                          </div>
+                        </div>
+                        
+                      </div>
+                    )}
+                  </div>
+                )}
 
-  <div className="emrFormRow">
-    <div className="emrFormGroup">
-      <label>Additional Findings</label>
-      <textarea
-        value={newVisit.clinicalExam?.additionalFindings || ''}
-        onChange={(e) => setNewVisit({
-          ...newVisit,
-          clinicalExam: { ...newVisit.clinicalExam!, additionalFindings: e.target.value }
-        })}
-        rows={3}
-        placeholder="Enter any additional clinical findings..."
-        className="emrTextarea"
-      />
-    </div>
-  </div>
-</div>
+                {/* Clinical Exam Section */}
+                <div className="emrFormSection">
+                  <h4>Clinical Examination</h4>
+                  <div className="emrFormRow" style={{ justifyContent: 'space-between', gap: '12px' }}>
+                    {/* Weight Section */}
+                    <div className="emrFormGroup" style={{ flex: 1 }}>
+                      <label>Weight</label>
+                      <div className="emrWeightInputWrapper">
+                        <input
+                          type="text"
+                          value={newVisit.sameAsLastWeight && getLastWeight() 
+                            ? getLastWeight()?.value || '' 
+                            : newVisit.weight || ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                              setNewVisit({...newVisit, weight: parseFloat(value) || 0, sameAsLastWeight: false});
+                            }
+                          }}
+                          placeholder="0.0"
+                          className="emrWeightInput"
+                          disabled={newVisit.sameAsLastWeight}
+                        />
+                        <div className="emrWeightUnitSelect">
+                          <button
+                            type="button"
+                            className={`emrWeightUnitBtn ${newVisit.weightUnit === 'kg' ? 'emrWeightUnitActive' : ''}`}
+                            onClick={() => setNewVisit({...newVisit, weightUnit: 'kg', sameAsLastWeight: false})}
+                          >
+                            kg
+                          </button>
+                          <button
+                            type="button"
+                            className={`emrWeightUnitBtn ${newVisit.weightUnit === 'lbs' ? 'emrWeightUnitActive' : ''}`}
+                            onClick={() => setNewVisit({...newVisit, weightUnit: 'lbs', sameAsLastWeight: false})}
+                          >
+                            lbs
+                          </button>
+                        </div>
+                      </div>
+                      {getLastWeight() && (
+                        <label className="emrCheckboxLabel" style={{ marginTop: '8px', marginLeft: '4px' }}>
+                          <input
+                            type="checkbox"
+                            checked={newVisit.sameAsLastWeight}
+                            onChange={(e) => setNewVisit({...newVisit, sameAsLastWeight: e.target.checked})}
+                            style={{marginRight: '10px'}}
+                          />
+                          Same as last appointment ({getLastWeight()?.value} {getLastWeight()?.unit})
+                        </label>
+                      )}
+                    </div>
+
+                    {/* Length Section */}
+                    <div className="emrFormGroup" style={{ flex: 1 }}>
+                      <label>Length</label>
+                      <div className="emrWeightInputWrapper">
+                        <input
+                          type="text"
+                          value={newVisit.clinicalExam?.length || ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                              setNewVisit({
+                                ...newVisit, 
+                                clinicalExam: { ...newVisit.clinicalExam!, length: parseFloat(value) || 0 }
+                              });
+                            }
+                          }}
+                          placeholder="0.0"
+                          className="emrWeightInput"
+                        />
+                        <div className="emrWeightUnitSelect">
+                          <button
+                            type="button"
+                            className={`emrWeightUnitBtn ${newVisit.clinicalExam?.lengthUnit === 'cm' ? 'emrWeightUnitActive' : ''}`}
+                            onClick={() => setNewVisit({
+                              ...newVisit,
+                              clinicalExam: { ...newVisit.clinicalExam!, lengthUnit: 'cm' }
+                            })}
+                          >
+                            cm
+                          </button>
+                          <button
+                            type="button"
+                            className={`emrWeightUnitBtn ${newVisit.clinicalExam?.lengthUnit === 'inches' ? 'emrWeightUnitActive' : ''}`}
+                            onClick={() => setNewVisit({
+                              ...newVisit,
+                              clinicalExam: { ...newVisit.clinicalExam!, lengthUnit: 'inches' }
+                            })}
+                          >
+                            inches
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Temperature Section */}
+                    <div className="emrFormGroup" style={{ flex: 1 }}>
+                      <label>Temperature</label>
+                      <div className="emrWeightInputWrapper">
+                        <input
+                          type="text"
+                          value={newVisit.clinicalExam?.temperature || ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                              setNewVisit({
+                                ...newVisit,
+                                clinicalExam: { ...newVisit.clinicalExam!, temperature: parseFloat(value) || 0 }
+                              });
+                            }
+                          }}
+                          placeholder="0.0"
+                          className="emrWeightInput"
+                        />
+                        <div className="emrWeightUnitSelect">
+                          <button
+                            type="button"
+                            className={`emrWeightUnitBtn ${newVisit.clinicalExam?.tempUnit === 'C' ? 'emrWeightUnitActive' : ''}`}
+                            onClick={() => setNewVisit({
+                              ...newVisit,
+                              clinicalExam: { ...newVisit.clinicalExam!, tempUnit: 'C' }
+                            })}
+                          >
+                            °C
+                          </button>
+                          <button
+                            type="button"
+                            className={`emrWeightUnitBtn ${newVisit.clinicalExam?.tempUnit === 'F' ? 'emrWeightUnitActive' : ''}`}
+                            onClick={() => setNewVisit({
+                              ...newVisit,
+                              clinicalExam: { ...newVisit.clinicalExam!, tempUnit: 'F' }
+                            })}
+                          >
+                            °F
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="emrFormRow">
+                    <div className="emrFormGroup">
+                      <label>Heart Rate (per minute)</label>
+                      <input
+                        type="text"
+                        value={newVisit.clinicalExam?.heartRate || ''}
+                        onChange={(e) => setNewVisit({
+                          ...newVisit,
+                          clinicalExam: { ...newVisit.clinicalExam!, heartRate: e.target.value }
+                        })}
+                        placeholder="e.g., 80-120 or 100"
+                        className="emrFormInput"
+                      />
+                      <small className="emrHelperText">Format: 80-120 (range) or 100 (single value)</small>
+                    </div>
+
+                    <div className="emrFormGroup">
+                      <label>Breathing Rate (per minute)</label>
+                      <input
+                        type="text"
+                        value={newVisit.clinicalExam?.breathingRate || ''}
+                        onChange={(e) => setNewVisit({
+                          ...newVisit,
+                          clinicalExam: { ...newVisit.clinicalExam!, breathingRate: e.target.value }
+                        })}
+                        placeholder="e.g., 15-30 or 20"
+                        className="emrFormInput"
+                      />
+                      <small className="emrHelperText">Format: 15-30 (range) or 20 (single value)</small>
+                    </div>
+                  </div>
+
+                </div>
 
                 {/* Neutered/Spayed Option */}
                 {!neutered && (
@@ -2822,35 +3674,8 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
                     </div>
                   </div>
                 )}
-                
-                {/* Deceased Option */}
-                {!deceased && (
-                  <div className="emrFormRow">
-                    <div className="emrFormGroup" style={{backgroundColor: '#f9f9f9', padding: '12px', borderRadius: '12px'}}>
-                      
-                      <label style={{color: '#ce0a0a', fontWeight: '600',}}>
-                        <IoWarningOutline size={13} color="#ce0a0a" style={{ marginBottom: '-2px', marginLeft: '4px', marginRight: '5px' }} />
-                        Deceased</label>
-                      <div className="emrToggleGroupFull">
-                        <button 
-                          type="button"
-                          className={`emrToggleBtnFull emrToggleYes ${newVisit.deceased ? 'emrToggleActiveFull' : ''}`}
-                          onClick={() => setNewVisit({...newVisit, deceased: true})}
-                        >
-                          <IoAlertCircleOutline size={14} /> Yes
-                        </button>
-                        <button 
-                          type="button"
-                          className={`emrToggleBtnFull emrToggleNo ${!newVisit.deceased ? 'emrToggleActiveFull' : ''}`}
-                          onClick={() => setNewVisit({...newVisit, deceased: false})}
-                        >
-                          <IoCheckmarkCircleOutline size={14} /> No
-                        </button>
-                      </div>
-                      <small className="emrHelperText" style={{color: '#ce0a0a', fontWeight: '600'}}>This will mark the pet as deceased</small>
-                    </div>
-                  </div>
-                )}
+
+                {/* Deceased Option - Removed as requested */}
                 
                 {/* Doctor's Remarks */}
                 <div className="emrFormRow" style={{ marginTop: '30px' }}>
@@ -2865,29 +3690,36 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
                   </div>
                 </div>
                 
-                {/* Laboratory Button - Only shows when reason is Laboratory */}
-                {newVisit.reason === 'Laboratory' && (
+                {isLaboratorySelected() && (
                   <div className="emrFormRow">
                     <div className="emrFormGroup emrFullWidth">
                       <button 
                         type="button"
                         className="emrCreateLabBtn"
-                        onClick={() => setShowLabPanel(!showLabPanel)}
+                        onClick={() => {
+                          // Close other panels, toggle lab panel
+                          if (showServicesPanel) setShowServicesPanel(false);
+                          if (showPrescriptionPanel) setShowPrescriptionPanel(false);
+                          setShowLabPanel(!showLabPanel);
+                        }}
                       >
                         <ImLab size={16} /> 
-                        {showLabPanel ? 'Hide Laboratory' : 'Add Laboratory Results'}
+                        {showLabPanel ? 'Hide Laboratory Results' : 'Add Laboratory Results'}
                       </button>
                     </div>
                   </div>
                 )}
 
-                {/* Create Prescription Button */}
                 <div className="emrFormRow">
                   <div className="emrFormGroup emrFullWidth">
                     <button 
                       type="button"
                       className="emrCreatePrescriptionBtn"
-                      onClick={() => setShowPrescriptionPanel(!showPrescriptionPanel)}
+                      onClick={() => {
+                        setShowServicesPanel(false);
+                        setShowLabPanel(false);
+                        setShowPrescriptionPanel(!showPrescriptionPanel);
+                      }}
                     >
                       <TbReportMedical size={16} /> 
                       {showPrescriptionPanel ? 'Hide Prescription' : 'Create a Prescription'}
@@ -2904,8 +3736,45 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
             </div>
 
             {/* Right Panel - Dynamic Content */}
-            {(showPrescriptionPanel || (newVisit.reason === 'Laboratory' && showLabPanel)) && (
+            {(showPrescriptionPanel || showLabPanel || showServicesPanel) && (
               <div className="emrAddVisitRightPanel">
+                {/* Services Panel */}
+                {showServicesPanel && (
+                  <div className="emrRightPanelContent">
+                    <div className="emrRightPanelHeader">
+                      <h4>Additional Services</h4>
+                      <button 
+                        className="emrClosePanelBtn" 
+                        onClick={() => setShowServicesPanel(false)}
+                      >
+                        <IoCloseOutline size={20} />
+                      </button>
+                    </div>
+                    <div className="emrRightPanelBody">
+                      <div className="emrServicesContainer">
+                        <p style={{ fontSize: '12px', color: '#666', marginBottom: '16px' }}>
+                          Select additional services to include in this visit:
+                        </p>
+                        {AVAILABLE_SERVICES.map(service => (
+                          <div 
+                            key={service.id}
+                            className={`emrServiceItem ${selectedServices.find(s => s.id === service.id) ? 'emrServiceSelected' : ''}`}
+                            onClick={() => toggleService(service)}
+                          >
+                            <div className="emrServiceInfo">
+                              <div className="emrServiceName">{service.name}</div>
+                              <div className="emrServiceDescription">{service.description}</div>
+                            </div>
+                            {selectedServices.find(s => s.id === service.id) && (
+                              <IoCheckmarkCircleOutline size={20} color="#2e9e0c" />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Prescription Panel */}
                 {showPrescriptionPanel && (
                   <div className="emrRightPanelContent">
@@ -2919,7 +3788,6 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
                       </button>
                     </div>
                     <div className="emrRightPanelBody">
-                      {/* Prescription Table */}
                       <table className="emrPrescriptionTable">
                         <thead>
                           <tr>
@@ -2986,7 +3854,6 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
                         </tbody>
                       </table>
                       
-                      {/* Instructions Section */}
                       <div className="emrInstructionsField">
                         <label>Instructions</label>
                         <textarea
@@ -2999,7 +3866,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
                             });
                           }}
                           rows={4}
-                          placeholder="Enter instructions for these medications (e.g., Take with food, Complete full course, etc.)..."
+                          placeholder="Enter instructions for these medications..."
                           className="emrInstructionsTextarea"
                         />
                         <small className="emrHelperText">These instructions will apply to all medications in this prescription</small>
@@ -3017,7 +3884,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
                 )}
 
                 {/* Laboratory Panel */}
-                {newVisit.reason === 'Laboratory' && showLabPanel && (
+                {showLabPanel && (
                   <div className="emrRightPanelContent">
                     <div className="emrRightPanelHeader">
                       <h4>Laboratory Results</h4>
@@ -3125,65 +3992,65 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
         </div>
       )}
 
-{/* Medication Selection Modal */}
-{showMedicationModal && (
-  <div className="emrModalOverlay" onClick={() => setShowMedicationModal(false)}>
-    <div className="emrSearchModal" onClick={e => e.stopPropagation()}>
-      <div className="emrModalHeader">
-        <h4>Select Medication</h4>
-        <button className="emrModalClose" onClick={() => setShowMedicationModal(false)}>×</button>
-      </div>
-      <div className="emrSearchModalContent">
-        <div className="emrSearchInputWrapper">
-          <input
-            type="text"
-            placeholder="Search by medication name, dosage, or frequency..."
-            value={medicationSearchQuery}
-            onChange={(e) => filterMedications(e.target.value)}
-            className="emrSearchInput"
-          />
-          <IoSearchSharp size={18} className="emrSearchIcon" />
-        </div>
-
-        <div className="emrSearchResults" style={{ maxHeight: '400px', overflowY: 'auto' }}>
-          {filteredMedications.length > 0 ? (
-            filteredMedications.map(med => (
-              <div 
-                key={med.id} 
-                className={`emrSearchResultItem ${med.id === 'other' ? 'emrOtherMedicationOption' : ''}`}
-                onClick={() => addPrescriptionFromTemplate(med)}
-                style={{ cursor: 'pointer' }}
-              >
-                <div className="emrSearchResultIcon" style={med.id === 'other' ? { backgroundColor: '#e8f5e9', color: '#2e7d32' } : {}}>
-                  {med.id === 'other' ? <IoAddCircleOutline size={20} /> : <IoMedkitOutline size={20} />}
-                </div>
-                <div className="emrSearchResultInfo">
-                  <div className="emrSearchResultName" style={med.id === 'other' ? { color: '#2e7d32', fontWeight: 600 } : {}}>
-                    {med.id === 'other' ? 'Other (Add Custom Medication)' : `${med.name} - ${med.dosage}`}
-                  </div>
-                  {med.id !== 'other' && (
-                    <div className="emrSearchResultDetails">
-                      {med.frequency} • Duration: {med.duration}
-                    </div>
-                  )}
-                  {med.id === 'other' && (
-                    <div className="emrSearchResultDetails" style={{ color: '#666', fontStyle: 'italic' }}>
-                      If the medication you want to prescribe is not in the list, select this option to add a custom medication with your own specifications.
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="emrSearchNoResults">
-              <p>No medications found</p>
+      {/* Medication Selection Modal */}
+      {showMedicationModal && (
+        <div className="emrModalOverlay" onClick={() => setShowMedicationModal(false)}>
+          <div className="emrSearchModal" onClick={e => e.stopPropagation()}>
+            <div className="emrModalHeader">
+              <h4>Select Medication</h4>
+              <button className="emrModalClose" onClick={() => setShowMedicationModal(false)}>×</button>
             </div>
-          )}
+            <div className="emrSearchModalContent">
+              <div className="emrSearchInputWrapper">
+                <input
+                  type="text"
+                  placeholder="Search by medication name, dosage, or frequency..."
+                  value={medicationSearchQuery}
+                  onChange={(e) => filterMedications(e.target.value)}
+                  className="emrSearchInput"
+                />
+                <IoSearchSharp size={18} className="emrSearchIcon" />
+              </div>
+
+              <div className="emrSearchResults" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                {filteredMedications.length > 0 ? (
+                  filteredMedications.map(med => (
+                    <div 
+                      key={med.id} 
+                      className={`emrSearchResultItem ${med.id === 'other' ? 'emrOtherMedicationOption' : ''}`}
+                      onClick={() => addPrescriptionFromTemplate(med)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <div className="emrSearchResultIcon" style={med.id === 'other' ? { backgroundColor: '#e8f5e9', color: '#2e7d32' } : {}}>
+                        {med.id === 'other' ? <IoAddCircleOutline size={20} /> : <IoMedkitOutline size={20} />}
+                      </div>
+                      <div className="emrSearchResultInfo">
+                        <div className="emrSearchResultName" style={med.id === 'other' ? { color: '#2e7d32', fontWeight: 600 } : {}}>
+                          {med.id === 'other' ? 'Other (Add Custom Medication)' : `${med.name} - ${med.dosage}`}
+                        </div>
+                        {med.id !== 'other' && (
+                          <div className="emrSearchResultDetails">
+                            {med.frequency} • Duration: {med.duration}
+                          </div>
+                        )}
+                        {med.id === 'other' && (
+                          <div className="emrSearchResultDetails" style={{ color: '#666', fontStyle: 'italic' }}>
+                            If the medication you want to prescribe is not in the list, select this option to add a custom medication with your own specifications.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="emrSearchNoResults">
+                    <p>No medications found</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  </div>
-)}
+      )}
 
       {/* Vaccination Proof Modal */}
       {showVaccinationProof && (
