@@ -2051,7 +2051,7 @@ button:disabled {
 .emrToast {
   position: fixed;
   top: 40px;
-  left: 58%;
+  left: 50%;
   transform: translateX(-50%);
   z-index: 3000;
   animation: emrToastSlideDown 0.3s ease;
@@ -2660,6 +2660,7 @@ input:checked ~ .emrSwitchLabel {
   padding-bottom: 8px;
   border-bottom: 1px solid #e0e0e0;
 }
+
 
 .emrVisitDate {
   display: flex;
@@ -3509,3 +3510,530 @@ input:checked ~ .emrSwitchLabel {
   justify-content: center;
 }
 
+/* Appointment List Styles */
+.emrAppointmentList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.emrAppointmentItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: #ffffff;
+}
+
+.emrAppointmentItem:hover {
+  border-color: #3d67ee;
+  background-color: #f8f9ff;
+  transform: translateX(2px);
+}
+
+.emrAppointmentSelected {
+  border-color: #3d67ee;
+  background-color: #f0f4ff;
+  box-shadow: 0 2px 8px rgba(61, 103, 238, 0.15);
+}
+
+.emrAppointmentInfo {
+  flex: 1;
+}
+
+.emrAppointmentDate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.emrAppointmentDate strong {
+  color: #3d67ee;
+}
+
+.emrAppointmentDetails {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.emrAppointmentServices {
+  font-size: 11px;
+  color: #999;
+}
+
+.emrAppointmentCheck {
+  margin-left: 12px;
+}
+
+.emrNoAppointments {
+  text-align: center;
+  padding: 30px;
+  background-color: #f9f9f9;
+  border-radius: 10px;
+  color: #666;
+}
+
+/* Services Styles */
+.emrServicesContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.emrServiceItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: #ffffff;
+}
+
+.emrServiceItem:hover {
+  border-color: #3d67ee;
+  background-color: #f8f9ff;
+  transform: translateX(2px);
+}
+
+.emrServiceSelected {
+  border-color: #2e9e0c;
+  background-color: #e8f5e9;
+}
+
+.emrServiceInfo {
+  flex: 1;
+}
+
+.emrServiceName {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.emrServiceDescription {
+  font-size: 11px;
+  color: #999;
+}
+
+.emrServicePrice {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2e7d32;
+  margin-right: 12px;
+}
+
+.emrServicesTotal {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e0e0e0;
+  text-align: right;
+  font-size: 14px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .emrAppointmentItem {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .emrAppointmentCheck {
+    align-self: flex-end;
+  }
+  
+  .emrServiceItem {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  
+  .emrServicePrice {
+    margin-left: auto;
+  }
+}
+
+/* Services List Styles */
+.emrServicesList {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.emrServiceTag {
+  display: inline-block;
+  font-size: 12px;
+  color: #1565c0;
+}
+
+.emrServicesTotalPrice {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2e7d32;
+  background-color: #e8f5e9;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+/* Services Detailed Table */
+.emrServicesDetailedList {
+  margin-top: 8px;
+  overflow-x: auto;
+}
+
+.emrServicesTable {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: #ffffff;
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.emrServicesTable th {
+  text-align: left;
+  padding: 8px 12px;
+  background-color: #f5f5f5;
+  font-weight: 600;
+  color: #666;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.emrServicesTable td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  color: #333;
+}
+
+.emrServiceDescCell {
+  color: #666;
+  font-size: 11px;
+}
+
+.emrServicePriceCell {
+  font-weight: 500;
+  color: #2e7d32;
+  text-align: right;
+}
+
+.emrServicesTotalRow {
+  background-color: #f9f9f9;
+  font-weight: 600;
+}
+
+.emrServicesTotalRow td {
+  border-bottom: none;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .emrServicesTable {
+    font-size: 11px;
+  }
+  
+  .emrServicesTable th,
+  .emrServicesTable td {
+    padding: 6px 8px;
+  }
+  
+  .emrServiceDescCell {
+    max-width: 120px;
+    white-space: normal;
+    word-wrap: break-word;
+  }
+  
+  .emrServicesList {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .emrServicesTotalPrice {
+    margin-left: 0;
+    margin-top: 4px;
+  }
+}
+
+.emrCreateInvoiceBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, #2e9e0c, #1a5a06);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.emrCreateInvoiceBtn:hover {
+  background: linear-gradient(135deg, #1a5a06, #0f3a04);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(46, 158, 12, 0.3);
+}
+
+/* Service Item - Updated without price */
+.emrServiceItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: #ffffff;
+}
+
+.emrServiceItem:hover {
+  border-color: #3d67ee;
+  background-color: #f8f9ff;
+  transform: translateX(2px);
+}
+
+.emrServiceSelected {
+  border-color: #2e9e0c;
+  background-color: #e8f5e9;
+}
+
+.emrServiceInfo {
+  flex: 1;
+}
+
+.emrServiceName {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.emrServiceDescription {
+  font-size: 11px;
+  color: #999;
+}
+
+/* Medical History Tab Styles */
+.emrMedicalHistoryContainer {
+  padding: 8px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.emrMedicalHistoryFilters {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 12px;
+  background-color: #f8faff;
+  border-radius: 12px;
+}
+
+.emrFilterGroup {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.emrFilterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background-color: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 30px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.2s ease;
+}
+
+.emrFilterChip:hover {
+  border-color: #3d67ee;
+  color: #3d67ee;
+}
+
+.emrFilterChipActive {
+  background-color: #3d67ee;
+  border-color: #3d67ee;
+  color: white;
+}
+
+.emrMedicalHistoryContent {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.emrHistorySection {
+  background-color: #ffffff;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid #eef2ff;
+}
+
+.emrHistorySectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #f0f4ff, #e8edff);
+  border-bottom: 1px solid #e0e8f5;
+}
+
+.emrHistorySectionHeader svg {
+  color: #3d67ee;
+}
+
+.emrHistorySectionHeader h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+  flex: 1;
+}
+
+.emrHistoryCount {
+  font-size: 11px;
+  font-weight: 500;
+  color: #3d67ee;
+  background-color: white;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+.emrHistoryItems {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.emrHistoryCard {
+  background-color: #fafbff;
+  border: 1px solid #eef2ff;
+  border-radius: 12px;
+  padding: 16px;
+  transition: all 0.2s ease;
+}
+
+.emrHistoryCard:hover {
+  box-shadow: 0 4px 12px rgba(61, 103, 238, 0.1);
+  transform: translateY(-1px);
+}
+
+.emrHistoryCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eef2ff;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.emrHistoryCardTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.emrHistoryCardTitle strong {
+  font-size: 14px;
+  color: #3d67ee;
+}
+
+.emrHistoryDate {
+  font-size: 11px;
+  color: #8b9dc3;
+  background-color: #eef2ff;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.emrHistoryCardActions {
+  display: flex;
+  gap: 8px;
+}
+
+.emrHistoryCardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.emrHistoryDetail {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.emrHistoryLabel {
+  font-weight: 600;
+  color: #666;
+  min-width: 110px;
+}
+
+.emrHistoryEmpty {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.emrHistoryEmpty svg {
+  opacity: 0.4;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .emrHistoryDetail {
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .emrHistoryLabel {
+    min-width: auto;
+  }
+  
+  .emrHistoryCardHeader {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .emrFilterGroup {
+    width: 100%;
+    justify-content: center;
+  }
+}

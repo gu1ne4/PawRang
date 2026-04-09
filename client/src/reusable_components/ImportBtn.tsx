@@ -1,8 +1,8 @@
-import React, { useId, useRef, useState } from 'react';
-import { IoAlertCircleOutline, IoCloudUploadOutline, IoDownloadOutline } from 'react-icons/io5';
+import React, { useState, useRef } from 'react';
+import { IoCloudUploadOutline, IoDownloadOutline, IoAlertCircleOutline, IoCloseOutline } from 'react-icons/io5';
 
 interface ImportButtonProps {
-  onImport: (file: File) => boolean | void | Promise<boolean | void>;
+  onImport: (file: File) => void;
   buttonClassName?: string;
   iconClassName?: string;
   accept?: string;
@@ -20,9 +20,7 @@ const ImportButton: React.FC<ImportButtonProps> = ({
 }) => {
   const [showModal, setShowModal] = useState<boolean>(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isImporting, setIsImporting] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const fileInputId = useId();
 
   // Default template columns if none provided
   const defaultColumns = [
@@ -36,11 +34,6 @@ const ImportButton: React.FC<ImportButtonProps> = ({
   ];
 
   const columns = templateColumns || defaultColumns;
-  const supportedFormatsText = accept
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .join(', ');
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -49,24 +42,17 @@ const ImportButton: React.FC<ImportButtonProps> = ({
     }
   };
 
-  const handleImportSubmit = async () => {
+  const handleImportSubmit = () => {
     if (!selectedFile) {
       alert('Please select a file to import.');
       return;
     }
-
-    try {
-      setIsImporting(true);
-      const result = await onImport(selectedFile);
-      if (result !== false) {
-        setShowModal(false);
-        setSelectedFile(null);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
-      }
-    } finally {
-      setIsImporting(false);
+    onImport(selectedFile);
+    setShowModal(false);
+    setSelectedFile(null);
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -74,6 +60,10 @@ const ImportButton: React.FC<ImportButtonProps> = ({
     if (onDownloadTemplate) {
       onDownloadTemplate();
     }
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
   };
 
   return (
@@ -114,15 +104,15 @@ const ImportButton: React.FC<ImportButtonProps> = ({
                 <input
                   ref={fileInputRef}
                   type="file"
-                  id={fileInputId}
+                  id="fileUpload"
                   accept={accept}
                   onChange={handleFileSelect}
                   style={{ display: 'none' }}
                 />
-                <label htmlFor={fileInputId} className="invFileUploadLabel">
+                <label htmlFor="fileUpload" className="invFileUploadLabel" onClick={triggerFileInput}>
                   <IoCloudUploadOutline size={32} />
                   <span>{selectedFile ? selectedFile.name : 'Click to select file'}</span>
-                  <span className="invFileHint">Supported formats: {supportedFormatsText}</span>
+                  <span className="invFileHint">Supported formats: .csv, .xlsx, .xls</span>
                 </label>
               </div>
             </div>
@@ -138,11 +128,11 @@ const ImportButton: React.FC<ImportButtonProps> = ({
             </div>
             
             <div className="invModalFooter">
-              <button className="invCancelBtn" onClick={() => setShowModal(false)} disabled={isImporting}>
+              <button className="invCancelBtn" onClick={() => setShowModal(false)}>
                 Cancel
               </button>
-              <button className="invSubmitBtn" onClick={handleImportSubmit} disabled={isImporting}>
-                {isImporting ? 'Importing...' : 'Import'}
+              <button className="invSubmitBtn" onClick={handleImportSubmit}>
+                Import
               </button>
             </div>
           </div>

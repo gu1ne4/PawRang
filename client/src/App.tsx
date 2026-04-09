@@ -28,6 +28,8 @@ import GlobalInventoryOUT from './global_pages/GlobalInventoryOUT'
 import GlobalInventoryLogs from './global_pages/GlobalInventoryLogs'
 import GlobalInventoryArchive from './global_pages/GlobalInventoryArchive'
 import GlobalEMR from './global_pages/GlobalEMR'
+import AdminAnalytics from './admin_pages/AdminAnalytics';
+import GlobalBilling from './global_pages/GlobalBilling';
 
 function App() {
   return (
@@ -62,6 +64,7 @@ function App() {
         <Route path="/Audit" element={<Navigate to="/admin/audit" replace />} />
         <Route path="/Settings" element={<Navigate to="/admin/settings" replace />} />
 
+
         <Route path="/home" element={<Navigate to="/admin/dashboard" replace />} />
         <Route path="/accounts" element={<Navigate to="/admin/home" replace />} />
         <Route path="/useraccounts" element={<Navigate to="/admin/users" replace />} />
@@ -72,7 +75,10 @@ function App() {
         <Route path="/settings" element={<Navigate to="/admin/settings" replace />} />
 
         <Route path="/doctor/home" element={<DoctorHome />} />
-        <Route path="/doctor-home" element={<Navigate to="/doctor/home" replace />} />
+        <Route path="/doctor-home" element={<Navigate to="/doctor/home" replace />} />\
+
+        <Route path="/analytics" element={<AdminAnalytics />} />
+        <Route path="/billing" element={<GlobalBilling />} />
 
         <Route path="/register" element={<Registration />} />
         <Route path="/login" element={<Login />} />
