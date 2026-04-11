@@ -23,6 +23,7 @@ create table if not exists public.inventory_items (
   branch_id bigint not null references public.branches(branch_id),
   item_code text not null,
   item_name text not null,
+  unit text not null default 'Piece',
   category text not null check (
     category in (
       'Pet Supplies',
@@ -148,7 +149,8 @@ select
   end as "unitCost",
   iti.line_total as "totalCost",
   it.branch_id,
-  ii.inventory_item_id
+  ii.inventory_item_id,
+  ii.unit as unit
 from public.inventory_transaction_items iti
 join public.inventory_transactions it
   on it.inventory_transaction_id = iti.inventory_transaction_id

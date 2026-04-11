@@ -145,6 +145,40 @@ const ImportButton: React.FC<ImportButtonProps> = ({
                 {isImporting ? 'Importing...' : 'Import'}
               </button>
             </div>
+
+            {isImporting && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: 'rgba(255, 255, 255, 0.82)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  borderRadius: '16px',
+                  zIndex: 20,
+                }}
+              >
+                <div
+                  style={{
+                    width: '38px',
+                    height: '38px',
+                    border: '4px solid #d7e3f4',
+                    borderTopColor: '#1e3a5f',
+                    borderRadius: '50%',
+                    animation: 'spin 0.9s linear infinite',
+                  }}
+                />
+                <div style={{ fontWeight: 600, color: '#1e3a5f', fontSize: '15px' }}>
+                  Loading inventory import...
+                </div>
+                <style>
+                  {`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}
+                </style>
+              </div>
+            )}
           </div>
         </div>
       )}

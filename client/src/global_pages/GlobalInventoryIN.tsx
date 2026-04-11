@@ -37,8 +37,11 @@ interface CurrentUser {
 interface Product {
   id?: number;
   pk?: number;
+  branchId?: number;
+  branchName?: string;
   code: string;
   item: string;
+  unit?: string;
   category: string;
   basePrice: number;
   sellingPrice: number;
@@ -56,6 +59,7 @@ interface InventoryTransaction {
   id: number;
   productCode: string;
   productName: string;
+  unit?: string;
   quantity: number;
   unitCost: number;
   totalCost: number;
@@ -77,6 +81,7 @@ interface ModalConfig {
 
 interface FormErrors {
   item?: string;
+  unit?: string;
   basePrice?: string;
   sellingPrice?: string;
   expirationDate?: string;
@@ -88,6 +93,7 @@ interface BulkItem {
   productId: number;
   productCode: string;
   productName: string;
+  unit?: string;
   quantity: number;
   unitCost: number;
   availableStock: number;
@@ -96,6 +102,23 @@ interface BulkItem {
 type SortOption = 'stockLowToHigh' | 'stockHighToLow' | 'expirationEarliest' | 'expirationLatest' | 'alphabeticalAZ' | 'alphabeticalZA';
 type ViewMode = 'list' | 'add' | 'edit';
 type Category = 'Pet Supplies' | 'Deworming' | 'Vitamins' | 'Food' | 'Accessories' | 'Medication';
+type UnitOption =
+  | 'Capsule'
+  | 'Tablet'
+  | 'Bottle'
+  | 'Piece'
+  | 'Pack'
+  | 'Box'
+  | 'Vial'
+  | 'Tube'
+  | 'Sachet'
+  | 'Can'
+  | 'Bag'
+  | 'mL'
+  | 'L'
+  | 'Gram'
+  | 'Kg'
+  | 'Others';
 
 const SORT_OPTIONS = [
   { value: 'stockLowToHigh', label: 'Lowest to Highest Stock' },
@@ -107,11 +130,16 @@ const SORT_OPTIONS = [
 ];
 
 const CATEGORIES: Category[] = ['Pet Supplies', 'Deworming', 'Vitamins', 'Food', 'Accessories', 'Medication'];
+const UNIT_OPTIONS: UnitOption[] = ['Capsule', 'Tablet', 'Bottle', 'Piece', 'Pack', 'Box', 'Vial', 'Tube', 'Sachet', 'Can', 'Bag', 'mL', 'L', 'Gram', 'Kg', 'Others'];
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
 const API_URL = 'http://localhost:5000';
 const BRANCH_ID_BY_NAME: Record<string, number> = {
   Taguig: 1,
   'Las Pinas': 2,
+};
+const BRANCH_NAME_BY_ID: Record<number, string> = {
+  1: 'Taguig',
+  2: 'Las Pinas',
 };
 
 const MOCK_PRODUCTS: Product[] = [
@@ -332,9 +360,20 @@ const GlobalInventoryIN: React.FC = () => {
 
   const [selectedBranch, setSelectedBranch] = useState<string>('All');
 
+  const getBranchLabel = (branchId?: number, branchName?: string): string => {
+    if (branchName?.trim()) return branchName;
+    if (typeof branchId === 'number' && BRANCH_NAME_BY_ID[branchId]) {
+      return BRANCH_NAME_BY_ID[branchId];
+    }
+    if (selectedBranch !== 'All') return selectedBranch;
+    return 'Unknown';
+  };
+
   // Form States for Product
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formItem, setFormItem] = useState<string>('');
+  const [formUnit, setFormUnit] = useState<UnitOption | ''>('');
+  const [formCustomUnit, setFormCustomUnit] = useState<string>('');
   const [formCategory, setFormCategory] = useState<Category | ''>('');
   const [formBasePrice, setFormBasePrice] = useState<string>('');
   const [formSellingPrice, setFormSellingPrice] = useState<string>('');
@@ -350,7 +389,8 @@ const GlobalInventoryIN: React.FC = () => {
 
   // Character counts
   const [charCounts, setCharCounts] = useState({
-    item: 0
+    item: 0,
+    unit: 0
   });
 
   // Form Errors
@@ -358,6 +398,7 @@ const GlobalInventoryIN: React.FC = () => {
 
   // Modal States
   const [modalVisible, setModalVisible] = useState<boolean>(false);
+  const [isImportProcessing, setIsImportProcessing] = useState<boolean>(false);
   const [modalConfig, setModalConfig] = useState<ModalConfig>({
     type: 'info',
     title: '',
@@ -377,6 +418,32 @@ const GlobalInventoryIN: React.FC = () => {
     setModalConfig({ type, title, message, onConfirm, onCancel, showCancel });
     setModalVisible(true);
   };
+
+  const buildDuplicateImportMessage = (
+    duplicateRows: {
+      row: { item: string; stockCount: number };
+      currentStock: number;
+      mergedStock: number;
+    }[],
+  ): React.ReactNode => (
+    <div style={{ textAlign: 'left' }}>
+      <p style={{ marginBottom: '12px' }}>
+        Some imported products already exist. If you continue, the imported stock will be added to the
+        current stock for those matching items.
+      </p>
+      <div style={{ maxHeight: '220px', overflowY: 'auto', marginBottom: '12px' }}>
+        {duplicateRows.map(({ row, currentStock, mergedStock }, index) => (
+          <div key={`${row.item}-${index}`} style={{ marginBottom: '10px' }}>
+            <strong>{row.item}</strong>
+            <div>Current stock: {currentStock}</div>
+            <div>Imported stock: {row.stockCount}</div>
+            <div>Total after import: {mergedStock}</div>
+          </div>
+        ))}
+      </div>
+      <p>Do you want to continue with the import?</p>
+    </div>
+  );
   
   const loadCurrentUser = async (): Promise<void> => {
     try {
@@ -437,7 +504,7 @@ const GlobalInventoryIN: React.FC = () => {
     return `${month}/${day}/${year}`;
   };
 
-      const handleImport = async (file: File): Promise<boolean> => {
+  const handleImport = async (file: File): Promise<boolean> => {
     const branchId = BRANCH_ID_BY_NAME[selectedBranch];
     if (!branchId || selectedBranch === 'All') {
       showAlert('error', 'Select Branch', 'Please select a specific branch before importing inventory.');
@@ -445,82 +512,164 @@ const GlobalInventoryIN: React.FC = () => {
     }
 
     try {
-      showAlert('info', 'Processing', `Validating and importing ${file.name}...`);
       const importedRows = await parsePetShieldInventoryTemplate(file);
 
-      const normalizeKey = (item: string, category: string, expirationDate?: string, expirationNA?: boolean) =>
+      const normalizeKey = (item: string, category: string, unit: string, basePrice: number, expirationDate?: string, expirationNA?: boolean) =>
         [
           item.trim().toLowerCase().replace(/\s+/g, ' '),
           category.trim(),
+          unit.trim().toLowerCase(),
+          basePrice.toFixed(2),
           expirationNA ? 'na' : (expirationDate || '').trim(),
         ].join('|');
 
-      let createdCount = 0;
-      let updatedCount = 0;
-      const rowErrors: string[] = [];
       const currentProducts = [...products];
 
-      for (const row of importedRows) {
-        const matchingProduct = currentProducts.find((product) =>
-          normalizeKey(product.item, product.category, product.expirationDate, product.expirationNA) ===
-          normalizeKey(row.item, row.category, row.expirationDate, row.expirationNA)
-        );
+      const duplicateRows = importedRows
+        .map((row) => {
+          const matchingProduct = currentProducts.find((product) =>
+            normalizeKey(product.item, product.category, product.unit || 'Piece', product.basePrice, product.expirationDate, product.expirationNA) ===
+            normalizeKey(row.item, row.category, row.unit, row.basePrice, row.expirationDate, row.expirationNA)
+          );
 
-        const payload = {
-          branch_id: branchId,
-          code: matchingProduct?.code || '',
-          item: row.item,
-          category: row.category,
-          basePrice: row.basePrice,
-          sellingPrice: row.sellingPrice,
-          stockCount: row.stockCount,
-          expirationDate: row.expirationNA ? '' : row.expirationDate,
-          expirationNA: row.expirationNA,
-          criticalStockLevel: matchingProduct?.criticalStockLevel || 10,
-          userId: currentUser?.id || currentUser?.pk,
-        };
+          if (!matchingProduct) return null;
+          return {
+            row,
+            matchingProduct,
+            currentStock: matchingProduct.stockCount || 0,
+            mergedStock: (matchingProduct.stockCount || 0) + row.stockCount,
+          };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
 
-        const endpoint = matchingProduct
-          ? `${API_URL}/api/inventory/items/${matchingProduct.id || matchingProduct.pk}`
-          : `${API_URL}/api/inventory/items`;
-        const method = matchingProduct ? 'PUT' : 'POST';
+      const processImport = async (): Promise<boolean> => {
+        let createdCount = 0;
+        let updatedCount = 0;
+        const rowErrors: string[] = [];
 
-        const response = await fetch(endpoint, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const result = await response.json().catch(() => ({}));
+        setIsImportProcessing(true);
+        try {
+          for (const row of importedRows) {
+            let matchingProduct = currentProducts.find((product) =>
+              normalizeKey(product.item, product.category, product.unit || 'Piece', product.basePrice, product.expirationDate, product.expirationNA) ===
+              normalizeKey(row.item, row.category, row.unit, row.basePrice, row.expirationDate, row.expirationNA)
+            );
 
-        if (!response.ok) {
-          rowErrors.push(`Row ${row.sourceRow}: ${result.error || `Failed to ${matchingProduct ? 'update' : 'create'} product`}`);
-          continue;
+            if (!matchingProduct) {
+              const createResponse = await fetch(`${API_URL}/api/inventory/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  branch_id: branchId,
+                  code: '',
+                  item: row.item,
+                  unit: row.unit,
+                  category: row.category,
+                  basePrice: row.basePrice,
+                  sellingPrice: row.sellingPrice,
+                  stockCount: 0,
+                  expirationDate: row.expirationNA ? '' : row.expirationDate,
+                  expirationNA: row.expirationNA,
+                  criticalStockLevel: 10,
+                  userId: currentUser?.id || currentUser?.pk,
+                }),
+              });
+              const createResult = await createResponse.json().catch(() => ({}));
+
+              if (!createResponse.ok) {
+                rowErrors.push(`Row ${row.sourceRow}: ${createResult.error || 'Failed to create product'}`);
+                continue;
+              }
+
+              matchingProduct = {
+                id: createResult.item?.id,
+                pk: createResult.item?.pk,
+                code: createResult.item?.code || '',
+                item: createResult.item?.item || row.item,
+                unit: createResult.item?.unit || row.unit,
+                category: createResult.item?.category || row.category,
+                basePrice: Number(createResult.item?.basePrice || row.basePrice),
+                sellingPrice: Number(createResult.item?.sellingPrice || row.sellingPrice),
+                stockCount: Number(createResult.item?.stockCount || 0),
+                stockStatus: createResult.item?.stockStatus || 'Average Stock',
+                expirationDate: createResult.item?.expirationDate || (row.expirationNA ? 'N/A' : row.expirationDate),
+                expirationNA: Boolean(createResult.item?.expirationNA ?? row.expirationNA),
+                criticalStockLevel: Number(createResult.item?.criticalStockLevel || 10),
+              };
+              currentProducts.push(matchingProduct);
+              createdCount += 1;
+            }
+
+            if (row.stockCount > 0) {
+              const stockInResponse = await fetch(`${API_URL}/api/inventory/stock-in`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  branch_id: branchId,
+                  supplier: 'Inventory Template Import',
+                  reason: 'Imported Inventory Template',
+                  notes: `Imported from template file: ${file.name}`,
+                  processedBy: currentUser?.id || currentUser?.pk,
+                  items: [
+                    {
+                      productId: matchingProduct.id || matchingProduct.pk,
+                      quantity: row.stockCount,
+                      unitCost: row.basePrice,
+                    },
+                  ],
+                }),
+              });
+              const stockInResult = await stockInResponse.json().catch(() => ({}));
+
+              if (!stockInResponse.ok) {
+                rowErrors.push(`Row ${row.sourceRow}: ${stockInResult.error || 'Failed to record imported stock'}`);
+                continue;
+              }
+
+              matchingProduct.stockCount = (matchingProduct.stockCount || 0) + row.stockCount;
+              updatedCount += 1;
+            }
+          }
+
+          await fetchProducts();
+
+          if (rowErrors.length > 0) {
+            showAlert(
+              'error',
+              'Import Completed With Issues',
+              `Created: ${createdCount}, Updated: ${updatedCount}\n\n${rowErrors.join('\n')}`
+            );
+            return true;
+          }
+
+          showAlert(
+            'success',
+            'Import Successful',
+            `Inventory import completed. Created: ${createdCount}, Updated: ${updatedCount}`
+          );
+          return true;
+        } finally {
+          setIsImportProcessing(false);
         }
+      };
 
-        if (matchingProduct) {
-          updatedCount += 1;
-        } else {
-          createdCount += 1;
-        }
-      }
-
-      await fetchProducts();
-
-      if (rowErrors.length > 0) {
-        showAlert(
-          'error',
-          'Import Completed With Issues',
-          `Created: ${createdCount}, Updated: ${updatedCount}\n\n${rowErrors.join('\n')}`
-        );
+      if (duplicateRows.length > 0) {
+        setTimeout(() => {
+          showAlert(
+            'confirm',
+            'Merge Existing Products',
+            buildDuplicateImportMessage(duplicateRows),
+            () => {
+              void processImport();
+            },
+            undefined,
+            true
+          );
+        }, 0);
         return true;
       }
 
-      showAlert(
-        'success',
-        'Import Successful',
-        `Inventory import completed. Created: ${createdCount}, Updated: ${updatedCount}`
-      );
-      return true;
+      return await processImport();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to import inventory data.';
       showAlert('error', 'Import Failed', message);
@@ -655,6 +804,7 @@ useEffect(() => {
         productId: id,
         productCode: product?.code || '',
         productName: product?.item || '',
+        unit: product?.unit || 'Piece',
         quantity: 0,
         unitCost: product?.basePrice || 0,
         availableStock: product?.stockCount || 0
@@ -809,6 +959,8 @@ const saveTransaction = async () => {
   // Reset product form
   const resetProductForm = (): void => {
     setFormItem('');
+    setFormUnit('');
+    setFormCustomUnit('');
     setFormCategory('');
     setFormBasePrice('');
     setFormSellingPrice('');
@@ -817,7 +969,7 @@ const saveTransaction = async () => {
     setFormCriticalStockLevel('10');
     setFormUseCriticalStock(false);
     setEditingId(null);
-    setCharCounts({ item: 0 });
+    setCharCounts({ item: 0, unit: 0 });
     setFormErrors({});
   };
 
@@ -826,11 +978,12 @@ const saveTransaction = async () => {
     let hasUnsavedChanges = false;
     
     if (viewMode === 'add') {
-      hasUnsavedChanges = !!(formItem || formBasePrice || formSellingPrice || formExpirationDate || formCategory);
+      hasUnsavedChanges = !!(formItem || formUnit || formCustomUnit || formBasePrice || formSellingPrice || formExpirationDate || formCategory);
     } else if (viewMode === 'edit') {
       const original = products.find(p => p.id === editingId || p.pk === editingId);
       if (original) {
         if (formItem !== original.item ||
+            getResolvedFormUnit() !== (original.unit || 'Piece') ||
             formCategory !== original.category ||
             parseFloat(formBasePrice) !== original.basePrice ||
             parseFloat(formSellingPrice) !== original.sellingPrice ||
@@ -860,6 +1013,11 @@ const saveTransaction = async () => {
         if (!value.trim()) return 'Item name is required';
         if (value.length < 3) return 'Item name must be at least 3 characters';
         if (value.length > 50) return 'Item name must not exceed 50 characters';
+        return '';
+
+      case 'unit':
+        if (!value.trim()) return 'Unit is required';
+        if (value.length > 30) return 'Unit must not exceed 30 characters';
         return '';
         
       case 'category':
@@ -917,10 +1075,18 @@ const saveTransaction = async () => {
     }
   };
 
+  const getResolvedFormUnit = (): string => {
+    if (formUnit === 'Others') {
+      return formCustomUnit.trim();
+    }
+    return formUnit.trim();
+  };
+
   const validateProductForm = (): boolean => {
     const errors: FormErrors = {};
     
     errors.item = validateField('item', formItem);
+    errors.unit = validateField('unit', getResolvedFormUnit());
     errors.category = validateField('category', formCategory as string);
     errors.basePrice = validateField('basePrice', formBasePrice);
     errors.sellingPrice = validateField('sellingPrice', formSellingPrice);
@@ -942,6 +1108,11 @@ const saveTransaction = async () => {
       return;
     }
 
+    if (viewMode === 'add' && (!BRANCH_ID_BY_NAME[selectedBranch] || selectedBranch === 'All')) {
+      showAlert('error', 'Select Branch', 'Please select a specific branch before creating a product.');
+      return;
+    }
+
     const existingProduct = viewMode === 'edit' ? products.find(p => p.id === editingId || p.pk === editingId) : null;
     const criticalLevel = formUseCriticalStock ? parseInt(formCriticalStockLevel) : 10;
     const stockCount = existingProduct?.stockCount || 0;
@@ -952,6 +1123,7 @@ const saveTransaction = async () => {
       code: viewMode === 'add' ? '' : (existingProduct?.code || ''),
       item: formItem,
       category: formCategory as Category,
+      unit: getResolvedFormUnit(),
       basePrice: parseFloat(formBasePrice),
       sellingPrice: parseFloat(formSellingPrice),
       stockCount: stockCount,
@@ -1308,7 +1480,14 @@ const saveTransaction = async () => {
                   </button>
                   
                   {/* Add Product Button */}
-                  <button className="invBlackBtn" onClick={() => { resetProductForm(); setViewMode('add'); }}>
+                  <button className="invBlackBtn" onClick={() => {
+                    if (!BRANCH_ID_BY_NAME[selectedBranch] || selectedBranch === 'All') {
+                      showAlert('error', 'Select Branch', 'Please select a specific branch before creating a product.');
+                      return;
+                    }
+                    resetProductForm();
+                    setViewMode('add');
+                  }}>
                     <IoAdd /> Add Product
                   </button>
                 </div>
@@ -1333,7 +1512,9 @@ const saveTransaction = async () => {
                           />
                         </th>
                         <th style={{ width: '150px' }}>Code</th>
+                        <th>Branch</th>
                         <th>Item</th>
+                        <th>Unit</th>
                         <th>Category</th>
                         <th>Base Price</th>
                         <th>Selling Price</th>
@@ -1374,7 +1555,9 @@ const saveTransaction = async () => {
                                 />
                               </td>
                               <td>{product.code}</td>
+                              <td>{getBranchLabel(product.branchId, product.branchName)}</td>
                               <td>{product.item}</td>
+                              <td>{product.unit || 'Piece'}</td>
                               <td>{product.category}</td>
                               <td>₱{product.basePrice.toLocaleString()}</td>
                               <td>₱{product.sellingPrice.toLocaleString()}</td>
@@ -1406,7 +1589,7 @@ const saveTransaction = async () => {
                         })
                       ) : (
                         <tr>
-                          <td colSpan={9} className="invNoData">
+                          <td colSpan={10} className="invNoData">
                             No products found
                           </td>
                         </tr>
@@ -1466,6 +1649,53 @@ const saveTransaction = async () => {
                     {formErrors.item && <div className="invErrorText">{formErrors.item}</div>}
                   </div>
 
+                  <div className="invFormGroup">
+                    <label>Unit <span className="invRequired">*</span></label>
+                    <select
+                      value={formUnit}
+                      onChange={(e) => {
+                        const selectedUnit = e.target.value as UnitOption | '';
+                        setFormUnit(selectedUnit);
+                        if (selectedUnit !== 'Others') {
+                          setFormCustomUnit('');
+                          setCharCounts((prev) => ({ ...prev, unit: 0 }));
+                          setFormErrors({ ...formErrors, unit: validateField('unit', selectedUnit) });
+                        } else {
+                          setFormErrors({ ...formErrors, unit: validateField('unit', formCustomUnit) });
+                        }
+                      }}
+                      className={`invFormSelect ${formErrors.unit ? 'invError' : ''}`}
+                    >
+                      <option value="">Select a unit</option>
+                      {UNIT_OPTIONS.map((unitOption) => (
+                        <option key={unitOption} value={unitOption}>
+                          {unitOption === 'Others' ? 'Others, please specify' : unitOption}
+                        </option>
+                      ))}
+                    </select>
+                    {formUnit === 'Others' && (
+                      <>
+                        <input
+                          type="text"
+                          value={formCustomUnit}
+                          onChange={(e) => {
+                            setFormCustomUnit(e.target.value);
+                            setCharCounts({ ...charCounts, unit: e.target.value.length });
+                            setFormErrors({ ...formErrors, unit: validateField('unit', e.target.value) });
+                          }}
+                          maxLength={30}
+                          placeholder="Specify custom unit"
+                          className={`invFormInput ${formErrors.unit ? 'invError' : ''}`}
+                          style={{ marginTop: '10px' }}
+                        />
+                        <div className="invCharCount">{charCounts.unit}/30</div>
+                      </>
+                    )}
+                    {formErrors.unit && <div className="invErrorText">{formErrors.unit}</div>}
+                  </div>
+                </div>
+
+                <div className="invFormRow">
                   <div className="invFormGroup">
                     <label>Category <span className="invRequired">*</span></label>
                     <select 
@@ -1932,6 +2162,29 @@ const saveTransaction = async () => {
                 Import
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isImportProcessing && (
+        <div className="invModalOverlay">
+          <div className="invAlertModal" style={{ textAlign: 'center' }}>
+            <div
+              style={{
+                width: '42px',
+                height: '42px',
+                border: '4px solid #d7e3f4',
+                borderTopColor: '#1e3a5f',
+                borderRadius: '50%',
+                margin: '0 auto 18px',
+                animation: 'spin 0.9s linear infinite',
+              }}
+            />
+            <h3 className="invAlertTitle">Importing Inventory</h3>
+            <div className="invAlertMessage">Please wait while your inventory items are being updated.</div>
+            <style>
+              {`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}
+            </style>
           </div>
         </div>
       )}
