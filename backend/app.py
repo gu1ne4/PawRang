@@ -657,6 +657,677 @@ def normalize_medical_information_record(record):
     }
 
 
+def parse_emr_date(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, date):
+        return value
+
+    raw = str(value).strip()
+    if not raw:
+        return None
+
+    raw_date = raw[:10] if "T" in raw else raw
+    for fmt in ("%Y-%m-%d", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(raw_date, fmt).date()
+        except ValueError:
+            continue
+
+    return None
+
+
+def normalize_emr_date(value):
+    parsed = parse_emr_date(value)
+    return parsed.strftime("%Y-%m-%d") if parsed else None
+
+
+def format_emr_display_date(value):
+    parsed = parse_emr_date(value)
+    return parsed.strftime("%m/%d/%Y") if parsed else ""
+
+
+def calculate_emr_pet_age(birthday, fallback_age=""):
+    parsed_birthday = parse_emr_date(birthday)
+    if not parsed_birthday:
+        return fallback_age or ""
+
+    today = date.today()
+    if parsed_birthday > today:
+        return fallback_age or ""
+
+    years = today.year - parsed_birthday.year
+    months = today.month - parsed_birthday.month
+    days = today.day - parsed_birthday.day
+
+    if days < 0:
+        months -= 1
+        if today.month == 1:
+            previous_month = date(today.year - 1, 12, 1)
+        else:
+            previous_month = date(today.year, today.month - 1, 1)
+        if previous_month.month == 12:
+            next_month = date(previous_month.year + 1, 1, 1)
+        else:
+            next_month = date(previous_month.year, previous_month.month + 1, 1)
+        days += (next_month - previous_month).days
+
+    if months < 0:
+        years -= 1
+        months += 12
+
+    if years > 0:
+        return f"{years} year{'s' if years != 1 else ''}"
+    if months > 0:
+        return f"{months} month{'s' if months != 1 else ''}"
+    if days > 1:
+        return f"{days} days old"
+    if days == 1:
+        return "1 day old"
+    return "Born today"
+
+
+def parse_emr_float(value):
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def format_pet_patient_id(pet_id):
+    try:
+        return f"PET-{int(pet_id):03d}"
+    except (TypeError, ValueError):
+        return f"PET-{pet_id}" if pet_id not in (None, "") else ""
+
+
+def coerce_optional_bool(value):
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes", "y"}:
+        return True
+    if normalized in {"false", "0", "no", "n"}:
+        return False
+    return None
+
+
+def build_emr_default_visit(data):
+    data = data or {}
+    pet_details = data.get("petDetails") or {}
+    visit_date = normalize_emr_date(data.get("lastVisit")) or datetime.utcnow().date().strftime("%Y-%m-%d")
+    veterinarian = data.get("veterinarian") or pet_details.get("doctorAssigned") or ""
+    reason = data.get("reason") or pet_details.get("reasonForVisit") or ""
+    doctor_remarks = pet_details.get("doctorRemarks") or data.get("doctorRemarks") or ""
+    weight_value = parse_emr_float(pet_details.get("weight"))
+    weight_unit = (pet_details.get("weightUnit") or "kg").strip() if pet_details.get("weightUnit") else "kg"
+
+    if not any([veterinarian, reason, doctor_remarks, weight_value is not None]):
+        return None
+
+    return {
+        "id": "",
+        "date": visit_date,
+        "time": "",
+        "veterinarian": veterinarian,
+        "reason": reason,
+        "doctorRemarks": doctor_remarks,
+        "weight": weight_value or 0,
+        "weightUnit": weight_unit if weight_unit in {"kg", "lbs"} else "kg",
+        "sameAsLastWeight": False,
+        "neutered": coerce_optional_bool(pet_details.get("neutered")),
+        "vaccinated": coerce_optional_bool(pet_details.get("vaccinated")),
+        "deceased": coerce_optional_bool(pet_details.get("deceased")),
+        "clinicalExam": {
+            "length": 0,
+            "lengthUnit": "cm",
+            "temperature": 0,
+            "tempUnit": "C",
+            "heartRate": "",
+            "breathingRate": "",
+            "additionalFindings": "",
+        },
+        "labResults": [],
+        "prescriptions": [],
+        "selectedServices": [],
+    }
+
+
+def get_emr_search_results():
+    pets = execute_with_retry(
+        lambda: supabase_admin.table("pet_profile").select("*").order("created_at", desc=True).execute(),
+        context="Fetch EMR search pets"
+    ).data or []
+    owners = execute_with_retry(
+        lambda: supabase_admin.table("patient_account").select("*").execute(),
+        context="Fetch EMR search owners"
+    ).data or []
+    records = execute_with_retry(
+        lambda: supabase_admin.table("medical_records").select("*").execute(),
+        context="Fetch EMR search medical records"
+    ).data or []
+
+    owners_by_id = {str(item.get("id")): item for item in owners}
+    records_by_pet_id = {str(item.get("pet_id")): item for item in records if item.get("pet_id") not in (None, "")}
+
+    search_results = []
+    for pet in pets:
+        pet_id = pet.get("pet_id")
+        owner = owners_by_id.get(str(pet.get("owner_id")), {})
+        medical_record = records_by_pet_id.get(str(pet_id), {})
+
+        search_results.append({
+            "id": pet_id,
+            "petId": pet_id,
+            "petName": pet.get("pet_name") or "",
+            "ownerName": get_profile_display_name(owner) or "Unknown Owner",
+            "ownerFirstName": owner.get("firstName") or owner.get("first_name") or "",
+            "ownerLastName": owner.get("lastName") or owner.get("last_name") or "",
+            "ownerUsername": owner.get("username") or "",
+            "species": pet.get("pet_species") or "",
+            "breed": pet.get("pet_breed") or "",
+            "ownerEmail": owner.get("email") or "",
+            "ownerContact": owner.get("contact_number") or "",
+            "gender": pet.get("pet_gender") or "",
+            "dateOfBirth": normalize_emr_date(pet.get("birthday")) or "",
+            "weightKg": pet.get("weight_kg") or "",
+            "colorMarkings": pet.get("color_markings") or "",
+            "neutered": bool(pet.get("is_neutered")) if pet.get("is_neutered") is not None else False,
+            "vaccinated": bool(pet.get("is_vaccinated")),
+            "vaccinationProof": ((pet.get("vaccination_urls") or [None])[0]),
+            "image": pet.get("pet_photo_url") or "",
+            "hasExistingRecord": medical_record.get("medical_record_id") not in (None, ""),
+            "existingRecordId": medical_record.get("medical_record_id"),
+            "deceased": bool(pet.get("is_deceased")),
+        })
+
+    return search_results
+
+
+def get_emr_records(record_ids=None):
+    records_query = supabase_admin.table("medical_records").select("*")
+    if record_ids:
+        records_query = records_query.in_("medical_record_id", list(record_ids))
+
+    medical_records = execute_with_retry(
+        lambda: records_query.execute(),
+        context="Fetch EMR records"
+    ).data or []
+
+    if not medical_records:
+        return []
+
+    medical_record_ids = [item.get("medical_record_id") for item in medical_records if item.get("medical_record_id") not in (None, "")]
+    pet_ids = [item.get("pet_id") for item in medical_records if item.get("pet_id") not in (None, "")]
+
+    visits_query = supabase_admin.table("medical_record_visits").select("*")
+    if medical_record_ids:
+        visits_query = visits_query.in_("medical_record_id", medical_record_ids)
+    visit_rows = execute_with_retry(
+        lambda: visits_query.execute(),
+        context="Fetch EMR visits"
+    ).data or []
+
+    visit_ids = [item.get("medical_record_visit_id") for item in visit_rows if item.get("medical_record_visit_id") not in (None, "")]
+
+    def fetch_child_rows(table_name, context_name):
+        if not visit_ids:
+            return []
+        query = supabase_admin.table(table_name).select("*").in_("medical_record_visit_id", visit_ids)
+        return execute_with_retry(lambda: query.execute(), context=context_name).data or []
+
+    prescription_rows = fetch_child_rows("medical_record_prescriptions", "Fetch EMR prescriptions")
+    lab_result_rows = fetch_child_rows("medical_record_lab_results", "Fetch EMR lab results")
+    visit_service_rows = fetch_child_rows("medical_record_visit_services", "Fetch EMR visit services")
+    vaccination_rows = fetch_child_rows("medical_record_vaccinations", "Fetch EMR vaccinations")
+
+    pets_query = supabase_admin.table("pet_profile").select("*")
+    if pet_ids:
+        pets_query = pets_query.in_("pet_id", pet_ids)
+    pet_rows = execute_with_retry(
+        lambda: pets_query.execute(),
+        context="Fetch EMR pet profiles"
+    ).data or []
+
+    owner_ids = [item.get("owner_id") for item in pet_rows if item.get("owner_id") not in (None, "")]
+    owners = []
+    if owner_ids:
+        owners = execute_with_retry(
+            lambda: supabase_admin.table("patient_account").select("*").in_("id", owner_ids).execute(),
+            context="Fetch EMR owners"
+        ).data or []
+
+    pets_by_id = {str(item.get("pet_id")): item for item in pet_rows}
+    owners_by_id = {str(item.get("id")): item for item in owners}
+
+    visits_by_record_id = {}
+    for visit in visit_rows:
+        record_id = str(visit.get("medical_record_id"))
+        visits_by_record_id.setdefault(record_id, []).append(visit)
+
+    def append_child_row(bucket, row):
+        visit_id = str(row.get("medical_record_visit_id"))
+        bucket.setdefault(visit_id, []).append(row)
+
+    prescriptions_by_visit_id = {}
+    lab_results_by_visit_id = {}
+    services_by_visit_id = {}
+    vaccinations_by_visit_id = {}
+
+    for row in prescription_rows:
+        append_child_row(prescriptions_by_visit_id, row)
+    for row in lab_result_rows:
+        append_child_row(lab_results_by_visit_id, row)
+    for row in visit_service_rows:
+        append_child_row(services_by_visit_id, row)
+    for row in vaccination_rows:
+        append_child_row(vaccinations_by_visit_id, row)
+
+    def visit_sort_key(visit):
+        parsed_date = parse_emr_date(visit.get("visit_date")) or date.min
+        normalized_time = normalize_db_time(visit.get("visit_time")) or "00:00:00"
+        return (parsed_date.isoformat(), normalized_time, int(visit.get("medical_record_visit_id") or 0))
+
+    normalized_records = []
+    for medical_record in medical_records:
+        record_id = medical_record.get("medical_record_id")
+        pet = pets_by_id.get(str(medical_record.get("pet_id")), {})
+        owner = owners_by_id.get(str(pet.get("owner_id")), {})
+
+        visits = sorted(visits_by_record_id.get(str(record_id), []), key=visit_sort_key)
+        normalized_visits = []
+
+        for visit in visits:
+            visit_id = str(visit.get("medical_record_visit_id"))
+            visit_prescriptions = sorted(
+                prescriptions_by_visit_id.get(visit_id, []),
+                key=lambda item: (int(item.get("sort_order") or 0), int(item.get("medical_record_prescription_id") or 0))
+            )
+            visit_lab_results = sorted(
+                lab_results_by_visit_id.get(visit_id, []),
+                key=lambda item: (int(item.get("sort_order") or 0), int(item.get("medical_record_lab_result_id") or 0))
+            )
+            visit_services = sorted(
+                services_by_visit_id.get(visit_id, []),
+                key=lambda item: (int(item.get("sort_order") or 0), int(item.get("medical_record_visit_service_id") or 0))
+            )
+            visit_vaccinations = sorted(
+                vaccinations_by_visit_id.get(visit_id, []),
+                key=lambda item: (int(item.get("sort_order") or 0), int(item.get("medical_record_vaccination_id") or 0))
+            )
+
+            clinical_exam = {
+                "length": parse_emr_float(visit.get("body_length_value")) or 0,
+                "lengthUnit": visit.get("body_length_unit") or "cm",
+                "temperature": parse_emr_float(visit.get("temperature_value")) or 0,
+                "tempUnit": visit.get("temperature_unit") or "C",
+                "heartRate": visit.get("heart_rate") or "",
+                "breathingRate": visit.get("breathing_rate") or "",
+                "additionalFindings": visit.get("additional_findings") or "",
+            }
+            has_clinical_exam = any([
+                parse_emr_float(visit.get("body_length_value")) is not None,
+                parse_emr_float(visit.get("temperature_value")) is not None,
+                clinical_exam["heartRate"],
+                clinical_exam["breathingRate"],
+                clinical_exam["additionalFindings"],
+            ])
+
+            normalized_visit = {
+                "id": str(visit.get("medical_record_visit_id") or ""),
+                "date": format_emr_display_date(visit.get("visit_date")),
+                "time": format_display_time(visit.get("visit_time")) or "",
+                "veterinarian": visit.get("veterinarian_name") or "",
+                "reason": visit.get("reason") or "",
+                "doctorRemarks": visit.get("doctor_remarks") or "",
+                "weight": parse_emr_float(visit.get("weight_value")) or 0,
+                "weightUnit": visit.get("weight_unit") or "kg",
+                "sameAsLastWeight": bool(visit.get("same_as_last_weight")),
+                "neutered": bool(visit.get("pet_state_neutered")) if visit.get("pet_state_neutered") is not None else False,
+                "vaccinated": bool(visit.get("pet_state_vaccinated")) if visit.get("pet_state_vaccinated") is not None else False,
+                "deceased": bool(visit.get("pet_state_deceased")) if visit.get("pet_state_deceased") is not None else False,
+                "clinicalExam": clinical_exam if has_clinical_exam else None,
+                "labResults": [
+                    {
+                        "id": str(item.get("medical_record_lab_result_id") or ""),
+                        "testType": item.get("test_type") or "",
+                        "fileName": item.get("file_name") or "",
+                        "fileUrl": item.get("file_url") or "",
+                        "fileData": item.get("file_url") or "",
+                        "interpretation": item.get("interpretation") or "",
+                    }
+                    for item in visit_lab_results
+                ],
+                "prescriptions": [
+                    {
+                        "id": str(item.get("medical_record_prescription_id") or ""),
+                        "medicationName": item.get("medication_name") or "",
+                        "dosage": item.get("dosage") or "",
+                        "frequency": item.get("frequency") or "",
+                        "duration": item.get("duration") or "",
+                        "prescribedDate": normalize_emr_date(item.get("prescribed_date")) or "",
+                        "instructions": item.get("instructions") or "",
+                    }
+                    for item in visit_prescriptions
+                ],
+                "selectedServices": [
+                    {
+                        "id": str(item.get("medical_record_visit_service_id") or ""),
+                        "name": item.get("service_name") or "",
+                        "price": parse_emr_float(item.get("service_price")) or 0,
+                        "description": item.get("service_description") or "",
+                    }
+                    for item in visit_services
+                ],
+                "appointmentId": str(visit.get("source_id")) if visit.get("source_type") == "appointment" and visit.get("source_id") not in (None, "") else None,
+                "vaccinationDetails": (
+                    {
+                        "vaccineName": visit_vaccinations[0].get("vaccine_name") or "",
+                        "doseVolume": visit_vaccinations[0].get("dose_volume") or "",
+                        "injectionSite": visit_vaccinations[0].get("injection_site") or "",
+                        "manufacturer": visit_vaccinations[0].get("manufacturer") or "",
+                        "dateAdministered": normalize_emr_date(visit_vaccinations[0].get("date_administered")) or "",
+                        "nextDueDate": normalize_emr_date(visit_vaccinations[0].get("next_due_date")) or "",
+                    }
+                    if visit_vaccinations else None
+                ),
+            }
+            normalized_visits.append(normalized_visit)
+
+        latest_visit = visits[-1] if visits else None
+        pet_weight_value = parse_emr_float(pet.get("weight_kg"))
+        owner_first_name = owner.get("firstName") or owner.get("first_name") or ""
+        owner_last_name = owner.get("lastName") or owner.get("last_name") or ""
+        pet_vaccination_urls = pet.get("vaccination_urls") or []
+
+        normalized_records.append({
+            "id": record_id,
+            "pk": record_id,
+            "petId": pet.get("pet_id"),
+            "ownerId": owner.get("id"),
+            "patientId": format_pet_patient_id(pet.get("pet_id")),
+            "petName": pet.get("pet_name") or "",
+            "ownerName": get_profile_display_name(owner) or "Unknown Owner",
+            "ownerFirstName": owner_first_name,
+            "ownerLastName": owner_last_name,
+            "ownerEmail": owner.get("email") or "",
+            "ownerContact": owner.get("contact_number") or "",
+            "lastVisit": format_emr_display_date(latest_visit.get("visit_date")) if latest_visit else "",
+            "lastVisitRaw": normalize_emr_date(latest_visit.get("visit_date")) if latest_visit else "",
+            "veterinarian": (latest_visit.get("veterinarian_name") or "") if latest_visit else "",
+            "reason": (latest_visit.get("reason") or "") if latest_visit else "",
+            "deceased": bool(pet.get("is_deceased")),
+            "visitHistory": normalized_visits,
+            "petDetails": {
+                "name": pet.get("pet_name") or "",
+                "breed": pet.get("pet_breed") or "",
+                "species": pet.get("pet_species") or "Dog",
+                "gender": pet.get("pet_gender") or "Male",
+                "dateOfBirth": normalize_emr_date(pet.get("birthday")) or "",
+                "age": calculate_emr_pet_age(pet.get("birthday"), pet.get("age") or ""),
+                "weight": pet_weight_value or 0,
+                "weightUnit": "kg",
+                "colorMarkings": pet.get("color_markings") or "",
+                "neutered": bool(pet.get("is_neutered")) if pet.get("is_neutered") is not None else False,
+                "deceased": bool(pet.get("is_deceased")),
+                "vaccinated": bool(pet.get("is_vaccinated")),
+                "vaccinationProof": pet_vaccination_urls[0] if pet_vaccination_urls else "",
+                "image": pet.get("pet_photo_url") or "",
+                "doctorRemarks": (latest_visit.get("doctor_remarks") or "") if latest_visit else "",
+                "doctorAssigned": (latest_visit.get("veterinarian_name") or "") if latest_visit else "",
+                "reasonForVisit": (latest_visit.get("reason") or "") if latest_visit else "",
+            },
+        })
+
+    normalized_records.sort(
+        key=lambda item: (
+            item.get("lastVisitRaw") or "",
+            int(item.get("id") or 0)
+        ),
+        reverse=True
+    )
+    return normalized_records
+
+
+def save_emr_record_payload(data, existing_record_id=None):
+    data = data or {}
+    pet_id = data.get("petId") or data.get("pet_id")
+    if pet_id in (None, ""):
+        raise ValueError("petId is required to save a medical record.")
+
+    pet_id = int(pet_id)
+    pet_profile = get_single_row("pet_profile", "pet_id", pet_id)
+    if not pet_profile:
+        raise ValueError("Selected pet profile was not found.")
+
+    existing_record = None
+    if existing_record_id is not None:
+        existing_record = get_single_row("medical_records", "medical_record_id", existing_record_id)
+        if not existing_record:
+            raise ValueError("Medical record not found.")
+    if not existing_record:
+        existing_record = get_single_row("medical_records", "pet_id", pet_id)
+
+    now_iso = datetime.utcnow().isoformat()
+    if existing_record:
+        medical_record_id = int(existing_record.get("medical_record_id"))
+        supabase_admin.table("medical_records").update({
+            "pet_id": pet_id,
+            "updated_at": now_iso,
+        }).eq("medical_record_id", medical_record_id).execute()
+    else:
+        created_record = supabase_admin.table("medical_records").insert({
+            "pet_id": pet_id,
+            "updated_at": now_iso,
+        }).execute().data or []
+        if not created_record:
+            raise ValueError("Failed to create medical record.")
+        medical_record_id = int(created_record[0].get("medical_record_id"))
+
+    supabase_admin.table("medical_record_visits").delete().eq("medical_record_id", medical_record_id).execute()
+
+    visit_history = data.get("visitHistory") or []
+    if not visit_history:
+        default_visit = build_emr_default_visit(data)
+        visit_history = [default_visit] if default_visit else []
+
+    for index, visit in enumerate(visit_history, start=1):
+        if not visit:
+            continue
+
+        clinical_exam = visit.get("clinicalExam") or {}
+        normalized_visit_date = normalize_emr_date(visit.get("date")) or datetime.utcnow().date().strftime("%Y-%m-%d")
+        normalized_visit_time = normalize_db_time(visit.get("time")) or None
+        source_id_raw = visit.get("appointmentId") or visit.get("sourceId")
+        source_type = (visit.get("sourceType") or ("appointment" if source_id_raw not in (None, "") else "manual")).strip().lower()
+        if source_type not in {"manual", "appointment", "walkin"}:
+            source_type = "manual"
+
+        visit_payload = {
+            "medical_record_id": medical_record_id,
+            "source_type": source_type,
+            "source_id": int(source_id_raw) if source_id_raw not in (None, "") else None,
+            "visit_date": normalized_visit_date,
+            "visit_time": normalized_visit_time,
+            "veterinarian_name": visit.get("veterinarian") or "",
+            "reason": visit.get("reason") or "",
+            "doctor_remarks": visit.get("doctorRemarks") or "",
+            "weight_value": parse_emr_float(visit.get("weight")),
+            "weight_unit": visit.get("weightUnit") if visit.get("weightUnit") in {"kg", "lbs"} else "kg",
+            "same_as_last_weight": bool(visit.get("sameAsLastWeight")),
+            "pet_state_neutered": coerce_optional_bool(visit.get("neutered")),
+            "pet_state_vaccinated": coerce_optional_bool(visit.get("vaccinated")),
+            "pet_state_deceased": coerce_optional_bool(visit.get("deceased")),
+            "body_length_value": parse_emr_float(clinical_exam.get("length")),
+            "body_length_unit": clinical_exam.get("lengthUnit") if clinical_exam.get("lengthUnit") in {"cm", "inches"} else None,
+            "temperature_value": parse_emr_float(clinical_exam.get("temperature")),
+            "temperature_unit": clinical_exam.get("tempUnit") if clinical_exam.get("tempUnit") in {"C", "F"} else None,
+            "heart_rate": clinical_exam.get("heartRate") or "",
+            "breathing_rate": clinical_exam.get("breathingRate") or "",
+            "additional_findings": clinical_exam.get("additionalFindings") or "",
+            "updated_at": now_iso,
+        }
+        visit_row = supabase_admin.table("medical_record_visits").insert(visit_payload).execute().data or []
+        if not visit_row:
+            continue
+        visit_id = int(visit_row[0].get("medical_record_visit_id"))
+
+        prescriptions = []
+        for child_index, prescription in enumerate(visit.get("prescriptions") or [], start=1):
+            if not (prescription.get("medicationName") or "").strip():
+                continue
+            prescriptions.append({
+                "medical_record_visit_id": visit_id,
+                "medication_name": prescription.get("medicationName") or "",
+                "dosage": prescription.get("dosage") or "",
+                "frequency": prescription.get("frequency") or "",
+                "duration": prescription.get("duration") or "",
+                "prescribed_date": normalize_emr_date(prescription.get("prescribedDate")),
+                "instructions": prescription.get("instructions") or "",
+                "sort_order": child_index,
+            })
+        if prescriptions:
+            supabase_admin.table("medical_record_prescriptions").insert(prescriptions).execute()
+
+        lab_results = []
+        for child_index, lab_result in enumerate(visit.get("labResults") or [], start=1):
+            if not (lab_result.get("testType") or "").strip():
+                continue
+            file_url = lab_result.get("fileUrl") or lab_result.get("fileData") or ""
+            lab_results.append({
+                "medical_record_visit_id": visit_id,
+                "test_type": lab_result.get("testType") or "",
+                "file_name": lab_result.get("fileName") or "",
+                "file_url": file_url,
+                "interpretation": lab_result.get("interpretation") or "",
+                "sort_order": child_index,
+            })
+        if lab_results:
+            supabase_admin.table("medical_record_lab_results").insert(lab_results).execute()
+
+        services = []
+        for child_index, service in enumerate(visit.get("selectedServices") or [], start=1):
+            if not (service.get("name") or "").strip():
+                continue
+            services.append({
+                "medical_record_visit_id": visit_id,
+                "service_name": service.get("name") or "",
+                "service_price": parse_emr_float(service.get("price")),
+                "service_description": service.get("description") or "",
+                "sort_order": child_index,
+            })
+        if services:
+            supabase_admin.table("medical_record_visit_services").insert(services).execute()
+
+        vaccination = visit.get("vaccinationDetails") or {}
+        if (vaccination.get("vaccineName") or "").strip():
+            supabase_admin.table("medical_record_vaccinations").insert({
+                "medical_record_visit_id": visit_id,
+                "vaccine_name": vaccination.get("vaccineName") or "",
+                "dose_volume": vaccination.get("doseVolume") or "",
+                "injection_site": vaccination.get("injectionSite") or "",
+                "manufacturer": vaccination.get("manufacturer") or "",
+                "date_administered": normalize_emr_date(vaccination.get("dateAdministered")) or datetime.utcnow().date().strftime("%Y-%m-%d"),
+                "next_due_date": normalize_emr_date(vaccination.get("nextDueDate")),
+                "sort_order": 1,
+            }).execute()
+
+    pet_details = data.get("petDetails") or {}
+    latest_visit = visit_history[-1] if visit_history else {}
+    latest_weight_value = parse_emr_float(latest_visit.get("weight"))
+    fallback_weight_value = parse_emr_float(pet_details.get("weight"))
+    latest_neutered = coerce_optional_bool(latest_visit.get("neutered"))
+    fallback_neutered = coerce_optional_bool(pet_details.get("neutered"))
+    latest_vaccinated = coerce_optional_bool(latest_visit.get("vaccinated"))
+    fallback_vaccinated = coerce_optional_bool(pet_details.get("vaccinated"))
+    latest_deceased = coerce_optional_bool(latest_visit.get("deceased"))
+    fallback_deceased = coerce_optional_bool(pet_details.get("deceased"))
+
+    pet_updates = {
+        "pet_name": data.get("petName") or pet_details.get("name") or pet_profile.get("pet_name"),
+        "pet_species": pet_details.get("species") or data.get("species") or pet_profile.get("pet_species"),
+        "pet_breed": pet_details.get("breed") or data.get("breed") or pet_profile.get("pet_breed"),
+        "pet_gender": pet_details.get("gender") or data.get("gender") or pet_profile.get("pet_gender"),
+        "birthday": normalize_emr_date(pet_details.get("dateOfBirth")) or pet_profile.get("birthday"),
+        "age": pet_details.get("age") or pet_profile.get("age"),
+        "weight_kg": str(latest_weight_value if latest_weight_value is not None else fallback_weight_value) if (latest_weight_value is not None or fallback_weight_value is not None) else pet_profile.get("weight_kg"),
+        "pet_photo_url": pet_details.get("image") or pet_profile.get("pet_photo_url"),
+        "color_markings": pet_details.get("colorMarkings") or pet_profile.get("color_markings"),
+        "is_vaccinated": bool(latest_vaccinated) if latest_vaccinated is not None else (bool(fallback_vaccinated) if fallback_vaccinated is not None else bool(pet_profile.get("is_vaccinated"))),
+        "is_neutered": latest_neutered if latest_neutered is not None else (fallback_neutered if fallback_neutered is not None else pet_profile.get("is_neutered")),
+        "is_deceased": bool(latest_deceased) if latest_deceased is not None else (bool(fallback_deceased) if fallback_deceased is not None else bool(pet_profile.get("is_deceased"))),
+        "updated_at": now_iso,
+    }
+
+    vaccination_proof = pet_details.get("vaccinationProof")
+    if vaccination_proof:
+        pet_updates["vaccination_urls"] = [vaccination_proof]
+    pet_updates["deceased_at"] = now_iso if pet_updates.get("is_deceased") else None
+
+    supabase_admin.table("pet_profile").update(pet_updates).eq("pet_id", pet_id).execute()
+
+    owner_id = pet_profile.get("owner_id")
+    if owner_id:
+        owner_updates = {
+            "firstName": data.get("ownerFirstName") or None,
+            "lastName": data.get("ownerLastName") or None,
+            "email": data.get("ownerEmail") or None,
+            "contact_number": data.get("ownerContact") or None,
+        }
+        owner_updates = {key: value for key, value in owner_updates.items() if value not in (None, "")}
+        if owner_updates:
+            supabase_admin.table("patient_account").update(owner_updates).eq("id", owner_id).execute()
+
+    refreshed_records = get_emr_records([medical_record_id])
+    return refreshed_records[0] if refreshed_records else None
+
+
+def get_emr_pet_appointments(pet_id):
+    appointments = execute_with_retry(
+        lambda: supabase_admin.table("appointments").select("*").eq("pet_id", pet_id).order("appointment_date").execute(),
+        context="Fetch EMR pet appointments"
+    ).data or []
+    doctors = execute_with_retry(
+        lambda: supabase_admin.table("employee_accounts").select("*").execute(),
+        context="Fetch EMR appointment doctors"
+    ).data or []
+
+    doctors_by_id = {str(item.get("id")): item for item in doctors}
+
+    normalized = []
+    for appointment in appointments:
+        status = (appointment.get("status") or "").strip().lower()
+        if status in {"cancelled", "completed"}:
+            continue
+
+        doctor = doctors_by_id.get(str(appointment.get("doctor_id") or appointment.get("assigned_doctor_id")), {})
+        veterinarian_name = get_profile_display_name(doctor) or get_assigned_doctor_name_from_record(appointment) or "Unassigned"
+        appointment_type = appointment.get("appointment_type") or ""
+
+        normalized.append({
+            "id": str(appointment.get("appointment_id") or ""),
+            "date": format_emr_display_date(appointment.get("appointment_date")),
+            "time": format_display_time(appointment.get("appointment_time")) or "",
+            "veterinarian": veterinarian_name,
+            "reason": appointment.get("patient_reason") or appointment_type,
+            "services": [{
+                "id": f"appointment-{appointment.get('appointment_id')}",
+                "name": appointment_type,
+                "price": 0,
+            }] if appointment_type else [],
+            "status": "scheduled",
+        })
+
+    return normalized
+
+
 def normalize_email_address(email):
     return (email or "").strip().lower()
 
@@ -3051,6 +3722,86 @@ def get_medical_information_by_target(appointment_id):
     except Exception as e:
         print("Medical information fetch error:", str(e))
         return jsonify({"medicalInformation": None}), 200
+
+
+# -----------------------------------------------
+# EMR SEARCH / RECORDS
+# -----------------------------------------------
+@app.route('/api/emr/search-pets', methods=['GET'])
+def get_emr_search_pets():
+    try:
+        return jsonify({"pets": get_emr_search_results()}), 200
+    except Exception as e:
+        print("EMR pet search error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/emr/records', methods=['GET', 'POST'])
+def emr_records_collection():
+    if request.method == 'GET':
+        try:
+            return jsonify({"records": get_emr_records()}), 200
+        except Exception as e:
+            print("EMR records fetch error:", str(e))
+            return jsonify({"error": str(e)}), 400
+
+    try:
+        saved_record = save_emr_record_payload(request.get_json() or {})
+        return jsonify({
+            "message": "Medical record saved successfully!",
+            "record": saved_record,
+        }), 200
+    except ValueError as value_error:
+        return jsonify({"error": str(value_error)}), 400
+    except Exception as e:
+        print("EMR create error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/emr/records/<int:record_id>', methods=['GET', 'PUT', 'DELETE'])
+def emr_record_detail(record_id):
+    if request.method == 'GET':
+        try:
+            records = get_emr_records([record_id])
+            if not records:
+                return jsonify({"error": "Medical record not found."}), 404
+            return jsonify({"record": records[0]}), 200
+        except Exception as e:
+            print("EMR record detail error:", str(e))
+            return jsonify({"error": str(e)}), 400
+
+    if request.method == 'PUT':
+        try:
+            saved_record = save_emr_record_payload(request.get_json() or {}, existing_record_id=record_id)
+            return jsonify({
+                "message": "Medical record updated successfully!",
+                "record": saved_record,
+            }), 200
+        except ValueError as value_error:
+            return jsonify({"error": str(value_error)}), 400
+        except Exception as e:
+            print("EMR update error:", str(e))
+            return jsonify({"error": str(e)}), 400
+
+    try:
+        existing_record = get_single_row("medical_records", "medical_record_id", record_id)
+        if not existing_record:
+            return jsonify({"error": "Medical record not found."}), 404
+
+        supabase_admin.table("medical_records").delete().eq("medical_record_id", record_id).execute()
+        return jsonify({"message": "Medical record deleted successfully."}), 200
+    except Exception as e:
+        print("EMR delete error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/emr/pets/<int:pet_id>/appointments', methods=['GET'])
+def get_emr_pet_appointment_history(pet_id):
+    try:
+        return jsonify({"appointments": get_emr_pet_appointments(pet_id)}), 200
+    except Exception as e:
+        print("EMR pet appointments error:", str(e))
+        return jsonify({"error": str(e)}), 400
 
 
 # -----------------------------------------------

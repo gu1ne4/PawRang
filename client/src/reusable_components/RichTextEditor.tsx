@@ -27,12 +27,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   label = "Doctor's Remarks"
 }) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [pickerPlacement, setPickerPlacement] = useState<'top' | 'bottom'>('bottom');
   const [selectedColor, setSelectedColor] = useState('#000000');
   const [customColor, setCustomColor] = useState('#3d67ee');
   const editorRef = useRef<HTMLDivElement>(null);
   const [isFocused, setIsFocused] = useState(false);
   const colorInputRef = useRef<HTMLInputElement>(null);
   const colorPickerRef = useRef<HTMLDivElement>(null);
+  const colorPickerContainerRef = useRef<HTMLDivElement>(null);
 
   // Track active styles
   const [isBoldActive, setIsBoldActive] = useState(false);
@@ -50,7 +52,10 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   // Close color picker when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (colorPickerRef.current && !colorPickerRef.current.contains(event.target as Node)) {
+      if (
+        colorPickerContainerRef.current &&
+        !colorPickerContainerRef.current.contains(event.target as Node)
+      ) {
         setShowColorPicker(false);
       }
     };
@@ -61,6 +66,34 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showColorPicker]);
+
+  useEffect(() => {
+    if (!showColorPicker) return;
+
+    const updatePickerPlacement = () => {
+      const containerRect = colorPickerContainerRef.current?.getBoundingClientRect();
+      if (!containerRect) return;
+
+      const pickerHeight = colorPickerRef.current?.offsetHeight || 260;
+      const gap = 8;
+      const spaceBelow = window.innerHeight - containerRect.bottom;
+      const spaceAbove = containerRect.top;
+
+      setPickerPlacement(
+        spaceBelow < pickerHeight + gap && spaceAbove > spaceBelow ? 'top' : 'bottom'
+      );
+    };
+
+    const frameId = window.requestAnimationFrame(updatePickerPlacement);
+    window.addEventListener('resize', updatePickerPlacement);
+    window.addEventListener('scroll', updatePickerPlacement, true);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener('resize', updatePickerPlacement);
+      window.removeEventListener('scroll', updatePickerPlacement, true);
     };
   }, [showColorPicker]);
 
@@ -317,7 +350,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           >
             <MdFormatListBulleted size={16} />
           </button>
-          <div className="emrColorPickerContainer">
+          <div className="emrColorPickerContainer" ref={colorPickerContainerRef}>
             <button
               type="button"
               className="emrRichTextBtn"
@@ -329,7 +362,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             </button>
             {showColorPicker && (
               <div 
-                className="emrColorPicker" 
+                className={`emrColorPicker ${pickerPlacement === 'top' ? 'emrColorPickerTop' : 'emrColorPickerBottom'}`} 
                 ref={colorPickerRef}
                 onClick={handleColorPickerClick}
               >

@@ -9,6 +9,7 @@ import { FaEye } from "react-icons/fa";
 import { TbReportMedical } from "react-icons/tb";
 import RichTextEditor from '../reusable_components/RichTextEditor';
 import { FaFilePdf } from "react-icons/fa6";
+import { apiService } from '../apiService';
 
 import './GlobalEMR.css';
 import './GlobalEMR2.css';
@@ -52,6 +53,8 @@ import {
 interface MedicalRecord {
   id?: number;
   pk?: number;
+  petId?: number;
+  ownerId?: string;
   patientId: string;
   petName: string;
   ownerName: string;
@@ -60,6 +63,7 @@ interface MedicalRecord {
   ownerEmail: string;
   ownerContact: string;
   lastVisit: string;
+  lastVisitRaw?: string;
   veterinarian: string;
   reason: string;
   deceased?: boolean;
@@ -170,8 +174,11 @@ interface FormErrors {
 
 interface SearchResult {
   id: number;
+  petId?: number;
   petName: string;
   ownerName: string;
+  ownerFirstName?: string;
+  ownerLastName?: string;
   ownerUsername?: string;
   species: string;
   breed: string;
@@ -179,6 +186,7 @@ interface SearchResult {
   ownerContact: string;
   gender: string;
   dateOfBirth: string;
+  weightKg?: string;
   colorMarkings: string;
   neutered: boolean;
   vaccinated: boolean;
@@ -229,6 +237,48 @@ type Species = 'Dog' | 'Cat';
 type Gender = 'Male' | 'Female';
 
 const API_URL = 'http://localhost:3000';
+const PH_PHONE_TOTAL_DIGITS = 12;
+
+const normalizePhilippinePhoneDigits = (value: string): string => {
+  let digits = String(value || '').replace(/\D/g, '');
+
+  if (!digits) return '';
+
+  if (digits.startsWith('0')) {
+    digits = `63${digits.slice(1)}`;
+  } else if (digits.startsWith('9')) {
+    digits = `63${digits}`;
+  } else if (digits.startsWith('639')) {
+    digits = digits;
+  }
+
+  if (digits.startsWith('63')) {
+    return digits.slice(0, PH_PHONE_TOTAL_DIGITS);
+  }
+
+  return digits.slice(0, 10);
+};
+
+const formatPhoneNumber = (value: string): string => {
+  const digits = normalizePhilippinePhoneDigits(value);
+
+  if (!digits) return '';
+
+  const localDigits = digits.startsWith('63') ? digits.slice(2) : digits;
+  const parts = [
+    localDigits.slice(0, 3),
+    localDigits.slice(3, 6),
+    localDigits.slice(6, 10),
+  ].filter(Boolean);
+
+  return `+63 ${parts.join(' ')}`.trim();
+};
+
+const toStoredPhoneNumber = (value: string): string => {
+  const digits = normalizePhilippinePhoneDigits(value);
+  return digits ? `+${digits}` : '';
+};
+
 const DOG_BREEDS = [
   'Labrador Retriever', 'German Shepherd', 'Golden Retriever', 'Bulldog', 
   'Beagle', 'Poodle', 'Rottweiler', 'Yorkshire Terrier', 'Boxer', 
@@ -583,7 +633,8 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   const [activeFilter, setActiveFilter] = useState<string>('');
   const [showPetSearch, setShowPetSearch] = useState<boolean>(false);
   const [petSearchQuery, setPetSearchQuery] = useState<string>('');
-  const [searchResults, setSearchResults] = useState<SearchResult[]>(MOCK_PET_DATABASE);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [allSearchResults, setAllSearchResults] = useState<SearchResult[]>([]);
   const [showVaccinationProof, setShowVaccinationProof] = useState<boolean>(false);
   const [selectedVaccinationProof, setSelectedVaccinationProof] = useState<string>('');
   const [editModeEnabled, setEditModeEnabled] = useState<boolean>(false);
@@ -646,6 +697,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
 
   // Form States
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [selectedPetId, setSelectedPetId] = useState<number | null>(null);
   const [patientId, setPatientId] = useState<string>('');
   const [petName, setPetName] = useState<string>('');
   const [species, setSpecies] = useState<Species>('Dog');
@@ -692,6 +744,12 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   const [formErrors, setFormErrors] = useState<FormErrors>({});
 
   // Helper functions
+  const buildPatientDisplayId = (petId: number | string): string => {
+    const normalized = Number(petId);
+    if (Number.isNaN(normalized)) return `PET-${petId}`;
+    return `PET-${normalized.toString().padStart(3, '0')}`;
+  };
+
   const formatRate = (value: string): string => {
     const cleaned = value.replace(/[^\d-]/g, '');
     if (cleaned.match(/^\d+-\d+$/)) return cleaned;
@@ -747,8 +805,14 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     return isReasonVaccination || isServiceVaccination;
   };
 
-  const fetchAppointmentsForPet = async (petId: string) => {
-    setAppointmentRecords(MOCK_APPOINTMENTS);
+  const fetchAppointmentsForPet = async (petId: number): Promise<void> => {
+    try {
+      const response = await apiService.getEmrPetAppointments(petId);
+      setAppointmentRecords(response?.appointments || []);
+    } catch (error) {
+      console.error('Error fetching appointments for pet:', error);
+      setAppointmentRecords([]);
+    }
   };
 
   const toggleService = (service: ServiceItem) => {
@@ -884,13 +948,26 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   const fetchRecords = async (): Promise<void> => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setRecords(MOCK_RECORDS);
+      const response = await apiService.getEmrRecords();
+      setRecords(response?.records || []);
     } catch (error) {
       console.error(error);
       showAlert('error', 'Error', 'Failed to fetch medical records.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSearchPets = async (): Promise<void> => {
+    try {
+      const response = await apiService.getEmrSearchPets();
+      const pets: SearchResult[] = response?.pets || [];
+      setAllSearchResults(pets);
+      setSearchResults(pets);
+    } catch (error) {
+      console.error('Error fetching EMR pet search data:', error);
+      setAllSearchResults([]);
+      setSearchResults([]);
     }
   };
 
@@ -980,10 +1057,10 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
 
   const filterSearchResults = (query: string) => {
     if (!query.trim()) {
-      setSearchResults(MOCK_PET_DATABASE);
+      setSearchResults(allSearchResults);
       return;
     }
-    const filtered = MOCK_PET_DATABASE.filter(result => 
+    const filtered = allSearchResults.filter(result => 
       result.petName.toLowerCase().includes(query.toLowerCase()) ||
       result.ownerName.toLowerCase().includes(query.toLowerCase()) ||
       result.ownerUsername?.toLowerCase().includes(query.toLowerCase())
@@ -1121,78 +1198,102 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
         'Existing Medical Record Found',
         `${pet.petName} already has an existing medical record. Would you like to edit the existing record?`,
         () => {
-          loadRecordForEdit(pet.existingRecordId || 0);
+          void loadRecordForEdit(pet.existingRecordId || 0);
           setShowPetSearch(false);
           setPetSearchQuery('');
-          setSearchResults(MOCK_PET_DATABASE);
+          setSearchResults(allSearchResults);
         },
         true
       );
       return;
     }
 
+    setSelectedPetId(pet.petId || pet.id);
     setPetName(pet.petName);
     setSpecies(pet.species as Species);
     setBreed(pet.breed);
     setGender(pet.gender as Gender);
     setDateOfBirth(pet.dateOfBirth);
     setAge(calculateAge(pet.dateOfBirth));
+    setWeight(pet.weightKg || '');
+    setWeightUnit('kg');
     setColorMarkings(pet.colorMarkings);
     setNeutered(pet.neutered);
     setVaccinated(pet.vaccinated);
     setVaccinationProof(pet.vaccinationProof || '');
     setDeceased(pet.deceased || false);
     setPetImage(pet.image || '');
-    setOwnerFirstName(pet.ownerName.split(' ')[0]);
-    setOwnerLastName(pet.ownerName.split(' ').slice(1).join(' '));
+    setOwnerFirstName(pet.ownerFirstName || pet.ownerName.split(' ')[0] || '');
+    setOwnerLastName(pet.ownerLastName || pet.ownerName.split(' ').slice(1).join(' ') || '');
     setOwnerEmail(pet.ownerEmail);
-    setOwnerContact(pet.ownerContact);
-    setPatientId(`PET-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`);
+    setOwnerContact(formatPhoneNumber(pet.ownerContact));
+    setPatientId(buildPatientDisplayId(pet.petId || pet.id));
     setShowPetSearch(false);
     setPetSearchQuery('');
-    setSearchResults(MOCK_PET_DATABASE);
+    setSearchResults(allSearchResults);
   };
 
-  const loadRecordForEdit = (recordId: number) => {
-    const record = records.find(r => r.id === recordId);
-    if (record) {
-      setEditingId(recordId);
-      setPatientId(record.patientId);
-      setPetName(record.petName);
-      setOwnerFirstName(record.ownerFirstName);
-      setOwnerLastName(record.ownerLastName);
-      setOwnerEmail(record.ownerEmail);
-      setOwnerContact(record.ownerContact);
-      setDeceased(record.deceased || false);
-      setVisitHistory(record.visitHistory || []);
-      
-      if (record.petDetails) {
-        setSpecies(record.petDetails.species);
-        setBreed(record.petDetails.breed);
-        setGender(record.petDetails.gender);
-        setDateOfBirth(record.petDetails.dateOfBirth);
-        setAge(record.petDetails.age);
-        setWeight(record.petDetails.weight.toString());
-        setWeightUnit(record.petDetails.weightUnit);
-        setColorMarkings(record.petDetails.colorMarkings);
-        setNeutered(record.petDetails.neutered);
-        setVaccinated(record.petDetails.vaccinated);
-        setVaccinationProof(record.petDetails.vaccinationProof || '');
-        setPetImage(record.petDetails.image || '');
-        
-        if (record.visitHistory && record.visitHistory.length > 0) {
-          const lastVisit = record.visitHistory[record.visitHistory.length - 1];
-          setLastWeight({ value: lastVisit.weight, unit: lastVisit.weightUnit });
-        }
-        
-        // Fetch appointments for this pet
-        fetchAppointmentsForPet(record.patientId);
+  const applyRecordToForm = (record: MedicalRecord) => {
+    setEditingId(record.id || record.pk || null);
+    setSelectedPetId(record.petId || null);
+    setPatientId(record.patientId);
+    setPetName(record.petName);
+    setOwnerFirstName(record.ownerFirstName);
+    setOwnerLastName(record.ownerLastName);
+    setOwnerEmail(record.ownerEmail);
+    setOwnerContact(formatPhoneNumber(record.ownerContact));
+    setDeceased(record.deceased || false);
+    setVisitHistory(record.visitHistory || []);
+
+    if (record.petDetails) {
+      setSpecies(record.petDetails.species);
+      setBreed(record.petDetails.breed);
+      setGender(record.petDetails.gender);
+      setDateOfBirth(record.petDetails.dateOfBirth);
+      setAge(record.petDetails.age);
+      setWeight(record.petDetails.weight.toString());
+      setWeightUnit(record.petDetails.weightUnit);
+      setColorMarkings(record.petDetails.colorMarkings);
+      setNeutered(record.petDetails.neutered);
+      setVaccinated(record.petDetails.vaccinated);
+      setVaccinationProof(record.petDetails.vaccinationProof || '');
+      setPetImage(record.petDetails.image || '');
+    }
+
+    if (record.visitHistory && record.visitHistory.length > 0) {
+      const lastVisit = record.visitHistory[record.visitHistory.length - 1];
+      setLastWeight({ value: lastVisit.weight, unit: lastVisit.weightUnit });
+    } else {
+      setLastWeight(null);
+    }
+
+    if (record.petId) {
+      void fetchAppointmentsForPet(record.petId);
+    } else {
+      setAppointmentRecords([]);
+    }
+
+    setViewMode('edit');
+    setEditModeEnabled(false);
+    setShowModeOverlay(true);
+    setActiveTab('info');
+  };
+
+  const loadRecordForEdit = async (recordId: number) => {
+    try {
+      const localRecord = records.find(r => (r.id || r.pk) === recordId);
+      if (localRecord) {
+        applyRecordToForm(localRecord);
+        return;
       }
-      
-      setViewMode('edit');
-      setEditModeEnabled(false);
-      setShowModeOverlay(true);
-      setActiveTab('info');
+
+      const response = await apiService.getEmrRecord(recordId);
+      if (response?.record) {
+        applyRecordToForm(response.record);
+      }
+    } catch (error) {
+      console.error('Error loading EMR record for edit:', error);
+      showAlert('error', 'Error', 'Failed to load the selected medical record.');
     }
   };
 
@@ -1247,11 +1348,13 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
 
   useEffect(() => {
     fetchRecords();
+    fetchSearchPets();
     loadCurrentUser();
   }, []);
 
 
   const resetForm = (): void => {
+    setSelectedPetId(null);
     setPatientId('');
     setPetName('');
     setSpecies('Dog');
@@ -1287,6 +1390,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     setExpandedVisitId(null);
     setSelectedServices([]);
     setSelectedAppointment(null);
+    setAppointmentRecords([]);
     setVisitType('walkin');
     setShowVaccinationDetails(false);
     setVaccinationDetails({
@@ -1436,8 +1540,10 @@ useEffect(() => {
     if (!ownerLastName.trim()) errors.ownerLastName = 'Owner last name is required';
     if (!ownerEmail.trim()) errors.ownerEmail = 'Email is required';
     else if (!/\S+@\S+\.\S+/.test(ownerEmail)) errors.ownerEmail = 'Email is invalid';
+    const ownerContactDigits = normalizePhilippinePhoneDigits(ownerContact);
     if (!ownerContact.trim()) errors.ownerContact = 'Contact number is required';
-    else if (!/^\d{11}$/.test(ownerContact.replace(/\D/g, ''))) errors.ownerContact = 'Contact number must be 11 digits';
+    else if (!ownerContactDigits.startsWith('63')) errors.ownerContact = 'Please enter a valid PH number starting with 63';
+    else if (ownerContactDigits.length !== PH_PHONE_TOTAL_DIGITS) errors.ownerContact = 'Please enter a valid 12-digit number (including 63)';
     if (!doctorAssigned) errors.veterinarian = 'Veterinarian is required';
     if (!reasonForVisit) errors.reason = 'Reason for visit is required';
     
@@ -1447,18 +1553,27 @@ useEffect(() => {
 
   const handleSaveRecord = async (): Promise<void> => {
     if (!validateForm()) return;
+    if (!selectedPetId) {
+      showAlert('error', 'Pet Profile Required', 'Please search and select an existing pet profile before saving a medical record.');
+      return;
+    }
+    if (viewMode === 'edit' && !editingId) {
+      showAlert('error', 'Record Not Found', 'We could not determine which medical record to update.');
+      return;
+    }
 
     const finalBreed = breed === 'Others' ? breedOther : breed;
 
     const recordData = {
-      patientId: patientId || `PET-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
+      petId: selectedPetId,
+      patientId: patientId || buildPatientDisplayId(selectedPetId),
       petName,
       ownerName: `${ownerFirstName} ${ownerLastName}`,
       ownerFirstName,
       ownerLastName,
       ownerEmail,
-      ownerContact,
-      lastVisit: new Date().toLocaleDateString(),
+      ownerContact: toStoredPhoneNumber(ownerContact),
+      lastVisit: new Date().toISOString().split('T')[0],
       veterinarian: doctorAssigned,
       reason: reasonForVisit === 'Others' ? reasonOther : reasonForVisit,
       deceased,
@@ -1488,31 +1603,21 @@ useEffect(() => {
       `Are you sure you want to ${viewMode === 'add' ? 'create this medical record' : 'save changes to this record'}?`, 
       async () => {
         try {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          let updatedRecords;
           if (viewMode === 'add') {
-            const newRecord = {
-              ...recordData,
-              id: Math.max(...records.map(r => r.id || 0), 0) + 1
-            };
-            updatedRecords = [...records, newRecord];
+            await apiService.createEmrRecord(recordData);
           } else {
-            updatedRecords = records.map(r => 
-              (r.id === editingId || r.pk === editingId) 
-                ? { ...r, ...recordData, visitHistory }
-                : r
-            );
+            await apiService.updateEmrRecord(editingId || 0, recordData);
           }
-          
-          setRecords(updatedRecords);
+          await Promise.all([fetchRecords(), fetchSearchPets()]);
           setViewMode('list');
           setShowModeOverlay(false);
+          setSelectedRecords(new Set());
           showAlert('success', 'Success', 
             viewMode === 'add' ? 'Medical record created successfully!' : 'Record updated successfully!', 
             () => resetForm()
           );
-        } catch (error) {
+        } catch (error: any) {
+          console.error('Failed to save medical record:', error);
           showAlert('error', 'Error', 'Failed to save medical record.');
         }
       }, true);
@@ -1528,17 +1633,15 @@ useEffect(() => {
       `Are you sure you want to delete ${selectedRecords.size} selected record(s)?`, 
       async () => {
         try {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          const updatedRecords = records.filter(r => 
-            !selectedRecords.has(r.id || r.pk || 0)
+          await Promise.all(
+            Array.from(selectedRecords).map(recordId => apiService.deleteEmrRecord(recordId))
           );
-          
-          setRecords(updatedRecords);
+          await Promise.all([fetchRecords(), fetchSearchPets()]);
           setSelectedRecords(new Set());
           
           showAlert('success', 'Success', 'Records deleted successfully!');
         } catch (error) {
+          console.error('Failed to delete medical records:', error);
           showAlert('error', 'Error', 'Failed to delete records.');
         }
       }, true);
@@ -1560,6 +1663,13 @@ useEffect(() => {
     }
   };
 
+  const availableVeterinarians = Array.from(
+    new Set([
+      ...VETERINARIANS,
+      ...records.map(record => record.veterinarian).filter(Boolean)
+    ])
+  );
+
   const filteredRecords = records.filter(record => {
     const searchLower = searchQuery.toLowerCase();
     const matchesSearch = 
@@ -1567,7 +1677,7 @@ useEffect(() => {
       record.petName.toLowerCase().includes(searchLower) ||
       record.ownerName.toLowerCase().includes(searchLower);
 
-    const matchesDate = dateFilter ? record.lastVisit === dateFilter : true;
+    const matchesDate = dateFilter ? (record.lastVisitRaw || '') === dateFilter : true;
     const matchesDoctor = doctorFilter ? record.veterinarian === doctorFilter : true;
     
     let matchesStatus = true;
@@ -1733,7 +1843,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                         className="emrFilterSelect"
                       >
                         <option value="">All Veterinarians</option>
-                        {VETERINARIANS.map(doc => (
+                        {availableVeterinarians.map(doc => (
                           <option key={doc} value={doc}>{doc}</option>
                         ))}
                       </select>
@@ -1846,7 +1956,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                 <div className="emrActionButtons">
                                   <button 
                                     className="emrActionBtn" 
-                                    onClick={() => loadRecordForEdit(recordId)}
+                                    onClick={() => { void loadRecordForEdit(recordId); }}
                                     disabled={isDeceased}
                                     title={isDeceased ? "Cannot edit deceased pet" : "Edit record"}
                                   >
@@ -2220,8 +2330,8 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       <input 
                         type="tel"
                         value={ownerContact}
-                        onChange={(e) => setOwnerContact(e.target.value.replace(/[^\d]/g, '').slice(0, 11))}
-                        placeholder="09123456789"
+                        onChange={(e) => setOwnerContact(formatPhoneNumber(e.target.value))}
+                        placeholder="+63 XXX XXX XXXX"
                         className={`emrFormInput ${formErrors.ownerContact ? 'emrError' : ''}`}
                       />
                       {formErrors.ownerContact && <div className="emrErrorText">{formErrors.ownerContact}</div>}
@@ -2607,8 +2717,9 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           <input 
                             type="tel"
                             value={ownerContact}
-                            onChange={(e) => setOwnerContact(e.target.value.replace(/[^\d]/g, '').slice(0, 11))}
+                            onChange={(e) => setOwnerContact(formatPhoneNumber(e.target.value))}
                             disabled={!editModeEnabled}
+                            placeholder="+63 XXX XXX XXXX"
                             className={`emrFormInput ${formErrors.ownerContact ? 'emrError' : ''}`}
                           />
                           {formErrors.ownerContact && <div className="emrErrorText">{formErrors.ownerContact}</div>}
@@ -2661,7 +2772,10 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                     
                     <div className="emrVisitHistoryContainer">
                       {filteredVisits.length > 0 ? (
-                        filteredVisits.map((visit, index) => (
+                        filteredVisits.map((visit, index) => {
+                          const visitServices = visit.selectedServices ?? [];
+
+                          return (
                           <div key={visit.id}>
                             <div className="emrVisitCard" onClick={() => toggleVisitExpand(visit.id)} style={{ cursor: 'pointer' }}>
                               <div className="emrVisitHeader">
@@ -2673,9 +2787,9 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                       <IoCalendarOutline size={10} /> Appointment
                                     </span>
                                   )}
-                                  {visit.selectedServices && visit.selectedServices.length > 0 && (
+                                  {visitServices.length > 0 && (
                                     <span className="emrStatusActive" style={{ marginLeft: '8px', fontSize: '10px', backgroundColor: '#e3f2fd', color: '#1565c0' }}>
-                                      <IoListOutline size={10} /> {visit.selectedServices.length} Service(s)
+                                      <IoListOutline size={10} /> {visitServices.length} Service(s)
                                     </span>
                                   )}
                                 </div>
@@ -2716,18 +2830,18 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                               <div className="emrVisitDetails">
                                 <div><strong>Veterinarian:</strong> {visit.veterinarian}</div>
                                 <div><strong>Reason:</strong> {visit.reason}</div>
-                                {visit.selectedServices && visit.selectedServices.length > 0 && (
+                                {visitServices.length > 0 && (
                                   <div className="emrFullWidth">
                                     <strong>Services Provided:</strong>
                                     <div className="emrServicesList">
-                                      {visit.selectedServices.map((service, idx) => (
+                                      {visitServices.map((service, idx) => (
                                         <span key={service.id} className="emrServiceTag">
                                           {service.name}
-                                          {idx < visit.selectedServices.length - 1 && ', '}
+                                          {idx < visitServices.length - 1 && ', '}
                                         </span>
                                       ))}
                                       <span className="emrServicesTotalPrice">
-                                        (₱{visit.selectedServices.reduce((sum, s) => sum + s.price, 0).toLocaleString()})
+                                        (₱{visitServices.reduce((sum, s) => sum + s.price, 0).toLocaleString()})
                                       </span>
                                     </div>
                                   </div>
@@ -2760,7 +2874,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                   )}
                                   
                                   {/* Display all services in expanded view with more details */}
-                                  {visit.selectedServices && visit.selectedServices.length > 0 && (
+                                  {visitServices.length > 0 && (
                                     <div className="emrFullWidth">
                                       <strong>Additional Services:</strong>
                                       <div className="emrServicesDetailedList">
@@ -2773,7 +2887,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                             </tr>
                                           </thead>
                                           <tbody>
-                                            {visit.selectedServices.map(service => (
+                                            {visitServices.map(service => (
                                               <tr key={service.id}>
                                                 <td>{service.name}</td>
                                                 <td className="emrServiceDescCell">{service.description || '—'}</td>
@@ -2783,7 +2897,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                             <tr className="emrServicesTotalRow">
                                               <td colSpan={2}><strong>Total</strong></td>
                                               <td className="emrServicePriceCell">
-                                                <strong>₱{visit.selectedServices.reduce((sum, s) => sum + s.price, 0).toLocaleString()}</strong>
+                                                <strong>₱{visitServices.reduce((sum, s) => sum + s.price, 0).toLocaleString()}</strong>
                                               </td>
                                             </tr>
                                           </tbody>
@@ -2834,7 +2948,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                               </div>
                             )}
                           </div>
-                        ))
+                        )})
                       ) : (
                         <div className="emrNoVisits">
                           <IoMedicalOutline size={48} style={{ opacity: 0.3, marginBottom: '12px' }} />
@@ -3190,8 +3304,8 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           className={`emrToggleBtnFull ${visitType === 'appointment' ? 'emrToggleActiveFull' : ''}`}
                           onClick={() => {
                             setVisitType('appointment');
-                            if (appointmentRecords.length === 0 && patientId) {
-                              fetchAppointmentsForPet(patientId);
+                            if (appointmentRecords.length === 0 && selectedPetId) {
+                              void fetchAppointmentsForPet(selectedPetId);
                             }
                           }}
                         >

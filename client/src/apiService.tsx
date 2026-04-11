@@ -327,6 +327,42 @@ export const apiService = {
     return request('/api/admin/appointment-search-data');
   },
 
+  getEmrSearchPets() {
+    return request('/api/emr/search-pets');
+  },
+
+  getEmrRecords() {
+    return request('/api/emr/records');
+  },
+
+  getEmrRecord(recordId: number | string) {
+    return request(`/api/emr/records/${recordId}`);
+  },
+
+  createEmrRecord(payload: any) {
+    return request('/api/emr/records', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateEmrRecord(recordId: number | string, payload: any) {
+    return request(`/api/emr/records/${recordId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteEmrRecord(recordId: number | string) {
+    return request(`/api/emr/records/${recordId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  getEmrPetAppointments(petId: number | string) {
+    return request(`/api/emr/pets/${petId}/appointments`);
+  },
+
   logout() {
     return request('/logout', {
       method: 'POST',
