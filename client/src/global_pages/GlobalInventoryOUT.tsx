@@ -35,8 +35,10 @@ interface Product {
   id?: number;
   pk?: number;
   branchId?: number;
+  branchName?: string;
   code: string;
   item: string;
+  unit?: string;
   category: string;
   basePrice: number;
   sellingPrice: number;
@@ -54,7 +56,10 @@ interface ModalConfig {
   title: string;
   message: React.ReactNode;
   onConfirm?: () => void;
+  onCancel?: () => void;
   showCancel: boolean;
+  confirmText?: string;
+  cancelText?: string;
 }
 
 interface BulkItem {
@@ -62,6 +67,7 @@ interface BulkItem {
   branchId?: number;
   productCode: string;
   productName: string;
+  unit?: string;
   quantity: number;
   unitPrice: number;
   availableStock: number;
@@ -84,6 +90,10 @@ const BRANCH_ID_BY_NAME: Record<string, number> = {
   Taguig: 1,
   'Las Pinas': 2,
 };
+const BRANCH_NAME_BY_ID: Record<number, string> = {
+  1: 'Taguig',
+  2: 'Las Pinas',
+};
 
 const GlobalInventoryOUT: React.FC = () => {
   const navigate = useNavigate();
@@ -104,7 +114,7 @@ const GlobalInventoryOUT: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [rowsPerPage, setRowsPerPage] = useState<number>(8);
   const [showExportDropdown, setShowExportDropdown] = useState<boolean>(false);
-  const [sortOption, setSortOption] = useState<SortOption>('stockLowToHigh');
+  const [sortOption, setSortOption] = useState<SortOption>('stockHighToLow');
   const [showSettingsDropdown, setShowSettingsDropdown] = useState<boolean>(false);
   
   // Checkbox selection state
@@ -115,7 +125,9 @@ const GlobalInventoryOUT: React.FC = () => {
   const [quantityMods, setQuantityMods] = useState<Record<number, number>>({});
   
   // Transaction modal state
+  const [showCartModal, setShowCartModal] = useState<boolean>(false);
   const [showTransactionModal, setShowTransactionModal] = useState<boolean>(false);
+  const [cartItems, setCartItems] = useState<BulkItem[]>([]);
   const [transactionItems, setTransactionItems] = useState<BulkItem[]>([]);
   const [transactionReferenceNumber, setTransactionReferenceNumber] = useState<string>('');
   const [transactionIssuedTo, setTransactionIssuedTo] = useState<string>('');
@@ -131,11 +143,14 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
 
   // Modal States
   const [modalVisible, setModalVisible] = useState<boolean>(false);
+  const [isImportProcessing, setIsImportProcessing] = useState<boolean>(false);
   const [modalConfig, setModalConfig] = useState<ModalConfig>({
     type: 'info',
     title: '',
     message: '',
-    showCancel: false
+    showCancel: false,
+    confirmText: 'OK',
+    cancelText: 'Cancel',
   });
 
   // Filter States
@@ -148,17 +163,62 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
 
   const [selectedBranch, setSelectedBranch] = useState<string>('All');
 
+  const getBranchLabel = (branchId?: number, branchName?: string): string => {
+    if (branchName?.trim()) return branchName;
+    if (typeof branchId === 'number' && BRANCH_NAME_BY_ID[branchId]) {
+      return BRANCH_NAME_BY_ID[branchId];
+    }
+    if (selectedBranch !== 'All') return selectedBranch;
+    return 'Unknown';
+  };
+
   // Helper Functions
   const showAlert = (
     type: ModalConfig['type'], 
     title: string, 
     message: React.ReactNode, 
     onConfirm?: () => void, 
-    showCancel: boolean = false
+    showCancel: boolean = false,
+    options?: Pick<ModalConfig, 'onCancel' | 'confirmText' | 'cancelText'>
   ) => {
-    setModalConfig({ type, title, message, onConfirm, showCancel });
+    setModalConfig({
+      type,
+      title,
+      message,
+      onConfirm,
+      onCancel: options?.onCancel,
+      showCancel,
+      confirmText: options?.confirmText ?? (type === 'confirm' ? 'Confirm' : 'OK'),
+      cancelText: options?.cancelText ?? 'Cancel',
+    });
     setModalVisible(true);
   };
+
+  const buildDuplicateImportMessage = (
+    duplicateRows: {
+      row: { item: string; stockCount: number };
+      currentStock: number;
+      mergedStock: number;
+    }[],
+  ): React.ReactNode => (
+    <div style={{ textAlign: 'left' }}>
+      <p style={{ marginBottom: '12px' }}>
+        Some imported products already exist. If you continue, the imported stock will be added to the
+        current stock for those matching items.
+      </p>
+      <div style={{ maxHeight: '220px', overflowY: 'auto', marginBottom: '12px' }}>
+        {duplicateRows.map(({ row, currentStock, mergedStock }, index) => (
+          <div key={`${row.item}-${index}`} style={{ marginBottom: '10px' }}>
+            <strong>{row.item}</strong>
+            <div>Current stock: {currentStock}</div>
+            <div>Imported stock: {row.stockCount}</div>
+            <div>Total after import: {mergedStock}</div>
+          </div>
+        ))}
+      </div>
+      <p>Do you want to continue with the import?</p>
+    </div>
+  );
   
   const loadCurrentUser = async (): Promise<void> => {
     try {
@@ -241,7 +301,14 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
     loadCurrentUser();
   }, []);
 
-      const handleImport = async (file: File): Promise<boolean> => {
+  useEffect(() => {
+    const enabledProducts = products.filter(p => p.stockCount > 0);
+    const allEnabledSelected = enabledProducts.length > 0 &&
+      enabledProducts.every(p => selectedProducts.has(p.id || p.pk || 0));
+    setSelectAll(allEnabledSelected);
+  }, [products, selectedProducts]);
+
+  const handleImport = async (file: File): Promise<boolean> => {
     const branchId = BRANCH_ID_BY_NAME[selectedBranch];
     if (!branchId || selectedBranch === 'All') {
       showAlert('error', 'Select Branch', 'Please select a specific branch before importing inventory.');
@@ -249,82 +316,164 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
     }
 
     try {
-      showAlert('info', 'Processing', `Validating and importing ${file.name}...`);
       const importedRows = await parsePetShieldInventoryTemplate(file);
 
-      const normalizeKey = (item: string, category: string, expirationDate?: string, expirationNA?: boolean) =>
+      const normalizeKey = (item: string, category: string, unit: string, basePrice: number, expirationDate?: string, expirationNA?: boolean) =>
         [
           item.trim().toLowerCase().replace(/\s+/g, ' '),
           category.trim(),
+          unit.trim().toLowerCase(),
+          basePrice.toFixed(2),
           expirationNA ? 'na' : (expirationDate || '').trim(),
         ].join('|');
 
-      let createdCount = 0;
-      let updatedCount = 0;
-      const rowErrors: string[] = [];
       const currentProducts = [...products];
 
-      for (const row of importedRows) {
-        const matchingProduct = currentProducts.find((product) =>
-          normalizeKey(product.item, product.category, product.expirationDate, product.expirationNA) ===
-          normalizeKey(row.item, row.category, row.expirationDate, row.expirationNA)
-        );
+      const duplicateRows = importedRows
+        .map((row) => {
+          const matchingProduct = currentProducts.find((product) =>
+            normalizeKey(product.item, product.category, product.unit || 'Piece', product.basePrice, product.expirationDate, product.expirationNA) ===
+            normalizeKey(row.item, row.category, row.unit, row.basePrice, row.expirationDate, row.expirationNA)
+          );
 
-        const payload = {
-          branch_id: branchId,
-          code: matchingProduct?.code || '',
-          item: row.item,
-          category: row.category,
-          basePrice: row.basePrice,
-          sellingPrice: row.sellingPrice,
-          stockCount: row.stockCount,
-          expirationDate: row.expirationNA ? '' : row.expirationDate,
-          expirationNA: row.expirationNA,
-          criticalStockLevel: matchingProduct?.criticalStockLevel || 10,
-          userId: currentUser?.id || currentUser?.pk,
-        };
+          if (!matchingProduct) return null;
+          return {
+            row,
+            matchingProduct,
+            currentStock: matchingProduct.stockCount || 0,
+            mergedStock: (matchingProduct.stockCount || 0) + row.stockCount,
+          };
+        })
+        .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
 
-        const endpoint = matchingProduct
-          ? `${API_URL}/api/inventory/items/${matchingProduct.id || matchingProduct.pk}`
-          : `${API_URL}/api/inventory/items`;
-        const method = matchingProduct ? 'PUT' : 'POST';
+      const processImport = async (): Promise<boolean> => {
+        let createdCount = 0;
+        let updatedCount = 0;
+        const rowErrors: string[] = [];
 
-        const response = await fetch(endpoint, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const result = await response.json().catch(() => ({}));
+        setIsImportProcessing(true);
+        try {
+          for (const row of importedRows) {
+            let matchingProduct = currentProducts.find((product) =>
+              normalizeKey(product.item, product.category, product.unit || 'Piece', product.basePrice, product.expirationDate, product.expirationNA) ===
+              normalizeKey(row.item, row.category, row.unit, row.basePrice, row.expirationDate, row.expirationNA)
+            );
 
-        if (!response.ok) {
-          rowErrors.push(`Row ${row.sourceRow}: ${result.error || `Failed to ${matchingProduct ? 'update' : 'create'} product`}`);
-          continue;
+            if (!matchingProduct) {
+              const createResponse = await fetch(`${API_URL}/api/inventory/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  branch_id: branchId,
+                  code: '',
+                  item: row.item,
+                  unit: row.unit,
+                  category: row.category,
+                  basePrice: row.basePrice,
+                  sellingPrice: row.sellingPrice,
+                  stockCount: 0,
+                  expirationDate: row.expirationNA ? '' : row.expirationDate,
+                  expirationNA: row.expirationNA,
+                  criticalStockLevel: 10,
+                  userId: currentUser?.id || currentUser?.pk,
+                }),
+              });
+              const createResult = await createResponse.json().catch(() => ({}));
+
+              if (!createResponse.ok) {
+                rowErrors.push(`Row ${row.sourceRow}: ${createResult.error || 'Failed to create product'}`);
+                continue;
+              }
+
+              matchingProduct = {
+                id: createResult.item?.id,
+                pk: createResult.item?.pk,
+                branchId: createResult.item?.branchId,
+                code: createResult.item?.code || '',
+                item: createResult.item?.item || row.item,
+                unit: createResult.item?.unit || row.unit,
+                category: createResult.item?.category || row.category,
+                basePrice: Number(createResult.item?.basePrice || row.basePrice),
+                sellingPrice: Number(createResult.item?.sellingPrice || row.sellingPrice),
+                stockCount: Number(createResult.item?.stockCount || 0),
+                stockStatus: createResult.item?.stockStatus || 'Average Stock',
+                expirationDate: createResult.item?.expirationDate || (row.expirationNA ? 'N/A' : row.expirationDate),
+                expirationNA: Boolean(createResult.item?.expirationNA ?? row.expirationNA),
+                criticalStockLevel: Number(createResult.item?.criticalStockLevel || 10),
+              };
+              currentProducts.push(matchingProduct);
+              createdCount += 1;
+            }
+
+            if (row.stockCount > 0) {
+              const stockInResponse = await fetch(`${API_URL}/api/inventory/stock-in`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  branch_id: branchId,
+                  supplier: 'Inventory Template Import',
+                  reason: 'Imported Inventory Template',
+                  notes: `Imported from template file: ${file.name}`,
+                  processedBy: currentUser?.id || currentUser?.pk,
+                  items: [
+                    {
+                      productId: matchingProduct.id || matchingProduct.pk,
+                      quantity: row.stockCount,
+                      unitCost: row.basePrice,
+                    },
+                  ],
+                }),
+              });
+              const stockInResult = await stockInResponse.json().catch(() => ({}));
+
+              if (!stockInResponse.ok) {
+                rowErrors.push(`Row ${row.sourceRow}: ${stockInResult.error || 'Failed to record imported stock'}`);
+                continue;
+              }
+
+              matchingProduct.stockCount = (matchingProduct.stockCount || 0) + row.stockCount;
+              updatedCount += 1;
+            }
+          }
+
+          await fetchProducts();
+
+          if (rowErrors.length > 0) {
+            showAlert(
+              'error',
+              'Import Completed With Issues',
+              `Created: ${createdCount}, Updated: ${updatedCount}\n\n${rowErrors.join('\n')}`
+            );
+            return true;
+          }
+
+          showAlert(
+            'success',
+            'Import Successful',
+            `Inventory import completed. Created: ${createdCount}, Updated: ${updatedCount}`
+          );
+          return true;
+        } finally {
+          setIsImportProcessing(false);
         }
+      };
 
-        if (matchingProduct) {
-          updatedCount += 1;
-        } else {
-          createdCount += 1;
-        }
-      }
-
-      await fetchProducts();
-
-      if (rowErrors.length > 0) {
-        showAlert(
-          'error',
-          'Import Completed With Issues',
-          `Created: ${createdCount}, Updated: ${updatedCount}\n\n${rowErrors.join('\n')}`
-        );
+      if (duplicateRows.length > 0) {
+        setTimeout(() => {
+          showAlert(
+            'confirm',
+            'Merge Existing Products',
+            buildDuplicateImportMessage(duplicateRows),
+            () => {
+              void processImport();
+            },
+            true
+          );
+        }, 0);
         return true;
       }
 
-      showAlert(
-        'success',
-        'Import Successful',
-        `Inventory import completed. Created: ${createdCount}, Updated: ${updatedCount}`
-      );
-      return true;
+      return await processImport();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to import inventory data.';
       showAlert('error', 'Import Failed', message);
@@ -413,14 +562,8 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
     }
   };
 
-  // Open transaction modal
-  const openTransactionModal = () => {
-    if (selectedProducts.size === 0) {
-      showAlert('error', 'No Selection', 'Please select at least one product for transaction.');
-      return;
-    }
-    
-    const items: BulkItem[] = Array.from(selectedProducts).map(id => {
+  const buildCartItemsFromSelection = (): BulkItem[] =>
+    Array.from(selectedProducts).map(id => {
       const product = products.find(p => (p.id || p.pk || 0) === id);
       const currentQty = quantityMods[id] || 0;
       return {
@@ -428,12 +571,85 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
         branchId: product?.branchId,
         productCode: product?.code || '',
         productName: product?.item || '',
+        unit: product?.unit || 'Piece',
         quantity: currentQty,
         unitPrice: product?.sellingPrice || 0,
         availableStock: product?.stockCount || 0
       };
     });
 
+  const removeCartItem = (productId: number) => {
+    setCartItems(prevItems => prevItems.filter(item => item.productId !== productId));
+    setQuantityMods(prev => {
+      const newMods = { ...prev };
+      delete newMods[productId];
+      return newMods;
+    });
+    setSelectedProducts(prev => {
+      const newSelected = new Set(prev);
+      newSelected.delete(productId);
+      return newSelected;
+    });
+  };
+
+  const addToCart = () => {
+    if (selectedProducts.size === 0) {
+      showAlert('error', 'No Selection', 'Please select at least one product to add to cart.');
+      return;
+    }
+
+    const items = buildCartItemsFromSelection();
+    const branchIds = Array.from(new Set(items.map(item => item.branchId).filter((value): value is number => typeof value === 'number')));
+    if (branchIds.length > 1) {
+      showAlert('error', 'Multiple Branches Selected', 'Please select products from only one branch when adding to cart.');
+      return;
+    }
+
+    setCartItems(items);
+    setModalSearchQuery('');
+    setShowCartModal(true);
+  };
+
+  const closeCartModal = () => {
+    if (cartItems.length === 0) {
+      setShowCartModal(false);
+      setModalSearchQuery('');
+      return;
+    }
+
+    showAlert(
+      'confirm',
+      'Save Changes',
+      'Do you want to save changes?',
+      () => {
+        setShowCartModal(false);
+        setModalSearchQuery('');
+      },
+      true,
+      {
+        confirmText: 'Yes',
+        cancelText: 'No',
+        onCancel: () => {
+          setCartItems([]);
+          setTransactionItems([]);
+          setSelectedProducts(new Set());
+          setSelectAll(false);
+          setQuantityMods({});
+          setShowCartModal(false);
+          setModalSearchQuery('');
+        },
+      }
+    );
+  };
+
+  // Open transaction modal
+  const openTransactionModal = () => {
+    if (cartItems.length === 0) {
+      showAlert('error', 'Empty Cart', 'Please add at least one product to the cart before recording a transaction.');
+      return;
+    }
+
+    const items: BulkItem[] = cartItems.map(item => ({ ...item }));
     const branchIds = Array.from(new Set(items.map(item => item.branchId).filter((value): value is number => typeof value === 'number')));
     if (branchIds.length > 1) {
       showAlert('error', 'Multiple Branches Selected', 'Please select products from only one branch when recording stock out.');
@@ -448,17 +664,23 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
     setTransactionNotes('');
     setIssuedToError('');
     setOtherReasonError('');
+    setModalSearchQuery('');
     setShowTransactionModal(true);
+    setShowCartModal(false);
   };
 
   // Handle quick subtract for transaction modal
   const handleModalQuickSubtract = (index: number, amount: number) => {
-    const newItems = [...transactionItems];
+    const newItems = [...cartItems];
     const item = newItems[index];
     const newQuantity = item.quantity + amount;
     if (newQuantity <= item.availableStock && newQuantity >= 0) {
       item.quantity = newQuantity;
-      setTransactionItems(newItems);
+      setCartItems(newItems);
+      setQuantityMods(prev => ({
+        ...prev,
+        [item.productId]: newQuantity,
+      }));
     } else if (newQuantity > item.availableStock) {
       showAlert('error', 'Insufficient Stock', `Only ${item.availableStock} units available.`);
     }
@@ -466,10 +688,14 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
 
   // Handle quantity change in modal
   const handleModalQuantityChange = (index: number, value: number) => {
-    const newItems = [...transactionItems];
+    const newItems = [...cartItems];
     const newQty = Math.min(Math.max(0, value), newItems[index].availableStock);
     newItems[index].quantity = newQty;
-    setTransactionItems(newItems);
+    setCartItems(newItems);
+    setQuantityMods(prev => ({
+      ...prev,
+      [newItems[index].productId]: newQty,
+    }));
   };
 
   const handleIssuedToChange = (value: string) => {
@@ -588,6 +814,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
       });
       setSelectedProducts(new Set());
       setSelectAll(false);
+      setCartItems([]);
       setShowTransactionModal(false);
       setModalSearchQuery('');
       setTransactionItems([]);
@@ -731,6 +958,18 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
   const sortedProducts = sortProducts(filteredProducts);
   const paginatedProducts = sortedProducts.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
   const totalPages = Math.ceil(sortedProducts.length / itemsPerPage);
+  const filteredCartItems = cartItems.filter(item =>
+    modalSearchQuery === '' ||
+    item.productCode.toLowerCase().includes(modalSearchQuery.toLowerCase()) ||
+    item.productName.toLowerCase().includes(modalSearchQuery.toLowerCase())
+  );
+  const filteredTransactionItems = transactionItems.filter(item =>
+    modalSearchQuery === '' ||
+    item.productCode.toLowerCase().includes(modalSearchQuery.toLowerCase()) ||
+    item.productName.toLowerCase().includes(modalSearchQuery.toLowerCase())
+  );
+  const cartTotal = cartItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+  const transactionTotal = transactionItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
 
   // Check if issued to field should be disabled
   const isIssuedToDisabled = ['Damaged', 'Expired'].includes(transactionReason);
@@ -915,14 +1154,40 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                   <IoArrowBackOutline /> Return to Full List
                 </button>
               )}
-              {/* Record Transaction Button moved here */}
+              <button 
+                className="invRecordTransactionBtn"
+                onClick={addToCart}
+                disabled={selectedProducts.size === 0}
+                style={{ marginRight: '10px' }}
+              >
+                <IoDocumentTextOutline /> Add to Cart ({selectedProducts.size} item{selectedProducts.size !== 1 ? 's' : ''} selected)
+              </button>
               <button 
                 className="invRecordTransactionBtn"
                 onClick={openTransactionModal}
-                disabled={selectedProducts.size === 0}
+                disabled={cartItems.length === 0}
               >
-                <IoDocumentTextOutline /> Record Transaction ({selectedProducts.size} item{selectedProducts.size !== 1 ? 's' : ''} selected)
+                <IoDocumentTextOutline /> Record Transaction ({cartItems.length} item{cartItems.length !== 1 ? 's' : ''} in cart)
               </button>
+            </div>
+
+            <div className="invRowLegend" aria-label="Inventory row legend">
+              <span className="invRowLegendItem">
+                <span className="invRowLegendSwatch invRowLegendExpired" />
+                Expired
+              </span>
+              <span className="invRowLegendItem">
+                <span className="invRowLegendSwatch invRowLegendExpiring" />
+                Expiring Soon
+              </span>
+              <span className="invRowLegendItem">
+                <span className="invRowLegendSwatch invRowLegendSelected" />
+                Selected
+              </span>
+              <span className="invRowLegendItem">
+                <span className="invRowLegendSwatch invRowLegendZeroStock" />
+                Out of Stock
+              </span>
             </div>
           </div>
 
@@ -946,7 +1211,9 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                       />
                     </th>
                     <th style={{ width: '150px' }}>Code</th>
+                    <th>Branch</th>
                     <th>Item</th>
+                    <th>Unit</th>
                     <th>Category</th>
                     <th>Selling Price</th>
                     <th>Current Stock</th>
@@ -989,7 +1256,9 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                             />
                           </td>
                           <td>{product.code}</td>
+                          <td>{getBranchLabel(product.branchId, product.branchName)}</td>
                           <td>{product.item} {hasZeroStock && <span className="invOutOfStockTag">Out of Stock</span>}</td>
+                          <td>{product.unit || 'Piece'}</td>
                           <td>{product.category}</td>
                           <td>₱{product.sellingPrice.toLocaleString()}</td>
                           <td className={product.stockCount <= (product.criticalStockLevel || 10) ? 'invCriticalStockCell' : ''}>
@@ -1020,7 +1289,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                     })
                   ) : (
                     <tr>
-                      <td colSpan={8} className="invNoData">
+                      <td colSpan={10} className="invNoData">
                         No products found
                       </td>
                     </tr>
@@ -1052,7 +1321,118 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
           )}
         </div>
       </div>
-{/* Transaction Modal */}
+{/* Cart Modal */}
+{showCartModal && (
+  <div className="invModalOverlay" onClick={closeCartModal}>
+    <div className="invBulkModal" onClick={e => e.stopPropagation()}>
+      <div className="invModalHeader">
+        <h2>Cart Items</h2>
+        <button className="invModalClose" onClick={closeCartModal}>&times;</button>
+      </div>
+      
+      <div className="invModalContent">
+        <div className="invBulkItemsSection">
+          <label>Items to Remove</label>
+          <div className="invBulkItemsTable">
+            <table className="invBulkItemsTableInner">
+              <thead>
+                <tr>
+                  <th>Product Code</th>
+                  <th>Product Name</th>
+                  <th>Unit Price</th>
+                  <th>Available Stock</th>
+                  <th>Quantity to Remove</th>
+                  <th>Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredCartItems.map((item, index) => {
+                  const originalIndex = cartItems.findIndex(i => i.productId === item.productId);
+                  const hasMissingQuantity = item.quantity <= 0;
+                  const isOutOfStock = item.availableStock === 0;
+
+                  return (
+                    <tr key={index} className={hasMissingQuantity && !isOutOfStock ? 'invMissingRow' : ''}>
+                      <td className="invRemoveCell">
+                        <button
+                          className="invRemoveRowBtn"
+                          onClick={() => removeCartItem(item.productId)}
+                          title="Remove item"
+                        >
+                          <IoCloseOutline size={18} />
+                        </button>
+                      </td>
+                      <td>{item.productCode}</td>
+                      <td>{item.productName} {isOutOfStock && <span className="invOutOfStockTag">Out of Stock</span>}</td>
+                      <td>{item.unitPrice.toLocaleString()}</td>
+                      <td className={item.availableStock <= 10 ? 'invCriticalStockCell' : ''}>
+                        {item.availableStock}
+                      </td>
+                      <td>
+                        <div className="invModalQuantityControls">
+                          <input
+                            type="number"
+                            className={`invBulkQtyInput ${hasMissingQuantity && !isOutOfStock ? 'invMissingInput' : ''}`}
+                            value={item.quantity || ''}
+                            onChange={(e) => handleModalQuantityChange(originalIndex, parseInt(e.target.value) || 0)}
+                            min="0"
+                            max={item.availableStock}
+                            placeholder="0"
+                            disabled={isOutOfStock}
+                          />
+                          <button
+                            className="invQtyBtn invQtyBtnSmall invQtyAddBtn"
+                            onClick={() => handleModalQuickSubtract(originalIndex, 5)}
+                            disabled={isOutOfStock}
+                          >
+                            +5
+                          </button>
+                          <button
+                            className="invQtyBtn invQtyBtnSmall invQtyAddBtn"
+                            onClick={() => handleModalQuickSubtract(originalIndex, 10)}
+                            disabled={isOutOfStock}
+                          >
+                            +10
+                          </button>
+                        </div>
+                      </td>
+                      <td>{(item.quantity * item.unitPrice).toLocaleString()}</td>
+                    </tr>
+                  );
+                })}
+                {filteredCartItems.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="invNoSearchResults">
+                      No items in cart.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={6} className="invBulkTotalLabel">Total:</td>
+                  <td className="invBulkTotalValue">
+                    {cartTotal.toLocaleString()}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="invModalFooter">
+        <button className="invCancelBtn" onClick={closeCartModal}>
+          Cancel
+        </button>
+        <button className="invSubmitBtn" onClick={openTransactionModal}>
+          Proceed to Record Transaction
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+{/* Final Transaction Modal */}
 {showTransactionModal && (
   <div className="invModalOverlay" onClick={() => setShowTransactionModal(false)}>
     <div className="invBulkModal" onClick={e => e.stopPropagation()}>
@@ -1178,12 +1558,11 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
         </div>
 
         <div className="invBulkItemsSection">
-          <label>Items to Remove (Enter quantities below)</label>
+          <label>Items to Remove</label>
           <div className="invBulkItemsTable">
             <table className="invBulkItemsTableInner">
               <thead>
                 <tr>
-                  <th style={{ width: '40px' }}></th>
                   <th>Product Code</th>
                   <th>Product Name</th>
                   <th>Unit Price</th>
@@ -1193,77 +1572,27 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                 </tr>
               </thead>
               <tbody>
-                {transactionItems
-                  .filter(item => 
-                    modalSearchQuery === '' || 
-                    item.productCode.toLowerCase().includes(modalSearchQuery.toLowerCase()) ||
-                    item.productName.toLowerCase().includes(modalSearchQuery.toLowerCase())
-                  )
+                {filteredTransactionItems
                   .map((item, index) => {
-                    const originalIndex = transactionItems.findIndex(i => i.productId === item.productId);
                     const hasMissingQuantity = item.quantity <= 0;
                     const isOutOfStock = item.availableStock === 0;
                     
                     return (
                       <tr key={index} className={hasMissingQuantity && !isOutOfStock ? 'invMissingRow' : ''}>
-                        <td className="invRemoveCell">
-                          <button 
-                            className="invRemoveRowBtn"
-                            onClick={() => {
-                              const newItems = [...transactionItems];
-                              newItems.splice(originalIndex, 1);
-                              setTransactionItems(newItems);
-                            }}
-                            title="Remove item"
-                          >
-                            <IoCloseOutline size={18} />
-                          </button>
-                        </td>
                         <td>{item.productCode}</td>
                         <td>{item.productName} {isOutOfStock && <span className="invOutOfStockTag">Out of Stock</span>}</td>
-                        <td>₱{item.unitPrice.toLocaleString()}</td>
+                        <td>{item.unitPrice.toLocaleString()}</td>
                         <td className={item.availableStock <= 10 ? 'invCriticalStockCell' : ''}>
                           {item.availableStock}
                         </td>
-                        <td>
-                          <div className="invModalQuantityControls">
-                            <input
-                              type="number"
-                              className={`invBulkQtyInput ${hasMissingQuantity && !isOutOfStock ? 'invMissingInput' : ''}`}
-                              value={item.quantity || ''}
-                              onChange={(e) => handleModalQuantityChange(originalIndex, parseInt(e.target.value) || 0)}
-                              min="0"
-                              max={item.availableStock}
-                              placeholder="0"
-                              disabled={isOutOfStock}
-                            />
-                            <button 
-                              className="invQtyBtn invQtyBtnSmall invQtyAddBtn"
-                              onClick={() => handleModalQuickSubtract(originalIndex, 5)}
-                              disabled={isOutOfStock}
-                            >
-                              +5
-                            </button>
-                            <button 
-                              className="invQtyBtn invQtyBtnSmall invQtyAddBtn"
-                              onClick={() => handleModalQuickSubtract(originalIndex, 10)}
-                              disabled={isOutOfStock}
-                            >
-                              +10
-                            </button>
-                          </div>
-                         </td>
-                        <td>₱{(item.quantity * item.unitPrice).toLocaleString()}</td>
+                        <td>{item.quantity}</td>
+                        <td>{(item.quantity * item.unitPrice).toLocaleString()}</td>
                       </tr>
                     );
                   })}
-                {transactionItems.filter(item => 
-                  modalSearchQuery === '' || 
-                  item.productCode.toLowerCase().includes(modalSearchQuery.toLowerCase()) ||
-                  item.productName.toLowerCase().includes(modalSearchQuery.toLowerCase())
-                ).length === 0 && (
+                {filteredTransactionItems.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="invNoSearchResults">
+                    <td colSpan={6} className="invNoSearchResults">
                       No products found matching "{modalSearchQuery}"
                     </td>
                   </tr>
@@ -1271,7 +1600,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={6} className="invBulkTotalLabel">Total:</td>
+                  <td colSpan={5} className="invBulkTotalLabel">Total:</td>
                   <td className="invBulkTotalValue">
                     ₱{transactionItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0).toLocaleString()}
                   </td>
@@ -1380,6 +1709,29 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
         </div>
       )}
 
+      {isImportProcessing && (
+        <div className="invModalOverlay">
+          <div className="invAlertModal" style={{ textAlign: 'center' }}>
+            <div
+              style={{
+                width: '42px',
+                height: '42px',
+                border: '4px solid #d7e3f4',
+                borderTopColor: '#1e3a5f',
+                borderRadius: '50%',
+                margin: '0 auto 18px',
+                animation: 'spin 0.9s linear infinite',
+              }}
+            />
+            <h3 className="invAlertTitle">Importing Inventory</h3>
+            <div className="invAlertMessage">Please wait while your inventory items are being updated.</div>
+            <style>
+              {`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}
+            </style>
+          </div>
+        </div>
+      )}
+
       {/* Unified Alert Modal */}
       {modalVisible && (
         <div className="invModalOverlay">
@@ -1399,10 +1751,13 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
             <div className="invAlertActions">
               {modalConfig.showCancel && (
                 <button 
-                  onClick={() => setModalVisible(false)}
+                  onClick={() => {
+                    setModalVisible(false);
+                    if (modalConfig.onCancel) modalConfig.onCancel();
+                  }}
                   className="invAlertBtn invCancelAlertBtn"
                 >
-                  Cancel
+                  {modalConfig.cancelText || 'Cancel'}
                 </button>
               )}
               
@@ -1413,7 +1768,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                 }}
                 className={`invAlertBtn invConfirmAlertBtn ${modalConfig.type === 'error' ? 'invErrorBtn' : ''}`}
               >
-                {modalConfig.type === 'confirm' ? 'Confirm' : 'OK'}
+                {modalConfig.confirmText || (modalConfig.type === 'confirm' ? 'Confirm' : 'OK')}
               </button>
             </div>
           </div>

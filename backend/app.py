@@ -1203,9 +1203,75 @@ def normalize_inventory_item_name(item_name):
     return ' '.join(normalized_words)
 
 
+COMMON_INVENTORY_UNITS = {
+    'capsule': 'Capsule',
+    'tablet': 'Tablet',
+    'bottle': 'Bottle',
+    'piece': 'Piece',
+    'pack': 'Pack',
+    'box': 'Box',
+    'vial': 'Vial',
+    'tube': 'Tube',
+    'sachet': 'Sachet',
+    'can': 'Can',
+    'bag': 'Bag',
+    'ml': 'mL',
+    'l': 'L',
+    'gram': 'Gram',
+    'kg': 'Kg',
+}
+
+
+def normalize_inventory_unit_name(unit_name):
+    raw_value = str(unit_name or '').strip()
+    if not raw_value:
+        return ''
+
+    normalized_key = ' '.join(raw_value.lower().split())
+    if normalized_key in COMMON_INVENTORY_UNITS:
+        return COMMON_INVENTORY_UNITS[normalized_key]
+
+    normalized_words = []
+    for raw_word in raw_value.split():
+        if not raw_word:
+            continue
+        if raw_word.lower() in {'ml', 'l', 'kg'}:
+            normalized_words.append(raw_word.upper() if raw_word.lower() != 'ml' else 'mL')
+            continue
+        if '-' in raw_word:
+            normalized_parts = [
+                part[:1].upper() + part[1:].lower() if part else ''
+                for part in raw_word.split('-')
+            ]
+            normalized_words.append('-'.join(normalized_parts))
+        else:
+            normalized_words.append(raw_word[:1].upper() + raw_word[1:].lower())
+
+    return ' '.join(normalized_words)
+
+
+def resolve_inventory_unit(data, existing=None):
+    primary_value = (
+        data.get('unit')
+        or data.get('unitName')
+        or data.get('unit_name')
+        or data.get('customUnit')
+        or data.get('unitOther')
+        or data.get('otherUnit')
+        or (existing or {}).get('unit')
+        or ''
+    )
+    unit_name = normalize_inventory_unit_name(primary_value)
+    if not unit_name:
+        raise ValueError('unit is required')
+    if len(unit_name) > 30:
+        raise ValueError('unit must be 30 characters or less')
+    return unit_name
+
+
 def find_inventory_duplicate(payload, exclude_item_id=None, include_archived=False):
     query = supabase_admin.table('inventory_items').select(
-        'inventory_item_id,item_name,category,no_expiration,expiration_date,is_archived'
+        'inventory_item_id,item_name,unit,category,no_expiration,expiration_date,is_archived'
     ).eq('branch_id', payload['branch_id']).eq('category', payload['category'])
 
     if not include_archived:
@@ -1220,6 +1286,11 @@ def find_inventory_duplicate(payload, exclude_item_id=None, include_archived=Fal
             continue
 
         if normalize_inventory_name_for_compare(row.get('item_name')) != target_name:
+            continue
+
+        row_unit = normalize_inventory_unit_name(row.get('unit') or '')
+        payload_unit = normalize_inventory_unit_name(payload.get('unit') or '')
+        if row_unit != payload_unit:
             continue
 
         row_no_expiration = bool(row.get('no_expiration'))
@@ -1239,7 +1310,7 @@ def find_inventory_duplicate(payload, exclude_item_id=None, include_archived=Fal
 def ensure_inventory_item_is_unique(payload, exclude_item_id=None):
     duplicate = find_inventory_duplicate(payload, exclude_item_id=exclude_item_id, include_archived=False)
     if duplicate:
-        raise ValueError('Product already exists with the same expiration date')
+        raise ValueError('Product already exists with the same unit and expiration date')
 
 
 def build_inventory_item_payload(data, existing=None):
@@ -1251,6 +1322,7 @@ def build_inventory_item_payload(data, existing=None):
         raise ValueError('item is required')
     if category not in INVENTORY_CATEGORIES:
         raise ValueError('category is invalid')
+    unit_name = resolve_inventory_unit(data, existing=existing)
 
     branch_id = coerce_int(data.get('branch_id', data.get('branchId', (existing or {}).get('branch_id'))), 'branch_id', minimum=1)
     provided_code = (data.get('code') or data.get('item_code') or '').strip()
@@ -1282,6 +1354,7 @@ def build_inventory_item_payload(data, existing=None):
         'branch_id': branch_id,
         'item_code': code,
         'item_name': item_name,
+        'unit': unit_name,
         'category': category,
         'base_price': base_price,
         'selling_price': selling_price,
@@ -1312,6 +1385,7 @@ def normalize_inventory_item(record):
         'branch_id': record.get('branch_id'),
         'code': record.get('item_code') or '',
         'item': record.get('item_name') or '',
+        'unit': record.get('unit') or 'Piece',
         'category': record.get('category') or '',
         'basePrice': float(record.get('base_price') or 0),
         'sellingPrice': float(record.get('selling_price') or 0),
@@ -1337,6 +1411,7 @@ def normalize_inventory_log(record):
         'time': record.get('time'),
         'productCode': record.get('productCode'),
         'productName': record.get('productName'),
+        'unit': record.get('unit') or 'Piece',
         'type': record.get('type'),
         'quantity': int(record.get('quantity') or 0),
         'referenceNumber': record.get('referenceNumber'),
@@ -3682,13 +3757,14 @@ def restore_inventory_item(item_id):
         duplicate_payload = {
             'branch_id': item.get('branch_id'),
             'item_name': item.get('item_name'),
+            'unit': item.get('unit'),
             'category': item.get('category'),
             'no_expiration': bool(item.get('no_expiration')),
             'expiration_date': item.get('expiration_date'),
         }
         duplicate = find_inventory_duplicate(duplicate_payload, exclude_item_id=item_id, include_archived=False)
         if duplicate:
-            return jsonify({'error': 'Cannot restore product because an active product with the same expiration date already exists'}), 400
+            return jsonify({'error': 'Cannot restore product because an active product with the same unit and expiration date already exists'}), 400
 
         response = supabase_admin.table('inventory_items') \
             .update({

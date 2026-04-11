@@ -27,8 +27,11 @@ interface CurrentUser {
 
 interface ArchivedProduct {
   id: number;
+  branchId?: number;
+  branchName?: string;
   code: string;
   item: string;
+  unit?: string;
   category: string;
   basePrice: number;
   sellingPrice: number;
@@ -67,6 +70,10 @@ const BRANCH_ID_BY_NAME: Record<string, number> = {
   Taguig: 1,
   'Las Pinas': 2,
 };
+const BRANCH_NAME_BY_ID: Record<number, string> = {
+  1: 'Taguig',
+  2: 'Las Pinas',
+};
 
 const GlobalInventoryArchive: React.FC = () => {
   const navigate = useNavigate();
@@ -95,6 +102,15 @@ const GlobalInventoryArchive: React.FC = () => {
   const itemsPerPage = rowsPerPage;
 
   const [selectedBranch, setSelectedBranch] = useState<string>('All');
+
+  const getBranchLabel = (branchId?: number, branchName?: string): string => {
+    if (branchName?.trim()) return branchName;
+    if (typeof branchId === 'number' && BRANCH_NAME_BY_ID[branchId]) {
+      return BRANCH_NAME_BY_ID[branchId];
+    }
+    if (selectedBranch !== 'All') return selectedBranch;
+    return 'Unknown';
+  };
 
   // Modal States
   const [modalVisible, setModalVisible] = useState<boolean>(false);
@@ -150,6 +166,7 @@ const GlobalInventoryArchive: React.FC = () => {
         id: item.id || item.pk || item.inventory_item_id,
         code: item.code || '',
         item: item.item || '',
+        unit: item.unit || 'Piece',
         category: item.category || '',
         basePrice: Number(item.basePrice || 0),
         sellingPrice: Number(item.sellingPrice || 0),
@@ -450,7 +467,9 @@ const GlobalInventoryArchive: React.FC = () => {
                 <thead>
                   <tr>
                     <th>Code</th>
+                    <th>Branch</th>
                     <th>Item</th>
+                    <th>Unit</th>
                     <th>Category</th>
                     <th>Base Price</th>
                     <th>Selling Price</th>
@@ -465,7 +484,9 @@ const GlobalInventoryArchive: React.FC = () => {
                     paginatedProducts.map(product => (
                       <tr key={product.id} className="invArchivedRow">
                         <td>{product.code}</td>
+                        <td>{getBranchLabel(product.branchId, product.branchName)}</td>
                         <td>{product.item}</td>
+                        <td>{product.unit || 'Piece'}</td>
                         <td>{product.category}</td>
                         <td>₱{product.basePrice.toLocaleString()}</td>
                         <td>₱{product.sellingPrice.toLocaleString()}</td>
@@ -487,7 +508,7 @@ const GlobalInventoryArchive: React.FC = () => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={9} className="invNoData">
+                      <td colSpan={10} className="invNoData">
                         No archived products found
                        </td>
                     </tr>

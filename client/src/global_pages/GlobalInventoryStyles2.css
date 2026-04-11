@@ -1060,6 +1060,51 @@
   opacity: 0.8;
 }
 
+.invRowLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #e3e8f0;
+  border-radius: 10px;
+  background-color: #fafbfd;
+}
+
+.invRowLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #435066;
+  font-weight: 600;
+}
+
+.invRowLegendSwatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(34, 51, 84, 0.12);
+  flex-shrink: 0;
+}
+
+.invRowLegendExpired {
+  background-color: #ffebee;
+}
+
+.invRowLegendExpiring {
+  background-color: #fffaf0;
+}
+
+.invRowLegendSelected {
+  background-color: rgba(61, 103, 238, 0.12);
+}
+
+.invRowLegendZeroStock {
+  background-color: #f5f5f5;
+}
+
 .invOutOfStockTag {
   display: inline-block;
   background-color: #afafaf;
