@@ -33,7 +33,7 @@ interface ModalConfig {
   type: 'info' | 'success' | 'error' | 'confirm';
   title: string;
   message: string | React.ReactNode;
-  onConfirm?: () => void;
+  onConfirm?: (() => void) | null;
   showCancel: boolean;
   confirmText: string;
 }
@@ -109,7 +109,7 @@ const UserHome: React.FC = () => {
     type: ModalConfig['type'],
     title: string,
     message: string | React.ReactNode,
-    onConfirm?: () => void,
+    onConfirm?: (() => void) | null,
     showCancel = false,
     confirmText = 'OK',
   ) => {

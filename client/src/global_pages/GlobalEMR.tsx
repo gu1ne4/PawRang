@@ -2723,7 +2723,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                       {visit.selectedServices.map((service, idx) => (
                                         <span key={service.id} className="emrServiceTag">
                                           {service.name}
-                                          {idx < visit.selectedServices.length - 1 && ', '}
+                                          {idx < (visit.selectedServices?.length ?? 0) - 1 && ', '}
                                         </span>
                                       ))}
                                       <span className="emrServicesTotalPrice">

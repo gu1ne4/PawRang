@@ -1,25 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Lock, User } from 'lucide-react';
 import './UserAuthStylesheet.css';
 import API_URL from '../API';
-import { supabase } from '../supabaseClient';
 
-interface ProfileResponse {
-  id: string;
-  email?: string;
-  username?: string;
-  fullname?: string;
-  role?: string;
+interface EmployeeSetupResponse {
+  employee?: {
+    id?: string;
+    email?: string;
+    username?: string;
+  };
+  error?: string;
 }
 
 type ButtonState = 'default' | 'loading' | 'success' | 'error';
 
 export default function EmployeeSetupPage() {
   const navigate = useNavigate();
-  const { userId: routeUserId } = useParams();
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get('token') ?? '';
 
-  const [resolvedUserId, setResolvedUserId] = useState('');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -51,8 +51,8 @@ export default function EmployeeSetupPage() {
 
     if (!value.trim()) {
       setPasswordError('Password is required.');
-    } else if (value.length < 8) {
-      setPasswordError('Password must be at least 8 characters.');
+    } else if (value.length < 6) {
+      setPasswordError('Password must be at least 6 characters.');
     } else {
       setPasswordError('');
     }
@@ -83,7 +83,7 @@ export default function EmployeeSetupPage() {
 
     return (
       username.trim().length >= 3 &&
-      password.length >= 8 &&
+      password.length >= 6 &&
       confirmPassword === password
     );
   };
@@ -96,63 +96,24 @@ export default function EmployeeSetupPage() {
       setServerError('');
 
       try {
-        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-        const accessToken = hashParams.get('access_token');
-        const refreshToken = hashParams.get('refresh_token');
-
-        if (accessToken && refreshToken) {
-          await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken
-          });
-          window.history.replaceState({}, document.title, window.location.pathname);
+        if (!token) {
+          throw new Error('This setup link is invalid or has expired. Please request a new employee setup link.');
         }
 
-        const { data: sessionData } = await supabase.auth.getSession();
-        const { data: userData } = await supabase.auth.getUser();
-        const sessionUserId = userData.user?.id || sessionData.session?.user?.id;
-
-        let localUserId = '';
-        try {
-          const storedSession = localStorage.getItem('userSession');
-          if (storedSession) {
-            localUserId = JSON.parse(storedSession)?.id || '';
-          }
-        } catch (error) {
-          console.error('Failed to parse local user session:', error);
-        }
-
-        const effectiveUserId = sessionUserId || routeUserId || localUserId;
-
-        if (!effectiveUserId) {
-          if (isMounted) {
-            setServerError('This setup link is invalid or has expired. Please request a new employee setup link.');
-          }
-          return;
-        }
-
-        if (!isMounted) return;
-        setResolvedUserId(effectiveUserId);
-
-        const response = await fetch(`${API_URL}/profile/${effectiveUserId}`);
-        const data: ProfileResponse | { error?: string } = await response.json().catch(() => ({}));
+        const response = await fetch(`${API_URL}/api/employee-setup/validate?token=${encodeURIComponent(token)}`);
+        const data: EmployeeSetupResponse = await response.json().catch(() => ({}));
 
         if (!response.ok) {
-          throw new Error((data as { error?: string }).error || 'Failed to load employee profile.');
+          throw new Error(data.error || 'Failed to validate employee setup link.');
         }
 
-        const profile = data as ProfileResponse;
         if (!isMounted) return;
 
-        setEmail(profile.email || '');
-        const suggestedUsername = profile.username && !profile.username.startsWith('temp_')
-          ? profile.username
-          : '';
-        setUsername(suggestedUsername);
-      } catch (error: any) {
-        if (isMounted) {
-          setServerError(error.message || 'Failed to prepare the account setup page.');
-        }
+        setEmail(data.employee?.email || '');
+        setUsername(data.employee?.username || '');
+      } catch (error: unknown) {
+        if (!isMounted) return;
+        setServerError(error instanceof Error ? error.message : 'Failed to prepare the account setup page.');
       } finally {
         if (isMounted) {
           setIsInitializing(false);
@@ -165,13 +126,13 @@ export default function EmployeeSetupPage() {
     return () => {
       isMounted = false;
     };
-  }, [routeUserId]);
+  }, [token]);
 
   const handleSubmit = async () => {
     setServerError('');
     setServerSuccess('');
 
-    if (!resolvedUserId) {
+    if (!token) {
       setServerError('This setup link is invalid or has expired. Please request a new employee setup link.');
       setButtonState('error');
       setTimeout(() => setButtonState('default'), 600);
@@ -188,16 +149,16 @@ export default function EmployeeSetupPage() {
     setButtonState('loading');
 
     try {
-      const response = await fetch(`${API_URL}/employee-complete-setup`, {
+      const response = await fetch(`${API_URL}/api/employee-setup/complete`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          user_id: resolvedUserId,
+          token,
           username: username.trim(),
-          new_password: password
-        })
+          password,
+        }),
       });
 
       const data = await response.json().catch(() => ({}));
@@ -209,17 +170,11 @@ export default function EmployeeSetupPage() {
       setServerSuccess('Account setup complete. You can now log in with your new username and password.');
       setButtonState('success');
 
-      try {
-        await supabase.auth.signOut();
-      } catch (error) {
-        console.error('Sign-out after setup failed:', error);
-      }
-
       setTimeout(() => {
         navigate('/login');
       }, 1800);
-    } catch (error: any) {
-      setServerError(error.message || 'Failed to complete account setup.');
+    } catch (error: unknown) {
+      setServerError(error instanceof Error ? error.message : 'Failed to complete account setup.');
       setButtonState('error');
       setTimeout(() => setButtonState('default'), 600);
     } finally {

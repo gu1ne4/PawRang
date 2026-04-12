@@ -136,7 +136,7 @@ interface CurrentUser {
 interface ModalConfig {
   type: 'info' | 'success' | 'error' | 'confirm';
   title: string;
-  message: string | JSX.Element;
+  message: string | React.ReactNode;
   onConfirm?: () => void;
   showCancel: boolean;
 }
@@ -500,7 +500,7 @@ const MOCK_INVOICES: Invoice[] = [
   }
 ];
 
-const getCategoryIcon = (category: string): JSX.Element => {
+const getCategoryIcon = (category: string): React.ReactNode => {
   const iconProps = { size: 18 };
   switch(category) {
     case 'Consultation': return <IoPulseOutline {...iconProps} />;
@@ -516,7 +516,7 @@ const getCategoryIcon = (category: string): JSX.Element => {
   }
 };
 
-const getProductCategoryIcon = (category: string): JSX.Element => {
+const getProductCategoryIcon = (category: string): React.ReactNode => {
   const iconProps = { size: 16 };
   switch(category.toLowerCase()) {
     case 'food': return <IoFastFoodOutline {...iconProps} />;
@@ -696,7 +696,7 @@ const GlobalBilling: React.FC = () => {
   const showAlert = (
     type: ModalConfig['type'], 
     title: string, 
-    message: string | JSX.Element, 
+    message: string | React.ReactNode, 
     onConfirm?: () => void, 
     showCancel: boolean = false
   ) => {

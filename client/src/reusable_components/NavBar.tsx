@@ -34,9 +34,9 @@ interface NavbarProps {
   currentUser: {
     id?: string | number;
     pk?: string | number;
-    username: string;
+    username?: string;
     fullName?: string;
-    role: string;
+    role?: string;
     userImage?: string;
   } | null;
   onLogout: () => void;
@@ -248,8 +248,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
               />
               {!isCollapsed && (
                 <div style={{lineHeight: '20px'}}>
-                  <div className="navUserName">{currentUser ? currentUser.username : "Username Here"}</div>
-                  <div className="navUserRole">{currentUser ? currentUser.role : "User Role Here"}</div>
+                  <div className="navUserName">{currentUser?.username || "Username Here"}</div>
+                  <div className="navUserRole">{currentUser?.role || "User Role Here"}</div>
                 </div>
               )}
             </div>

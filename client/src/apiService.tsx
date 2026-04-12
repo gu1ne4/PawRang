@@ -153,12 +153,6 @@ export const apiService = {
   },
 
   // Update your existing saveMedicalInformation to handle both types (walkin & appointment)
-  saveMedicalInformation(payload: any) {
-    return request('/api/medical-information', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  },
 
 // 
 
@@ -298,7 +292,9 @@ export const apiService = {
   // ─── Medical information ─────────────────────────────────────────────────
 
   saveMedicalInformation(payload: {
-    appointment_id: number;
+    appointment_id?: number;
+    walkin_id?: number;
+    record_type?: 'appointment' | 'walkin';
     is_pregnant?: boolean;
     is_vaccinated?: boolean;
     has_allergies?: boolean;
@@ -311,7 +307,7 @@ export const apiService = {
     flea_tick_prevention?: boolean;
     additional_notes?: string;
   }) {
-    return request('/medical-information', {
+    return request('/api/medical-information', {
       method: 'POST',
       body: JSON.stringify(payload),
     });

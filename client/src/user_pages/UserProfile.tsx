@@ -75,7 +75,7 @@ interface Notification {
 interface AlertConfig {
   type: 'info' | 'success' | 'error' | 'confirm';
   title: string;
-  message: string;
+  message: string | React.ReactNode;
   onConfirm: (() => void) | null;
   showCancel: boolean;
   confirmText: string;
@@ -533,7 +533,7 @@ const UserProfile: React.FC = () => {
   const showAlert = (
     type: AlertConfig['type'],
     title: string,
-    message: string,
+    message: string | React.ReactNode,
     onConfirm: (() => void) | null = null,
     showCancel = false,
     confirmText = 'OK'

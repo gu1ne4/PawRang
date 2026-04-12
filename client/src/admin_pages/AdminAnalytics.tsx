@@ -96,6 +96,15 @@ interface Insight {
   action?: string;
 }
 
+const toNumberOrNull = (value: unknown): number | null => {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+};
+
 // ==================== MOCK DATA ====================
 const currentUser: Admin = {
   id: 1,
@@ -338,8 +347,11 @@ const SalesTrendWithForecast: React.FC = () => {
           <XAxis dataKey="day" tick={{ fontSize: 11 }} angle={-20} textAnchor="end" height={60} />
           <YAxis tickFormatter={(value) => `₱${value / 1000}k`} tick={{ fontSize: 11 }} />
           <Tooltip
-            formatter={(value: number | null, name: string) => {
-              if (value === null) return ['No data', name];
+            formatter={(rawValue, name) => {
+              const numericValue = toNumberOrNull(rawValue);
+              const label = String(name);
+              const value = numericValue ?? 0;
+              if (numericValue === null) return ['No data', label];
               if (name === 'actual') return [`₱${value.toLocaleString()}`, 'Actual Revenue'];
               return [`₱${value.toLocaleString()}`, 'Predicted Revenue'];
             }}
@@ -369,7 +381,8 @@ const TopServicesChart: React.FC = () => {
           <XAxis type="number" tickFormatter={(value) => `₱${value / 1000}k`} />
           <YAxis type="category" dataKey="service" tick={{ fontSize: 11 }} width={80} />
           <Tooltip
-            formatter={(value: number, name: string, props: any) => {
+            formatter={(rawValue, name, props: any) => {
+              const value = toNumberOrNull(rawValue) ?? 0;
               const trend = props.payload.trend;
               return [
                 `₱${value.toLocaleString()} (${trend && trend > 0 ? `+${trend}%` : `${trend}%`})`,
@@ -399,7 +412,7 @@ const TopProductsChart: React.FC = () => {
           <XAxis type="number" />
           <YAxis type="category" dataKey="product" tick={{ fontSize: 10 }} width={100} />
           <Tooltip
-            formatter={(value: number, name: string, props: any) => {
+            formatter={(value, name, props: any) => {
               const daysOut = props.payload.daysUntilOut;
               return [
                 `${value} units sold (Est. ${daysOut} days until out of stock)`,
@@ -453,7 +466,7 @@ const SalesDistributionChart: React.FC = () => {
               <Cell key={`cell-${index}`} fill={entry.color} />
             ))}
           </Pie>
-          <Tooltip formatter={(value: number) => [`${value}%`, 'Share']} />
+          <Tooltip formatter={(value) => [`${value}%`, 'Share']} />
           <Legend verticalAlign="bottom" height={36} iconType="circle" />
         </PieChart>
       </ResponsiveContainer>
@@ -539,7 +552,7 @@ const InventoryIntelligence: React.FC = () => {
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis dataKey="name" tick={{ fontSize: 11 }} />
             <YAxis />
-            <Tooltip formatter={(value: number) => [`${value} items`, 'Count']} />
+            <Tooltip formatter={(value) => [`${value} items`, 'Count']} />
             <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={40}>
               {movementData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={entry.color} />

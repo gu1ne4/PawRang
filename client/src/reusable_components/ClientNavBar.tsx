@@ -18,14 +18,14 @@ import './ClientNavBar.css';
 interface User {
   id?: string | number;
   pk?: string | number;
-  username: string;
+  username?: string;
   fullname?: string;
   fullName?: string;
   firstName?: string;
   first_name?: string;
   lastName?: string;
   last_name?: string;
-  profileImage?: string;
+  profileImage?: string | null;
   userImage?: string;
   userimage?: string;
   user_image?: string;
@@ -40,7 +40,7 @@ interface AlertConfig {
   type: 'info' | 'success' | 'error' | 'confirm';
   title: string;
   message: string | React.ReactNode;
-  onConfirm?: () => void;
+  onConfirm?: (() => void) | null;
   showCancel: boolean;
   confirmText: string;
 }
@@ -55,7 +55,7 @@ interface ClientNavBarProps {
     type: AlertConfig['type'],
     title: string,
     message: string | React.ReactNode,
-    onConfirm?: () => void,
+    onConfirm?: (() => void) | null,
     showCancel?: boolean,
     confirmText?: string
   ) => void;

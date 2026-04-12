@@ -651,7 +651,7 @@ const UserPetProfile: React.FC = () => {
         { id: Date.now().toString(), name, base64, mime },
       ]);
       setAddForm(prev => ({ ...prev, isVaccinated: true }));
-      setAddErrors(prev => ({ ...prev, isVaccinated: undefined }));
+      setAddErrors(prev => ({ ...prev, isVaccinated: '' }));
     });
   };
 
@@ -1442,7 +1442,7 @@ const UserPetProfile: React.FC = () => {
                     className={`size-btn ${addForm.isVaccinated === option.value ? 'selected' : ''}`}
                     onClick={() => {
                       setAddForm(f => ({ ...f, isVaccinated: option.value }));
-                      setAddErrors(prev => ({ ...prev, isVaccinated: undefined }));
+                      setAddErrors(prev => ({ ...prev, isVaccinated: '' }));
                     }}
                   >
                     {option.label}

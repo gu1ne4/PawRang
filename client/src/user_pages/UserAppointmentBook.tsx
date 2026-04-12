@@ -99,7 +99,7 @@ interface AlertConfig {
   type: 'info' | 'success' | 'error' | 'confirm';
   title: string;
   message: string | React.ReactNode;
-  onConfirm?: () => void;
+  onConfirm?: (() => void) | null;
   showCancel: boolean;
   confirmText: string;
 }
@@ -522,7 +522,7 @@ const UserAppointmentBook: React.FC = () => {
 
   const showAlert = (
     type: AlertConfig['type'], title: string, message: string | React.ReactNode,
-    onConfirm?: () => void, showCancel = false, confirmText = 'OK',
+    onConfirm?: (() => void) | null, showCancel = false, confirmText = 'OK',
   ) => {
     setAlertConfig({ type, title, message, onConfirm, showCancel, confirmText });
     setAlertVisible(true);
@@ -767,7 +767,7 @@ const UserAppointmentBook: React.FC = () => {
         typeLabel = `Laboratory Tests (${selectedLabOptions.map(o => o.name).join(', ')})`;
       
       // appointments POST — cast ids to Number
-      const apptRes = await apiClient.post(
+      const apptRes = await apiClient.post<{ appointment_id: number; emailSent?: boolean }>(
         `${API_URL}/appointments`,
         {
           owner_id:         currentUser.id,
@@ -780,8 +780,8 @@ const UserAppointmentBook: React.FC = () => {
         },
         { headers: { Authorization: `Bearer ${getToken()}` } },
       );
-      const appointmentId: number = apptRes.data.appointment_id;
-      const bookingEmailSent = apptRes.data?.emailSent !== false;
+      const appointmentId = apptRes.data.appointment_id;
+      const bookingEmailSent = apptRes.data.emailSent !== false;
 
       // medical-information POST — add the three NOT NULL fields
       await apiClient.post(
@@ -805,7 +805,7 @@ const UserAppointmentBook: React.FC = () => {
         let referenceUrl: string | undefined;
         if (haircutImageBase64) {
           try {
-            const upRes = await apiClient.post(
+            const upRes = await apiClient.post<{ photoUrl?: string }>(
               `${API_URL}/upload-pet-photo`,
               { file: haircutImageBase64, file_name: `haircut_ref_${appointmentId}.jpg`, mime_type: haircutImageMime },
               { headers: { Authorization: `Bearer ${getToken()}` } },
