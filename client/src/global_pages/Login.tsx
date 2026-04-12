@@ -85,7 +85,7 @@ export default function Login() {
             const data = await response.json().catch(() => ({}))
 
             if (!response.ok) {
-                if (response.status === 403) {
+                if (response.status === 403 && data.email) {
                     nav('/ConfirmOTP', {
                         state: {
                             email: data.email ?? getIdentifier,

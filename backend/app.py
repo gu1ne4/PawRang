@@ -10,7 +10,7 @@ import secrets
 import hashlib
 import uuid
 import time
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from html import escape
 import resend
 
@@ -391,11 +391,27 @@ TRANSIENT_SUPABASE_ERROR_PATTERNS = (
     "connection aborted",
     "timeout",
 )
+MISSING_SUPABASE_RESOURCE_PATTERNS = (
+    "could not find the table",
+    "does not exist",
+    "relation",
+    "schema cache",
+)
+LOGIN_SECURITY_TABLE = "login_lockouts"
+MAX_LOGIN_ATTEMPTS = 3
+BASE_LOCKOUT_MINUTES = 5
+LOCKOUT_INCREMENT_MINUTES = 20
+login_security_store = {}
 
 
 def is_transient_supabase_error(error):
     message = str(error or "").lower()
     return any(pattern in message for pattern in TRANSIENT_SUPABASE_ERROR_PATTERNS)
+
+
+def is_missing_supabase_resource_error(error):
+    message = str(error or "").lower()
+    return any(pattern in message for pattern in MISSING_SUPABASE_RESOURCE_PATTERNS)
 
 
 def execute_with_retry(run_query, *, attempts=3, base_delay=0.15, context="Supabase read"):
@@ -429,6 +445,216 @@ def get_single_row(table_name, column, value):
         raise ValueError(f"Multiple {table_name} records found for {column}.")
 
     return rows[0] if rows else None
+
+
+def utc_now():
+    return datetime.utcnow()
+
+
+def parse_datetime_value(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+
+    raw = str(value).strip()
+    if not raw:
+        return None
+
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def format_lockout_minutes(minutes):
+    total_minutes = max(1, int(minutes or 0))
+    hours, remaining_minutes = divmod(total_minutes, 60)
+
+    parts = []
+    if hours:
+        parts.append(f"{hours} hour" if hours == 1 else f"{hours} hours")
+    if remaining_minutes:
+        parts.append(f"{remaining_minutes} minute" if remaining_minutes == 1 else f"{remaining_minutes} minutes")
+    return " ".join(parts) if parts else "1 minute"
+
+
+def get_lockout_duration_minutes(lockout_count):
+    prior_lockouts = max(0, int(lockout_count or 0))
+    return BASE_LOCKOUT_MINUTES + (prior_lockouts * LOCKOUT_INCREMENT_MINUTES)
+
+
+def get_login_security_key(profile, identifier):
+    if profile and profile.get("id"):
+        return str(profile.get("id"))
+    return (identifier or "").strip().lower()
+
+
+def get_default_login_security_state(profile=None, identifier=None):
+    return {
+        "account_key": get_login_security_key(profile, identifier),
+        "account_id": profile.get("id") if profile else None,
+        "email": (profile or {}).get("email"),
+        "username": (profile or {}).get("username"),
+        "failed_attempts": 0,
+        "lockout_count": 0,
+        "locked_until": None,
+        "last_failed_at": None,
+    }
+
+
+def read_login_security_state(profile=None, identifier=None):
+    state = get_default_login_security_state(profile, identifier)
+    account_key = state["account_key"]
+    stored_state = None
+
+    if profile and profile.get("id"):
+        try:
+            result = execute_with_retry(
+                lambda: supabase_admin.table(LOGIN_SECURITY_TABLE)
+                .select("*")
+                .eq("account_id", profile.get("id"))
+                .limit(1)
+                .execute(),
+                context="Fetch login security state"
+            )
+            rows = result.data or []
+            stored_state = rows[0] if rows else None
+        except Exception as e:
+            if not is_missing_supabase_resource_error(e):
+                raise
+            stored_state = login_security_store.get(account_key)
+    else:
+        stored_state = login_security_store.get(account_key)
+
+    if not stored_state:
+        return state
+
+    state.update({
+        "account_key": account_key,
+        "account_id": stored_state.get("account_id") or state["account_id"],
+        "email": stored_state.get("email") or state["email"],
+        "username": stored_state.get("username") or state["username"],
+        "failed_attempts": int(stored_state.get("failed_attempts") or 0),
+        "lockout_count": int(stored_state.get("lockout_count") or 0),
+        "locked_until": parse_datetime_value(stored_state.get("locked_until")),
+        "last_failed_at": parse_datetime_value(stored_state.get("last_failed_at")),
+    })
+    return state
+
+
+def persist_login_security_state(state):
+    payload = {
+        "account_id": state.get("account_id"),
+        "email": state.get("email"),
+        "username": state.get("username"),
+        "failed_attempts": int(state.get("failed_attempts") or 0),
+        "lockout_count": int(state.get("lockout_count") or 0),
+        "locked_until": state.get("locked_until").isoformat() if state.get("locked_until") else None,
+        "last_failed_at": state.get("last_failed_at").isoformat() if state.get("last_failed_at") else None,
+        "updated_at": utc_now().isoformat(),
+    }
+
+    account_key = state.get("account_key")
+    if not account_key:
+        return
+
+    login_security_store[account_key] = {
+        **payload,
+        "account_key": account_key,
+    }
+
+    if not state.get("account_id"):
+        return
+
+    try:
+        execute_with_retry(
+            lambda: supabase_admin.table(LOGIN_SECURITY_TABLE).upsert(
+                payload,
+                on_conflict="account_id"
+            ).execute(),
+            context="Persist login security state"
+        )
+    except Exception as e:
+        if not is_missing_supabase_resource_error(e):
+            raise
+
+
+def clear_login_security_state(profile, identifier=None):
+    state = read_login_security_state(profile, identifier)
+    state.update({
+        "failed_attempts": 0,
+        "lockout_count": 0,
+        "locked_until": None,
+        "last_failed_at": None,
+        "account_id": profile.get("id") if profile else state.get("account_id"),
+        "email": (profile or {}).get("email") or state.get("email"),
+        "username": (profile or {}).get("username") or state.get("username"),
+    })
+    persist_login_security_state(state)
+    return state
+
+
+def build_lockout_response(state):
+    now = utc_now()
+    locked_until = state.get("locked_until")
+    if not locked_until or locked_until <= now:
+        return None
+
+    seconds_left = max(1, int((locked_until - now).total_seconds()))
+    minutes_left = max(1, int((seconds_left + 59) // 60))
+    return {
+        "error": f"Too many invalid login attempts. This account is locked for {format_lockout_minutes(minutes_left)}.",
+        "attempts_left": 0,
+        "retry_after_seconds": seconds_left,
+        "locked_until": locked_until.isoformat(),
+        "lockout_active": True,
+    }
+
+
+def record_failed_login_attempt(profile, identifier):
+    state = read_login_security_state(profile, identifier)
+    now = utc_now()
+    locked_until = state.get("locked_until")
+
+    if locked_until and locked_until <= now:
+        state["failed_attempts"] = 0
+        state["locked_until"] = None
+
+    state["account_id"] = profile.get("id") if profile else state.get("account_id")
+    state["email"] = (profile or {}).get("email") or state.get("email")
+    state["username"] = (profile or {}).get("username") or state.get("username")
+    state["last_failed_at"] = now
+    state["failed_attempts"] = int(state.get("failed_attempts") or 0) + 1
+
+    attempts_left = max(0, MAX_LOGIN_ATTEMPTS - state["failed_attempts"])
+    if state["failed_attempts"] >= MAX_LOGIN_ATTEMPTS:
+        lockout_minutes = get_lockout_duration_minutes(state.get("lockout_count"))
+        state["lockout_count"] = int(state.get("lockout_count") or 0) + 1
+        state["failed_attempts"] = 0
+        state["locked_until"] = now + timedelta(minutes=lockout_minutes)
+        persist_login_security_state(state)
+        return {
+            "error": f"Too many invalid login attempts. This account has been locked for {format_lockout_minutes(lockout_minutes)}.",
+            "attempts_left": 0,
+            "retry_after_seconds": int(lockout_minutes * 60),
+            "locked_until": state["locked_until"].isoformat(),
+            "lockout_active": True,
+        }, 423
+
+    persist_login_security_state(state)
+    return {
+        "error": f"Invalid credentials. {attempts_left} login attempt{'s' if attempts_left != 1 else ''} left before account lockout.",
+        "attempts_left": attempts_left,
+        "lockout_active": False,
+    }, 401
 
 
 def find_account_by_identifier(identifier):
@@ -2353,6 +2579,7 @@ def login():
     data       = request.get_json()
     identifier = (data.get('identifier') or '').strip()
     password   = data.get('password')
+    profile = None
 
     if not identifier or not password:
         return jsonify({"error": "Email or username, and password are required."}), 400
@@ -2362,12 +2589,19 @@ def login():
         if not profile:
             return jsonify({"error": "No account found for that email or username."}), 401
 
+        lockout_response = build_lockout_response(read_login_security_state(profile, identifier))
+        if lockout_response:
+            return jsonify(lockout_response), 423
+
         email = profile.get('email')
 
         auth_response = supabase.auth.sign_in_with_password({"email": email, "password": password})
         user = auth_response.user
         if not user:
-            return jsonify({"error": "Login failed."}), 401
+            failure_response, status_code = record_failed_login_attempt(profile, identifier)
+            return jsonify(failure_response), status_code
+
+        clear_login_security_state(profile, identifier)
 
         if not user.email_confirmed_at:
             fresh_otp  = ''.join(random.choices(string.digits, k=6))
@@ -2400,6 +2634,10 @@ def login():
 
     except Exception as e:
         print("Login error:", str(e))
+        lowered = str(e).lower()
+        if "invalid login credentials" in lowered or "invalid_credentials" in lowered:
+            failure_response, status_code = record_failed_login_attempt(profile, identifier)
+            return jsonify(failure_response), status_code
         return jsonify({"error": "Invalid credentials. Please try again."}), 401
 
 
