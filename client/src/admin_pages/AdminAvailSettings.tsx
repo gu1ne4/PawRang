@@ -268,7 +268,7 @@ export default function AdminAvailSettings() {
   const location = useLocation();
   const isActive = location.pathname === '/AvailSettings';
 
-  const API_URL = 'http://localhost:5000';
+  const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 

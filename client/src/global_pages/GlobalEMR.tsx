@@ -228,7 +228,7 @@ type ViewMode = 'list' | 'add' | 'edit';
 type Species = 'Dog' | 'Cat';
 type Gender = 'Male' | 'Female';
 
-const API_URL = 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 const DOG_BREEDS = [
   'Labrador Retriever', 'German Shepherd', 'Golden Retriever', 'Bulldog', 
   'Beagle', 'Poodle', 'Rottweiler', 'Yorkshire Terrier', 'Boxer', 

@@ -10,6 +10,8 @@ import secrets
 import hashlib
 import uuid
 import time
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 from datetime import datetime, timedelta, date, timezone
 from html import escape
 import resend
@@ -352,8 +354,10 @@ SUPABASE_SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_KEY')
 RESEND_API_KEY       = os.environ.get('RESEND_API_KEY')
 RESEND_FROM_EMAIL    = os.environ.get('RESEND_FROM_EMAIL', 'onboarding@resend.dev')
 EMPLOYEE_SETUP_URL_BASE = os.environ.get('EMPLOYEE_SETUP_URL_BASE', 'http://localhost:5173/employee/setup-account')
+GEMINI_API_KEY       = os.environ.get('GEMINI_API_KEY')
+GEMINI_MODEL         = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
 
-if not SUPABASE_URL or not SUPABASE_KEY:
+if not SUPABASE_URL or not SUPABASE_KEY or not SUPABASE_SERVICE_KEY:
     raise ValueError("Missing Supabase credentials in .env")
 if not RESEND_API_KEY:
     raise ValueError("Missing RESEND_API_KEY in .env")
@@ -361,6 +365,228 @@ if not RESEND_API_KEY:
 supabase       = create_client(SUPABASE_URL, SUPABASE_KEY)
 supabase_admin = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 resend.api_key = RESEND_API_KEY
+
+ADMIN_AI_SUMMARY_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "summary": {"type": "STRING"},
+        "important_flags": {
+            "type": "ARRAY",
+            "items": {"type": "STRING"}
+        },
+        "follow_up_questions": {
+            "type": "ARRAY",
+            "items": {"type": "STRING"}
+        },
+        "missing_information": {
+            "type": "ARRAY",
+            "items": {"type": "STRING"}
+        }
+    },
+    "required": [
+        "summary",
+        "important_flags",
+        "follow_up_questions",
+        "missing_information"
+    ]
+}
+
+
+def _text_or_default(value, default="Not provided"):
+    raw = str(value or "").strip()
+    return raw or default
+
+
+def _bool_to_phrase(value):
+    if value is True:
+        return "Yes"
+    if value is False:
+        return "No"
+    return "Not provided"
+
+
+def build_admin_ai_case_context(payload):
+    medical = payload.get("medicalInformation") or payload.get("medical_information") or {}
+
+    return {
+        "patient_name": _text_or_default(payload.get("name")),
+        "patient_email": _text_or_default(
+            payload.get("email")
+            or payload.get("patientEmail")
+            or payload.get("patient_email")
+            or payload.get("walk_in_email")
+        ),
+        "patient_phone": _text_or_default(
+            payload.get("phone")
+            or payload.get("contact_number")
+            or payload.get("patientPhone")
+            or payload.get("patient_phone")
+            or payload.get("walk_in_phone")
+        ),
+        "reason_for_visit": _text_or_default(
+            payload.get("reasonForVisit")
+            or payload.get("patient_reason")
+            or payload.get("reason")
+        ),
+        "reschedule_reason": _text_or_default(
+            payload.get("rescheduleReason")
+            or payload.get("reschedule_reason")
+        ),
+        "pet_name": _text_or_default(payload.get("petName") or payload.get("pet_name"), "Unknown Pet"),
+        "pet_type": _text_or_default(
+            payload.get("type")
+            or payload.get("petType")
+            or payload.get("pet_type")
+            or payload.get("walk_in_pet_type"),
+            "Unknown"
+        ),
+        "pet_breed": _text_or_default(
+            payload.get("breed")
+            or payload.get("petBreed")
+            or payload.get("pet_breed")
+            or payload.get("walk_in_breed"),
+            "Unknown"
+        ),
+        "pet_gender": _text_or_default(
+            payload.get("gender")
+            or payload.get("petGender")
+            or payload.get("pet_gender")
+            or payload.get("walk_in_gender"),
+            "Unknown"
+        ),
+        "service": _text_or_default(payload.get("service"), "Appointment"),
+        "date_time": _text_or_default(payload.get("date_time"), "Schedule not set"),
+        "assigned_doctor": _text_or_default(payload.get("doctor"), "Not Assigned"),
+        "branch": _text_or_default(payload.get("branch") or payload.get("branchName")),
+        "medical_information": {
+            "on_medication": _bool_to_phrase(medical.get("on_medication")),
+            "flea_tick_prevention": _bool_to_phrase(medical.get("flea_tick_prevention")),
+            "is_vaccinated": _bool_to_phrase(medical.get("is_vaccinated")),
+            "is_pregnant": _bool_to_phrase(medical.get("is_pregnant")),
+            "has_allergies": _bool_to_phrase(medical.get("has_allergies")),
+            "has_skin_condition": _bool_to_phrase(medical.get("has_skin_condition")),
+            "medication_details": _text_or_default(medical.get("medication_details")),
+            "additional_notes": _text_or_default(medical.get("additional_notes")),
+        }
+    }
+
+
+def build_admin_ai_prompt(case_context):
+    service_name = str(case_context.get("service") or "").strip().lower()
+    if "boarding" in service_name:
+        service_focus = (
+            "This is a boarding-related request. Prioritize missing boarding-clearance details "
+            "such as vaccination status, parasite prevention, allergies, current medication, "
+            "and any condition that staff should confirm before boarding."
+        )
+    elif "groom" in service_name:
+        service_focus = (
+            "This is a grooming-related request. Prioritize coat, skin, allergy, parasite, and "
+            "medication details that may affect grooming preparation."
+        )
+    elif "vaccin" in service_name:
+        service_focus = (
+            "This is a vaccination-related request. Prioritize missing vaccine history, current "
+            "health concerns, allergies, and medication details that may affect the visit."
+        )
+    else:
+        service_focus = (
+            "This is a general clinic appointment. Prioritize the most relevant admin-facing intake "
+            "issues and missing details needed before veterinary review."
+        )
+
+    return f"""
+You are an AI assistant for veterinary clinic admins.
+
+Your role:
+- help admin staff understand the appointment quickly
+- summarize the provided case details clearly
+- identify possible admin-relevant flags that may need clarification
+- suggest follow-up questions for staff before endorsement to the veterinarian
+
+Rules:
+- Do NOT provide a diagnosis
+- Do NOT prescribe treatment
+- Do NOT claim certainty beyond the provided data
+- Keep the summary concise and practical
+- Write the summary in 2 to 4 sentences only
+- Return at most 4 important_flags
+- Return at most 5 follow_up_questions
+- Return at most 6 missing_information items
+- If data is missing, list it under missing_information
+- important_flags should focus on intake concerns, missing preventive info, recent medication, skin concerns, pregnancy, and anything that may need staff attention
+- follow_up_questions should be short and directly usable by clinic staff
+- Avoid repeating the exact same issue in all sections unless absolutely necessary
+- If a field is already clearly identified as missing, prefer one good follow-up question instead of many similar ones
+- Make the wording sound professional and suitable for clinic admin use
+
+Service-aware focus:
+{service_focus}
+
+Use only the data below.
+
+Case context:
+{json.dumps(case_context, indent=2)}
+""".strip()
+
+
+def call_gemini_with_structured_output(prompt, schema):
+    if not GEMINI_API_KEY:
+        raise ValueError("Missing GEMINI_API_KEY in backend environment.")
+
+    endpoint = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+    )
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.2,
+            "responseMimeType": "application/json",
+            "responseSchema": schema
+        }
+    }
+
+    req = urllib_request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+
+    try:
+        with urllib_request.urlopen(req, timeout=45) as response:
+            raw = response.read().decode("utf-8")
+    except urllib_error.HTTPError as e:
+        error_body = e.read().decode("utf-8", errors="replace")
+        raise ValueError(f"Gemini API error ({e.code}): {error_body}")
+    except urllib_error.URLError as e:
+        raise ValueError(f"Gemini API connection error: {e}")
+
+    parsed = json.loads(raw)
+    candidates = parsed.get("candidates") or []
+    if not candidates:
+        raise ValueError("Gemini returned no candidates.")
+
+    parts = (((candidates[0] or {}).get("content") or {}).get("parts") or [])
+    text = "".join(part.get("text", "") for part in parts if isinstance(part, dict)).strip()
+    if not text:
+        raise ValueError("Gemini returned an empty response.")
+
+    result = json.loads(text)
+    return {
+        "summary": _text_or_default(result.get("summary")),
+        "important_flags": result.get("important_flags") if isinstance(result.get("important_flags"), list) else [],
+        "follow_up_questions": result.get("follow_up_questions") if isinstance(result.get("follow_up_questions"), list) else [],
+        "missing_information": result.get("missing_information") if isinstance(result.get("missing_information"), list) else [],
+        "model": GEMINI_MODEL
+    }
 
 otp_store = {}
 RESEND_COOLDOWN_SECONDS = 60
@@ -3366,6 +3592,27 @@ def get_medical_information_by_target(appointment_id):
         return jsonify({"medicalInformation": None}), 200
 
 
+@app.route('/api/ai/admin-appointment-summary', methods=['POST'])
+def generate_admin_appointment_summary():
+    payload = request.get_json() or {}
+    if not payload:
+        return jsonify({"error": "Appointment context is required"}), 400
+
+    try:
+        case_context = build_admin_ai_case_context(payload)
+        prompt = build_admin_ai_prompt(case_context)
+        ai_result = call_gemini_with_structured_output(prompt, ADMIN_AI_SUMMARY_SCHEMA)
+        return jsonify({
+            "summary": ai_result,
+            "caseContext": case_context
+        }), 200
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        print("Admin AI summary error:", str(e))
+        return jsonify({"error": str(e)}), 500
+
+
 # -----------------------------------------------
 # GET ALL APPOINTMENTS FOR A USER
 # -----------------------------------------------
@@ -5389,4 +5636,8 @@ def change_password():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(
+        debug=os.environ.get("FLASK_DEBUG", "").lower() == "true",
+        host='0.0.0.0',
+        port=int(os.environ.get("PORT", 5000)),
+    )

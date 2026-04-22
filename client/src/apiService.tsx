@@ -2,7 +2,7 @@
 // All HTTP calls to the Flask backend live here.
 // Every page imports from this file instead of calling fetch inline.
 
-const BASE_URL = 'http://127.0.0.1:5000';
+const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 
 // ─── Generic fetch wrapper ────────────────────────────────────────────────────
 
@@ -142,6 +142,13 @@ export const apiService = {
     return request(`/api/reschedule-requests/${requestId}/review`, {
       method: 'PUT',
       body: JSON.stringify({ action, note }),
+    });
+  },
+
+  generateAdminAppointmentSummary(payload: any) {
+    return request('/api/ai/admin-appointment-summary', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
   },
 

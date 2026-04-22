@@ -187,9 +187,7 @@ const GlobalLoginPage: React.FC = () => {
     
     // Determine API URL based on environment
     // Check if we're in a browser environment
-    const baseUrl = typeof window !== 'undefined' && window.location.hostname === 'localhost'
-      ? 'http://localhost:3000' 
-      : 'https://api.yourdomain.com';
+    const baseUrl = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 
     try {
       // Try unified login endpoint

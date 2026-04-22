@@ -85,7 +85,7 @@ const SORT_OPTIONS = [
 ];
 
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
-const API_URL = 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 const BRANCH_ID_BY_NAME: Record<string, number> = {
   Taguig: 1,
   'Las Pinas': 2,

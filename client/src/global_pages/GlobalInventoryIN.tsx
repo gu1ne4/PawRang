@@ -132,7 +132,7 @@ const SORT_OPTIONS = [
 const CATEGORIES: Category[] = ['Pet Supplies', 'Deworming', 'Vitamins', 'Food', 'Accessories', 'Medication'];
 const UNIT_OPTIONS: UnitOption[] = ['Capsule', 'Tablet', 'Bottle', 'Piece', 'Pack', 'Box', 'Vial', 'Tube', 'Sachet', 'Can', 'Bag', 'mL', 'L', 'Gram', 'Kg', 'Others'];
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
-const API_URL = 'http://localhost:5000';
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 const BRANCH_ID_BY_NAME: Record<string, number> = {
   Taguig: 1,
   'Las Pinas': 2,

@@ -1,11 +1,23 @@
+import { useState } from 'react';
+import './AdminStyles.css';
 import {
   IoArrowBack,
+  IoAlertCircleOutline,
   IoCalendarClearOutline,
   IoCheckmarkCircleOutline,
+  IoChevronDownOutline,
+  IoChevronUpOutline,
   IoCloseCircleOutline,
+  IoCopyOutline,
+  IoDocumentTextOutline,
+  IoHelpCircleOutline,
   IoMedical,
+  IoRefreshCircleOutline,
+  IoSparklesOutline,
+  IoWarningOutline,
   IoRefreshOutline,
 } from 'react-icons/io5';
+import { apiService } from '../apiService';
 
 // 🟢 FIX: We added all our new variable names to the blueprint so TypeScript stops complaining!
 type AppointmentLike = {
@@ -50,6 +62,14 @@ type AppointmentLike = {
   medical_information?: any;
 };
 
+type AdminAiSummary = {
+  summary: string;
+  important_flags: string[];
+  follow_up_questions: string[];
+  missing_information: string[];
+  model?: string;
+};
+
 type UserDetailsViewProps = {
   user: AppointmentLike | null;
   onBack: () => void;
@@ -81,6 +101,12 @@ export default function UserDetailsView({
   readOnly = false,
   backLabel = 'Back to Appointments',
 }: UserDetailsViewProps) {
+  const [aiSummary, setAiSummary] = useState<AdminAiSummary | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [aiCollapsed, setAiCollapsed] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
+
   if (!user) return null;
 
   const formatDate = (dateValue?: string | null) => {
@@ -292,6 +318,63 @@ export default function UserDetailsView({
       ];
   const canAcceptAppointment = status === 'pending';
   const showBottomLifecycleActions = !readOnly && status !== 'pending';
+  const aiFlagCount = aiSummary?.important_flags?.length || 0;
+  const aiQuestionCount = aiSummary?.follow_up_questions?.length || 0;
+  const aiMissingCount = aiSummary?.missing_information?.length || 0;
+
+  const buildAiClipboardText = () => {
+    if (!aiSummary) return '';
+
+    return [
+      'AI Appointment Summary',
+      '',
+      `Case Summary: ${aiSummary.summary}`,
+      '',
+      'Important Flags:',
+      ...(aiSummary.important_flags?.length
+        ? aiSummary.important_flags.map(item => `- ${item}`)
+        : ['- No major admin-facing flags were identified from the provided data.']),
+      '',
+      'Suggested Follow-Up Questions:',
+      ...(aiSummary.follow_up_questions?.length
+        ? aiSummary.follow_up_questions.map(item => `- ${item}`)
+        : ['- No follow-up questions were suggested.']),
+      '',
+      'Missing Information:',
+      ...(aiSummary.missing_information?.length
+        ? aiSummary.missing_information.map(item => `- ${item}`)
+        : ['- No major missing information was identified.']),
+    ].join('\n');
+  };
+
+  const handleGenerateAiSummary = async () => {
+    setAiLoading(true);
+    setAiError('');
+    setCopySuccess(false);
+
+    try {
+      const response = await apiService.generateAdminAppointmentSummary(user);
+      setAiSummary(response.summary || null);
+      setAiCollapsed(false);
+    } catch (error: any) {
+      setAiSummary(null);
+      setAiError(error?.message || 'Unable to generate the AI summary right now.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleCopyAiSummary = async () => {
+    if (!aiSummary) return;
+
+    try {
+      await navigator.clipboard.writeText(buildAiClipboardText());
+      setCopySuccess(true);
+      window.setTimeout(() => setCopySuccess(false), 1800);
+    } catch {
+      setAiError('Unable to copy the AI summary right now.');
+    }
+  };
 
   return (
     <div
@@ -326,6 +409,25 @@ export default function UserDetailsView({
         <h2 style={{ fontSize: '25px', fontWeight: '700', margin: 0 }}>Patient Details</h2>
         {!readOnly && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button
+              onClick={handleGenerateAiSummary}
+              disabled={aiLoading}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '10px 16px',
+                borderRadius: '8px',
+                border: '1px solid #d8dcff',
+                backgroundColor: aiLoading ? '#eef2ff' : '#f4f7ff',
+                color: '#3d67ee',
+                cursor: aiLoading ? 'not-allowed' : 'pointer',
+                fontWeight: '600',
+              }}
+            >
+              <IoMedical size={18} />
+              <span>{aiLoading ? 'Generating Summary...' : 'Generate AI Summary'}</span>
+            </button>
             {canAcceptAppointment && (
             <>
               <button
@@ -392,6 +494,148 @@ export default function UserDetailsView({
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+        {(aiSummary || aiError) && (
+          <div className="adminAiPanelWrap">
+            <div className="adminAiPanelHeadingRow">
+              <h3 className="adminAiPanelHeading">AI Appointment Summary</h3>
+              <div className="adminAiPanelToolbar">
+                {aiSummary && (
+                  <>
+                    <button
+                      type="button"
+                      className="adminAiToolbarBtn"
+                      onClick={handleCopyAiSummary}
+                    >
+                      <IoCopyOutline size={16} />
+                      <span>{copySuccess ? 'Copied' : 'Copy Summary'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="adminAiToolbarBtn"
+                      onClick={handleGenerateAiSummary}
+                      disabled={aiLoading}
+                    >
+                      <IoRefreshCircleOutline size={16} />
+                      <span>{aiLoading ? 'Refreshing...' : 'Regenerate'}</span>
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  className="adminAiToolbarBtn"
+                  onClick={() => setAiCollapsed(prev => !prev)}
+                >
+                  {aiCollapsed ? <IoChevronDownOutline size={16} /> : <IoChevronUpOutline size={16} />}
+                  <span>{aiCollapsed ? 'Expand' : 'Collapse'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="adminAiPanelCard">
+              {aiError ? (
+                <div className="adminAiErrorBox">
+                  <IoAlertCircleOutline size={18} className="adminAiErrorIcon" />
+                  <div className="adminAiErrorText">{aiError}</div>
+                </div>
+              ) : aiSummary && (
+                <div className="adminAiPanelContent">
+                  <div className="adminAiHero">
+                    <div className="adminAiHeroInfo">
+                      <div className="adminAiHeroIcon">
+                        <IoSparklesOutline size={20} />
+                      </div>
+                      <div className="adminAiHeroText">
+                        <div className="adminAiHeroTitle">
+                          Admin AI Brief
+                        </div>
+                        <div className="adminAiHeroSubtitle">
+                          A quick, admin-facing overview of the appointment details, intake concerns, and follow-up prompts before vet endorsement.
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="adminAiStatRow">
+                      <div className="adminAiStatChip adminAiStatChipFlag">
+                        <div className="adminAiStatLabel">Flags</div>
+                        <div className="adminAiStatValue">{aiFlagCount}</div>
+                      </div>
+                      <div className="adminAiStatChip adminAiStatChipQuestion">
+                        <div className="adminAiStatLabel">Questions</div>
+                        <div className="adminAiStatValue">{aiQuestionCount}</div>
+                      </div>
+                      <div className="adminAiStatChip adminAiStatChipMissing">
+                        <div className="adminAiStatLabel">Missing</div>
+                        <div className="adminAiStatValue">{aiMissingCount}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {!aiCollapsed && (
+                    <>
+                      <div className="adminAiSummaryCard">
+                        <div className="adminAiSectionTitleRow">
+                          <IoDocumentTextOutline size={18} color="#3d67ee" />
+                          <div className="adminAiSectionEyebrow">Case Summary</div>
+                        </div>
+                        <div className="adminAiSummaryText">{aiSummary.summary}</div>
+                      </div>
+
+                      <div className="adminAiGrid">
+                        <div className="adminAiSectionCard adminAiSectionCardFlag">
+                          <div className="adminAiSectionTitleRow">
+                            <IoWarningOutline size={18} color="#c27a00" />
+                            <div className="adminAiSectionEyebrow adminAiSectionEyebrowFlag">Important Flags</div>
+                          </div>
+                          <ul className="adminAiList adminAiListFlag">
+                            {(aiSummary.important_flags || []).length > 0 ? aiSummary.important_flags.map((item, index) => (
+                              <li key={`flag-${index}`} className="adminAiListItem">{item}</li>
+                            )) : <li className="adminAiListItem">No major admin-facing flags were identified from the provided data.</li>}
+                          </ul>
+                        </div>
+
+                        <div className="adminAiSectionCard adminAiSectionCardQuestion">
+                          <div className="adminAiSectionTitleRow">
+                            <IoHelpCircleOutline size={18} color="#2563eb" />
+                            <div className="adminAiSectionEyebrow adminAiSectionEyebrowQuestion">Suggested Follow-Up Questions</div>
+                          </div>
+                          <ul className="adminAiList adminAiListQuestion">
+                            {(aiSummary.follow_up_questions || []).length > 0 ? aiSummary.follow_up_questions.map((item, index) => (
+                              <li key={`question-${index}`} className="adminAiListItem">{item}</li>
+                            )) : <li className="adminAiListItem">No follow-up questions were suggested.</li>}
+                          </ul>
+                        </div>
+                      </div>
+
+                      <div className="adminAiSectionCard adminAiSectionCardMissing">
+                        <div className="adminAiSectionTitleRow">
+                          <IoAlertCircleOutline size={18} color="#6d4be4" />
+                          <div className="adminAiSectionEyebrow adminAiSectionEyebrowMissing">Missing Information</div>
+                        </div>
+                        <ul className={`adminAiList adminAiListMissing ${aiMissingCount > 4 ? 'adminAiListColumns' : ''}`}>
+                          {(aiSummary.missing_information || []).length > 0 ? aiSummary.missing_information.map((item, index) => (
+                            <li key={`missing-${index}`} className="adminAiListItem adminAiMissingItem">{item}</li>
+                          )) : <li className="adminAiListItem">No major missing information was identified.</li>}
+                        </ul>
+                      </div>
+                    </>
+                  )}
+
+                  {aiSummary.model && (
+                    <div className="adminAiFooterNote">
+                      <div>
+                        Generated by: <strong>{aiSummary.model}</strong>
+                      </div>
+                      <div>
+                        AI-generated admin support summary only. Final review remains with clinic staff and the veterinarian.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div>
           <h3 style={{ fontSize: '18px', color: '#3d67ee', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px', marginBottom: '15px' }}>
             Patient Information

@@ -43,7 +43,7 @@ export default function AdminSettingsPage() {
     // Highlighting the correct Sidebar Item
     const isActive = location.pathname === '/Settings';
 
-    const API_URL = 'http://localhost:5000'; // Platform check removed for web
+    const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000'; // Platform check removed for web
 
     const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
     const [showAccountDropdown, setShowAccountDropdown] = useState<boolean>(false);

@@ -168,7 +168,7 @@ type PaymentStatus = 'paid' | 'pending' | 'partial';
 type DiscountType = 'none' | 'senior' | 'pwd' | 'promo' | 'custom';
 type CustomDiscountType = 'percentage' | 'fixed';
 
-const API_URL = 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 const TAX_RATE = 0.12;
 
 // Discount rates
