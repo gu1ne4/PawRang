@@ -550,6 +550,17 @@
   font-family: inherit;
 }
 
+.billingReadonlyField {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  background: #f8faff;
+}
+
 /* Toggle Buttons */
 .billingToggleGroupFull {
   display: flex;
@@ -1135,11 +1146,6 @@
   border-bottom: 1px solid #f0f0f0;
 }
 
-.billingDrawerDesc {
-  font-size: 10px;
-  color: #999;
-}
-
 .billingDrawerTotals {
   background-color: #f8faff;
   border-radius: 8px;
@@ -1216,6 +1222,27 @@
   background-color: #1a5a06;
 }
 
+.billingDrawerRecordBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background-color: #3d67ee;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.billingDrawerRecordBtn:hover {
+  background-color: #294fca;
+}
+
 .billingDrawerCloseBtn {
   flex: 1;
   display: flex;
@@ -1247,6 +1274,35 @@
   flex-direction: column;
   align-items: center;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.billingPaymentModal {
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  align-items: stretch;
+  padding: 0;
+  overflow: hidden;
+}
+
+.billingPaymentModalContent {
+  padding: 18px 20px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.billingPaymentModalActions {
+  margin: 0;
+  padding: 14px 20px 20px;
+}
+
+.billingPaymentEmptyState {
+  padding: 16px;
+  border: 1px dashed #d9deef;
+  border-radius: 10px;
+  color: #6b7280;
+  font-size: 12px;
+  background: #f8faff;
 }
 
 .billingAlertIcon {
@@ -1749,7 +1805,7 @@
   transition: all 0.2s ease;
 }
 
-.billingRemoveSelectedBtn:hover {
+.billingRemoveSelectedBtn:hover:not(:disabled) {
   background-color: #ffebee;
 }
 

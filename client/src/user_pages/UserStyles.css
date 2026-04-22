@@ -1748,6 +1748,97 @@
     font-style: italic;
 }
 
+.refresh-shared-records-btn {
+    border: 1px solid #d8e2ff;
+    background: #ffffff;
+    color: #3d67ee;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.refresh-shared-records-btn:hover:not(:disabled) {
+    background: #eef3ff;
+}
+
+.refresh-shared-records-btn:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.shared-records-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.shared-records-section {
+    background: #ffffff;
+    border: 1px solid #edf1fb;
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 10px 24px rgba(22, 41, 90, 0.04);
+}
+
+.shared-records-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.shared-records-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.shared-records-section-title h4 {
+    margin: 0;
+    color: #3d67ee;
+    font-size: 15px;
+}
+
+.shared-records-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.shared-record-card {
+    margin-bottom: 0;
+}
+
+.shared-record-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.shared-records-empty-state {
+    border: 1px dashed #dbe5ff;
+    border-radius: 16px;
+    padding: 36px 20px;
+    text-align: center;
+    color: #7f8db1;
+    background: linear-gradient(180deg, #fbfcff 0%, #f5f8ff 100%);
+}
+
+.shared-records-empty-state p {
+    margin: 12px 0 0;
+    line-height: 1.5;
+}
+
+.shared-records-empty-copy {
+    margin: 0;
+    color: #8a95af;
+    font-size: 13px;
+}
+
 /* Appointment Cards */
 .appointment-card {
     width: 100%;

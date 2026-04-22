@@ -366,8 +366,7 @@ export default function AdminAvailSettings() {
         slotsByDay[day] = slots.map((slot: any) => ({
           id: slot.id,
           startTime: slot.start_time,
-          endTime: slot.end_time,
-          capacity: slot.capacity
+          endTime: slot.end_time
         }));
       }
       setTimeSlotsByDay(slotsByDay);
@@ -426,8 +425,7 @@ export default function AdminAvailSettings() {
       const formattedSlots = existingSlots.map((slot: any) => ({
         id: slot.id,
         startTime: slot.start_time,
-        endTime: slot.end_time,
-        capacity: slot.capacity
+        endTime: slot.end_time
       }));
       setTimeSlotsByDay((prev: any) => ({ ...prev, [dayKey]: formattedSlots }));
     } catch (error) {
@@ -479,8 +477,7 @@ export default function AdminAvailSettings() {
     const newSlot = {
       id: `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       startTime: startTime,
-      endTime: endTime,
-      capacity: 1
+      endTime: endTime
     };
     
     setTimeSlotsByDay((prev: any) => {
@@ -553,8 +550,7 @@ export default function AdminAvailSettings() {
         // Send snake_case and 24-hour time formatting to avoid Supabase 400 Errors
         const payload: any = {
           start_time: formatTo24Hour(slot.startTime),
-          end_time: formatTo24Hour(slot.endTime),
-          capacity: slot.capacity || 1
+          end_time: formatTo24Hour(slot.endTime)
         };
         
         // Prevent 'temp-' generated IDs from crashing the database
@@ -575,8 +571,7 @@ export default function AdminAvailSettings() {
       const formattedSlots = updatedSlots.map((slot: any) => ({
         id: slot.id, 
         startTime: slot.start_time,
-        endTime: slot.end_time,
-        capacity: slot.capacity
+        endTime: slot.end_time
       }));
       
       setTimeSlotsByDay((prev: any) => ({ ...prev, [currentEditingDay]: formattedSlots }));
@@ -590,7 +585,7 @@ export default function AdminAvailSettings() {
       availabilityService.getTimeSlotsForDay(currentEditingDay)
         .then((existingSlots: any[]) => {
           const formattedSlots = existingSlots.map((slot: any) => ({
-            id: slot.id, startTime: slot.start_time, endTime: slot.end_time, capacity: slot.capacity
+            id: slot.id, startTime: slot.start_time, endTime: slot.end_time
           }));
           setTimeSlotsByDay((prev: any) => ({ ...prev, [currentEditingDay]: formattedSlots }));
         })
@@ -760,19 +755,17 @@ export default function AdminAvailSettings() {
                           <tr>
                             <th style={{ textAlign: 'left' }}>Start</th>
                             <th style={{ textAlign: 'left' }}>End</th>
-                            <th style={{ textAlign: 'center' }}>Capacity</th>
                             <th style={{ textAlign: 'right' }}>Action</th>
                           </tr>
                         </thead>
                         <tbody>
                           {timeSlotsByDay[currentEditingDay]?.length === 0 ? (
-                            <tr><td colSpan={4} style={{ textAlign: 'center', padding: '30px', color: '#999', fontStyle: 'italic' }}>No time slots configured</td></tr>
+                            <tr><td colSpan={3} style={{ textAlign: 'center', padding: '30px', color: '#999', fontStyle: 'italic' }}>No time slots configured</td></tr>
                           ) : (
                             timeSlotsByDay[currentEditingDay]?.map((item: any) => (
                               <tr key={item.id}>
                                 <td>{formatToAMPM(item.startTime)}</td>
                                 <td>{formatToAMPM(item.endTime)}</td>
-                                <td style={{ textAlign: 'center' }}>{item.capacity || 1}</td>
                                 <td style={{ textAlign: 'right' }}>
                                   <button onClick={() => deleteSlot(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                                     <IoTrashOutline size={20} color="#d32f2f" />

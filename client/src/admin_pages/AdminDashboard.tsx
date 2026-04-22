@@ -566,7 +566,7 @@ const AdminDashboard: React.FC = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <div>
                   <h3 className="sectionTitle" style={{ fontSize: '15px', marginTop: '0', marginBottom: '2px' }}>Weekly Activity</h3>
-                  <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '0' }}>Appointments vs Walk-ins this week</p>
+                  <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '0' }}>Appointments vs Guest Appointments this week</p>
                 </div>
                 <button className="viewAllBtn" style={{ fontSize: '11px' }}>View Details</button>
               </div>
@@ -588,7 +588,7 @@ const AdminDashboard: React.FC = () => {
                     <Tooltip content={<CustomTooltip />} />
                     <Legend />
                     <Bar dataKey="appointments" name="Appointments" fill="#3d67ee" radius={[4, 4, 0, 0]} barSize={25} />
-                    <Bar dataKey="walkIns" name="Walk-ins" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={25} />
+                    <Bar dataKey="walkIns" name="Guest Appointments" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={25} />
                     <Line type="monotone" dataKey="total" name="Total Visits" stroke="#10b981" strokeWidth={2} dot={{ r: 4, fill: '#10b981' }} />
                   </ComposedChart>
                 </ResponsiveContainer>

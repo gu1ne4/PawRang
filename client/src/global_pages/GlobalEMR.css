@@ -531,6 +531,10 @@
   cursor: pointer;
   transition: all 0.2s ease;
   border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .emrCancelBtn {
@@ -550,6 +554,23 @@
 .emrSubmitBtn:hover {
   opacity: 0.9;
   transform: translateY(-1px);
+}
+
+.emrCancelBtn:disabled,
+.emrSubmitBtn:disabled,
+.emrFormClose:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.emrBtnSpinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: emrSpin 0.8s linear infinite;
 }
 
 /* Modal Styles */
@@ -3216,9 +3237,55 @@ input:checked ~ .emrSwitchLabel {
   background-color: #ffffff;
 }
 
+.emrPrescriptionTable select,
+.emrPrescriptionInstructionTextarea {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 11px;
+  background-color: #ffffff;
+  font-family: inherit;
+}
+
 .emrPrescriptionTable input:focus {
   outline: none;
   border-color: #3d67ee;
+}
+
+.emrPrescriptionTable select:focus,
+.emrPrescriptionInstructionTextarea:focus {
+  outline: none;
+  border-color: #3d67ee;
+}
+
+.emrPrescriptionFieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.emrPrescriptionInstructionRow td {
+  background-color: #fafbff;
+  padding-top: 2px;
+  padding-bottom: 10px;
+}
+
+.emrPrescriptionInstructionLabel {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #666;
+}
+
+.emrPrescriptionInstructionTextarea {
+  min-height: 56px;
+  resize: vertical;
+}
+
+.emrPrescriptionSharedInstructionBox {
+  margin-bottom: 16px;
 }
 
 .emrRemoveRowBtn {
@@ -3511,6 +3578,111 @@ input:checked ~ .emrSwitchLabel {
 }
 
 /* Appointment List Styles */
+.emrAppointmentFilterBar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.emrAppointmentFilterBtn {
+  border: 1px solid #d5dcf7;
+  background: #ffffff;
+  color: #4d5b8f;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.emrAppointmentFilterBtn:hover {
+  border-color: #3d67ee;
+  color: #3d67ee;
+  background: #f7f9ff;
+}
+
+.emrAppointmentFilterBtnActive {
+  background: #3d67ee;
+  border-color: #3d67ee;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(61, 103, 238, 0.18);
+}
+
+.emrMedicalInfoBlock {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #d9e3ff;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f8fbff 0%, #fdfefe 100%);
+}
+
+.emrMedicalInfoTitle {
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #2643b3;
+}
+
+.emrMedicalInfoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.emrMedicalInfoItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid #e7ecf5;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.emrMedicalInfoItemFull {
+  grid-column: 1 / -1;
+}
+
+.emrMedicalInfoLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: #5c6783;
+}
+
+.emrMedicalInfoValue {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1c274c;
+  word-break: break-word;
+}
+
+.emrMedicalInfoValue.isYes {
+  color: #1a7f37;
+  font-weight: 700;
+}
+
+.emrMedicalInfoValue.isNo {
+  color: #b42318;
+  font-weight: 700;
+}
+
+.emrMedicalInfoValue.isNeutral {
+  color: #364152;
+}
+
+.emrMedicalInfoEmptyState {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px dashed #c8d4ff;
+  border-radius: 10px;
+  background: #fafcff;
+  color: #52607a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .emrAppointmentList {
   display: flex;
   flex-direction: column;
@@ -3696,6 +3868,25 @@ input:checked ~ .emrSwitchLabel {
   overflow-x: auto;
 }
 
+.emrVaccinationSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 8px;
+  line-height: 1.8;
+}
+
+.emrVaccinationDetailsExpanded {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 18px;
+  margin-top: 10px;
+}
+
+.emrVaccinationDetailsExpanded > div {
+  line-height: 1.8;
+}
+
 .emrServicesTable {
   width: 100%;
   border-collapse: collapse;
@@ -3830,6 +4021,31 @@ input:checked ~ .emrSwitchLabel {
 .emrServiceDescription {
   font-size: 11px;
   color: #999;
+}
+
+.emrServiceItem.emrServiceLocked {
+  cursor: not-allowed;
+  border-color: #d9e3ff;
+  background-color: #f5f8ff;
+}
+
+.emrServiceItem.emrServiceLocked:hover {
+  border-color: #d9e3ff;
+  background-color: #f5f8ff;
+  transform: none;
+}
+
+.emrServiceLockBadge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #dbe7ff;
+  color: #2643b3;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 /* Medical History Tab Styles */
@@ -3981,6 +4197,8 @@ input:checked ~ .emrSwitchLabel {
 .emrHistoryCardActions {
   display: flex;
   gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .emrHistoryCardBody {
@@ -4000,6 +4218,62 @@ input:checked ~ .emrSwitchLabel {
   font-weight: 600;
   color: #666;
   min-width: 110px;
+}
+
+.emrOwnerShareBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.emrOwnerShareBadge.isShared {
+  background: #eaf8ee;
+  color: #1d7a3c;
+}
+
+.emrOwnerShareBadge.isPrivate {
+  background: #fff4e5;
+  color: #a55a00;
+}
+
+.emrOwnerShareBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid #3d67ee;
+  border-radius: 999px;
+  background: #3d67ee;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.emrOwnerShareBtn:hover:not(:disabled) {
+  background: #214de5;
+  border-color: #214de5;
+}
+
+.emrOwnerShareBtn.isShared {
+  background: #ffffff;
+  color: #3d67ee;
+}
+
+.emrOwnerShareBtn.isShared:hover:not(:disabled) {
+  background: #eef2ff;
+}
+
+.emrOwnerShareBtn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 .emrHistoryEmpty {

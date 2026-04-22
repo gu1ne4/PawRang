@@ -866,6 +866,13 @@
   white-space: pre-wrap;
 }
 
+.app-reschedule-request-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
 /* No Selection */
 .app-empty-details {
   display: flex;
@@ -921,6 +928,15 @@
   background-color: #b71c1c;
 }
 
+.app-action-btn.confirm {
+  background-color: #1f9d55;
+  color: white;
+}
+
+.app-action-btn.confirm:hover {
+  background-color: #13753e;
+}
+
 .app-action-btn.withdraw {
   background-color: #f57c00;
   color: white;
@@ -959,6 +975,10 @@
 @media (max-width: 768px) {
   .app-reschedule-request-grid {
     grid-template-columns: 1fr;
+  }
+
+  .app-reschedule-request-actions {
+    flex-direction: column;
   }
 }
 

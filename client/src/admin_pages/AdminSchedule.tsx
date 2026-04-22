@@ -1017,9 +1017,8 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
                                                 <IoPaw size={20} color="#999" />
                                             </div>
                                             <div>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '5px' }}>
+                                                <div style={{ marginBottom: '5px' }}>
                                                     <span style={{ fontWeight: 'bold', fontSize: '16px', color: '#333' }}>{pet.pet_name}</span>
-                                                    <span style={{ backgroundColor: '#ff9800', color: 'white', fontSize: '10px', padding: '2px 8px', borderRadius: '12px', fontWeight: 'bold' }}>Has Record</span>
                                                 </div>
                                                 <div style={{ fontSize: '13px', color: '#666', marginBottom: '5px' }}>
                                                     Owner: {ownerName}
@@ -1454,6 +1453,10 @@ const TableView = ({ onViewUser, loading, filteredAppointments, service, setServ
                             const statusToShow = (user.displayStatus || user.status || 'scheduled').toLowerCase();
                             const isPendingDisplay = statusToShow === 'pending';
                             const isPositiveDisplay = statusToShow === 'scheduled' || statusToShow === 'confirmed';
+                            const isNeutralDisplay = statusToShow === 'expired';
+                            const statusLabel = statusToShow
+                                ? statusToShow.replace(/_/g, ' ').toUpperCase()
+                                : 'SCHEDULED';
                             return (
                               <>
                         <td className="tableFont" style={{ fontWeight: '600', color: '#333' }}>{user.ownerName}</td>
@@ -1463,14 +1466,18 @@ const TableView = ({ onViewUser, loading, filteredAppointments, service, setServ
                         <td className="tableFont" style={{ textAlign: 'center', fontWeight: '500', color: '#555' }}>{user.time_display}</td>
                         <td style={{ textAlign: 'center' }}>
                             <div className="statusBadge" style={{
-                                backgroundColor: isPendingDisplay ? '#fff3e0' : (isPositiveDisplay ? '#e8f5e9' : '#ffebee'),
+                                backgroundColor: isPendingDisplay
+                                    ? '#fff3e0'
+                                    : (isPositiveDisplay ? '#e8f5e9' : (isNeutralDisplay ? '#f5f5f5' : '#ffebee')),
                                 display: 'inline-block'
                             }}>
                                 <span style={{
                                     fontSize: '11px', fontWeight: '600',
-                                    color: isPendingDisplay ? '#f57c00' : (isPositiveDisplay ? '#2e7d32' : '#d32f2f')
+                                    color: isPendingDisplay
+                                        ? '#f57c00'
+                                        : (isPositiveDisplay ? '#2e7d32' : (isNeutralDisplay ? '#616161' : '#d32f2f'))
                                 }}>
-                                    {statusToShow ? statusToShow.toUpperCase() : 'SCHEDULED'}
+                                    {statusLabel}
                                 </span>
                             </div>
                         </td>
@@ -1599,7 +1606,7 @@ export default function Schedule() {
     }, []);
 
     const filteredAppointments = userData.filter(appointment => {
-      if (appointment.status === 'completed' || appointment.status === 'cancelled') return false;
+      if (['completed', 'cancelled', 'no_show', 'expired'].includes((appointment.status || '').toLowerCase())) return false;
       if (selectedCalendarDate && !appointment.date_time.includes(selectedCalendarDate)) return false; 
       
       const matchesService = service === '' || (appointment.service && appointment.service.includes(service));
@@ -1845,7 +1852,7 @@ export default function Schedule() {
                         setCurrentView('table');
                         setSelectedUser(null);
                     }
-                    window.alert('Success: Appointment marked as completed and moved to history.');
+                    window.alert('Success: Appointment marked as completed, moved to history, and is ready for billing.');
                 }
             } catch (error: any) {
                 window.alert('Error: ' + (error.message || 'Failed to complete appointment.'));
@@ -1855,6 +1862,35 @@ export default function Schedule() {
             }
         });
         setShowConfirmationModal(true);
+    };
+
+    const handleProceedToBilling = (appointment: any) => {
+        if (!appointment) {
+            window.alert('Error: Appointment details are unavailable.');
+            return;
+        }
+
+        const invoiceType = (appointment.recordType || (appointment.is_walk_in ? 'walkin' : 'appointment')) === 'appointment'
+            ? 'appointment'
+            : 'walkin';
+        const sourceRecordType = appointment.billingSourceType || invoiceType;
+        const sourceRecordId = appointment.billingSourceId || appointment.dbId || appointment.id;
+
+        if (!sourceRecordType || !sourceRecordId) {
+            window.alert('Error: This appointment does not have a billing source yet.');
+            return;
+        }
+
+        navigate('/billing', {
+            state: {
+                billingAction: {
+                    invoiceType,
+                    sourceRecordType,
+                    sourceRecordId,
+                    billingInvoiceId: appointment.billingInvoiceId || null,
+                }
+            }
+        });
     };
 
     const handleCreateAppointment = () => setShowCreateModal(true);
@@ -2124,6 +2160,7 @@ export default function Schedule() {
                                 onComplete={handleCompleteAppointment}
                                 onAssignDoctor={openDoctorModal} 
                                 onReschedule={handleRescheduleAppointment}
+                                onProceedToBilling={handleProceedToBilling}
                                 onAcceptClientPreference={handleAcceptClientPreference}
                                 onDeclineClientPreference={handleDeclineClientPreference}
                                 onRefresh={handleManualRefresh}

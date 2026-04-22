@@ -7,7 +7,7 @@ import {
   IoPersonOutline, IoMedkitOutline, IoCalendarClearOutline, IoCalendarOutline,
   IoTodayOutline, IoTimeOutline, IoDocumentTextOutline, IoSettingsOutline,
   IoLogOutOutline, IoNotifications, IoCheckmarkCircleOutline, IoCloseCircleOutline,
-  IoAlertCircleOutline, IoSearchSharp, IoFilterSharp, IoRefresh, IoEyeOutline
+  IoAlertCircleOutline, IoSearchSharp, IoFilterSharp, IoRefresh, IoEyeOutline, IoReceipt
 } from 'react-icons/io5';
 
 // Import your merged CSS file
@@ -166,12 +166,79 @@ export default function AdminHistory() {
     return dateTime.split(' ').slice(1).join(' ') || 'Not provided';
   };
 
+  const formatStatusLabel = (statusValue?: string) => {
+    const normalized = (statusValue || '').trim().toLowerCase();
+    if (!normalized) return 'Unknown';
+    return normalized
+      .split('_')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  };
+
+  const getStatusBadgeColors = (statusValue?: string) => {
+    const normalized = (statusValue || '').trim().toLowerCase();
+    switch (normalized) {
+      case 'completed':
+        return { backgroundColor: '#e8f5e9', color: '#2e7d32' };
+      case 'expired':
+        return { backgroundColor: '#f5f5f5', color: '#616161' };
+      case 'cancelled':
+      case 'no_show':
+        return { backgroundColor: '#ffebee', color: '#d32f2f' };
+      default:
+        return { backgroundColor: '#fff3e0', color: '#f57c00' };
+    }
+  };
+
+  const getDisplayedStatusMeta = (appointment: any) => {
+    if (appointment?.canProceedToBilling && !appointment?.hasBillingInvoice) {
+      return {
+        label: 'Ready for Billing',
+        colors: { backgroundColor: '#fff7e6', color: '#b26a00' },
+      };
+    }
+
+    return {
+      label: formatStatusLabel(appointment?.status),
+      colors: getStatusBadgeColors(appointment?.status),
+    };
+  };
+
   const handleViewAppointment = (appointment: any) => {
     setSelectedHistoryAppointment(appointment);
   };
 
   const handleBackToHistory = () => {
     setSelectedHistoryAppointment(null);
+  };
+
+  const handleProceedToBilling = (appointment: any) => {
+    if (!appointment) {
+      window.alert('Error: Appointment details are unavailable.');
+      return;
+    }
+
+    const invoiceType = (appointment.recordType || (appointment.is_walk_in ? 'walkin' : 'appointment')) === 'appointment'
+      ? 'appointment'
+      : 'walkin';
+    const sourceRecordType = appointment.billingSourceType || invoiceType;
+    const sourceRecordId = appointment.billingSourceId || appointment.dbId || appointment.id;
+
+    if (!sourceRecordType || !sourceRecordId) {
+      window.alert('Error: This appointment does not have a billing source yet.');
+      return;
+    }
+
+    navigate('/billing', {
+      state: {
+        billingAction: {
+          invoiceType,
+          sourceRecordType,
+          sourceRecordId,
+          billingInvoiceId: appointment.billingInvoiceId || null,
+        }
+      }
+    });
   };
 
   return (
@@ -203,6 +270,7 @@ export default function AdminHistory() {
               onComplete={() => {}}
               onAssignDoctor={() => {}}
               onReschedule={() => {}}
+              onProceedToBilling={handleProceedToBilling}
               onAcceptClientPreference={() => {}}
               onDeclineClientPreference={() => {}}
               onRefresh={loadHistory}
@@ -253,6 +321,8 @@ export default function AdminHistory() {
                         <option value="all" style={{color: '#a8a8a8'}}>All Status</option>
                         <option value="completed">Completed</option>
                         <option value="cancelled">Cancelled</option>
+                        <option value="no_show">No-show</option>
+                        <option value="expired">Expired</option>
                       </select>
 
                       <select 
@@ -303,7 +373,7 @@ export default function AdminHistory() {
                         <th style={{ width: '15%', textAlign: 'center' }}>Time</th>
                         <th style={{ width: '11%', textAlign: 'center' }}>Doctor</th>
                         <th style={{ width: '8%', textAlign: 'center' }}>Status</th>
-                        <th style={{ width: '6%', textAlign: 'right' }}>View</th>
+                        <th style={{ width: '12%', textAlign: 'right' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -319,31 +389,59 @@ export default function AdminHistory() {
                               {appointment.doctor}
                             </td>
                             <td style={{ textAlign: 'center' }}>
-                              <div className={`statusBadge ${appointment.status === 'completed' ? 'activeBadge' : 'inactiveBadge'}`}>
-                                 <span className={`statusText ${appointment.status === 'completed' ? 'activeText' : ''}`} style={{ textTransform: 'capitalize' }}>
-                                   {appointment.status}
-                                 </span>
-                              </div>
+                              {(() => {
+                                const statusMeta = getDisplayedStatusMeta(appointment);
+                                return (
+                                  <div className="statusBadge" style={{ backgroundColor: statusMeta.colors.backgroundColor }}>
+                                     <span className="statusText" style={{ color: statusMeta.colors.color }}>
+                                       {statusMeta.label}
+                                     </span>
+                                  </div>
+                                );
+                              })()}
                             </td>
                             <td style={{ textAlign: 'right' }}>
-                              <button
-                                onClick={() => handleViewAppointment(appointment)}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '6px',
-                                  padding: '8px 12px',
-                                  borderRadius: '8px',
-                                  border: '1px solid #cdd8ff',
-                                  backgroundColor: '#f4f7ff',
-                                  color: '#3d67ee',
-                                  cursor: 'pointer',
-                                  fontWeight: '600',
-                                }}
-                              >
-                                <IoEyeOutline size={18} color="#3d67ee" />
-                                <span>View</span>
-                              </button>
+                              <div style={{ display: 'inline-flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                                {(appointment.hasBillingInvoice || appointment.canProceedToBilling) && (
+                                  <button
+                                    onClick={() => handleProceedToBilling(appointment)}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '6px',
+                                      padding: '8px 12px',
+                                      borderRadius: '8px',
+                                      border: '1px solid',
+                                      borderColor: appointment.hasBillingInvoice ? '#cdd8ff' : '#ffe0a3',
+                                      backgroundColor: appointment.hasBillingInvoice ? '#f4f7ff' : '#fff7e6',
+                                      color: appointment.hasBillingInvoice ? '#3d67ee' : '#b26a00',
+                                      cursor: 'pointer',
+                                      fontWeight: '600',
+                                    }}
+                                  >
+                                    <IoReceipt size={16} />
+                                    <span>{appointment.hasBillingInvoice ? 'Invoice' : 'Billing'}</span>
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleViewAppointment(appointment)}
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    border: '1px solid #cdd8ff',
+                                    backgroundColor: '#f4f7ff',
+                                    color: '#3d67ee',
+                                    cursor: 'pointer',
+                                    fontWeight: '600',
+                                  }}
+                                >
+                                  <IoEyeOutline size={18} color="#3d67ee" />
+                                  <span>View</span>
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))

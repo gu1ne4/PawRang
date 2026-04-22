@@ -40,9 +40,10 @@ interface NavbarProps {
     userImage?: string;
   } | null;
   onLogout: () => void;
+  onNavigateAttempt?: (path: string, navigateFn: () => void) => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
+const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttempt }) => {
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -173,6 +174,20 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
     }
   };
 
+  const handleNavigate = (path: string, afterNavigate?: () => void) => {
+    const runNavigation = () => {
+      navigate(path);
+      if (afterNavigate) afterNavigate();
+    };
+
+    if (onNavigateAttempt) {
+      onNavigateAttempt(path, runNavigation);
+      return;
+    }
+
+    runNavigation();
+  };
+
   const renderTooltip = () => {
     if (!hoveredItem || !isCollapsed) return null;
 
@@ -262,7 +277,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
               <div className="navMenuSection">
                 <button 
                   className={`navBtn ${isActive('/home') ? 'active' : ''}`} 
-                  onClick={() => navigate('/home')}
+                  onClick={() => handleNavigate('/home')}
                   onMouseEnter={(e) => handleMouseEnter(e, 'Home')}
                   onMouseLeave={handleMouseLeave}
                 >
@@ -274,7 +289,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
               <div className="navMenuSection">
                 <button 
                   className={`navBtn ${isActive('/analytics') ? 'active' : ''}`} 
-                  onClick={() => navigate('/analytics')}
+                  onClick={() => handleNavigate('/analytics')}
                   onMouseEnter={(e) => handleMouseEnter(e, 'Analytics')}
                   onMouseLeave={handleMouseLeave}
                 >
@@ -299,14 +314,14 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
                       <div className="navSubMenu">
                         <button 
                           className={`navBtn subNavBtn ${isActive('/accounts') ? 'active' : ''}`}
-                          onClick={() => navigate('/accounts')}
+                          onClick={() => handleNavigate('/accounts')}
                         >
                           <IoPersonOutline size={14} />
                           <span>Employees</span>
                         </button>
                         <button 
                           className={`navBtn subNavBtn ${isActive('/useraccounts') ? 'active' : ''}`}
-                          onClick={() => navigate('/useraccounts')}
+                          onClick={() => handleNavigate('/useraccounts')}
                         >
                           <PiUsersThree size={16} />
                           <span>Users</span>
@@ -327,15 +342,13 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
                     {showAccountDropdown && (
                       <div className="collapsedDropdown">
                         <button className="collapsedDropdownItem" onClick={() => {
-                          navigate('/accounts');
-                          setShowAccountDropdown(false);
+                          handleNavigate('/accounts', () => setShowAccountDropdown(false));
                         }}>
                           <IoPersonOutline size={14} />
                           <span>Employees</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          navigate('/useraccounts');
-                          setShowAccountDropdown(false);
+                          handleNavigate('/useraccounts', () => setShowAccountDropdown(false));
                         }}>
                           <PiUsersThree size={16} />
                           <span>Users</span>
@@ -362,21 +375,21 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
                       <div className="navSubMenu">
                         <button 
                           className={`navBtn subNavBtn ${isActive('/schedule') ? 'active' : ''}`}
-                          onClick={() => navigate('/schedule')}
+                          onClick={() => handleNavigate('/schedule')}
                         >
                           <IoCalendarOutline size={14} />
                           <span>Schedule</span>
                         </button>
                         <button 
                           className={`navBtn subNavBtn ${isActive('/availSettings') ? 'active' : ''}`}
-                          onClick={() => navigate('/availSettings')}
+                          onClick={() => handleNavigate('/availSettings')}
                         >
                           <IoTodayOutline size={14} />
                           <span>Availability Settings</span>
                         </button>
                         <button 
                           className={`navBtn subNavBtn ${isActive('/history') ? 'active' : ''}`}
-                          onClick={() => navigate('/history')}
+                          onClick={() => handleNavigate('/history')}
                         >
                           <IoTimeOutline size={14} />
                           <span>History</span>
@@ -397,22 +410,19 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
                     {showAppointmentsDropdown && (
                       <div className="collapsedDropdown">
                         <button className="collapsedDropdownItem" onClick={() => {
-                          navigate('/schedule');
-                          setShowAppointmentsDropdown(false);
+                          handleNavigate('/schedule', () => setShowAppointmentsDropdown(false));
                         }}>
                           <IoCalendarOutline size={14} />
                           <span>Schedule</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          navigate('/availSettings');
-                          setShowAppointmentsDropdown(false);
+                          handleNavigate('/availSettings', () => setShowAppointmentsDropdown(false));
                         }}>
                           <IoTodayOutline size={14} />
                           <span>Availability Settings</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          navigate('/history');
-                          setShowAppointmentsDropdown(false);
+                          handleNavigate('/history', () => setShowAppointmentsDropdown(false));
                         }}>
                           <IoTimeOutline size={14} />
                           <span>History</span>
@@ -427,7 +437,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
               <div className="navMenuSection">
                 <button 
                   className={`navBtn ${isActive('/patient-records') ? 'active' : ''}`} 
-                  onClick={() => navigate('/patient-records')}
+                  onClick={() => handleNavigate('/patient-records')}
                   onMouseEnter={(e) => handleMouseEnter(e, 'Patient Records')}
                   onMouseLeave={handleMouseLeave}
                 >
@@ -439,7 +449,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
               <div className="navMenuSection">
                 <button 
                   className={`navBtn ${isActive('/billing') ? 'active' : ''}`} 
-                  onClick={() => navigate('/billing')}
+                  onClick={() => handleNavigate('/billing')}
                   onMouseEnter={(e) => handleMouseEnter(e, 'Billing')}
                   onMouseLeave={handleMouseLeave}
                 >
@@ -465,35 +475,35 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
                       <div className="navSubMenu">
                         <button 
                           className={`navBtn subNavBtn ${isActive('/manage-inventory') ? 'active' : ''}`}
-                          onClick={() => navigate('/inventory')}
+                          onClick={() => handleNavigate('/inventory')}
                         >
                           <CiBoxes size={14} />
                           <span>Item Catalog</span>
                         </button>
                         <button 
                           className={`navBtn subNavBtn ${isActive('/inventory-logs') ? 'active' : ''}`}
-                          onClick={() => navigate('/inventory-logs')}
+                          onClick={() => handleNavigate('/inventory-logs')}
                         >
                           <TbArrowsUpDown size={16} />
                           <span>Movement Logs</span>
                         </button>
                         <button 
                           className={`navBtn subNavBtn ${isActive('/inventory-in') ? 'active' : ''}`}
-                          onClick={() => navigate('/inventory-in')}
+                          onClick={() => handleNavigate('/inventory-in')}
                         >
                           <IoArrowDownOutline size={16} />
                           <span>Inventory IN</span>
                         </button>
                         <button 
                           className={`navBtn subNavBtn ${isActive('/inventory-out') ? 'active' : ''}`}
-                          onClick={() => navigate('/inventory-out')}
+                          onClick={() => handleNavigate('/inventory-out')}
                         >
                           <IoArrowUpOutline size={16} />
                           <span>Inventory OUT</span>
                         </button>
                         <button 
                           className={`navBtn subNavBtn ${isActive('/inventory-archive') ? 'active' : ''}`}
-                          onClick={() => navigate('/inventory-archive')}
+                          onClick={() => handleNavigate('/inventory-archive')}
                         >
                           <IoIosArchive size={16} />
                           <span>Archived Items</span>
@@ -514,36 +524,31 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
                     {showInventoryDropdown && (
                       <div className="collapsedDropdown">
                         <button className="collapsedDropdownItem" onClick={() => {
-                          navigate('/inventory');
-                          setShowInventoryDropdown(false);
+                          handleNavigate('/inventory', () => setShowInventoryDropdown(false));
                         }}>
                           <CiBoxes size={16} />
                           <span>Item Catalog</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          navigate('/inventory-logs');
-                          setShowInventoryDropdown(false);
+                          handleNavigate('/inventory-logs', () => setShowInventoryDropdown(false));
                         }}>
                           <TbArrowsUpDown size={16} />
                           <span>Movement Logs</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          navigate('/inventory-in');
-                          setShowInventoryDropdown(false);
+                          handleNavigate('/inventory-in', () => setShowInventoryDropdown(false));
                         }}>
                           <IoArrowDownOutline size={16} />
                           <span>Inventory IN</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          navigate('/inventory-out');
-                          setShowInventoryDropdown(false);
+                          handleNavigate('/inventory-out', () => setShowInventoryDropdown(false));
                         }}>
                           <IoArrowUpOutline size={16} />
                           <span>Inventory OUT</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          navigate('/inventory-archive');
-                          setShowInventoryDropdown(false);
+                          handleNavigate('/inventory-archive', () => setShowInventoryDropdown(false));
                         }}>
                           <IoIosArchive size={16} />
                           <span>Archived Items</span>
@@ -557,7 +562,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
               <div className="navMenuSection">
                 <button 
                   className={`navBtn ${isActive('/audit') ? 'active' : ''}`} 
-                  onClick={() => navigate('/audit')}
+                  onClick={() => handleNavigate('/audit')}
                   onMouseEnter={(e) => handleMouseEnter(e, 'System Audit')}
                   onMouseLeave={handleMouseLeave}
                 >
@@ -569,7 +574,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
               <div className="navMenuSection">
                 <button 
                   className={`navBtn ${isActive('/settings') ? 'active' : ''}`} 
-                  onClick={() => navigate('/settings')}
+                  onClick={() => handleNavigate('/settings')}
                   onMouseEnter={(e) => handleMouseEnter(e, 'Settings')}
                   onMouseLeave={handleMouseLeave}
                 >

@@ -4,6 +4,7 @@ import {
   IoCheckmarkCircleOutline,
   IoCloseCircleOutline,
   IoMedical,
+  IoReceipt,
   IoRefreshOutline,
 } from 'react-icons/io5';
 
@@ -48,6 +49,14 @@ type AppointmentLike = {
   latestRescheduleRequest?: any;
   medicalInformation?: any;
   medical_information?: any;
+  recordType?: string;
+  linkedVisitId?: string | number | null;
+  billingSourceType?: string | null;
+  billingSourceId?: string | number | null;
+  hasBillingInvoice?: boolean;
+  billingInvoiceId?: string | number | null;
+  billingInvoiceNumber?: string | null;
+  canProceedToBilling?: boolean;
 };
 
 type UserDetailsViewProps = {
@@ -58,6 +67,7 @@ type UserDetailsViewProps = {
   onComplete: (user: AppointmentLike) => void;
   onAssignDoctor: (user: AppointmentLike) => void;
   onReschedule: (user: AppointmentLike) => void;
+  onProceedToBilling: (user: AppointmentLike) => void;
   onAcceptClientPreference: (user: AppointmentLike, request: any) => void;
   onDeclineClientPreference: (user: AppointmentLike, request: any) => void;
   onRefresh: () => void;
@@ -74,6 +84,7 @@ export default function UserDetailsView({
   onComplete,
   onAssignDoctor,
   onReschedule,
+  onProceedToBilling,
   onAcceptClientPreference,
   onDeclineClientPreference,
   onRefresh,
@@ -233,6 +244,13 @@ export default function UserDetailsView({
     latestRescheduleRequest?.status,
     latestRescheduleRequest?.patient_response_type
   );
+  const hasBillingInvoice = Boolean(user.hasBillingInvoice && user.billingInvoiceId);
+  const canShowBillingAction = Boolean(hasBillingInvoice || user.canProceedToBilling);
+  const billingStatusMeta = hasBillingInvoice
+    ? { label: 'Invoiced', bg: '#eef2ff', color: '#3d67ee' }
+    : user.canProceedToBilling
+      ? { label: 'Ready for Billing', bg: '#fff7e6', color: '#b26a00' }
+      : null;
   const canReviewClientPreference =
     !readOnly &&
     latestRescheduleRequest?.status === 'needs_new_schedule' &&
@@ -291,7 +309,7 @@ export default function UserDetailsView({
         },
       ];
   const canAcceptAppointment = status === 'pending';
-  const showBottomLifecycleActions = !readOnly && status !== 'pending';
+  const showBottomLifecycleActions = !readOnly && (status === 'confirmed' || status === 'scheduled');
 
   return (
     <div
@@ -465,6 +483,25 @@ export default function UserDetailsView({
                   <span style={{ fontSize: '14px', color: '#666' }}>Branch: </span>
                   <strong style={{ color: assignedBranch === 'Not specified' ? '#888' : '#333' }}>{assignedBranch}</strong>
                 </div>
+                {billingStatusMeta && (
+                  <div>
+                    <span style={{ fontSize: '14px', color: '#666', marginRight: '8px' }}>Billing:</span>
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        padding: '4px 10px',
+                        borderRadius: '999px',
+                        backgroundColor: billingStatusMeta.bg,
+                        color: billingStatusMeta.color,
+                        fontSize: '12px',
+                        fontWeight: '700',
+                      }}
+                    >
+                      {billingStatusMeta.label}
+                    </span>
+                  </div>
+                )}
               </div>
               {!readOnly && (
                 <button
@@ -582,70 +619,92 @@ export default function UserDetailsView({
           </div>
         )}
 
-        {!readOnly && (
+        {(!readOnly || canShowBillingAction) && (
           <div style={{ display: 'flex', justifyContent: showBottomLifecycleActions ? 'space-around' : 'center', padding: '20px 0', borderTop: '1px solid #eee', gap: '20px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => onReschedule(user)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 20px',
-                backgroundColor: '#3d67ee',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                fontWeight: '600',
-                cursor: 'pointer',
-              }}
-            >
-              <IoCalendarClearOutline size={18} />
-              <span>Reschedule</span>
-            </button>
-
-            {showBottomLifecycleActions && (
+            {!readOnly && (
               <button
-                onClick={() => onCancel(user)}
-                disabled={status === 'cancelled'}
+                onClick={() => onReschedule(user)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
                   padding: '10px 20px',
-                  backgroundColor: status === 'cancelled' ? '#e0e0e0' : '#ffebee',
-                  color: status === 'cancelled' ? '#757575' : '#d32f2f',
-                  border: '1px solid',
-                  borderColor: status === 'cancelled' ? '#bdbdbd' : '#ffcdd2',
+                  backgroundColor: '#3d67ee',
+                  color: 'white',
+                  border: 'none',
                   borderRadius: '8px',
                   fontWeight: '600',
-                  cursor: status === 'cancelled' ? 'not-allowed' : 'pointer',
+                  cursor: 'pointer',
                 }}
               >
-                <IoCloseCircleOutline size={18} />
-                <span>{status === 'cancelled' ? 'Cancelled' : 'Cancel'}</span>
+                <IoCalendarClearOutline size={18} />
+                <span>Reschedule</span>
               </button>
             )}
 
-            {showBottomLifecycleActions && (
+            {!readOnly && showBottomLifecycleActions && (
               <button
-                onClick={() => onComplete(user)}
-                disabled={status === 'completed'}
+                onClick={() => onCancel(user)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
                   padding: '10px 20px',
-                  backgroundColor: status === 'completed' ? '#e0e0e0' : '#e8f5e9',
-                  color: status === 'completed' ? '#757575' : '#2e7d32',
+                  backgroundColor: '#ffebee',
+                  color: '#d32f2f',
                   border: '1px solid',
-                  borderColor: status === 'completed' ? '#bdbdbd' : '#c8e6c9',
+                  borderColor: '#ffcdd2',
                   borderRadius: '8px',
                   fontWeight: '600',
-                  cursor: status === 'completed' ? 'not-allowed' : 'pointer',
+                  cursor: 'pointer',
+                }}
+              >
+                <IoCloseCircleOutline size={18} />
+                <span>Cancel</span>
+              </button>
+            )}
+
+            {!readOnly && showBottomLifecycleActions && (
+              <button
+                onClick={() => onComplete(user)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 20px',
+                  backgroundColor: '#e8f5e9',
+                  color: '#2e7d32',
+                  border: '1px solid',
+                  borderColor: '#c8e6c9',
+                  borderRadius: '8px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
                 }}
               >
                 <IoCheckmarkCircleOutline size={18} />
-                <span>{status === 'completed' ? 'Completed' : 'Complete'}</span>
+                <span>Complete</span>
+              </button>
+            )}
+
+            {canShowBillingAction && (
+              <button
+                onClick={() => onProceedToBilling(user)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 20px',
+                  backgroundColor: hasBillingInvoice ? '#eef2ff' : '#fff7e6',
+                  color: hasBillingInvoice ? '#3d67ee' : '#b26a00',
+                  border: '1px solid',
+                  borderColor: hasBillingInvoice ? '#cdd8ff' : '#ffe0a3',
+                  borderRadius: '8px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                }}
+              >
+                <IoReceipt size={18} />
+                <span>{hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}</span>
               </button>
             )}
           </div>

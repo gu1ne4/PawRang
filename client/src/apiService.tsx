@@ -275,6 +275,32 @@ export const apiService = {
     });
   },
 
+  confirmRescheduleRequest(requestId: number) {
+    return request(`/api/reschedule-requests/${requestId}/confirm`, {
+      method: 'PUT',
+    });
+  },
+
+  cancelRescheduleAppointment(requestId: number) {
+    return request(`/api/reschedule-requests/${requestId}/cancel-appointment`, {
+      method: 'PUT',
+    });
+  },
+
+  chooseAnotherDateForRescheduleRequest(
+    requestId: number,
+    payload: {
+      preferred_date: string;
+      preferred_time: string;
+      response_note?: string;
+    }
+  ) {
+    return request(`/api/reschedule-requests/${requestId}/choose-another-date`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
   // ─── Grooming details ────────────────────────────────────────────────────
 
   saveGroomingDetails(payload: {
@@ -323,6 +349,105 @@ export const apiService = {
     return request('/api/admin/appointment-search-data');
   },
 
+  getEmrSearchPets() {
+    return request('/api/emr/search-pets');
+  },
+
+  getEmrRecords() {
+    return request('/api/emr/records');
+  },
+
+  getEmrRecord(recordId: number | string) {
+    return request(`/api/emr/records/${recordId}`);
+  },
+
+  createEmrRecord(payload: any) {
+    return request('/api/emr/records', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateEmrRecord(recordId: number | string, payload: any) {
+    return request(`/api/emr/records/${recordId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteEmrRecord(recordId: number | string) {
+    return request(`/api/emr/records/${recordId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  getEmrPetAppointments(petId: number | string) {
+    return request(`/api/emr/pets/${petId}/appointments`);
+  },
+
+  getBillingServices() {
+    return request('/api/billing/services').then(
+      (data: any) => data?.services || []
+    );
+  },
+
+  getBillingProducts() {
+    return request('/api/billing/products').then(
+      (data: any) => data?.products || []
+    );
+  },
+
+  getBillingSourceRecords() {
+    return request('/api/billing/source-records');
+  },
+
+  getBillingInvoices() {
+    return request('/api/billing/invoices').then(
+      (data: any) => data?.invoices || []
+    );
+  },
+
+  createBillingInvoice(payload: any) {
+    return request('/api/billing/invoices', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  recordBillingInvoicePayment(invoiceId: number | string, payload: any) {
+    return request(`/api/billing/invoices/${invoiceId}/payments`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteBillingInvoices(invoiceIds: Array<number | string>) {
+    return request('/api/billing/invoices/bulk', {
+      method: 'DELETE',
+      body: JSON.stringify({ invoiceIds }),
+    });
+  },
+
+  updateEmrLabResultOwnerVisibility(labResultId: number | string, payload: {
+    visibleToOwner: boolean;
+    visibleToOwnerBy?: string;
+  }) {
+    return request(`/api/emr/lab-results/${labResultId}/owner-visibility`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateEmrVaccinationOwnerVisibility(vaccinationId: number | string, payload: {
+    visibleToOwner: boolean;
+    visibleToOwnerBy?: string;
+  }) {
+    return request(`/api/emr/vaccinations/${vaccinationId}/owner-visibility`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
   logout() {
     return request('/logout', {
       method: 'POST',
@@ -361,10 +486,20 @@ export const apiService = {
     );
   },
 
+  getAvailableTimeSlots(date: string) {
+    return request(`/api/available-time-slots?date=${encodeURIComponent(date)}`).then(
+      (data: any) => data?.timeSlots || []
+    );
+  },
+
   getSpecialDates() {
     return request('/api/special-dates').then(
       (data: any) => data?.specialDates || []
     );
+  },
+
+  getPetSharedRecords(petId: number | string) {
+    return request(`/api/pets/${petId}/shared-records`);
   },
 
   updateProfile(userId: string, payload: Partial<{
