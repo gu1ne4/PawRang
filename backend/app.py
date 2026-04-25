@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import os
 import json
 import random
+import re
 import string
 import secrets
 import hashlib
@@ -171,13 +172,23 @@ BILLING_SERVICE_SEED_ROWS = [
     },
 ]
 BILLING_SERVICE_ALIASES = {
+    "checkup": "Consultation & Check-Up",
     "consultation": "Consultation & Check-Up",
     "general consultation": "Consultation & Check-Up",
+    "consultation and check up": "Consultation & Check-Up",
     "consultation and check-up": "Consultation & Check-Up",
     "checkup or consultation": "Consultation & Check-Up",
     "check-up or consultation": "Consultation & Check-Up",
     "vaccination": "Vaccinations",
+    "vaccine": "Vaccinations",
+    "dental cleaning": "Dental Prophylaxis",
     "cbc": "Complete Blood Count",
+    "fecalysis": "Fecal Examination",
+    "xray": "X-Ray",
+    "x ray": "X-Ray",
+    "radiology": "X-Ray",
+    "radiology x ray": "X-Ray",
+    "boarding": "Pet Boarding",
 }
 
 
@@ -573,6 +584,7 @@ if RESEND_API_KEY:
 
 otp_store = {}
 RESEND_COOLDOWN_SECONDS = 60
+EMAIL_CHANGE_OTP_EXPIRY_SECONDS = 5 * 60
 INVENTORY_CATEGORIES = {
     "Pet Supplies",
     "Deworming",
@@ -607,7 +619,7 @@ def is_transient_supabase_error(error):
     return any(pattern in message for pattern in TRANSIENT_SUPABASE_ERROR_PATTERNS)
 
 
-def execute_with_retry(run_query, *, attempts=3, base_delay=0.15, context="Supabase read"):
+def execute_with_retry(run_query, *, attempts=5, base_delay=0.3, context="Supabase read"):
     last_error = None
 
     for attempt in range(1, attempts + 1):
@@ -619,7 +631,7 @@ def execute_with_retry(run_query, *, attempts=3, base_delay=0.15, context="Supab
             if is_last_attempt or not is_transient_supabase_error(e):
                 raise
             print(f"{context} transient error on attempt {attempt}/{attempts}: {e}")
-            time.sleep(base_delay * attempt)
+            time.sleep(base_delay * (2 ** (attempt - 1)))
 
     raise last_error
 
@@ -990,6 +1002,15 @@ def coerce_optional_bool(value):
     return None
 
 
+def format_missing_required_fields(fields):
+    cleaned_fields = [str(field).strip() for field in (fields or []) if str(field).strip()]
+    return f"Missing required fields: {', '.join(cleaned_fields)}" if cleaned_fields else "Missing required fields."
+
+
+def extract_digits_only(value):
+    return "".join(character for character in str(value or "") if character.isdigit())
+
+
 def build_owner_visibility_payload(item, existing_row=None, default_visible=False):
     item = item or {}
     existing_row = existing_row or {}
@@ -1133,6 +1154,49 @@ def build_emr_default_visit(data):
     }
 
 
+def validate_emr_record_required_fields(data):
+    data = data or {}
+    pet_details = data.get("petDetails") or {}
+    missing_fields = []
+
+    pet_name = str(data.get("petName") or pet_details.get("name") or "").strip()
+    breed = str(data.get("breed") or pet_details.get("breed") or "").strip()
+    owner_first_name = str(data.get("ownerFirstName") or "").strip()
+    owner_last_name = str(data.get("ownerLastName") or "").strip()
+    owner_email = str(data.get("ownerEmail") or "").strip()
+    owner_contact = str(data.get("ownerContact") or "").strip()
+    veterinarian = str(data.get("veterinarian") or pet_details.get("doctorAssigned") or "").strip()
+    reason = str(data.get("reason") or pet_details.get("reasonForVisit") or "").strip()
+
+    if not pet_name:
+        missing_fields.append("Pet name")
+    if not breed:
+        missing_fields.append("Breed")
+    if not owner_first_name:
+        missing_fields.append("Owner first name")
+    if not owner_last_name:
+        missing_fields.append("Owner last name")
+    if not owner_email:
+        missing_fields.append("Owner email")
+    elif "@" not in owner_email or "." not in owner_email.split("@")[-1]:
+        missing_fields.append("Owner email must be a valid email address")
+
+    if not owner_contact:
+        missing_fields.append("Owner contact number")
+    else:
+        owner_contact_digits = extract_digits_only(owner_contact)
+        if not owner_contact_digits.startswith("63") or len(owner_contact_digits) != 12:
+            missing_fields.append("Owner contact number must be a valid PH number starting with 63")
+
+    if not veterinarian:
+        missing_fields.append("Veterinarian")
+    if not reason:
+        missing_fields.append("Reason for visit")
+
+    if missing_fields:
+        raise ValueError(format_missing_required_fields(missing_fields))
+
+
 def get_emr_search_results():
     pets = execute_with_retry(
         lambda: supabase_admin.table("pet_profile").select("*").order("created_at", desc=True).execute(),
@@ -1184,7 +1248,14 @@ def get_emr_search_results():
     return search_results
 
 
-def get_emr_records(record_ids=None, include_billing=False):
+def get_emr_records(
+    record_ids=None,
+    include_billing=False,
+    include_details=True,
+    include_lab_results=True,
+    include_vaccinations=True,
+    include_medical_information=True,
+):
     records_query = supabase_admin.table("medical_records").select("*")
     if record_ids:
         records_query = records_query.in_("medical_record_id", list(record_ids))
@@ -1218,15 +1289,16 @@ def get_emr_records(record_ids=None, include_billing=False):
         for item in visit_rows
         if (item.get("source_type") or "").strip().lower() == "walkin" and item.get("source_id") not in (None, "")
     ]
+    should_fetch_medical_information = include_details and include_medical_information
     medical_information_rows = []
-    if appointment_source_ids:
+    if should_fetch_medical_information and appointment_source_ids:
         medical_information_rows.extend(
             execute_with_retry(
                 lambda: supabase_admin.table("medical_information").select("*").in_("appointment_id", appointment_source_ids).execute(),
                 context="Fetch EMR appointment medical information"
             ).data or []
         )
-    if walkin_source_ids:
+    if should_fetch_medical_information and walkin_source_ids:
         medical_information_rows.extend(
             execute_with_retry(
                 lambda: supabase_admin.table("medical_information").select("*").in_("walkin_id", walkin_source_ids).execute(),
@@ -1242,10 +1314,18 @@ def get_emr_records(record_ids=None, include_billing=False):
         query = supabase_admin.table(table_name).select("*").in_("medical_record_visit_id", visit_ids)
         return execute_with_retry(lambda: query.execute(), context=context_name).data or []
 
-    prescription_rows = fetch_child_rows("medical_record_prescriptions", "Fetch EMR prescriptions")
-    lab_result_rows = fetch_child_rows("medical_record_lab_results", "Fetch EMR lab results")
-    visit_service_rows = fetch_child_rows("medical_record_visit_services", "Fetch EMR visit services")
-    vaccination_rows = fetch_child_rows("medical_record_vaccinations", "Fetch EMR vaccinations")
+    prescription_rows = fetch_child_rows("medical_record_prescriptions", "Fetch EMR prescriptions") if include_details else []
+    lab_result_rows = (
+        fetch_child_rows("medical_record_lab_results", "Fetch EMR lab results")
+        if include_details and include_lab_results
+        else []
+    )
+    visit_service_rows = fetch_child_rows("medical_record_visit_services", "Fetch EMR visit services") if include_details else []
+    vaccination_rows = (
+        fetch_child_rows("medical_record_vaccinations", "Fetch EMR vaccinations")
+        if include_details and include_vaccinations
+        else []
+    )
 
     pets_query = supabase_admin.table("pet_profile").select("*")
     if pet_ids:
@@ -1376,7 +1456,6 @@ def get_emr_records(record_ids=None, include_billing=False):
                     {
                         "id": str(item.get("medical_record_prescription_id") or ""),
                         "medicationName": item.get("medication_name") or "",
-                        "formStrength": item.get("form_strength") or "",
                         "dosage": item.get("dosage") or "",
                         "route": item.get("route") or "",
                         "frequency": item.get("frequency") or "",
@@ -1445,7 +1524,8 @@ def get_emr_records(record_ids=None, include_billing=False):
             "veterinarian": (latest_visit.get("veterinarian_name") or "") if latest_visit else "",
             "reason": (latest_visit.get("reason") or "") if latest_visit else "",
             "deceased": bool(pet.get("is_deceased")),
-            "visitHistory": normalized_visits,
+            "detailsLoaded": bool(include_details),
+            "visitHistory": normalized_visits if include_details else [],
             "petDetails": {
                 "name": pet.get("pet_name") or "",
                 "breed": pet.get("pet_breed") or "",
@@ -1482,6 +1562,7 @@ def save_emr_record_payload(data, existing_record_id=None):
     pet_id = data.get("petId") or data.get("pet_id")
     if pet_id in (None, ""):
         raise ValueError("petId is required to save a medical record.")
+    validate_emr_record_required_fields(data)
 
     pet_id = int(pet_id)
     pet_profile = get_single_row("pet_profile", "pet_id", pet_id)
@@ -1568,7 +1649,6 @@ def save_emr_record_payload(data, existing_record_id=None):
             prescriptions.append({
                 "medical_record_visit_id": visit_id,
                 "medication_name": prescription.get("medicationName") or "",
-                "form_strength": prescription.get("formStrength") or "",
                 "dosage": prescription.get("dosage") or "",
                 "route": prescription.get("route") or "",
                 "frequency": prescription.get("frequency") or "",
@@ -1735,6 +1815,14 @@ def get_emr_pet_appointments(pet_id):
 
 def normalize_email_address(email):
     return (email or "").strip().lower()
+
+
+def is_valid_email_address(email):
+    return bool(re.fullmatch(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", normalize_email_address(email)))
+
+
+def build_email_change_otp_key(user_id, email):
+    return f"change-email:{user_id}:{normalize_email_address(email)}"
 
 
 def find_account_by_email(email):
@@ -3419,12 +3507,12 @@ def is_username_taken(username, exclude_employee_id=None):
 # -----------------------------------------------
 # HELPER — send OTP email via Gmail SMTP
 # -----------------------------------------------
-def send_otp_email(to_email, otp, subject='Your OTP Code', purpose='verification'):
+def send_otp_email(to_email, otp, subject='Your OTP Code', purpose='verification', expires_minutes=10):
     html = f"""
         <h2>OTP Verification</h2>
         <p>Your OTP for <strong>{purpose}</strong> is:</p>
         <p><strong style="font-size:32px; letter-spacing:8px">{otp}</strong></p>
-        <p>This OTP expires in 10 minutes.</p>
+        <p>This OTP expires in {expires_minutes} minutes.</p>
         <p>If you did not request this, please ignore this email.</p>
     """
     return send_html_email(to_email, subject, html)
@@ -3756,6 +3844,151 @@ def update_profile(user_id):
         return jsonify({"error": str(e)}), 400
 
 
+@app.route('/profile/<user_id>/change-email/request-otp', methods=['POST'])
+def request_profile_email_change_otp(user_id):
+    data = request.get_json() or {}
+    new_email = normalize_email_address(
+        data.get('newEmail') or data.get('new_email') or data.get('email')
+    )
+
+    if not new_email:
+        return jsonify({"error": "New email is required"}), 400
+    if not is_valid_email_address(new_email):
+        return jsonify({"error": "Please enter a valid email address"}), 400
+
+    try:
+        profile, _ = find_account_by_user_id(user_id)
+        if not profile:
+            return jsonify({"error": "Profile not found"}), 404
+
+        current_email = normalize_email_address(profile.get('email'))
+        if new_email == current_email:
+            return jsonify({"error": "New email must be different from your current email"}), 400
+
+        existing_account = find_account_by_email(new_email)
+        if existing_account and str(existing_account.get('user_id')) != str(user_id):
+            return jsonify({"error": "This email is already in use by another account"}), 400
+
+        otp_key = build_email_change_otp_key(user_id, new_email)
+        existing_otp = otp_store.get(otp_key)
+        if existing_otp and existing_otp.get('sent_at'):
+            elapsed = (datetime.utcnow() - existing_otp['sent_at']).total_seconds()
+            if elapsed < RESEND_COOLDOWN_SECONDS:
+                wait = max(int(RESEND_COOLDOWN_SECONDS - elapsed), 1)
+                return jsonify({
+                    "error": f"Please wait {wait} second(s) before requesting a new OTP.",
+                    "resendCooldownSeconds": wait,
+                }), 429
+
+        otp = ''.join(random.choices(string.digits, k=6))
+        expires_at = datetime.utcnow() + timedelta(seconds=EMAIL_CHANGE_OTP_EXPIRY_SECONDS)
+        otp_store[otp_key] = {
+            "otp": otp,
+            "expires_at": expires_at,
+            "verified": False,
+            "mode": "emailChange",
+            "user_id": user_id,
+            "new_email": new_email,
+            "sent_at": datetime.utcnow(),
+        }
+
+        send_otp_email(
+            new_email,
+            otp,
+            subject='Verify Your New Email',
+            purpose='email change',
+            expires_minutes=max(EMAIL_CHANGE_OTP_EXPIRY_SECONDS // 60, 1),
+        )
+
+        return jsonify({
+            "message": "OTP sent successfully.",
+            "otpSent": True,
+            "expiresInSeconds": EMAIL_CHANGE_OTP_EXPIRY_SECONDS,
+            "resendCooldownSeconds": RESEND_COOLDOWN_SECONDS,
+        }), 200
+
+    except Exception as e:
+        print("Request email change OTP error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/profile/<user_id>/change-email/verify', methods=['POST'])
+def verify_profile_email_change(user_id):
+    data = request.get_json() or {}
+    new_email = normalize_email_address(
+        data.get('newEmail') or data.get('new_email') or data.get('email')
+    )
+    otp = str(data.get('otp') or '').strip()
+
+    if not new_email or not otp:
+        return jsonify({"error": "New email and OTP are required"}), 400
+    if not is_valid_email_address(new_email):
+        return jsonify({"error": "Please enter a valid email address"}), 400
+    if not re.fullmatch(r"\d{6}", otp):
+        return jsonify({"error": "Please enter a valid 6-digit OTP"}), 400
+
+    try:
+        profile, table_name = find_account_by_user_id(user_id)
+        if not profile:
+            return jsonify({"error": "Profile not found"}), 404
+
+        current_email = normalize_email_address(profile.get('email'))
+        if new_email == current_email:
+            return jsonify({"error": "New email must be different from your current email"}), 400
+
+        otp_key = build_email_change_otp_key(user_id, new_email)
+        stored = otp_store.get(otp_key)
+        if not stored:
+            return jsonify({"error": "No OTP found. Please request a new one."}), 400
+        if stored.get("mode") != "emailChange" or str(stored.get("user_id")) != str(user_id):
+            return jsonify({"error": "Invalid OTP request. Please request a new one."}), 400
+        if datetime.utcnow() > stored['expires_at']:
+            del otp_store[otp_key]
+            return jsonify({"error": "OTP has expired. Please request a new one."}), 400
+        if stored['otp'] != otp:
+            return jsonify({"error": "Invalid OTP. Please try again."}), 400
+
+        existing_account = find_account_by_email(new_email)
+        if existing_account and str(existing_account.get('user_id')) != str(user_id):
+            return jsonify({"error": "This email is already in use by another account"}), 400
+
+        try:
+            supabase_admin.auth.admin.update_user_by_id(
+                user_id,
+                {"email": new_email, "email_confirm": True}
+            )
+        except Exception as auth_error:
+            print("Change email auth update error:", str(auth_error))
+            return jsonify({"error": "Unable to update the login email. Please try again."}), 400
+
+        try:
+            response = supabase_admin.table(table_name).update({"email": new_email}).eq('id', user_id).execute()
+        except Exception as db_error:
+            if current_email:
+                try:
+                    supabase_admin.auth.admin.update_user_by_id(
+                        user_id,
+                        {"email": current_email, "email_confirm": True}
+                    )
+                except Exception as revert_error:
+                    print("Change email auth revert error:", str(revert_error))
+            raise db_error
+
+        updated_profile = response.data[0] if response.data else get_single_row(table_name, 'id', user_id)
+        normalized = normalize_public_profile(updated_profile or {**profile, "email": new_email})
+        del otp_store[otp_key]
+
+        return jsonify({
+            "message": "Email updated successfully.",
+            **normalized,
+            "user": normalized,
+        }), 200
+
+    except Exception as e:
+        print("Verify email change error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
 # -----------------------------------------------
 # UPLOAD PET PHOTO TO SUPABASE STORAGE
 # -----------------------------------------------
@@ -3996,6 +4229,22 @@ def create_appointment_record(data, allow_walk_in=False):
         branch_id = None
 
     if allow_walk_in and (owner_id == 'WALK_IN' or pet_id == 'WALK_IN') and is_walk_in:
+        guest_required_fields = {
+            "First name": data.get('walk_in_first_name'),
+            "Last name": data.get('walk_in_last_name'),
+            "Pet name": data.get('walk_in_pet_name'),
+            "Pet type": data.get('walk_in_pet_type'),
+            "Breed": data.get('walk_in_breed'),
+            "Gender": data.get('walk_in_gender'),
+            "Appointment service": data.get('appointment_type') or data.get('service'),
+            "Appointment date": data.get('appointment_date') or data.get('date'),
+            "Appointment time": data.get('appointment_time') or data.get('time'),
+            "Branch": branch_id,
+        }
+        missing_guest_fields = [label for label, value in guest_required_fields.items() if value in (None, "")]
+        if missing_guest_fields:
+            raise ValueError(format_missing_required_fields(missing_guest_fields))
+
         walk_in_email = data.get('walk_in_email') or ''
         walk_in_phone = data.get('walk_in_phone') or ''
         response = supabase_admin.table('walkin_appointments').insert({
@@ -4048,15 +4297,16 @@ def create_appointment_record(data, allow_walk_in=False):
         }
 
     required_fields = {
-        "owner_id": owner_id,
-        "pet_id": pet_id,
-        "appointment_type": data.get('appointment_type') or data.get('service'),
-        "appointment_date": data.get('appointment_date') or data.get('date'),
-        "appointment_time": data.get('appointment_time') or data.get('time'),
+        "Owner": owner_id,
+        "Pet": pet_id,
+        "Appointment service": data.get('appointment_type') or data.get('service'),
+        "Appointment date": data.get('appointment_date') or data.get('date'),
+        "Appointment time": data.get('appointment_time') or data.get('time'),
+        "Branch": branch_id,
     }
-    missing = [key for key, value in required_fields.items() if not value]
+    missing = [label for label, value in required_fields.items() if value in (None, "")]
     if missing:
-        raise ValueError(f"Missing required fields: {missing}")
+        raise ValueError(format_missing_required_fields(missing))
 
     response = supabase_admin.table('appointments').insert({
         "owner_id": owner_id,
@@ -4246,27 +4496,60 @@ def medical_information_collection():
     appointment_id = data.get('appointment_id')
     walkin_id = data.get('walkin_id')
 
+    if record_type not in {'appointment', 'walkin'}:
+        return jsonify({"error": "record_type must be either 'appointment' or 'walkin'"}), 400
+
     if record_type == 'walkin' and not walkin_id:
         return jsonify({"error": "walkin_id is required for walkin medical information"}), 400
     if record_type != 'walkin' and not appointment_id:
         return jsonify({"error": "appointment_id is required"}), 400
+
+    on_medication = coerce_optional_bool(data.get('on_medication'))
+    flea_tick_prevention = coerce_optional_bool(data.get('flea_tick_prevention'))
+    is_vaccinated = coerce_optional_bool(data.get('is_vaccinated'))
+    is_pregnant = coerce_optional_bool(data.get('is_pregnant'))
+    has_allergies = coerce_optional_bool(data.get('has_allergies'))
+    has_skin_condition = coerce_optional_bool(data.get('has_skin_condition'))
+    been_groomed_before = coerce_optional_bool(data.get('been_groomed_before'))
+    medication_details = str(data.get('medication_details') or '').strip()
+    allergy_details = str(data.get('allergy_details') or '').strip()
+    skin_condition_details = str(data.get('skin_condition_details') or '').strip()
+
+    missing_fields = []
+    if on_medication is None:
+        missing_fields.append("Medication question")
+    if flea_tick_prevention is None:
+        missing_fields.append("Flea and tick prevention")
+    if is_vaccinated is None:
+        missing_fields.append("Vaccination status")
+    if is_pregnant is None:
+        missing_fields.append("Pregnancy status")
+    if on_medication is True and not medication_details:
+        missing_fields.append("Medication details")
+    if has_allergies is True and not allergy_details:
+        missing_fields.append("Allergy details")
+    if has_skin_condition is True and not skin_condition_details:
+        missing_fields.append("Skin condition details")
+
+    if missing_fields:
+        return jsonify({"error": format_missing_required_fields(missing_fields)}), 400
 
     try:
         payload = {
             "record_type": record_type,
             "appointment_id": appointment_id if record_type != 'walkin' else None,
             "walkin_id": walkin_id if record_type == 'walkin' else None,
-            "is_pregnant": data.get('is_pregnant'),
-            "is_vaccinated": data.get('is_vaccinated'),
-            "has_allergies": data.get('has_allergies'),
-            "allergy_details": data.get('allergy_details'),
-            "has_skin_condition": data.get('has_skin_condition'),
-            "been_groomed_before": data.get('been_groomed_before'),
-            "on_medication": data.get('on_medication'),
-            "medication_details": data.get('medication_details'),
-            "skin_condition_details": data.get('skin_condition_details'),
-            "flea_tick_prevention": data.get('flea_tick_prevention'),
-            "additional_notes": data.get('additional_notes'),
+            "is_pregnant": is_pregnant,
+            "is_vaccinated": is_vaccinated,
+            "has_allergies": has_allergies,
+            "allergy_details": allergy_details,
+            "has_skin_condition": has_skin_condition,
+            "been_groomed_before": been_groomed_before,
+            "on_medication": on_medication,
+            "medication_details": medication_details,
+            "skin_condition_details": skin_condition_details,
+            "flea_tick_prevention": flea_tick_prevention,
+            "additional_notes": str(data.get('additional_notes') or '').strip(),
         }
 
         lookup_column = 'walkin_id' if record_type == 'walkin' else 'appointment_id'
@@ -4316,7 +4599,7 @@ def get_emr_search_pets():
 def emr_records_collection():
     if request.method == 'GET':
         try:
-            return jsonify({"records": get_emr_records(include_billing=True)}), 200
+            return jsonify({"records": get_emr_records(include_details=False)}), 200
         except Exception as e:
             print("EMR records fetch error:", str(e))
             return jsonify({"error": str(e)}), 400
@@ -5137,17 +5420,17 @@ def create_billing_invoice():
             raise ValueError("invoiceType is invalid")
 
         source_record_type_raw = data.get("sourceRecordType") or data.get("source_record_type")
-        source_record_type = None
-        if source_record_type_raw not in (None, ""):
-            source_record_type = str(source_record_type_raw).strip().lower()
-            if source_record_type not in {"appointment", "walkin", "visit"}:
-                raise ValueError("sourceRecordType is invalid")
+        if source_record_type_raw in (None, ""):
+            raise ValueError("sourceRecordType is required")
+
+        source_record_type = str(source_record_type_raw).strip().lower()
+        if source_record_type not in {"appointment", "walkin", "visit"}:
+            raise ValueError("sourceRecordType is invalid")
 
         source_record_id = coerce_int(
             data.get("sourceRecordId", data.get("source_record_id")),
             "sourceRecordId",
             minimum=1,
-            allow_none=True,
         )
 
         customer_name = str(data.get("customerName") or data.get("customer_name") or "").strip()
@@ -5352,6 +5635,14 @@ def create_billing_invoice():
             "invoice_time": manila_now.strftime("%H:%M:%S"),
         }
 
+        prepared_inventory_stock_out_payloads = []
+        if payment_state["payment_status"] == "paid":
+            prepared_inventory_stock_out_payloads = prepare_billing_invoice_inventory_stock_out_payloads(
+                invoice_payload,
+                product_items=product_payloads,
+                processed_by=payment_actor_id,
+            )
+
         invoice_response = supabase_admin.table("billing_invoices").insert(invoice_payload).execute()
         created_invoice = invoice_response.data[0] if invoice_response.data else get_single_row("billing_invoices", "invoice_number", invoice_payload["invoice_number"])
         if not created_invoice:
@@ -5396,6 +5687,14 @@ def create_billing_invoice():
             }
             payment_response = supabase_admin.table("billing_invoice_payments").insert(payment_payload).execute()
             created_payment_history = payment_response.data or [payment_payload]
+
+        if payment_state["payment_status"] == "paid":
+            sync_billing_invoice_inventory_stock_out(
+                created_invoice,
+                product_items=created_product_items,
+                processed_by=payment_actor_id,
+                prepared_payloads=prepared_inventory_stock_out_payloads,
+            )
 
         normalized_invoice = fetch_billing_invoice_with_details(invoice_id)
         if not normalized_invoice:
@@ -5478,6 +5777,17 @@ def record_billing_invoice_payment(invoice_id):
             "created_by": payment_actor_id,
         }
         supabase_admin.table("billing_invoice_payments").insert(payment_payload).execute()
+
+        if updated_state["payment_status"] == "paid":
+            product_items = execute_with_retry(
+                lambda: supabase_admin.table("billing_invoice_product_items").select("*").eq("billing_invoice_id", invoice_id).order("sort_order").execute(),
+                context="Fetch billing invoice product items for stock sync",
+            ).data or []
+            sync_billing_invoice_inventory_stock_out(
+                invoice_record,
+                product_items=product_items,
+                processed_by=payment_actor_id,
+            )
 
         normalized_invoice = fetch_billing_invoice_with_details(invoice_id)
         if not normalized_invoice:
@@ -6294,7 +6604,125 @@ def is_missing_relation_error(error, relation_name):
 
 
 def normalize_billing_service_name(value):
-    return " ".join(str(value or "").strip().lower().split())
+    raw_value = (
+        str(value or "")
+        .strip()
+        .lower()
+        .replace("&", " and ")
+        .replace("check-up", "checkup")
+    )
+    cleaned_value = "".join(character if character.isalnum() else " " for character in raw_value)
+    tokens = [
+        token
+        for token in cleaned_value.split()
+        if token and token not in {"and", "or"}
+    ]
+    return " ".join(sorted(tokens))
+
+
+BILLING_GENERIC_SERVICE_PRICE_FALLBACKS = {
+    normalize_billing_service_name("Consultation"): 500.00,
+    normalize_billing_service_name("Vaccination"): 1200.00,
+    normalize_billing_service_name("Laboratory"): 800.00,
+    normalize_billing_service_name("Laboratory Test"): 800.00,
+    normalize_billing_service_name("Laboratory Tests"): 800.00,
+    normalize_billing_service_name("Lab Test"): 800.00,
+    normalize_billing_service_name("X-Ray"): 1500.00,
+    normalize_billing_service_name("Xray"): 1500.00,
+    normalize_billing_service_name("Radiology X-Ray"): 1500.00,
+    normalize_billing_service_name("Ultrasound"): 2000.00,
+    normalize_billing_service_name("Surgery"): 3000.00,
+    normalize_billing_service_name("Dental Cleaning"): 800.00,
+    normalize_billing_service_name("Grooming"): 500.00,
+    normalize_billing_service_name("Pet Grooming"): 500.00,
+    normalize_billing_service_name("Boarding"): 1200.00,
+    normalize_billing_service_name("Pet Boarding"): 1200.00,
+    normalize_billing_service_name("Confinement"): 2500.00,
+}
+
+
+BILLING_GENERIC_SERVICE_METADATA_FALLBACKS = {
+    normalize_billing_service_name("Consultation"): {
+        "category": "Consultation",
+        "subcategory": "Consultation & Check-Up",
+        "description": "Standard veterinary consultation",
+    },
+    normalize_billing_service_name("Vaccination"): {
+        "category": "Vaccinations",
+        "subcategory": "Vaccinations",
+        "description": "Annual vaccination",
+    },
+    normalize_billing_service_name("Laboratory"): {
+        "category": "Diagnostics",
+        "subcategory": "Laboratory Tests",
+        "description": "Blood work and lab tests",
+    },
+    normalize_billing_service_name("Laboratory Test"): {
+        "category": "Diagnostics",
+        "subcategory": "Laboratory Tests",
+        "description": "Blood work and lab tests",
+    },
+    normalize_billing_service_name("Laboratory Tests"): {
+        "category": "Diagnostics",
+        "subcategory": "Laboratory Tests",
+        "description": "Blood work and lab tests",
+    },
+    normalize_billing_service_name("Lab Test"): {
+        "category": "Diagnostics",
+        "subcategory": "Laboratory Tests",
+        "description": "Blood work and lab tests",
+    },
+    normalize_billing_service_name("X-Ray"): {
+        "category": "Diagnostics",
+        "subcategory": "Imaging",
+        "description": "Radiology services",
+    },
+    normalize_billing_service_name("Xray"): {
+        "category": "Diagnostics",
+        "subcategory": "Imaging",
+        "description": "Radiology services",
+    },
+    normalize_billing_service_name("Radiology X-Ray"): {
+        "category": "Diagnostics",
+        "subcategory": "Imaging",
+        "description": "Radiology services",
+    },
+    normalize_billing_service_name("Ultrasound"): {
+        "category": "Diagnostics",
+        "subcategory": "Imaging",
+        "description": "Ultrasound examination",
+    },
+    normalize_billing_service_name("Surgery"): {
+        "category": "Surgery",
+        "subcategory": "Surgery",
+        "description": "Surgical procedure",
+    },
+    normalize_billing_service_name("Dental Cleaning"): {
+        "category": "Dental",
+        "subcategory": "Dental Prophylaxis",
+        "description": "Professional dental cleaning",
+    },
+    normalize_billing_service_name("Grooming"): {
+        "category": "Grooming",
+        "subcategory": "Pet Grooming",
+        "description": "Basic grooming services",
+    },
+    normalize_billing_service_name("Pet Grooming"): {
+        "category": "Grooming",
+        "subcategory": "Pet Grooming",
+        "description": "Basic grooming services",
+    },
+    normalize_billing_service_name("Boarding"): {
+        "category": "Boarding",
+        "subcategory": "Pet Boarding",
+        "description": "Overnight stay, feeding, supervision",
+    },
+    normalize_billing_service_name("Confinement"): {
+        "category": "Confinement",
+        "subcategory": "Confinement",
+        "description": "Medical care, monitoring, IV fluids, medication",
+    },
+}
 
 
 def normalize_billing_service_record(record):
@@ -6414,10 +6842,15 @@ def build_billing_service_line_item(raw_name, *, lookups=None, quantity=1, sort_
     )
     safe_name = (raw_name or "").strip() or (matched_service or {}).get("name") or "Service"
     parsed_quantity = max(1, int(quantity or 1))
-    base_unit_price = float(
-        unit_price
-        if unit_price not in (None, "")
-        else (matched_service or {}).get("price") or 0
+    generic_service_key = normalize_billing_service_name(raw_name)
+    generic_metadata = BILLING_GENERIC_SERVICE_METADATA_FALLBACKS.get(generic_service_key, {})
+    matched_unit_price = float((matched_service or {}).get("price") or 0)
+    generic_unit_price = BILLING_GENERIC_SERVICE_PRICE_FALLBACKS.get(generic_service_key, 0)
+    parsed_unit_price = parse_emr_float(unit_price)
+    base_unit_price = (
+        parsed_unit_price
+        if parsed_unit_price and parsed_unit_price > 0
+        else matched_unit_price or generic_unit_price
     )
 
     return {
@@ -6425,9 +6858,9 @@ def build_billing_service_line_item(raw_name, *, lookups=None, quantity=1, sort_
         "serviceId": (matched_service or {}).get("serviceId"),
         "serviceCode": (matched_service or {}).get("serviceCode"),
         "name": (matched_service or {}).get("name") or safe_name,
-        "description": (matched_service or {}).get("description") or f"{safe_name} service",
-        "category": (matched_service or {}).get("category") or "Other",
-        "subcategory": (matched_service or {}).get("subcategory") or "",
+        "description": (matched_service or {}).get("description") or generic_metadata.get("description") or f"{safe_name} service",
+        "category": (matched_service or {}).get("category") or generic_metadata.get("category") or "Other",
+        "subcategory": (matched_service or {}).get("subcategory") or generic_metadata.get("subcategory") or "",
         "quantity": parsed_quantity,
         "unitPrice": round(base_unit_price, 2),
         "total": round(base_unit_price * parsed_quantity, 2),
@@ -6521,6 +6954,193 @@ def build_billing_product_lookup():
         for product in build_billing_product_catalog()
         if product.get("id")
     }
+
+
+def normalize_billing_inventory_match_key(value):
+    cleaned = re.sub(r"[^a-z0-9]+", " ", normalize_inventory_name_for_compare(value))
+    return " ".join(cleaned.split())
+
+
+def resolve_prescription_inventory_product(medication_name, product_catalog=None):
+    normalized_medication = normalize_billing_inventory_match_key(medication_name)
+    if not normalized_medication:
+        return None
+
+    medication_tokens = normalized_medication.split()
+    best_match = None
+    best_rank = None
+
+    for product in (product_catalog or []):
+        if str(product.get("category") or "").strip().lower() != "medicine":
+            continue
+        if int(product.get("stock") or 0) <= 0:
+            continue
+
+        product_key = normalize_billing_inventory_match_key(product.get("name"))
+        if not product_key:
+            continue
+
+        if product_key == normalized_medication:
+            return product
+
+        rank = None
+        if product_key.startswith(normalized_medication):
+            rank = (1, len(product_key), product.get("name") or "")
+        elif normalized_medication in product_key:
+            rank = (2, len(product_key), product.get("name") or "")
+        else:
+            product_tokens = set(product_key.split())
+            if medication_tokens and all(token in product_tokens for token in medication_tokens):
+                rank = (3, len(product_key), product.get("name") or "")
+
+        if rank is None:
+            continue
+
+        if best_rank is None or rank < best_rank:
+            best_rank = rank
+            best_match = product
+
+    return best_match
+
+
+def build_prescription_inventory_suggestions(prescriptions=None, product_catalog=None):
+    suggestions = []
+    seen_inventory_ids = set()
+    available_products = product_catalog or build_billing_product_catalog()
+
+    for prescription in (prescriptions or []):
+        medication_name = str(
+            prescription.get("medicationName")
+            or prescription.get("medication_name")
+            or ""
+        ).strip()
+        if not medication_name:
+            continue
+
+        matched_product = resolve_prescription_inventory_product(
+            medication_name,
+            product_catalog=available_products,
+        )
+        if not matched_product:
+            continue
+
+        inventory_item_id = matched_product.get("inventoryItemId") or matched_product.get("id")
+        if inventory_item_id in (None, ""):
+            continue
+
+        inventory_item_id_str = str(inventory_item_id)
+        if inventory_item_id_str in seen_inventory_ids:
+            continue
+        seen_inventory_ids.add(inventory_item_id_str)
+
+        suggestions.append({
+            "id": str(matched_product.get("id") or inventory_item_id_str),
+            "inventoryItemId": inventory_item_id,
+            "name": matched_product.get("name") or medication_name,
+            "sku": matched_product.get("sku") or "",
+            "category": matched_product.get("category") or "medicine",
+            "price": float(matched_product.get("price") or 0),
+            "stock": int(matched_product.get("stock") or 0),
+            "description": matched_product.get("description") or "",
+            "prescriptionMedicationName": medication_name,
+            "dosage": str(prescription.get("dosage") or "").strip(),
+            "route": str(prescription.get("route") or "").strip(),
+            "frequency": str(prescription.get("frequency") or "").strip(),
+            "duration": str(prescription.get("duration") or "").strip(),
+            "instructions": str(prescription.get("instructions") or "").strip(),
+        })
+
+    return suggestions
+
+
+def build_billing_inventory_reference(invoice_key, branch_id):
+    return f"BILL-{invoice_key}-OUT-BR{branch_id}"
+
+
+def prepare_billing_invoice_inventory_stock_out_payloads(invoice_record, product_items=None, processed_by=None):
+    invoice_number = str((invoice_record or {}).get("invoice_number") or (invoice_record or {}).get("billing_invoice_id") or "").strip()
+    if not invoice_number:
+        return []
+
+    customer_name = str((invoice_record or {}).get("customer_name") or "").strip() or None
+    grouped_items = {}
+
+    for product_item in (product_items or []):
+        inventory_item_id = (
+            product_item.get("inventory_item_id")
+            or product_item.get("inventoryItemId")
+        )
+        if inventory_item_id in (None, ""):
+            continue
+
+        inventory_record = get_single_row("inventory_items", "inventory_item_id", inventory_item_id)
+        if not inventory_record:
+            raise ValueError(f"Inventory item {inventory_item_id} was not found for {invoice_number}")
+
+        branch_id = inventory_record.get("branch_id")
+        if branch_id in (None, ""):
+            raise ValueError(f"Inventory item {inventory_item_id} is missing a branch assignment")
+
+        grouped_items.setdefault(branch_id, []).append({
+            "inventoryItemId": inventory_item_id,
+            "quantity": product_item.get("quantity") or 1,
+            "unitPrice": product_item.get("unit_price", product_item.get("unitPrice", inventory_record.get("selling_price"))),
+        })
+
+    prepared_payloads = []
+    for branch_id, branch_items in grouped_items.items():
+        reference_number = build_billing_inventory_reference(invoice_number, branch_id)
+        if inventory_transaction_reference_exists(branch_id, reference_number):
+            continue
+
+        payload = build_inventory_transaction_payload(
+            {
+                "branchId": branch_id,
+                "referenceNumber": reference_number,
+                "reason": "Billing Invoice Sale",
+                "notes": f"Inventory deducted for billing invoice {invoice_number}",
+                "counterpartyName": customer_name,
+                "processedBy": processed_by,
+                "items": branch_items,
+            },
+            "OUT",
+        )
+        prepared_payloads.append(payload)
+
+    return prepared_payloads
+
+
+def sync_billing_invoice_inventory_stock_out(invoice_record, product_items=None, processed_by=None, prepared_payloads=None):
+    created_transactions = []
+    payloads = prepared_payloads or prepare_billing_invoice_inventory_stock_out_payloads(
+        invoice_record,
+        product_items=product_items,
+        processed_by=processed_by,
+    )
+
+    for payload in payloads:
+        result = persist_inventory_transaction(payload)
+        notify_inventory_transaction_created(result, payload)
+        for item in (result.get("items") or []):
+            notify_inventory_stock_state_transition(
+                {
+                    "inventory_item_id": item.get("inventory_item_id"),
+                    "branch_id": item.get("branch_id"),
+                    "current_stock": item.get("previous_stock"),
+                    "critical_stock_level": item.get("critical_stock_level"),
+                },
+                {
+                    "inventory_item_id": item.get("inventory_item_id"),
+                    "branch_id": item.get("branch_id"),
+                    "current_stock": item.get("new_stock"),
+                    "critical_stock_level": item.get("critical_stock_level"),
+                },
+                actor_id=payload.get("processed_by"),
+                source_event="billing_invoice_stock_out",
+            )
+        created_transactions.append(result)
+
+    return created_transactions
 
 
 def fetch_billing_source_invoice_index():
@@ -6721,7 +7341,13 @@ def build_billing_source_records():
     appointments = []
     walkins = []
     service_lookups = build_billing_service_lookups()
-    emr_records = get_emr_records(include_billing=True)
+    product_catalog = build_billing_product_catalog()
+    emr_records = get_emr_records(
+        include_billing=True,
+        include_lab_results=False,
+        include_vaccinations=False,
+        include_medical_information=False,
+    )
     latest_visit_by_appointment_source = {}
     latest_visit_by_walkin_source = {}
     walkin_source_ids = []
@@ -6782,6 +7408,10 @@ def build_billing_source_records():
 
             service_names = [item.get("name") for item in service_items if item.get("name")]
             amount = round(sum(float(item.get("total") or 0) for item in service_items), 2)
+            prescription_suggestions = build_prescription_inventory_suggestions(
+                visit.get("prescriptions") or [],
+                product_catalog=product_catalog,
+            )
 
             walkins.append({
                 "id": str(visit.get("id") or ""),
@@ -6807,6 +7437,7 @@ def build_billing_source_records():
                 "billingInvoiceNumber": visit.get("billingInvoiceNumber"),
                 "isBilled": False,
                 "reasonIsServiceFallback": reason_is_service_fallback,
+                "prescriptionProductSuggestions": prescription_suggestions,
             })
 
     for row in completed_history_rows:
@@ -6827,6 +7458,10 @@ def build_billing_source_records():
                 )
                 service_names = [item.get("name") for item in service_items if item.get("name")]
                 amount = round(sum(float(item.get("total") or 0) for item in service_items), 2)
+                prescription_suggestions = build_prescription_inventory_suggestions(
+                    linked_visit.get("prescriptions") or [],
+                    product_catalog=product_catalog,
+                )
                 if linked_visit.get("hasBillingInvoice"):
                     continue
 
@@ -6852,6 +7487,7 @@ def build_billing_source_records():
                     "billingInvoiceId": linked_visit.get("billingInvoiceId"),
                     "billingInvoiceNumber": linked_visit.get("billingInvoiceNumber"),
                     "isBilled": False,
+                    "prescriptionProductSuggestions": prescription_suggestions,
                 })
                 continue
 

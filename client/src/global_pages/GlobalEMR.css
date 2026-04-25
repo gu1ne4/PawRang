@@ -262,10 +262,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 24px;
+  height: 24px;
 }
 
 .emrActionBtn:hover {
   background-color: #f0f0f0;
+}
+
+.emrActionSpinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(61, 103, 238, 0.25);
+  border-top-color: #3d67ee;
+  border-radius: 50%;
+  animation: emrSpin 0.8s linear infinite;
 }
 
 .emrNoData {
@@ -3965,8 +3976,10 @@ input:checked ~ .emrSwitchLabel {
 .emrCreateInvoiceBtn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 6px 12px;
+  min-width: 132px;
   background: linear-gradient(135deg, #2e9e0c, #1a5a06);
   color: white;
   border: none;
@@ -3981,6 +3994,38 @@ input:checked ~ .emrSwitchLabel {
   background: linear-gradient(135deg, #1a5a06, #0f3a04);
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(46, 158, 12, 0.3);
+}
+
+.emrCreateInvoiceBtn:disabled {
+  opacity: 0.8;
+  cursor: wait;
+  transform: none;
+  box-shadow: none;
+}
+
+.emrBillingNavigationOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(248, 250, 252, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.emrBillingNavigationPanel {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border: 1px solid #dbe4ff;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #3d67ee;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
 }
 
 /* Service Item - Updated without price */

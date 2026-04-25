@@ -74,6 +74,7 @@ type UserDetailsViewProps = {
   refreshing: boolean;
   readOnly?: boolean;
   backLabel?: string;
+  billingActionLoading?: boolean;
 };
 
 export default function UserDetailsView({
@@ -91,6 +92,7 @@ export default function UserDetailsView({
   refreshing,
   readOnly = false,
   backLabel = 'Back to Appointments',
+  billingActionLoading = false,
 }: UserDetailsViewProps) {
   if (!user) return null;
 
@@ -689,22 +691,35 @@ export default function UserDetailsView({
             {canShowBillingAction && (
               <button
                 onClick={() => onProceedToBilling(user)}
+                disabled={billingActionLoading}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: 'center',
                   gap: '8px',
                   padding: '10px 20px',
+                  minWidth: '178px',
                   backgroundColor: hasBillingInvoice ? '#eef2ff' : '#fff7e6',
                   color: hasBillingInvoice ? '#3d67ee' : '#b26a00',
                   border: '1px solid',
                   borderColor: hasBillingInvoice ? '#cdd8ff' : '#ffe0a3',
                   borderRadius: '8px',
                   fontWeight: '600',
-                  cursor: 'pointer',
+                  cursor: billingActionLoading ? 'wait' : 'pointer',
+                  opacity: billingActionLoading ? 0.8 : 1,
                 }}
               >
-                <IoReceipt size={18} />
-                <span>{hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}</span>
+                {billingActionLoading ? (
+                  <>
+                    <span className="adminInlineButtonSpinner" aria-hidden="true" />
+                    <span>Opening Billing...</span>
+                  </>
+                ) : (
+                  <>
+                    <IoReceipt size={18} />
+                    <span>{hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}</span>
+                  </>
+                )}
               </button>
             )}
           </div>

@@ -20,6 +20,8 @@ import defaultUserImg from '../assets/userImg.jpg';
 import { availabilityService } from './availabilityService';
 import UserDetailsView from './UserDetailsView';
 
+const BILLING_NAVIGATION_DELAY_MS = 450;
+
 // --- TYPESCRIPT INTERFACES ---
 interface CurrentUser {
   id?: string | number;
@@ -61,6 +63,7 @@ export default function AdminHistory() {
   const [historyAppointments, setHistoryAppointments] = useState<any[]>([]);
   const [selectedHistoryAppointment, setSelectedHistoryAppointment] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [billingNavigationKey, setBillingNavigationKey] = useState<string | null>(null);
 
   // LOGOUT POPUP STATE
   const [logoutModalVisible, setLogoutModalVisible] = useState(false);
@@ -212,6 +215,9 @@ export default function AdminHistory() {
     setSelectedHistoryAppointment(null);
   };
 
+  const getHistoryAppointmentKey = (appointment: any) =>
+    `${appointment?.recordType || 'appointment'}-${appointment?.dbId ?? appointment?.id ?? ''}`;
+
   const handleProceedToBilling = (appointment: any) => {
     if (!appointment) {
       window.alert('Error: Appointment details are unavailable.');
@@ -229,20 +235,31 @@ export default function AdminHistory() {
       return;
     }
 
-    navigate('/billing', {
-      state: {
-        billingAction: {
-          invoiceType,
-          sourceRecordType,
-          sourceRecordId,
-          billingInvoiceId: appointment.billingInvoiceId || null,
+    setBillingNavigationKey(getHistoryAppointmentKey(appointment));
+    window.setTimeout(() => {
+      navigate('/billing', {
+        state: {
+          billingAction: {
+            invoiceType,
+            sourceRecordType,
+            sourceRecordId,
+            billingInvoiceId: appointment.billingInvoiceId || null,
+          }
         }
-      }
-    });
+      });
+    }, BILLING_NAVIGATION_DELAY_MS);
   };
 
   return (
     <div className="biContainer">
+      {billingNavigationKey !== null && (
+        <div className="billingNavigationOverlay" aria-live="polite" aria-busy="true">
+          <div className="billingNavigationPanel">
+            <span className="adminInlineButtonSpinner" aria-hidden="true" />
+            <span>Opening Billing...</span>
+          </div>
+        </div>
+      )}
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
 
       {/* BODY CONTENT */}
@@ -271,6 +288,7 @@ export default function AdminHistory() {
               onAssignDoctor={() => {}}
               onReschedule={() => {}}
               onProceedToBilling={handleProceedToBilling}
+              billingActionLoading={billingNavigationKey !== null}
               onAcceptClientPreference={() => {}}
               onDeclineClientPreference={() => {}}
               onRefresh={loadHistory}
@@ -378,8 +396,11 @@ export default function AdminHistory() {
                     </thead>
                     <tbody>
                       {filteredAppointments.length > 0 ? (
-                        filteredAppointments.map((appointment) => (
-                          <tr key={`${appointment.recordType || 'appointment'}-${appointment.dbId ?? appointment.id}`}>
+                        filteredAppointments.map((appointment) => {
+                          const appointmentKey = getHistoryAppointmentKey(appointment);
+                          const isOpeningBilling = billingNavigationKey === appointmentKey;
+                          return (
+                          <tr key={appointmentKey}>
                             <td className="tableFont">{appointment.name || appointment.patient_name || 'Unknown Patient'}</td>
                             <td className="tableFont" style={{ textAlign: 'center' }}>{appointment.pet_name || appointment.petName || 'Unknown Pet'}</td>
                             <td className="tableFont" style={{ textAlign: 'center' }}>{appointment.service}</td>
@@ -405,6 +426,7 @@ export default function AdminHistory() {
                                 {(appointment.hasBillingInvoice || appointment.canProceedToBilling) && (
                                   <button
                                     onClick={() => handleProceedToBilling(appointment)}
+                                    disabled={billingNavigationKey !== null}
                                     style={{
                                       display: 'inline-flex',
                                       alignItems: 'center',
@@ -415,12 +437,21 @@ export default function AdminHistory() {
                                       borderColor: appointment.hasBillingInvoice ? '#cdd8ff' : '#ffe0a3',
                                       backgroundColor: appointment.hasBillingInvoice ? '#f4f7ff' : '#fff7e6',
                                       color: appointment.hasBillingInvoice ? '#3d67ee' : '#b26a00',
-                                      cursor: 'pointer',
+                                      cursor: billingNavigationKey !== null ? 'wait' : 'pointer',
                                       fontWeight: '600',
+                                      justifyContent: 'center',
+                                      width: '86px',
+                                      opacity: billingNavigationKey !== null && !isOpeningBilling ? 0.6 : 1,
                                     }}
                                   >
-                                    <IoReceipt size={16} />
-                                    <span>{appointment.hasBillingInvoice ? 'Invoice' : 'Billing'}</span>
+                                    {isOpeningBilling ? (
+                                      <span className="adminInlineButtonSpinner" aria-label="Opening billing" />
+                                    ) : (
+                                      <>
+                                        <IoReceipt size={16} />
+                                        <span>{appointment.hasBillingInvoice ? 'Invoice' : 'Billing'}</span>
+                                      </>
+                                    )}
                                   </button>
                                 )}
                                 <button
@@ -436,6 +467,8 @@ export default function AdminHistory() {
                                     color: '#3d67ee',
                                     cursor: 'pointer',
                                     fontWeight: '600',
+                                    justifyContent: 'center',
+                                    width: '86px',
                                   }}
                                 >
                                   <IoEyeOutline size={18} color="#3d67ee" />
@@ -444,7 +477,8 @@ export default function AdminHistory() {
                               </div>
                             </td>
                           </tr>
-                        ))
+                          );
+                        })
                       ) : (
                         <tr>
                           <td colSpan={8} className="noData">

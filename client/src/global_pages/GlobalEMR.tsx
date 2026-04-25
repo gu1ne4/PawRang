@@ -50,6 +50,8 @@ import {
   IoChevronDownOutline
 } from 'react-icons/io5';
 
+const BILLING_NAVIGATION_DELAY_MS = 450;
+
 interface MedicalRecord {
   id?: number;
   pk?: number;
@@ -67,6 +69,7 @@ interface MedicalRecord {
   veterinarian: string;
   reason: string;
   deceased?: boolean;
+  detailsLoaded?: boolean;
   visitHistory?: VisitHistory[];
   petDetails?: PetDetails;
 }
@@ -90,7 +93,6 @@ interface LabResult {
 interface Prescription {
   id: string;
   medicationName: string;
-  formStrength?: string;
   dosage: string;
   route?: string;
   frequency: string;
@@ -209,6 +211,7 @@ interface FormErrors {
 }
 
 interface VisitFormErrors {
+  visitType?: string;
   appointment?: string;
   primaryService?: string;
   veterinarian?: string;
@@ -264,7 +267,6 @@ interface VeterinarianAccount {
 interface MedicationTemplate {
   id: string;
   name: string;
-  formStrength?: string;
   dosage: string;
   route?: string;
   frequency: string;
@@ -406,7 +408,6 @@ const getPrescriptionPresetValue = (value: string, options: string[]): string =>
 
 const formatPrescriptionDisplayParts = (prescription: Prescription): string[] => {
   const parts = [
-    prescription.formStrength,
     prescription.dosage,
     prescription.route,
     prescription.frequency ? `Freq: ${prescription.frequency}` : '',
@@ -491,7 +492,6 @@ const normalizeVisitHistoryForSnapshot = (history: VisitHistory[]) =>
     prescriptions: (visit.prescriptions || []).map((prescription) => ({
       id: prescription.id,
       medicationName: prescription.medicationName,
-      formStrength: prescription.formStrength || '',
       dosage: prescription.dosage,
       route: prescription.route || '',
       frequency: prescription.frequency,
@@ -545,14 +545,14 @@ const normalizeVisitHistoryForSnapshot = (history: VisitHistory[]) =>
   }));
 
 const AVAILABLE_SERVICES: ServiceItem[] = [
-  { id: 's1', name: 'Consultation', price: 0, description: 'Standard veterinary consultation' },
-  { id: 's2', name: 'Vaccination', price: 0, description: 'Annual vaccination' },
-  { id: 's3', name: 'Laboratory Test', price: 0, description: 'Blood work and lab tests' },
-  { id: 's4', name: 'X-Ray', price: 0, description: 'Radiology services' },
-  { id: 's5', name: 'Ultrasound', price: 0, description: 'Ultrasound examination' },
-  { id: 's6', name: 'Surgery', price: 0, description: 'Surgical procedure' },
-  { id: 's7', name: 'Dental Cleaning', price: 0, description: 'Professional dental cleaning' },
-  { id: 's8', name: 'Grooming', price: 0, description: 'Basic grooming services' },
+  { id: 's1', name: 'Consultation', price: 500, description: 'Standard veterinary consultation' },
+  { id: 's2', name: 'Vaccination', price: 1200, description: 'Annual vaccination' },
+  { id: 's3', name: 'Laboratory Test', price: 800, description: 'Blood work and lab tests' },
+  { id: 's4', name: 'X-Ray', price: 1500, description: 'Radiology services' },
+  { id: 's5', name: 'Ultrasound', price: 2000, description: 'Ultrasound examination' },
+  { id: 's6', name: 'Surgery', price: 3000, description: 'Surgical procedure' },
+  { id: 's7', name: 'Dental Cleaning', price: 800, description: 'Professional dental cleaning' },
+  { id: 's8', name: 'Grooming', price: 500, description: 'Basic grooming services' },
 ];
 
 const normalizeServiceName = (value: string): string =>
@@ -956,6 +956,8 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   const [records, setRecords] = useState<MedicalRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [isSavingRecord, setIsSavingRecord] = useState<boolean>(false);
+  const [openingRecordId, setOpeningRecordId] = useState<number | null>(null);
+  const [billingNavigationVisitId, setBillingNavigationVisitId] = useState<string | null>(null);
 
   // Medication Modal States
   const [showMedicationModal, setShowMedicationModal] = useState<boolean>(false);
@@ -965,7 +967,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   const [showLabPanel, setShowLabPanel] = useState<boolean>(false);
   
   // Appointment/Walk-in States
-  const [visitType, setVisitType] = useState<'appointment' | 'walkin'>('walkin');
+  const [visitType, setVisitType] = useState<'' | 'appointment' | 'walkin'>('');
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentRecord | null>(null);
   const [selectedPrimaryServiceId, setSelectedPrimaryServiceId] = useState<string>('');
   const [appointmentRecords, setAppointmentRecords] = useState<AppointmentRecord[]>([]);
@@ -1331,7 +1333,6 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     }
     const filtered = MEDICATION_TEMPLATES.filter(med =>
       med.name.toLowerCase().includes(query.toLowerCase()) ||
-      (med.formStrength || '').toLowerCase().includes(query.toLowerCase()) ||
       med.dosage.toLowerCase().includes(query.toLowerCase()) ||
       (med.route || '').toLowerCase().includes(query.toLowerCase()) ||
       med.frequency.toLowerCase().includes(query.toLowerCase()) ||
@@ -1353,7 +1354,6 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
 
   const normalizePrescriptionForForm = (prescription: Prescription): Prescription => ({
     ...prescription,
-    formStrength: prescription.formStrength || '',
     frequency: prescription.frequency || '',
     duration: prescription.duration || '',
     route: prescription.route || '',
@@ -1541,6 +1541,15 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   const openAddVisitModal = (): void => {
     setAppointmentDateFilter('today');
     setVisitFormErrors({});
+    setVisitType('');
+    setSelectedAppointment(null);
+    setSelectedPrimaryServiceId('');
+    setSelectedServices([]);
+    setNewVisit((prev) => ({
+      ...prev,
+      veterinarian: '',
+      reason: ''
+    }));
     setVisitFieldInputs({
       weight: newVisit.weight > 0 ? newVisit.weight.toString() : '',
       length: (newVisit.clinicalExam?.length || 0) > 0 ? newVisit.clinicalExam?.length.toString() || '' : '',
@@ -1557,7 +1566,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
       return (selectedAppointment?.services || []).map((service) => service.name).filter(Boolean);
     }
 
-    return selectedPrimaryService ? [selectedPrimaryService.name] : [];
+    return visitType === 'walkin' && selectedPrimaryService ? [selectedPrimaryService.name] : [];
   };
 
   const isServiceSelectedInVisit = (service: ServiceItem): boolean =>
@@ -1619,7 +1628,6 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
       const newPrescription: Prescription = {
         id: Date.now().toString(),
         medicationName: '',
-        formStrength: '',
         dosage: '',
         route: '',
         frequency: '',
@@ -1635,7 +1643,6 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
       const newPrescription: Prescription = {
         id: Date.now().toString(),
         medicationName: medication.name,
-        formStrength: medication.formStrength || '',
         dosage: medication.dosage,
         route: medication.route || '',
         frequency: medication.frequency,
@@ -1713,6 +1720,34 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   ) => {
     setModalConfig({ type, title, message, onConfirm, onCancel, showCancel });
     setModalVisible(true);
+  };
+
+  const buildValidationSummary = (messages: string[]): React.ReactNode => (
+    <div style={{ display: 'grid', gap: '6px', textAlign: 'left' }}>
+      <div>Please complete the required fields:</div>
+      {Array.from(new Set(messages.filter(Boolean))).map((message, index) => (
+        <div key={`${index}-${message}`}>- {message}</div>
+      ))}
+    </div>
+  );
+
+  const showValidationAlert = (title: string, messages: string[]): void => {
+    const filteredMessages = Array.from(new Set(messages.filter(Boolean)));
+    if (filteredMessages.length === 0) return;
+    showAlert('error', title, buildValidationSummary(filteredMessages));
+  };
+
+  const getApiErrorMessage = (error: any, fallback: string): string => {
+    if (typeof error?.response?.data?.error === 'string' && error.response.data.error.trim()) {
+      return error.response.data.error;
+    }
+    if (typeof error?.data?.error === 'string' && error.data.error.trim()) {
+      return error.data.error;
+    }
+    if (typeof error?.message === 'string' && error.message.trim()) {
+      return error.message;
+    }
+    return fallback;
   };
 
   const loadCurrentUser = async (): Promise<void> => {
@@ -2006,6 +2041,10 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     const trimmedHeartRate = visitFieldInputs.heartRate.trim();
     const trimmedBreathingRate = visitFieldInputs.breathingRate.trim();
 
+    if (!visitType) {
+      errors.visitType = 'Select whether this visit is an appointment or a walk-in.';
+    }
+
     if (visitType === 'appointment' && !selectedAppointment) {
       errors.appointment = 'Select a scheduled appointment from the current filter.';
     }
@@ -2059,6 +2098,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
 
     if (Object.keys(errors).length > 0) {
       setVisitFormErrors(errors);
+      showValidationAlert('Missing Visit Information', Object.values(errors).filter((message): message is string => Boolean(message)));
       return;
     }
 
@@ -2146,7 +2186,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
         setSelectedServices([]);
         setSelectedAppointment(null);
         setSelectedPrimaryServiceId('');
-        setVisitType('walkin');
+        setVisitType('');
         setAppointmentDateFilter('today');
         setShowVaccinationDetails(false);
         setVisitFormErrors({});
@@ -2190,6 +2230,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
           prescriptions: [],
           selectedServices: []
         });
+        showAlert('success', 'Visit Added', 'Visit record has been added to this medical record. Save the medical record to keep it.');
       },
       true  // Show cancel button
     );
@@ -2247,7 +2288,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     setSelectedPrimaryServiceId('');
     setSelectedServices([]);
     setSelectedAppointment(null);
-    setVisitType('walkin');
+    setVisitType('');
     setVisitFormErrors({});
     setVisitFieldInputs({ ...EMPTY_VISIT_FIELD_INPUTS });
     setNewVisit({
@@ -2326,9 +2367,10 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   };
 
   const loadRecordForEdit = async (recordId: number) => {
+    setOpeningRecordId(recordId);
     try {
       const localRecord = records.find(r => (r.id || r.pk) === recordId);
-      if (localRecord) {
+      if (localRecord?.detailsLoaded) {
         applyRecordToForm(localRecord);
         return;
       }
@@ -2340,6 +2382,8 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     } catch (error) {
       console.error('Error loading EMR record for edit:', error);
       showAlert('error', 'Error', 'Failed to load the selected medical record.');
+    } finally {
+      setOpeningRecordId(null);
     }
   };
 
@@ -2475,7 +2519,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     setSelectedAppointment(null);
     setAppointmentRecords([]);
     setAppointmentDateFilter('today');
-    setVisitType('walkin');
+    setVisitType('');
     setVisitFormErrors({});
     setVisitFieldInputs({ ...EMPTY_VISIT_FIELD_INPUTS });
     setNewVisit({
@@ -2637,16 +2681,19 @@ useEffect(() => {
       return;
     }
 
-    navigate('/billing', {
-      state: {
-        billingAction: {
-          invoiceType,
-          sourceRecordType: billingSourceType,
-          sourceRecordId: billingSourceId,
-          billingInvoiceId: visit.billingInvoiceId || null,
+    setBillingNavigationVisitId(visit.id);
+    window.setTimeout(() => {
+      navigate('/billing', {
+        state: {
+          billingAction: {
+            invoiceType,
+            sourceRecordType: billingSourceType,
+            sourceRecordId: billingSourceId,
+            billingInvoiceId: visit.billingInvoiceId || null,
+          }
         }
-      }
-    });
+      });
+    }, BILLING_NAVIGATION_DELAY_MS);
   };
 
   const handleCancel = (): void => {
@@ -2677,7 +2724,12 @@ useEffect(() => {
     if (!reasonForVisit) errors.reason = 'Reason for visit is required';
     
     setFormErrors(errors);
-    return !Object.values(errors).some(error => error);
+    const validationMessages = Object.values(errors).filter((error): error is string => Boolean(error));
+    if (validationMessages.length > 0) {
+      showValidationAlert('Missing Record Information', validationMessages);
+      return false;
+    }
+    return true;
   };
 
   const handleSaveRecord = async (): Promise<void> => {
@@ -2749,7 +2801,7 @@ useEffect(() => {
           );
         } catch (error: any) {
           console.error('Failed to save medical record:', error);
-          showAlert('error', 'Error', 'Failed to save medical record.');
+          showAlert('error', 'Error', getApiErrorMessage(error, 'Failed to save medical record.'));
         } finally {
           setIsSavingRecord(false);
         }
@@ -2860,9 +2912,11 @@ useEffect(() => {
       ? ((selectedAppointment.services || []).map((service) => service.name).filter(Boolean).join(', ') || 'Not specified')
       : '';
   const selectedVisitReasonValue =
-    visitType === 'appointment' && selectedAppointment
-      ? (newVisit.reason || selectedAppointment.reason || 'Not specified')
-      : newVisit.reason;
+    visitType === 'appointment'
+      ? (selectedAppointment ? (newVisit.reason || selectedAppointment.reason || 'Not specified') : '')
+      : visitType === 'walkin'
+        ? newVisit.reason
+        : '';
 
   const renderMedicalInformationBlock = (
     medicalInformation?: MedicalInformation | null,
@@ -2979,6 +3033,14 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
 
   return (
     <div className="emrContainer">
+      {billingNavigationVisitId !== null && (
+        <div className="emrBillingNavigationOverlay" aria-live="polite" aria-busy="true">
+          <div className="emrBillingNavigationPanel">
+            <span className="emrActionSpinner" aria-hidden="true" />
+            <span>Opening Billing...</span>
+          </div>
+        </div>
+      )}
       {showModeOverlay && viewMode !== 'list' && (
         <div className="emrToast">
           <div className="emrToastContent">
@@ -3159,6 +3221,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                         paginatedRecords.map(record => {
                           const recordId = record.id || record.pk || 0;
                           const isDeceased = record.deceased || false;
+                          const isOpeningRecord = openingRecordId === recordId;
                           return (
                             <tr key={recordId} className={isDeceased ? 'emrDeceasedRow' : ''}>
                               <td>
@@ -3192,9 +3255,14 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                   <button 
                                     className="emrActionBtn" 
                                     onClick={() => { void loadRecordForEdit(recordId); }}
+                                    disabled={openingRecordId !== null}
                                     title={isDeceased ? "Open deceased record" : "Open record"}
                                   >
-                                    <FaEye size={14} />
+                                    {isOpeningRecord ? (
+                                      <span className="emrActionSpinner" aria-label="Opening record" />
+                                    ) : (
+                                      <FaEye size={14} />
+                                    )}
                                   </button>
                                 </div>
                               </td>
@@ -4028,6 +4096,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                         filteredVisits.map((visit, index) => {
                           const visitServices = visit.selectedServices ?? [];
                           const visitPrescriptionRemarks = getSharedPrescriptionInstructions(visit.prescriptions || []);
+                          const isOpeningBilling = billingNavigationVisitId === visit.id;
 
                           return (
                           <div key={visit.id}>
@@ -4055,9 +4124,19 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                       e.stopPropagation();
                                       handleCreateInvoice(visit);
                                     }}
+                                    disabled={billingNavigationVisitId !== null}
                                     title={visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
                                   >
-                                    <IoReceipt size={14} /> {visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
+                                    {isOpeningBilling ? (
+                                      <>
+                                        <span className="emrBtnSpinner" aria-hidden="true"></span>
+                                        Opening Billing...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <IoReceipt size={14} /> {visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
+                                      </>
+                                    )}
                                   </button>
                                   
                                   {(visit.prescriptions && visit.prescriptions.length > 0 && 
@@ -4647,6 +4726,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                               veterinarian: '',
                               reason: ''
                             }));
+                            clearVisitFieldError('visitType');
                             clearVisitFieldError('appointment');
                             clearVisitFieldError('primaryService');
                             clearVisitFieldError('veterinarian');
@@ -4666,6 +4746,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                               veterinarian: '',
                               reason: ''
                             }));
+                            clearVisitFieldError('visitType');
                             clearVisitFieldError('appointment');
                             clearVisitFieldError('primaryService');
                             clearVisitFieldError('veterinarian');
@@ -4677,6 +4758,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           <IoCalendarOutline size={14} /> Appointment
                         </button>
                       </div>
+                      {visitFormErrors.visitType && <div className="emrErrorText">{visitFormErrors.visitType}</div>}
                     </div>
                   </div>
                 </div>
@@ -4756,27 +4838,6 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                         ) : (
                           <div className="emrNoAppointments">
                             <p>{getAppointmentEmptyStateMessage(appointmentDateFilter)}</p>
-                            <button 
-                              type="button"
-                              className="emrBlackBtn"
-                              onClick={() => {
-                                setVisitType('walkin');
-                                setSelectedAppointment(null);
-                                setSelectedPrimaryServiceId('');
-                                setSelectedServices([]);
-                                setNewVisit((prev) => ({
-                                  ...prev,
-                                  veterinarian: '',
-                                  reason: ''
-                                }));
-                                clearVisitFieldError('appointment');
-                                clearVisitFieldError('primaryService');
-                                clearVisitFieldError('veterinarian');
-                              }}
-                              style={{ marginTop: '8px' }}
-                            >
-                              Switch to Walk-in
-                            </button>
                           </div>
                         )}
                         {visitFormErrors.appointment && <div className="emrErrorText">{visitFormErrors.appointment}</div>}
@@ -4812,9 +4873,15 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           setNewVisit({...newVisit, veterinarian: e.target.value});
                         }}
                         className={`emrFormSelect ${visitFormErrors.veterinarian ? 'emrError' : ''}`}
-                        disabled={visitType === 'appointment' && selectedAppointment !== null}
+                        disabled={visitType !== 'walkin'}
                       >
-                        {visitType === 'walkin' && <option value="">Select a doctor</option>}
+                        <option value="">
+                          {visitType === 'walkin'
+                            ? 'Select a doctor'
+                            : visitType === 'appointment'
+                              ? 'Loaded from selected appointment'
+                              : 'Select visit type first'}
+                        </option>
                         {veterinarianOptions.map(doc => (
                           <option key={doc} value={doc}>{doc}</option>
                         ))}
@@ -4833,7 +4900,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           disabled
                           placeholder="Loaded from selected appointment"
                         />
-                      ) : (
+                      ) : visitType === 'walkin' ? (
                         <>
                           <select
                             value={selectedPrimaryServiceId}
@@ -4847,6 +4914,14 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           </select>
                           {visitFormErrors.primaryService && <div className="emrErrorText">{visitFormErrors.primaryService}</div>}
                         </>
+                      ) : (
+                        <input
+                          type="text"
+                          value=""
+                          className="emrFormInput"
+                          disabled
+                          placeholder="Select visit type first"
+                        />
                       )}
                     </div>
                   </div>
@@ -4858,11 +4933,13 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                         value={selectedVisitReasonValue}
                         onChange={(e) => setNewVisit({ ...newVisit, reason: e.target.value })}
                         className="emrFormInput"
-                        disabled={visitType === 'appointment' && selectedAppointment !== null}
+                        disabled={visitType !== 'walkin'}
                         placeholder={
                           visitType === 'appointment'
                             ? 'Loaded from selected appointment'
-                            : 'e.g., vomiting for 2 days, annual booster, wound recheck'
+                            : visitType === 'walkin'
+                              ? 'e.g., vomiting for 2 days, annual booster, wound recheck'
+                              : 'Select visit type first'
                         }
                       />
                     </div>
@@ -5494,15 +5571,6 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                 <tr className="emrPrescriptionDetailRow">
                                   <td colSpan={5}>
                                     <div className="emrPrescriptionDetailsGrid">
-                                      <div className="emrPrescriptionDetailField">
-                                        <label className="emrPrescriptionInstructionLabel">Formulation / Strength</label>
-                                        <input
-                                          type="text"
-                                          value={pres.formStrength || ''}
-                                          onChange={(e) => updatePrescription(pres.id, 'formStrength', e.target.value)}
-                                          placeholder="e.g., 250 mg tablet, 125 mg/5 mL suspension, or 0.3% eye drops"
-                                        />
-                                      </div>
                                       <div className="emrPrescriptionDetailField">
                                         <label className="emrPrescriptionInstructionLabel">Route</label>
                                         <div className="emrPrescriptionFieldGroup">

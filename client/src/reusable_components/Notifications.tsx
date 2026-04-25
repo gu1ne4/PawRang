@@ -16,6 +16,12 @@ import './NotifStyles.css';
 export type { Notification };
 
 const API_URL = 'http://localhost:5000';
+const NOTIFICATION_CACHE_TTL_MS = 30 * 1000;
+
+let notificationCache:
+  | { adminUserId: string; expiresAt: number; notifications: Notification[] }
+  | null = null;
+let notificationRequest: Promise<Notification[]> | null = null;
 
 interface NotificationsProps {
   onNotificationClick?: (notification: Notification) => void;
@@ -67,26 +73,49 @@ const Notifications: React.FC<NotificationsProps> = ({
     link: record.link || undefined,
   }), []);
 
-  const fetchNotifications = useCallback(async () => {
+  const fetchNotifications = useCallback(async (forceRefresh: boolean = false) => {
     const adminUserId = getAdminUserId();
     if (!adminUserId) {
       setNotifications([]);
       return;
     }
 
-    try {
-      const response = await fetch(
-        `${API_URL}/api/admin-notifications?admin_user_id=${encodeURIComponent(adminUserId)}&module=inventory&limit=50`
-      );
-      const result = await response.json().catch(() => ({}));
+    if (
+      !forceRefresh &&
+      notificationCache &&
+      notificationCache.adminUserId === adminUserId &&
+      notificationCache.expiresAt > Date.now()
+    ) {
+      setNotifications(notificationCache.notifications);
+      return;
+    }
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to fetch notifications.');
+    try {
+      if (!notificationRequest || forceRefresh) {
+        notificationRequest = (async () => {
+          const response = await fetch(
+            `${API_URL}/api/admin-notifications?admin_user_id=${encodeURIComponent(adminUserId)}&module=inventory&limit=50`
+          );
+          const result = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            throw new Error(result.error || 'Failed to fetch notifications.');
+          }
+
+          return Array.isArray(result.notifications)
+            ? result.notifications.map(normalizeFetchedNotification)
+            : [];
+        })().finally(() => {
+          notificationRequest = null;
+        });
       }
 
-      const normalized = Array.isArray(result.notifications)
-        ? result.notifications.map(normalizeFetchedNotification)
-        : [];
+      const normalized = await notificationRequest;
+      notificationCache = {
+        adminUserId,
+        expiresAt: Date.now() + NOTIFICATION_CACHE_TTL_MS,
+        notifications: normalized,
+      };
       setNotifications(normalized);
     } catch (error) {
       console.error('Fetch notifications error:', error);
@@ -132,7 +161,7 @@ const Notifications: React.FC<NotificationsProps> = ({
     setIsOpen(prev => {
       const nextIsOpen = !prev;
       if (nextIsOpen) {
-        fetchNotifications();
+        fetchNotifications(true);
       }
       return nextIsOpen;
     });
@@ -143,10 +172,12 @@ const Notifications: React.FC<NotificationsProps> = ({
     if (!adminUserId) return;
 
     setNotifications(prev =>
-      prev.map(notif =>
-        notif.id === id ? { ...notif, read: true } : notif
-      )
+      prev.map(notif => {
+        const updated = notif.id === id ? { ...notif, read: true } : notif;
+        return updated;
+      })
     );
+    notificationCache = null;
 
     try {
       const response = await fetch(`${API_URL}/api/admin-notifications/${id}/read`, {
@@ -170,6 +201,7 @@ const Notifications: React.FC<NotificationsProps> = ({
     if (!adminUserId) return;
 
     setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
+    notificationCache = null;
 
     try {
       const response = await fetch(`${API_URL}/api/admin-notifications/read-all`, {

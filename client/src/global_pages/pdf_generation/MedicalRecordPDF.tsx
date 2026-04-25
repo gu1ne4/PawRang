@@ -192,7 +192,6 @@ interface LabResult {
 interface Prescription {
   medicationName: string;
   dosage: string;
-  formStrength?: string;
   route?: string;
   frequency: string;
   duration: string;
@@ -245,7 +244,6 @@ const stripHtml = (html: string): string => {
 
 const formatPrescriptionSummary = (prescription: Prescription): string[] => {
   const parts = [
-    prescription.formStrength || '',
     prescription.dosage || '',
     prescription.route || '',
     prescription.frequency ? `Freq: ${prescription.frequency}` : '',

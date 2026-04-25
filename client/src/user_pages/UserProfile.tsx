@@ -93,6 +93,18 @@ const DEFAULT_PROFILE_IMAGE = 'https://images.unsplash.com/photo-1535713875002-d
 const DEFAULT_PET_IMAGE = 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400';
 const PH_PHONE_TOTAL_DIGITS = 12;
 const PH_PHONE_DISPLAY_MAX_LENGTH = 16;
+const EMAIL_CHANGE_OTP_EXPIRY_SECONDS = 5 * 60;
+const EMAIL_CHANGE_RESEND_COOLDOWN_SECONDS = 60;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const normalizeEmailAddress = (value: string): string => (value || '').trim().toLowerCase();
+
+const formatCountdown = (seconds: number): string => {
+  const safeSeconds = Math.max(Math.ceil(seconds), 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+};
 
 const normalizePhilippinePhoneDigits = (value: string): string => {
   let digits = String(value || '').replace(/\D/g, '');
@@ -340,14 +352,22 @@ const UserProfile: React.FC = () => {
 
   const [showOtpInput, setShowOtpInput] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
+  const [otpExpiresAt, setOtpExpiresAt] = useState<number | null>(null);
+  const [otpSecondsRemaining, setOtpSecondsRemaining] = useState(0);
+  const [resendAvailableAt, setResendAvailableAt] = useState<number | null>(null);
+  const [resendSecondsRemaining, setResendSecondsRemaining] = useState(0);
 
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isSendingEmailOtp, setIsSendingEmailOtp] = useState(false);
+  const [isVerifyingEmailOtp, setIsVerifyingEmailOtp] = useState(false);
   const [isUploadingProfileImage, setIsUploadingProfileImage] = useState(false);
   const [passwordErrors, setPasswordErrors] = useState<Record<string, string>>({});
   const [emailErrors, setEmailErrors] = useState<Record<string, string>>({});
+  const isEmailChangeBusy = isSendingEmailOtp || isVerifyingEmailOtp;
+  const isOtpExpired = otpSent && otpSecondsRemaining <= 0;
 
   const [pets, setPets] = useState<Pet[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -456,6 +476,24 @@ const UserProfile: React.FC = () => {
     };
     loadUser();
   }, [navigate]);
+
+  useEffect(() => {
+    if (!otpSent) return undefined;
+
+    const syncEmailOtpTimers = () => {
+      const now = Date.now();
+      setOtpSecondsRemaining(
+        otpExpiresAt ? Math.max(Math.ceil((otpExpiresAt - now) / 1000), 0) : 0
+      );
+      setResendSecondsRemaining(
+        resendAvailableAt ? Math.max(Math.ceil((resendAvailableAt - now) / 1000), 0) : 0
+      );
+    };
+
+    syncEmailOtpTimers();
+    const timerId = window.setInterval(syncEmailOtpTimers, 1000);
+    return () => window.clearInterval(timerId);
+  }, [otpSent, otpExpiresAt, resendAvailableAt]);
 
   useEffect(() => {
     if (!isEditing || !hasUnsavedProfileChanges) return undefined;
@@ -695,46 +733,161 @@ const UserProfile: React.FC = () => {
     );
   };
 
-  const handleSendOtp = () => {
-    // Validate new email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailData.newEmail) {
-      setEmailErrors({ ...emailErrors, newEmail: 'New email is required' });
-      return;
-    }
-    if (!emailRegex.test(emailData.newEmail)) {
-      setEmailErrors({ ...emailErrors, newEmail: 'Please enter a valid email address' });
-      return;
-    }
-    if (emailData.newEmail !== emailData.confirmEmail) {
-      setEmailErrors({ ...emailErrors, confirmEmail: 'Emails do not match' });
-      return;
-    }
-
-    // Simulate sending OTP
-    setOtpSent(true);
-    setShowOtpInput(true);
-    showAlert('info', 'OTP Sent', 'A verification code has been sent to your new email address.');
+  const clearEmailError = (field: string) => {
+    setEmailErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
   };
 
-  const handleVerifyOtp = () => {
-    if (!emailData.otp || emailData.otp.length !== 6) {
-      setEmailErrors({ ...emailErrors, otp: 'Please enter a valid 6-digit OTP' });
+  const resetEmailChangeModal = () => {
+    setShowEmailModal(false);
+    setEmailData({ newEmail: '', confirmEmail: '', otp: '' });
+    setOtpSent(false);
+    setShowOtpInput(false);
+    setEmailErrors({});
+    setOtpExpiresAt(null);
+    setOtpSecondsRemaining(0);
+    setResendAvailableAt(null);
+    setResendSecondsRemaining(0);
+  };
+
+  const validateEmailChangeForm = (): string | null => {
+    const newEmail = normalizeEmailAddress(emailData.newEmail);
+    const confirmEmail = normalizeEmailAddress(emailData.confirmEmail);
+    const currentEmail = normalizeEmailAddress(currentUser?.email || editedProfile.email);
+    const errors: Record<string, string> = {};
+
+    if (!newEmail) {
+      errors.newEmail = 'New email is required';
+    } else if (!EMAIL_PATTERN.test(newEmail)) {
+      errors.newEmail = 'Please enter a valid email address';
+    } else if (currentEmail && newEmail === currentEmail) {
+      errors.newEmail = 'New email must be different from your current email';
+    }
+
+    if (!confirmEmail) {
+      errors.confirmEmail = 'Please confirm your new email';
+    } else if (newEmail && confirmEmail !== newEmail) {
+      errors.confirmEmail = 'Emails do not match';
+    }
+
+    setEmailErrors(errors);
+    return Object.keys(errors).length === 0 ? newEmail : null;
+  };
+
+  const startEmailOtpTimers = (expiresInSeconds?: number, resendCooldownSeconds?: number) => {
+    const expiresIn = Number(expiresInSeconds) || EMAIL_CHANGE_OTP_EXPIRY_SECONDS;
+    const cooldown = Number(resendCooldownSeconds) || EMAIL_CHANGE_RESEND_COOLDOWN_SECONDS;
+    const now = Date.now();
+
+    setOtpExpiresAt(now + expiresIn * 1000);
+    setOtpSecondsRemaining(expiresIn);
+    setResendAvailableAt(now + cooldown * 1000);
+    setResendSecondsRemaining(cooldown);
+  };
+
+  const handleSendOtp = async (isResend = false) => {
+    const normalizedNewEmail = validateEmailChangeForm();
+    if (!normalizedNewEmail) return;
+
+    if (!currentUser?.id) {
+      showAlert('error', 'Unable to Send OTP', 'Could not find your user session. Please log in again.');
       return;
     }
 
-    // Simulate OTP verification
-    if (emailData.otp === '123456') { // Mock OTP
-      setCurrentUser({ ...currentUser!, email: emailData.newEmail });
-      setEditedProfile({ ...editedProfile, email: emailData.newEmail });
-      setShowEmailModal(false);
-      setEmailData({ newEmail: '', confirmEmail: '', otp: '' });
-      setOtpSent(false);
-      setShowOtpInput(false);
+    try {
+      setIsSendingEmailOtp(true);
+      const response = await apiService.requestEmailChangeOtp(currentUser.id, {
+        newEmail: normalizedNewEmail,
+      });
+
+      setEmailData((prev) => ({
+        ...prev,
+        newEmail: normalizedNewEmail,
+        confirmEmail: normalizedNewEmail,
+        otp: '',
+      }));
+      setOtpSent(true);
+      setShowOtpInput(true);
       setEmailErrors({});
+      startEmailOtpTimers(response?.expiresInSeconds, response?.resendCooldownSeconds);
+      showAlert(
+        'info',
+        isResend ? 'OTP Resent' : 'OTP Sent',
+        'A verification code has been sent to your new email address.'
+      );
+    } catch (error: any) {
+      const message = error?.message || 'Unable to send OTP. Please try again.';
+      const lowered = message.toLowerCase();
+      if (lowered.includes('current email') || lowered.includes('already in use') || lowered.includes('valid email')) {
+        setEmailErrors({ newEmail: message });
+      } else {
+        showAlert('error', 'Unable to Send OTP', message);
+      }
+    } finally {
+      setIsSendingEmailOtp(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    const normalizedNewEmail = normalizeEmailAddress(emailData.newEmail);
+
+    if (isOtpExpired) {
+      setEmailErrors({ otp: 'OTP has expired. Please request a new one.' });
+      return;
+    }
+
+    if (!/^\d{6}$/.test(emailData.otp)) {
+      setEmailErrors({ otp: 'Please enter a valid 6-digit OTP' });
+      return;
+    }
+
+    if (!currentUser?.id) {
+      showAlert('error', 'Unable to Update Email', 'Could not find your user session. Please log in again.');
+      return;
+    }
+
+    try {
+      setIsVerifyingEmailOtp(true);
+      const response = await apiService.verifyEmailChangeOtp(currentUser.id, {
+        newEmail: normalizedNewEmail,
+        otp: emailData.otp,
+      });
+      const responsePayload = response?.user || response || {};
+      const normalizedProfile = normalizeUserProfile({
+        ...currentUser,
+        ...responsePayload,
+        email: normalizedNewEmail,
+      });
+      const rawSession = localStorage.getItem('userSession');
+      const existingSession = rawSession ? JSON.parse(rawSession) : {};
+      const mergedSession = {
+        ...existingSession,
+        ...responsePayload,
+        email: normalizedNewEmail,
+      };
+
+      localStorage.setItem('userSession', JSON.stringify(mergedSession));
+      setCurrentUser(normalizedProfile);
+      setEditedProfile(normalizedProfile);
+      setCharCounts(buildCharCountState(normalizedProfile));
+      resetEmailChangeModal();
       showAlert('success', 'Success', 'Email updated successfully!');
-    } else {
-      setEmailErrors({ ...emailErrors, otp: 'Invalid OTP. Please try again.' });
+    } catch (error: any) {
+      const message = error?.message || 'Unable to verify OTP. Please try again.';
+      const lowered = message.toLowerCase();
+      if (lowered.includes('otp') || lowered.includes('code')) {
+        setEmailErrors({ otp: message });
+      } else if (lowered.includes('email')) {
+        setEmailErrors({ newEmail: message });
+      } else {
+        showAlert('error', 'Unable to Update Email', message);
+      }
+    } finally {
+      setIsVerifyingEmailOtp(false);
     }
   };
 
@@ -1498,22 +1651,16 @@ const UserProfile: React.FC = () => {
       {/* Change Email Modal */}
       {showEmailModal && (
         <div className="upf-modal-overlay" onClick={() => {
-          setShowEmailModal(false);
-          setEmailData({ newEmail: '', confirmEmail: '', otp: '' });
-          setOtpSent(false);
-          setShowOtpInput(false);
-          setEmailErrors({});
+          if (!isEmailChangeBusy) resetEmailChangeModal();
         }}>
           <div className="upf-modal-content upf-email-modal" onClick={e => e.stopPropagation()}>
             <div className="upf-modal-header">
               <h2>Change Email Address</h2>
-              <button className="upf-modal-close-btn" onClick={() => {
-                setShowEmailModal(false);
-                setEmailData({ newEmail: '', confirmEmail: '', otp: '' });
-                setOtpSent(false);
-                setShowOtpInput(false);
-                setEmailErrors({});
-              }}>
+              <button
+                className="upf-modal-close-btn"
+                onClick={resetEmailChangeModal}
+                disabled={isEmailChangeBusy}
+              >
                 <IoClose size={24} color="#666" />
               </button>
             </div>
@@ -1531,9 +1678,10 @@ const UserProfile: React.FC = () => {
                       value={emailData.newEmail}
                       onChange={(e) => {
                         setEmailData({...emailData, newEmail: e.target.value});
-                        if (emailErrors.newEmail) setEmailErrors({...emailErrors});
+                        clearEmailError('newEmail');
                       }}
                       placeholder="Enter new email address"
+                      disabled={isSendingEmailOtp}
                     />
                     {emailErrors.newEmail && (
                       <span className="upf-error-message">{emailErrors.newEmail}</span>
@@ -1550,9 +1698,10 @@ const UserProfile: React.FC = () => {
                       value={emailData.confirmEmail}
                       onChange={(e) => {
                         setEmailData({...emailData, confirmEmail: e.target.value});
-                        if (emailErrors.confirmEmail) setEmailErrors({...emailErrors});
+                        clearEmailError('confirmEmail');
                       }}
                       placeholder="Confirm new email address"
+                      disabled={isSendingEmailOtp}
                     />
                     {emailErrors.confirmEmail && (
                       <span className="upf-error-message">{emailErrors.confirmEmail}</span>
@@ -1562,15 +1711,22 @@ const UserProfile: React.FC = () => {
                   <div className="upf-modal-actions-row">
                     <button 
                       className="upf-btn-secondary"
-                      onClick={() => setShowEmailModal(false)}
+                      onClick={resetEmailChangeModal}
+                      disabled={isSendingEmailOtp}
                     >
                       Cancel
                     </button>
                     <button 
                       className="upf-btn-primary"
-                      onClick={handleSendOtp}
+                      onClick={() => handleSendOtp(false)}
+                      disabled={isSendingEmailOtp}
                     >
-                      Send OTP
+                      {isSendingEmailOtp ? (
+                        <span className="upf-button-loading">
+                          <span className="upf-button-spinner" />
+                          Sending...
+                        </span>
+                      ) : 'Send OTP'}
                     </button>
                   </div>
                 </>
@@ -1580,6 +1736,11 @@ const UserProfile: React.FC = () => {
                     <IoMailOutline size={40} color="#3d67ee" />
                     <p>We've sent a verification code to</p>
                     <strong>{emailData.newEmail}</strong>
+                  </div>
+                  <div className={`upf-otp-timer ${isOtpExpired ? 'upf-expired' : ''}`}>
+                    {isOtpExpired
+                      ? 'Code expired. Please resend a new OTP.'
+                      : `Code expires in ${formatCountdown(otpSecondsRemaining)}.`}
                   </div>
 
                   <div className="upf-form-group">
@@ -1593,10 +1754,12 @@ const UserProfile: React.FC = () => {
                       onChange={(e) => {
                         const value = e.target.value.replace(/[^0-9]/g, '').slice(0, 6);
                         setEmailData({...emailData, otp: value});
-                        if (emailErrors.otp) setEmailErrors({...emailErrors});
+                        clearEmailError('otp');
                       }}
                       placeholder="6-digit code"
                       maxLength={6}
+                      inputMode="numeric"
+                      disabled={isVerifyingEmailOtp || isOtpExpired}
                     />
                     {emailErrors.otp && (
                       <span className="upf-error-message">{emailErrors.otp}</span>
@@ -1605,7 +1768,17 @@ const UserProfile: React.FC = () => {
 
                   <div className="upf-otp-resend">
                     <span>Didn't receive code? </span>
-                    <button className="upf-resend-btn">Resend</button>
+                    <button
+                      className="upf-resend-btn"
+                      onClick={() => handleSendOtp(true)}
+                      disabled={isSendingEmailOtp || resendSecondsRemaining > 0}
+                    >
+                      {isSendingEmailOtp
+                        ? 'Sending...'
+                        : resendSecondsRemaining > 0
+                          ? `Resend in ${formatCountdown(resendSecondsRemaining)}`
+                          : 'Resend'}
+                    </button>
                   </div>
 
                   <div className="upf-modal-actions-row">
@@ -1615,15 +1788,27 @@ const UserProfile: React.FC = () => {
                         setShowOtpInput(false);
                         setOtpSent(false);
                         setEmailErrors({});
+                        setEmailData((prev) => ({ ...prev, otp: '' }));
+                        setOtpExpiresAt(null);
+                        setOtpSecondsRemaining(0);
+                        setResendAvailableAt(null);
+                        setResendSecondsRemaining(0);
                       }}
+                      disabled={isEmailChangeBusy}
                     >
                       Back
                     </button>
                     <button 
                       className="upf-btn-primary"
                       onClick={handleVerifyOtp}
+                      disabled={isVerifyingEmailOtp || isOtpExpired}
                     >
-                      Verify & Update
+                      {isVerifyingEmailOtp ? (
+                        <span className="upf-button-loading">
+                          <span className="upf-button-spinner" />
+                          Verifying...
+                        </span>
+                      ) : 'Verify & Update'}
                     </button>
                   </div>
                 </>

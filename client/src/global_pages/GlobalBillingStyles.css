@@ -545,6 +545,97 @@
   box-shadow: 0 0 0 2px rgba(61, 103, 238, 0.1);
 }
 
+.billingFieldError {
+  border-color: #dc3545 !important;
+  background: #fff8f8;
+}
+
+.billingErrorText {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #dc3545;
+}
+
+.billingHelperText {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #667085;
+}
+
+.billingHelperTextError {
+  color: #dc3545;
+}
+
+.billingInventorySuggestionBox {
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid #d7e3ff;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.billingInventorySuggestionTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2f5fe7;
+}
+
+.billingInventorySuggestionHint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #667085;
+}
+
+.billingInventorySuggestionList {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.billingInventorySuggestionItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #dfe7f5;
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.billingInventorySuggestionItem.selected {
+  border-color: #3d67ee;
+  background: #f2f6ff;
+  box-shadow: 0 0 0 1px rgba(61, 103, 238, 0.12);
+}
+
+.billingInventorySuggestionContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.billingInventorySuggestionNameRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.billingInventorySuggestionMeta {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 11px;
+  color: #4b5565;
+}
+
+.billingSuggestionCheckbox {
+  margin-top: 2px;
+}
+
 .billingTextarea {
   resize: vertical;
   font-family: inherit;
@@ -566,6 +657,11 @@
   display: flex;
   gap: 10px;
   width: 100%;
+}
+
+.billingToggleGroupError .billingToggleBtnFull {
+  border-color: #f0b2b8;
+  background: #fff8f8;
 }
 
 .billingToggleBtnFull {
@@ -596,6 +692,13 @@
   border-color: #3d67ee;
   color: white;
   box-shadow: 0 2px 8px rgba(61, 103, 238, 0.3);
+}
+
+.billingValidationSummary {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 /* Items Table */
@@ -756,6 +859,19 @@
 .billingSubmitBtn:hover {
   opacity: 0.9;
   transform: translateY(-1px);
+}
+
+.billingCancelBtn:disabled,
+.billingSubmitBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.billingSubmitBtn:disabled:hover,
+.billingCancelBtn:disabled:hover {
+  opacity: 0.55;
+  transform: none;
 }
 
 /* Selected Appointment */

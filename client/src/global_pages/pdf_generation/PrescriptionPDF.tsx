@@ -260,7 +260,6 @@ const styles = StyleSheet.create({
 interface Prescription {
   medicationName: string;
   dosage: string;
-  formStrength?: string;
   route?: string;
   frequency: string;
   duration: string;
@@ -345,28 +344,24 @@ const PrescriptionPDF: React.FC<PrescriptionPDFProps> = ({
           {validPrescriptions.length > 0 ? (
             <>
               <View style={styles.prescriptionHeader}>
-                <Text style={[styles.prescriptionHeaderCell, { flex: 1.35 }]}>Medication</Text>
-                <Text style={[styles.prescriptionHeaderCell, { flex: 0.9 }]}>Dose</Text>
-                <Text style={[styles.prescriptionHeaderCell, { flex: 1.45 }]}>Form / Strength</Text>
-                <Text style={[styles.prescriptionHeaderCell, { flex: 0.9 }]}>Route</Text>
-                <Text style={[styles.prescriptionHeaderCell, { flex: 1.2 }]}>Frequency</Text>
+                <Text style={[styles.prescriptionHeaderCell, { flex: 1.55 }]}>Medication</Text>
+                <Text style={[styles.prescriptionHeaderCell, { flex: 1.0 }]}>Dose</Text>
+                <Text style={[styles.prescriptionHeaderCell, { flex: 1.0 }]}>Route</Text>
+                <Text style={[styles.prescriptionHeaderCell, { flex: 1.25 }]}>Frequency</Text>
                 <Text style={[styles.prescriptionHeaderCell, { flex: 1.0, paddingRight: 0 }]}>Duration</Text>
               </View>
               {validPrescriptions.map((pres, index) => (
                 <View key={`${pres.medicationName || 'medication'}-${index}`} style={styles.prescriptionRow}>
-                  <View style={[styles.prescriptionCellBlock, { flex: 1.35 }]}>
+                  <View style={[styles.prescriptionCellBlock, { flex: 1.55 }]}>
                     <Text style={styles.prescriptionCell}>{displayValue(pres.medicationName)}</Text>
                   </View>
-                  <View style={[styles.prescriptionCellBlock, { flex: 0.9 }]}>
+                  <View style={[styles.prescriptionCellBlock, { flex: 1.0 }]}>
                     <Text style={styles.prescriptionCell}>{displayValue(pres.dosage)}</Text>
                   </View>
-                  <View style={[styles.prescriptionCellBlock, { flex: 1.45 }]}>
-                    <Text style={styles.prescriptionCell}>{displayValue(pres.formStrength)}</Text>
-                  </View>
-                  <View style={[styles.prescriptionCellBlock, { flex: 0.9 }]}>
+                  <View style={[styles.prescriptionCellBlock, { flex: 1.0 }]}>
                     <Text style={styles.prescriptionCell}>{displayValue(pres.route)}</Text>
                   </View>
-                  <View style={[styles.prescriptionCellBlock, { flex: 1.2 }]}>
+                  <View style={[styles.prescriptionCellBlock, { flex: 1.25 }]}>
                     <Text style={styles.prescriptionCell}>{displayValue(pres.frequency)}</Text>
                   </View>
                   <View style={{ flex: 1.0 }}>

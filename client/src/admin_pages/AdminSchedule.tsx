@@ -601,6 +601,10 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
 
     let validPetType = petType !== '';
     if (petType === 'Other' && customPetType.trim() === '') validPetType = false;
+    let validBreed = true;
+    if (petType === 'Other') validBreed = customBreed.trim() !== '';
+    else validBreed = breed !== '' && (breed !== 'Others' || customBreed.trim() !== '');
+    const validGender = gender !== '';
 
     const selectedServiceObj = servicesList.find(s => s.name === service);
     let validService = service !== '';
@@ -609,7 +613,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
     const allMedicalAnswered = medicalQuestionConfigs.every(question => medicalAnswers[question.key] !== null);
     const validMedical = allMedicalAnswered && (!medicalAnswers.medications72h || medicationDetails.trim() !== '');
 
-    const isFormValid = firstName.trim() !== '' && lastName.trim() !== '' && petName.trim() !== '' && date !== '' && time !== '' && validPetType && validService && validBranch && validMedical;
+    const isFormValid = firstName.trim() !== '' && lastName.trim() !== '' && petName.trim() !== '' && date !== '' && time !== '' && validPetType && validBreed && validGender && validService && validBranch && validMedical;
 
     const missingFields: string[] = [];
 
@@ -617,6 +621,8 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
     if (!lastName.trim()) missingFields.push('Last name');
     if (!petName.trim()) missingFields.push('Pet name');
     if (!validPetType) missingFields.push('Pet type');
+    if (!validBreed) missingFields.push('Breed');
+    if (!validGender) missingFields.push('Gender');
     if (!validService) missingFields.push('Service');
     if (!validBranch) missingFields.push('Branch');
     if (!date) missingFields.push('Appointment date');
@@ -725,7 +731,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
 
                         <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
                             <div style={{ flex: 1 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}><label style={{ fontSize: '12px', fontWeight: '600', color: '#555' }}>Breed</label></div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}><label style={{ fontSize: '12px', fontWeight: '600', color: '#555' }}>Breed *</label></div>
                                 {petType === 'Other' ? (
                                     <input type="text" className="formInput" placeholder="Enter breed" maxLength={30} value={customBreed} disabled={isProfileLocked} onChange={e => setCustomBreed(e.target.value)} style={getLockedFieldStyle({ width: '100%' })} />
                                 ) : (
@@ -746,7 +752,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
                         </div>
 
                         <div style={{ marginBottom: '15px' }}>
-                            <label style={{ fontSize: '12px', fontWeight: '600', color: '#555', marginBottom: '5px', display: 'block' }}>Gender</label>
+                            <label style={{ fontSize: '12px', fontWeight: '600', color: '#555', marginBottom: '5px', display: 'block' }}>Gender *</label>
                             <div style={{ display: 'flex', gap: '10px', pointerEvents: isProfileLocked ? 'none' : 'auto', opacity: isProfileLocked ? 0.85 : 1 }}>
                                 <button type="button" onClick={() => setGender('Male')} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: gender === 'Male' ? 'none' : '1px solid #ddd', backgroundColor: gender === 'Male' ? '#3d67ee' : 'white', color: gender === 'Male' ? 'white' : '#555', fontWeight: '600', transition: 'all 0.2s', cursor: 'pointer' }}>♂ Male</button>
                                 <button type="button" onClick={() => setGender('Female')} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: gender === 'Female' ? 'none' : '1px solid #ddd', backgroundColor: gender === 'Female' ? '#e91e63' : 'white', color: gender === 'Female' ? 'white' : '#555', fontWeight: '600', transition: 'all 0.2s', cursor: 'pointer' }}>♀ Female</button>
@@ -2021,16 +2027,18 @@ export default function Schedule() {
             
             setShowCreateModal(false);
             const notes = [bookingEmailNote, medicalInformationNote].filter(Boolean).join(' ');
-            window.alert(
+            showAlert(
+                'success',
+                'Appointment Created',
                 notes
-                    ? `Success with note: Appointment created successfully. ${notes}`
-                    : 'Success: Appointment created successfully!'
+                    ? `Appointment created successfully. ${notes}`
+                    : 'Appointment created successfully!'
             );
             
             await loadAppointments(); 
             
         } catch (error: any) {
-            window.alert('Error: ' + (error.message || 'Failed to create appointment'));
+            showAlert('error', 'Create Appointment Failed', error?.message || 'Failed to create appointment');
         } finally {
             setLoading(false);
         }

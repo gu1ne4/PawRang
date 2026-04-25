@@ -300,6 +300,17 @@ const formatPaymentMethod = (value: string): string =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
 
+const formatPaymentStatus = (value: 'paid' | 'pending' | 'partial'): string => {
+  switch (value) {
+    case 'partial':
+      return 'Partial Paid';
+    case 'paid':
+      return 'Paid';
+    default:
+      return 'Pending';
+  }
+};
+
 const formatInvoiceType = (value: 'appointment' | 'walkin'): string =>
   value === 'appointment' ? 'Appointment' : 'Guest Appointment';
 
@@ -385,7 +396,7 @@ const InvoicePDF = ({
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Payment Status</Text>
               <Text style={getPaymentStatusStyle(paymentStatus)}>
-                {paymentStatus.charAt(0).toUpperCase() + paymentStatus.slice(1)}
+                {formatPaymentStatus(paymentStatus)}
               </Text>
             </View>
           </View>

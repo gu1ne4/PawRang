@@ -120,6 +120,7 @@ interface BillingSourceService {
 
 interface ProductItem {
   id: string;
+  inventoryItemId?: string | number;
   name: string;
   sku: string;
   description: string;
@@ -128,6 +129,23 @@ interface ProductItem {
   total: number;
   category: 'food' | 'medicine' | 'accessory' | 'supplement' | 'other';
   stock?: number;
+}
+
+interface PrescriptionProductSuggestion {
+  id: string;
+  inventoryItemId?: string | number;
+  name: string;
+  sku: string;
+  description: string;
+  category: string;
+  price: number;
+  stock: number;
+  prescriptionMedicationName: string;
+  dosage?: string;
+  route?: string;
+  frequency?: string;
+  duration?: string;
+  instructions?: string;
 }
 
 interface AppointmentInvoice {
@@ -151,6 +169,7 @@ interface AppointmentInvoice {
   isBilled?: boolean;
   billingInvoiceId?: string | null;
   billingInvoiceNumber?: string | null;
+  prescriptionProductSuggestions?: PrescriptionProductSuggestion[];
 }
 
 interface WalkInRecord {
@@ -177,6 +196,7 @@ interface WalkInRecord {
   billingInvoiceId?: string | null;
   billingInvoiceNumber?: string | null;
   reasonIsServiceFallback?: boolean;
+  prescriptionProductSuggestions?: PrescriptionProductSuggestion[];
 }
 
 interface BillingNavigationState {
@@ -207,6 +227,7 @@ interface ModalConfig {
 
 interface Product {
   id: string;
+  inventoryItemId?: string | number;
   name: string;
   sku: string;
   category: string;
@@ -233,12 +254,49 @@ interface TempSelectedServiceEntry {
 
 type ViewMode = 'list' | 'create' | 'details';
 type InvoiceType = 'appointment' | 'walkin';
+type InvoiceTypeSelection = InvoiceType | '';
 type PaymentMethod = 'cash' | 'card' | 'gcash' | 'bank' | 'installment';
 type PaymentEntryMethod = 'cash' | 'card' | 'gcash' | 'bank';
 type PaymentStatus = 'paid' | 'pending' | 'partial';
 type DiscountType = 'none' | 'senior' | 'pwd' | 'promo' | 'custom';
 type CustomDiscountType = 'percentage' | 'fixed';
 const TAX_RATE = 0.12;
+
+const formatPaymentStatusLabel = (status: PaymentStatus | string): string => {
+  switch (String(status || '').toLowerCase()) {
+    case 'paid':
+      return 'Paid';
+    case 'partial':
+      return 'Partial Paid';
+    case 'pending':
+      return 'Pending';
+    default:
+      return String(status || '');
+  }
+};
+
+const formatPaymentMethodLabel = (value: string): string =>
+  String(value || '')
+    .split('_')
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+
+const normalizeProductCategory = (category?: string): ProductItem['category'] => {
+  const normalized = String(category || '').trim().toLowerCase();
+  if (normalized === 'food' || normalized === 'medicine' || normalized === 'accessory' || normalized === 'supplement') {
+    return normalized;
+  }
+  return 'other';
+};
+
+interface BillingFormErrors {
+  invoiceType?: string;
+  sourceRecord?: string;
+  customerName?: string;
+  petName?: string;
+  lineItems?: string;
+}
 
 // Discount rates
 const DISCOUNT_RATES = {
@@ -248,6 +306,7 @@ const DISCOUNT_RATES = {
 };
 
 const BILLING_SERVICE_LABEL_ALIASES: Record<string, string> = {
+  'checkup': 'Consultation & Check-Up',
   'consultation': 'Consultation & Check-Up',
   'general consultation': 'Consultation & Check-Up',
   'consultation and check up': 'Consultation & Check-Up',
@@ -255,7 +314,55 @@ const BILLING_SERVICE_LABEL_ALIASES: Record<string, string> = {
   'checkup or consultation': 'Consultation & Check-Up',
   'check-up or consultation': 'Consultation & Check-Up',
   'vaccination': 'Vaccinations',
+  'vaccine': 'Vaccinations',
+  'dental cleaning': 'Dental Prophylaxis',
   'cbc': 'Complete Blood Count',
+  'fecalysis': 'Fecal Examination',
+  'xray': 'X-Ray',
+  'x ray': 'X-Ray',
+  'radiology': 'X-Ray',
+  'radiology x ray': 'X-Ray',
+  'boarding': 'Pet Boarding',
+};
+
+const BILLING_GENERIC_SERVICE_PRICE_FALLBACKS: Record<string, number> = {
+  'consultation': 500,
+  'vaccination': 1200,
+  'laboratory': 800,
+  'lab test': 800,
+  'laboratory test': 800,
+  'laboratory tests': 800,
+  'ray x': 1500,
+  'xray': 1500,
+  'radiology ray x': 1500,
+  'ultrasound': 2000,
+  'surgery': 3000,
+  'cleaning dental': 800,
+  'grooming': 500,
+  'grooming pet': 500,
+  'boarding': 1200,
+  'boarding pet': 1200,
+  'confinement': 2500,
+};
+
+const BILLING_GENERIC_SERVICE_METADATA_FALLBACKS: Record<string, { category: string; description: string }> = {
+  'consultation': { category: 'Consultation', description: 'Standard veterinary consultation' },
+  'vaccination': { category: 'Vaccinations', description: 'Annual vaccination' },
+  'laboratory': { category: 'Diagnostics', description: 'Blood work and lab tests' },
+  'lab test': { category: 'Diagnostics', description: 'Blood work and lab tests' },
+  'laboratory test': { category: 'Diagnostics', description: 'Blood work and lab tests' },
+  'laboratory tests': { category: 'Diagnostics', description: 'Blood work and lab tests' },
+  'ray x': { category: 'Diagnostics', description: 'Radiology services' },
+  'xray': { category: 'Diagnostics', description: 'Radiology services' },
+  'radiology ray x': { category: 'Diagnostics', description: 'Radiology services' },
+  'ultrasound': { category: 'Diagnostics', description: 'Ultrasound examination' },
+  'surgery': { category: 'Surgery', description: 'Surgical procedure' },
+  'cleaning dental': { category: 'Dental', description: 'Professional dental cleaning' },
+  'grooming': { category: 'Grooming', description: 'Basic grooming services' },
+  'grooming pet': { category: 'Grooming', description: 'Basic grooming services' },
+  'boarding': { category: 'Boarding', description: 'Overnight stay, feeding, supervision' },
+  'boarding pet': { category: 'Boarding', description: 'Overnight stay, feeding, supervision' },
+  'confinement': { category: 'Confinement', description: 'Medical care, monitoring, IV fluids, medication' },
 };
 
 // Service Categories
@@ -611,11 +718,17 @@ const GlobalBilling: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const processedBillingActionRef = useRef<string>('');
+  const catalogLoadPromiseRef = useRef<Promise<boolean> | null>(null);
+  const sourceRecordsLoadPromiseRef = useRef<Promise<boolean> | null>(null);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [catalogLoading, setCatalogLoading] = useState<boolean>(false);
+  const [sourceRecordsLoading, setSourceRecordsLoading] = useState<boolean>(false);
+  const [catalogLoaded, setCatalogLoaded] = useState<boolean>(false);
+  const [sourceRecordsLoaded, setSourceRecordsLoaded] = useState<boolean>(false);
   const [savingInvoice, setSavingInvoice] = useState<boolean>(false);
   
   // UI State
@@ -649,10 +762,11 @@ const GlobalBilling: React.FC = () => {
   const itemsPerPage = 8;
   
   // Create Invoice State
-  const [invoiceType, setInvoiceType] = useState<InvoiceType>('walkin');
+  const [invoiceType, setInvoiceType] = useState<InvoiceTypeSelection>('');
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentInvoice | null>(null);
   const [selectedWalkin, setSelectedWalkin] = useState<WalkInRecord | null>(null);
   const [sourceContextLocked, setSourceContextLocked] = useState<boolean>(false);
+  const [formErrors, setFormErrors] = useState<BillingFormErrors>({});
   
   // Service Selection State
   const [showServiceModal, setShowServiceModal] = useState<boolean>(false);
@@ -690,6 +804,7 @@ const GlobalBilling: React.FC = () => {
   const [paymentEntryMethod, setPaymentEntryMethod] = useState<PaymentEntryMethod>('cash');
   const [paymentEntryNotes, setPaymentEntryNotes] = useState<string>('');
   const [savingPayment, setSavingPayment] = useState<boolean>(false);
+  const [paymentAmountError, setPaymentAmountError] = useState<string>('');
   
   // Alert Modal State
   const [modalVisible, setModalVisible] = useState<boolean>(false);
@@ -739,8 +854,26 @@ const GlobalBilling: React.FC = () => {
       : amountPaidPreview > 0
         ? 'partial'
         : 'pending';
+  const paymentRemainingBalance = Math.max(selectedInvoice?.remainingBalance || 0, 0);
+  const isPaymentAmountInvalid = paymentRemainingBalance <= 0
+    || paymentAmountInput <= 0
+    || paymentAmountInput > paymentRemainingBalance;
   const isSourceRecordLocked = sourceContextLocked && Boolean(selectedAppointment || selectedWalkin);
-  
+  const selectedSourceSummary = invoiceType === 'appointment'
+    ? (selectedAppointment
+      ? `${selectedAppointment.petName} • ${selectedAppointment.ownerName} • ${selectedAppointment.date}${selectedAppointment.time ? ` at ${selectedAppointment.time}` : ''}`
+      : '')
+    : invoiceType === 'walkin'
+      ? (selectedWalkin
+        ? `${selectedWalkin.petName} • ${selectedWalkin.ownerName} • ${selectedWalkin.date}${selectedWalkin.time ? ` at ${selectedWalkin.time}` : ''}`
+        : '')
+      : '';
+  const selectedPrescriptionProductSuggestions = invoiceType === 'appointment'
+    ? (selectedAppointment?.prescriptionProductSuggestions || [])
+    : invoiceType === 'walkin'
+      ? (selectedWalkin?.prescriptionProductSuggestions || [])
+      : [];
+
   const filteredServices = services.filter(service => {
     const matchesSearch = serviceSearchQuery === '' || 
       service.name.toLowerCase().includes(serviceSearchQuery.toLowerCase()) ||
@@ -923,19 +1056,33 @@ const GlobalBilling: React.FC = () => {
   };
 
   const mapSourceServicesToInvoiceItems = (sourceServices: BillingSourceService[] = []): InvoiceItem[] => {
-    return sourceServices.map((service, index) => ({
-      id: `${service.serviceId ?? service.serviceCode ?? service.id}-${index}-${Date.now()}`,
-      name: service.name,
-      description: service.description,
-      quantity: service.quantity,
-      unitPrice: service.unitPrice,
-      total: service.total,
-      category: service.category,
-      serviceId:
-        service.serviceId !== undefined && service.serviceId !== null
-          ? String(service.serviceId)
-          : service.serviceCode || undefined,
-    }));
+    return sourceServices.map((service, index) => {
+      const matchedService = resolveBillingCatalogService(service.name);
+      const quantity = service.quantity || 1;
+      const sourceUnitPrice = Number(service.unitPrice || 0);
+      const fallbackKey = normalizeBillingServiceLabel(service.name);
+      const fallbackMetadata = BILLING_GENERIC_SERVICE_METADATA_FALLBACKS[fallbackKey];
+      const fallbackUnitPrice = BILLING_GENERIC_SERVICE_PRICE_FALLBACKS[fallbackKey] || 0;
+      const resolvedUnitPrice = sourceUnitPrice > 0
+        ? sourceUnitPrice
+        : Number(matchedService?.price || fallbackUnitPrice);
+
+      return {
+        id: `${service.serviceId ?? service.serviceCode ?? service.id}-${index}-${Date.now()}`,
+        name: service.name,
+        description: service.description || matchedService?.description || fallbackMetadata?.description || '',
+        quantity,
+        unitPrice: resolvedUnitPrice,
+        total: resolvedUnitPrice * quantity,
+        category: service.category && service.category !== 'Other'
+          ? service.category
+          : matchedService?.category || fallbackMetadata?.category || service.category,
+        serviceId:
+          service.serviceId !== undefined && service.serviceId !== null
+            ? String(service.serviceId)
+            : service.serviceCode || matchedService?.id || undefined,
+      };
+    });
   };
   
   const showAlert = (
@@ -949,33 +1096,99 @@ const GlobalBilling: React.FC = () => {
     setModalVisible(true);
   };
 
+  const clearFormErrors = (...fieldNames: (keyof BillingFormErrors)[]) => {
+    if (fieldNames.length === 0) {
+      setFormErrors({});
+      return;
+    }
+
+    setFormErrors((prev) => {
+      const next = { ...prev };
+      fieldNames.forEach((fieldName) => {
+        delete next[fieldName];
+      });
+      return next;
+    });
+  };
+
   const loadBillingData = async (): Promise<void> => {
     setLoading(true);
     try {
-      const [loadedInvoices, loadedServices, loadedProducts, sourceRecords] = await Promise.all([
-        apiService.getBillingInvoices(),
-        apiService.getBillingServices(),
-        apiService.getBillingProducts(),
-        apiService.getBillingSourceRecords(),
-      ]);
-
+      const loadedInvoices = await apiService.getBillingInvoices();
       setInvoices(Array.isArray(loadedInvoices) ? loadedInvoices : []);
-      setServices(Array.isArray(loadedServices) ? loadedServices : []);
-      setProducts(Array.isArray(loadedProducts) ? loadedProducts : []);
-      setWalkinRecords(Array.isArray(sourceRecords?.walkins) ? sourceRecords.walkins : []);
-      setAppointmentResults(Array.isArray(sourceRecords?.appointments) ? sourceRecords.appointments : []);
       setPage(0);
     } catch (error) {
       console.error('Billing data load error:', error);
       setInvoices([]);
-      setServices([]);
-      setProducts([]);
-      setWalkinRecords([]);
-      setAppointmentResults([]);
       showAlert('error', 'Billing Load Failed', getErrorMessage(error, 'Unable to load billing data.'));
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadBillingCatalog = async (): Promise<boolean> => {
+    if (catalogLoaded) {
+      return true;
+    }
+
+    if (catalogLoadPromiseRef.current) {
+      return catalogLoadPromiseRef.current;
+    }
+
+    setCatalogLoading(true);
+    catalogLoadPromiseRef.current = (async () => {
+      try {
+        const [loadedServices, loadedProducts] = await Promise.all([
+          apiService.getBillingServices(),
+          apiService.getBillingProducts(),
+        ]);
+        setServices(Array.isArray(loadedServices) ? loadedServices : []);
+        setProducts(Array.isArray(loadedProducts) ? loadedProducts : []);
+        setCatalogLoaded(true);
+        return true;
+      } catch (error) {
+        console.error('Billing catalog load error:', error);
+        showAlert('error', 'Billing Catalog Failed', getErrorMessage(error, 'Unable to load billing services and products.'));
+        return false;
+      } finally {
+        setCatalogLoading(false);
+        catalogLoadPromiseRef.current = null;
+      }
+    })();
+
+    return catalogLoadPromiseRef.current;
+  };
+
+  const loadBillingSourceRecords = async (): Promise<boolean> => {
+    if (sourceRecordsLoaded) {
+      return true;
+    }
+
+    if (sourceRecordsLoadPromiseRef.current) {
+      return sourceRecordsLoadPromiseRef.current;
+    }
+
+    setSourceRecordsLoading(true);
+    sourceRecordsLoadPromiseRef.current = (async () => {
+      try {
+        const sourceRecords = await apiService.getBillingSourceRecords();
+        setWalkinRecords(Array.isArray(sourceRecords?.walkins) ? sourceRecords.walkins : []);
+        setAppointmentResults(Array.isArray(sourceRecords?.appointments) ? sourceRecords.appointments : []);
+        setSourceRecordsLoaded(true);
+        return true;
+      } catch (error) {
+        console.error('Billing source records load error:', error);
+        setWalkinRecords([]);
+        setAppointmentResults([]);
+        showAlert('error', 'Billing Sources Failed', getErrorMessage(error, 'Unable to load completed appointments and visits.'));
+        return false;
+      } finally {
+        setSourceRecordsLoading(false);
+        sourceRecordsLoadPromiseRef.current = null;
+      }
+    })();
+
+    return sourceRecordsLoadPromiseRef.current;
   };
   
   const handleLogoutPress = (): void => {
@@ -1013,7 +1226,9 @@ const GlobalBilling: React.FC = () => {
     setCustomerPhone(record.ownerPhone);
     setPetName(record.petName);
     setSelectedServices(mappedServices);
+    setSelectedProducts([]);
     setNotes('');
+    clearFormErrors('invoiceType', 'sourceRecord', 'customerName', 'petName', 'lineItems');
     setShowWalkinModal(false);
     setWalkinSearchQuery('');
     if (!options?.silent) {
@@ -1036,7 +1251,9 @@ const GlobalBilling: React.FC = () => {
         isSourceLocked: Boolean(options?.lockSourceContext),
       }))
     );
+    setSelectedProducts([]);
     setNotes('');
+    clearFormErrors('invoiceType', 'sourceRecord', 'customerName', 'petName', 'lineItems');
     setShowAppointmentModal(false);
     setAppointmentSearchQuery('');
     if (!options?.silent) {
@@ -1044,7 +1261,12 @@ const GlobalBilling: React.FC = () => {
     }
   };
   
-  const openServiceModal = () => {
+  const openServiceModal = async () => {
+    const catalogReady = await loadBillingCatalog();
+    if (!catalogReady) {
+      return;
+    }
+
     const tempMap = new Map();
     selectedServices.forEach(service => {
       const foundService = services.find(s => s.name === service.name);
@@ -1123,16 +1345,25 @@ const GlobalBilling: React.FC = () => {
       });
     });
     setSelectedServices(newServices);
+    if (newServices.length > 0) {
+      clearFormErrors('lineItems');
+    }
     setShowServiceModal(false);
     if (newServices.length > 0) {
       showAlert('success', 'Services Added', `${newServices.length} service(s) have been added to the invoice.`);
     }
   };
   
-  const openProductModal = () => {
+  const openProductModal = async () => {
+    const catalogReady = await loadBillingCatalog();
+    if (!catalogReady) {
+      return;
+    }
+
     const tempMap = new Map();
     selectedProducts.forEach(product => {
-      const foundProduct = products.find(p => p.id === product.id);
+      const selectedProductId = String(product.inventoryItemId || product.id);
+      const foundProduct = products.find(p => String(p.id) === selectedProductId);
       if (foundProduct) {
         tempMap.set(foundProduct.id, { product: foundProduct, quantity: product.quantity });
       }
@@ -1177,23 +1408,28 @@ const GlobalBilling: React.FC = () => {
     const newProducts: ProductItem[] = [];
     tempSelectedProducts.forEach(({ product, quantity }) => {
       const existingProduct = selectedProducts.find(existing =>
-        existing.id === product.id || existing.name.toLowerCase() === product.name.toLowerCase()
+        String(existing.inventoryItemId || existing.id) === String(product.id) ||
+        existing.name.toLowerCase() === product.name.toLowerCase()
       );
       const unitPrice = existingProduct?.unitPrice ?? product.price;
 
       newProducts.push({
-        id: existingProduct?.id || product.id,
+        id: String(existingProduct?.inventoryItemId || existingProduct?.id || product.id),
+        inventoryItemId: existingProduct?.inventoryItemId || existingProduct?.id || product.id,
         name: product.name,
         sku: product.sku,
         description: existingProduct?.description ?? product.description,
         quantity: quantity,
         unitPrice,
         total: unitPrice * quantity,
-        category: product.category.toLowerCase() as ProductItem['category'],
+        category: normalizeProductCategory(product.category),
         stock: product.stock
       });
     });
     setSelectedProducts(newProducts);
+    if (newProducts.length > 0) {
+      clearFormErrors('lineItems');
+    }
     setShowProductModal(false);
     if (newProducts.length > 0) {
       showAlert('success', 'Products Added', `${newProducts.length} product(s) have been added to the invoice.`);
@@ -1226,19 +1462,59 @@ const GlobalBilling: React.FC = () => {
   const updateProductQuantity = (id: string, quantity: number) => {
     if (quantity < 1) return;
     setSelectedProducts(prev => prev.map(p => 
-      p.id === id ? { ...p, quantity, total: p.unitPrice * quantity } : p
+      String(p.inventoryItemId || p.id) === id ? { ...p, quantity, total: p.unitPrice * quantity } : p
     ));
   };
   
   const removeProduct = (id: string) => {
-    setSelectedProducts(prev => prev.filter(p => p.id !== id));
+    setSelectedProducts(prev => prev.filter(p => String(p.inventoryItemId || p.id) !== id));
   };
   
   const updateProductPrice = (id: string, newPrice: number) => {
     if (newPrice < 0) return;
     setSelectedProducts(prev => prev.map(p => 
-      p.id === id ? { ...p, unitPrice: newPrice, total: p.quantity * newPrice } : p
+      String(p.inventoryItemId || p.id) === id ? { ...p, unitPrice: newPrice, total: p.quantity * newPrice } : p
     ));
+  };
+
+  const isPrescriptionSuggestionSelected = (suggestion: PrescriptionProductSuggestion): boolean => {
+    const suggestionId = String(suggestion.inventoryItemId || suggestion.id);
+    return selectedProducts.some(product => String(product.inventoryItemId || product.id) === suggestionId);
+  };
+
+  const togglePrescriptionSuggestedProduct = (suggestion: PrescriptionProductSuggestion, shouldAdd: boolean): void => {
+    const suggestionId = String(suggestion.inventoryItemId || suggestion.id);
+
+    setSelectedProducts(prev => {
+      const exists = prev.some(product => String(product.inventoryItemId || product.id) === suggestionId);
+      if (shouldAdd) {
+        if (exists) {
+          return prev;
+        }
+
+        return [
+          ...prev,
+          {
+            id: suggestionId,
+            inventoryItemId: suggestion.inventoryItemId || suggestion.id,
+            name: suggestion.name,
+            sku: suggestion.sku,
+            description: suggestion.description,
+            quantity: 1,
+            unitPrice: suggestion.price,
+            total: suggestion.price,
+            category: normalizeProductCategory(suggestion.category),
+            stock: suggestion.stock,
+          },
+        ];
+      }
+
+      return prev.filter(product => String(product.inventoryItemId || product.id) !== suggestionId);
+    });
+
+    if (shouldAdd) {
+      clearFormErrors('lineItems');
+    }
   };
 
   const handleDiscountTypeChange = (type: DiscountType) => {
@@ -1252,7 +1528,7 @@ const GlobalBilling: React.FC = () => {
   };
   
   const resetForm = () => {
-    setInvoiceType('walkin');
+    setInvoiceType('');
     setSelectedAppointment(null);
     setSelectedWalkin(null);
     setSourceContextLocked(false);
@@ -1270,6 +1546,13 @@ const GlobalBilling: React.FC = () => {
     setInitialPaymentAmount(0);
     setInitialPaymentMethod('cash');
     setNotes('');
+    clearFormErrors();
+  };
+
+  const openCreateInvoiceModal = () => {
+    resetForm();
+    setShowCreateModal(true);
+    void loadBillingCatalog();
   };
   
   const handleInvoiceTypeChange = (type: InvoiceType) => {
@@ -1282,25 +1565,72 @@ const GlobalBilling: React.FC = () => {
       setSelectedAppointment(null);
       setSelectedWalkin(null);
     }
+    clearFormErrors('invoiceType', 'sourceRecord');
     if (type === 'walkin') {
       setShowWalkinModal(true);
     } else {
       setShowAppointmentModal(true);
     }
+    void loadBillingSourceRecords();
   };
   
   const handleCreateInvoice = async () => {
-    if (!customerName || !petName || (selectedServices.length === 0 && selectedProducts.length === 0)) {
-      showAlert('error', 'Missing Information', 'Please fill in customer name, pet name, and at least one service or product.');
+    const nextErrors: BillingFormErrors = {};
+    const trimmedCustomerName = customerName.trim();
+    const trimmedPetName = petName.trim();
+    const selectedSource = invoiceType === 'appointment'
+      ? selectedAppointment
+      : invoiceType === 'walkin'
+        ? selectedWalkin
+        : null;
+
+    if (!invoiceType) {
+      nextErrors.invoiceType = 'Select the invoice type.';
+    }
+
+    if (invoiceType === 'appointment' && !selectedAppointment) {
+      nextErrors.sourceRecord = 'Select the completed appointment to bill.';
+    }
+
+    if (invoiceType === 'walkin' && !selectedWalkin) {
+      nextErrors.sourceRecord = 'Select the completed walk-in visit to bill.';
+    }
+
+    if (!trimmedCustomerName) {
+      nextErrors.customerName = 'Customer name is required.';
+    }
+
+    if (!trimmedPetName) {
+      nextErrors.petName = 'Pet name is required.';
+    }
+
+    if (selectedServices.length === 0 && selectedProducts.length === 0) {
+      nextErrors.lineItems = 'Add at least one service or product.';
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setFormErrors(nextErrors);
+      showAlert(
+        'error',
+        'Missing Information',
+        (
+            <div className="billingValidationSummary">
+              <div>Please complete the required fields:</div>
+            {Object.values(nextErrors).map((message, index) => (
+              <div key={`${index}-${message}`}>- {message}</div>
+            ))}
+          </div>
+        )
+      );
       return;
     }
 
     setSavingInvoice(true);
     try {
-      const selectedSource = invoiceType === 'appointment' ? selectedAppointment : selectedWalkin;
+      const selectedInvoiceType = invoiceType as InvoiceType;
       const sourceRecordType = selectedSource?.sourceRecordType;
       const sourceRecordId = selectedSource?.sourceRecordId;
-      const branchId = invoiceType === 'appointment' ? selectedAppointment?.branchId : selectedWalkin?.branchId;
+      const branchId = selectedInvoiceType === 'appointment' ? selectedAppointment?.branchId : selectedWalkin?.branchId;
 
       const existingInvoice = findExistingInvoiceBySource(sourceRecordType, sourceRecordId);
       if (existingInvoice) {
@@ -1312,15 +1642,15 @@ const GlobalBilling: React.FC = () => {
       }
 
       const response = await apiService.createBillingInvoice({
-        invoiceType,
-        sourceRecordType: sourceRecordType || invoiceType,
+        invoiceType: selectedInvoiceType,
+        sourceRecordType: sourceRecordType || selectedInvoiceType,
         sourceRecordId: sourceRecordId || undefined,
         branchId: branchId || undefined,
         handledByUserId: currentUser?.id || currentUser?.pk || undefined,
-        customerName,
+        customerName: trimmedCustomerName,
         customerEmail,
         customerPhone,
-        petName,
+        petName: trimmedPetName,
         items: selectedServices.map(service => ({
           name: service.name,
           description: service.description,
@@ -1330,7 +1660,7 @@ const GlobalBilling: React.FC = () => {
           serviceId: service.serviceId,
         })),
         products: selectedProducts.map(product => ({
-          inventoryItemId: product.id,
+          inventoryItemId: product.inventoryItemId || product.id,
           name: product.name,
           sku: product.sku,
           description: product.description,
@@ -1356,6 +1686,9 @@ const GlobalBilling: React.FC = () => {
       }
 
       resetForm();
+      setSourceRecordsLoaded(false);
+      setWalkinRecords([]);
+      setAppointmentResults([]);
       setShowCreateModal(false);
       showAlert(
         'success',
@@ -1375,6 +1708,9 @@ const GlobalBilling: React.FC = () => {
         setSelectedInvoice(existingInvoice);
         setShowDrawer(true);
         setShowCreateModal(false);
+        setSourceRecordsLoaded(false);
+        setWalkinRecords([]);
+        setAppointmentResults([]);
         showAlert('info', 'Invoice Already Exists', `Invoice ${existingInvoice.invoiceNumber} already exists for this billing source.`);
       } else {
         showAlert('error', 'Create Invoice Failed', getErrorMessage(error, 'Unable to create invoice.'));
@@ -1389,10 +1725,45 @@ const GlobalBilling: React.FC = () => {
     setShowDrawer(true);
   };
 
+  const clampPaymentAmountToRemaining = (value: number, remainingBalance: number) => {
+    const numericValue = Number.isFinite(value) ? value : 0;
+    const clampedValue = Math.min(Math.max(numericValue, 0), Math.max(remainingBalance, 0));
+    return Math.round(clampedValue * 100) / 100;
+  };
+
+  const handlePaymentAmountChange = (rawValue: string) => {
+    const remainingBalance = Math.max(selectedInvoice?.remainingBalance || 0, 0);
+    const parsedAmount = Number.parseFloat(rawValue);
+
+    if (!rawValue) {
+      setPaymentAmountInput(0);
+      setPaymentAmountError('Payment amount is required.');
+      return;
+    }
+
+    if (!Number.isFinite(parsedAmount)) {
+      setPaymentAmountInput(0);
+      setPaymentAmountError('Please enter a valid payment amount.');
+      return;
+    }
+
+    const clampedAmount = clampPaymentAmountToRemaining(parsedAmount, remainingBalance);
+    setPaymentAmountInput(clampedAmount);
+
+    if (parsedAmount > remainingBalance) {
+      setPaymentAmountError('');
+    } else if (parsedAmount <= 0) {
+      setPaymentAmountError('Payment amount must be greater than ₱0.');
+    } else {
+      setPaymentAmountError('');
+    }
+  };
+
   const openRecordPaymentModal = (invoice: Invoice) => {
     const remainingBalance = Math.max(invoice.remainingBalance || 0, 0);
     setSelectedInvoice(invoice);
     setPaymentAmountInput(remainingBalance);
+    setPaymentAmountError('');
     setPaymentEntryMethod('cash');
     setPaymentEntryNotes('');
     setShowPaymentModal(true);
@@ -1405,7 +1776,14 @@ const GlobalBilling: React.FC = () => {
     const safeAmount = Math.min(Math.max(paymentAmountInput || 0, 0), remainingBalance);
 
     if (safeAmount <= 0) {
+      setPaymentAmountError('Payment amount must be greater than ₱0.');
       showAlert('error', 'Invalid Amount', 'Please enter a valid payment amount.');
+      return;
+    }
+
+    if (paymentAmountInput > remainingBalance) {
+      setPaymentAmountInput(remainingBalance);
+      setPaymentAmountError(`Maximum payment is ₱${remainingBalance.toLocaleString()}.`);
       return;
     }
 
@@ -1542,7 +1920,7 @@ const GlobalBilling: React.FC = () => {
             <div class="grand-total">Total: ₱${invoice.total.toLocaleString()}</div>
           </div>
           <div class="footer">
-            <p>Payment Method: ${invoice.paymentMethod.toUpperCase()} | Status: ${invoice.paymentStatus}</p>
+            <p>Payment Method: ${formatPaymentMethodLabel(invoice.paymentMethod)} | Status: ${formatPaymentStatusLabel(invoice.paymentStatus)}</p>
             <p>Thank you for choosing PawRang Veterinary Clinic! 🐾</p>
           </div>
         </body>
@@ -1578,6 +1956,9 @@ const GlobalBilling: React.FC = () => {
         await apiService.deleteBillingInvoices(Array.from(selectedInvoices));
         setInvoices(prev => prev.filter(inv => !selectedInvoices.has(inv.id)));
         setSelectedInvoices(new Set());
+        setSourceRecordsLoaded(false);
+        setWalkinRecords([]);
+        setAppointmentResults([]);
         showAlert('success', 'Success', 'Invoices deleted successfully!');
       } catch (error) {
         console.error('Delete billing invoices error:', error);
@@ -1620,7 +2001,6 @@ const GlobalBilling: React.FC = () => {
     if (processedBillingActionRef.current === actionKey) {
       return;
     }
-    processedBillingActionRef.current = actionKey;
 
     const matchedInvoice =
       (billingAction.billingInvoiceId
@@ -1629,12 +2009,20 @@ const GlobalBilling: React.FC = () => {
       findExistingInvoiceBySource(billingAction.sourceRecordType, billingAction.sourceRecordId);
 
     if (matchedInvoice) {
+      processedBillingActionRef.current = actionKey;
       setSelectedInvoice(matchedInvoice);
       setShowDrawer(true);
       setShowCreateModal(false);
       navigate(location.pathname, { replace: true, state: null });
       return;
     }
+
+    if (!catalogLoaded || !sourceRecordsLoaded) {
+      void Promise.all([loadBillingCatalog(), loadBillingSourceRecords()]);
+      return;
+    }
+
+    processedBillingActionRef.current = actionKey;
 
     resetForm();
     setShowDrawer(false);
@@ -1670,7 +2058,7 @@ const GlobalBilling: React.FC = () => {
     }
 
     navigate(location.pathname, { replace: true, state: null });
-  }, [location.state, location.pathname, loading, invoices, appointmentResults, walkinRecords, navigate]);
+  }, [location.state, location.pathname, loading, catalogLoaded, sourceRecordsLoaded, invoices, appointmentResults, walkinRecords, navigate]);
   
   const getStatusBadgeClass = (status: string) => {
     switch(status) {
@@ -1773,7 +2161,7 @@ const GlobalBilling: React.FC = () => {
                     <option value="">All Status</option>
                     <option value="paid">Paid</option>
                     <option value="pending">Pending</option>
-                    <option value="partial">Partial</option>
+                    <option value="partial">Partial Paid</option>
                   </select>
                   <select 
                     value={typeFilter} 
@@ -1797,7 +2185,7 @@ const GlobalBilling: React.FC = () => {
                   <IoTrashOutline size={14} /> Delete ({selectedInvoices.size})
                 </button>
               )}
-              <button className="billingBlackBtn" onClick={() => { resetForm(); setShowCreateModal(true); }}>
+              <button className="billingBlackBtn" onClick={openCreateInvoiceModal}>
                 <IoAdd size={14} /> New Invoice
               </button>
             </div>
@@ -1854,7 +2242,7 @@ const GlobalBilling: React.FC = () => {
                         <td className="billingAmount">₱{invoice.total.toLocaleString()}</td>
                         <td>
                           <span className={`billingStatusBadge ${getStatusBadgeClass(invoice.paymentStatus)}`}>
-                            {invoice.paymentStatus}
+                            {formatPaymentStatusLabel(invoice.paymentStatus)}
                           </span>
                         </td>
                         <td>
@@ -1915,7 +2303,7 @@ const GlobalBilling: React.FC = () => {
                 <h4>Invoice Type</h4>
                 <div className="billingFormRow">
                   <div className="billingFormGroup billingFullWidth">
-                    <div className="billingToggleGroupFull">
+                    <div className={`billingToggleGroupFull ${formErrors.invoiceType ? 'billingToggleGroupError' : ''}`}>
                       <button 
                         type="button"
                         className={`billingToggleBtnFull ${invoiceType === 'walkin' ? 'billingToggleActiveFull' : ''}`}
@@ -1931,6 +2319,20 @@ const GlobalBilling: React.FC = () => {
                         <IoCalendarOutline size={14} /> Appointment
                       </button>
                     </div>
+                    {!selectedSourceSummary && !invoiceType && (
+                      <div className="billingHelperText">
+                        Choose whether this invoice comes from a completed walk-in visit or a completed appointment.
+                      </div>
+                    )}
+                    {invoiceType && (
+                      <div className={`billingHelperText ${formErrors.sourceRecord ? 'billingHelperTextError' : ''}`}>
+                        {selectedSourceSummary
+                          ? `Selected ${invoiceType === 'appointment' ? 'appointment' : 'walk-in'}: ${selectedSourceSummary}`
+                          : `No ${invoiceType === 'appointment' ? 'appointment' : 'walk-in'} selected yet.`}
+                      </div>
+                    )}
+                    {formErrors.invoiceType && <div className="billingErrorText">{formErrors.invoiceType}</div>}
+                    {formErrors.sourceRecord && <div className="billingErrorText">{formErrors.sourceRecord}</div>}
                   </div>
                 </div>
               </div>
@@ -1944,22 +2346,30 @@ const GlobalBilling: React.FC = () => {
                     <input 
                       type="text"
                       value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
+                      onChange={(e) => {
+                        setCustomerName(e.target.value);
+                        clearFormErrors('customerName');
+                      }}
                       placeholder="Full name"
-                      className="billingFormInput"
+                      className={`billingFormInput ${formErrors.customerName ? 'billingFieldError' : ''}`}
                       readOnly={isSourceRecordLocked}
                     />
+                    {formErrors.customerName && <div className="billingErrorText">{formErrors.customerName}</div>}
                   </div>
                   <div className="billingFormGroup">
                     <label>Pet Name <span className="billingRequired">*</span></label>
                     <input 
                       type="text"
                       value={petName}
-                      onChange={(e) => setPetName(e.target.value)}
+                      onChange={(e) => {
+                        setPetName(e.target.value);
+                        clearFormErrors('petName');
+                      }}
                       placeholder="Pet name"
-                      className="billingFormInput"
+                      className={`billingFormInput ${formErrors.petName ? 'billingFieldError' : ''}`}
                       readOnly={isSourceRecordLocked}
                     />
+                    {formErrors.petName && <div className="billingErrorText">{formErrors.petName}</div>}
                   </div>
                 </div>
                 <div className="billingFormRow">
@@ -2061,6 +2471,55 @@ const GlobalBilling: React.FC = () => {
                     <IoAdd size={12} /> Add Product
                   </button>
                 </div>
+                {selectedPrescriptionProductSuggestions.length > 0 && (
+                  <div className="billingInventorySuggestionBox">
+                    <div className="billingInventorySuggestionTitle">Prescribed Medicines Available in Inventory</div>
+                    <div className="billingInventorySuggestionHint">
+                      Check any prescribed medicine you want to dispense and bill as a product. Inventory is deducted once the invoice becomes fully paid.
+                    </div>
+                    <div className="billingInventorySuggestionList">
+                      {selectedPrescriptionProductSuggestions.map((suggestion) => {
+                        const suggestionId = String(suggestion.inventoryItemId || suggestion.id);
+                        const prescriptionDetails = [
+                          suggestion.dosage,
+                          suggestion.route,
+                          suggestion.frequency,
+                          suggestion.duration,
+                        ]
+                          .filter(Boolean)
+                          .join(' • ');
+
+                        return (
+                          <label
+                            key={suggestionId}
+                            className={`billingInventorySuggestionItem ${isPrescriptionSuggestionSelected(suggestion) ? 'selected' : ''}`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="billingSuggestionCheckbox"
+                              checked={isPrescriptionSuggestionSelected(suggestion)}
+                              onChange={(e) => togglePrescriptionSuggestedProduct(suggestion, e.target.checked)}
+                            />
+                            <div className="billingInventorySuggestionContent">
+                              <div className="billingInventorySuggestionNameRow">
+                                <strong>{suggestion.name}</strong>
+                                <span className="billingServiceCategory">In Inventory</span>
+                              </div>
+                              <div className="billingHelperText">
+                                Prescription: {suggestion.prescriptionMedicationName}
+                                {prescriptionDetails ? ` • ${prescriptionDetails}` : ''}
+                              </div>
+                              <div className="billingInventorySuggestionMeta">
+                                <span>Stock: {suggestion.stock}</span>
+                                <span>Price: ₱{suggestion.price.toLocaleString()}</span>
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div className="billingItemsTable">
                   <table className="billingItemsDataTable">
                     <thead>
@@ -2116,6 +2575,7 @@ const GlobalBilling: React.FC = () => {
                     </tbody>
                   </table>
                 </div>
+                {formErrors.lineItems && <div className="billingErrorText">{formErrors.lineItems}</div>}
               </div>
               
               {/* Payment Details with Enhanced Custom Discount */}
@@ -2325,12 +2785,12 @@ const GlobalBilling: React.FC = () => {
                 <div className="billingDrawerInfoItem">
                   <label>Status</label>
                   <span className={`billingStatusBadge ${getStatusBadgeClass(selectedInvoice.paymentStatus)}`}>
-                    {selectedInvoice.paymentStatus}
+                    {formatPaymentStatusLabel(selectedInvoice.paymentStatus)}
                   </span>
                 </div>
                 <div className="billingDrawerInfoItem">
                   <label>Payment Method</label>
-                  <span>{selectedInvoice.paymentMethod}</span>
+                  <span>{formatPaymentMethodLabel(selectedInvoice.paymentMethod)}</span>
                 </div>
                 <div className="billingDrawerInfoItem">
                   <label>Amount Paid</label>
@@ -2441,7 +2901,7 @@ const GlobalBilling: React.FC = () => {
                             <td>{payment.date}</td>
                             <td>{payment.time}</td>
                             <td>{payment.handledBy || 'Not recorded'}</td>
-                            <td>{payment.paymentMethod}</td>
+                            <td>{formatPaymentMethodLabel(payment.paymentMethod)}</td>
                             <td>₱{payment.amount.toLocaleString()}</td>
                             <td>{payment.notes || '—'}</td>
                           </tr>
@@ -2500,12 +2960,23 @@ const GlobalBilling: React.FC = () => {
                 <input
                   type="number"
                   value={paymentAmountInput}
-                  onChange={(e) => setPaymentAmountInput(parseFloat(e.target.value) || 0)}
-                  className="billingFormInput"
+                  onChange={(e) => handlePaymentAmountChange(e.target.value)}
+                  onBlur={() => setPaymentAmountInput(
+                    clampPaymentAmountToRemaining(paymentAmountInput, paymentRemainingBalance)
+                  )}
+                  className={`billingFormInput ${paymentAmountError ? 'billingFieldError' : ''}`}
                   min="0.01"
-                  max={Math.max(selectedInvoice.remainingBalance || 0, 0)}
+                  max={paymentRemainingBalance}
                   step="0.01"
+                  inputMode="decimal"
                 />
+                {paymentAmountError ? (
+                  <div className="billingErrorText">{paymentAmountError}</div>
+                ) : (
+                  <div className="billingHelperText">
+                    Maximum allowed: ₱{paymentRemainingBalance.toLocaleString()}
+                  </div>
+                )}
               </div>
               <div className="billingFormGroup">
                 <label>Payment Method</label>
@@ -2535,7 +3006,7 @@ const GlobalBilling: React.FC = () => {
               <button className="billingCancelBtn" onClick={() => setShowPaymentModal(false)} disabled={savingPayment}>
                 Cancel
               </button>
-              <button className="billingSubmitBtn" onClick={handleRecordPayment} disabled={savingPayment}>
+              <button className="billingSubmitBtn" onClick={handleRecordPayment} disabled={savingPayment || isPaymentAmountInvalid}>
                 {savingPayment ? 'Saving Payment...' : 'Save Payment'}
               </button>
             </div>
@@ -2564,7 +3035,12 @@ const GlobalBilling: React.FC = () => {
               </div>
               
               <div className="billingSearchResults">
-                {filteredWalkinRecords.length > 0 ? (
+                {sourceRecordsLoading ? (
+                  <div className="billingSearchNoResults">
+                    <div className="billingSpinner"></div>
+                    <p>Loading completed walk-in records...</p>
+                  </div>
+                ) : filteredWalkinRecords.length > 0 ? (
                   filteredWalkinRecords.map(record => (
                     <div key={record.id} className="billingSearchResultItem" onClick={() => selectWalkinRecord(record)}>
                       <div className="billingSearchResultIcon">
@@ -2620,7 +3096,12 @@ const GlobalBilling: React.FC = () => {
               </div>
               
               <div className="billingSearchResults">
-                {filteredAppointments.length > 0 ? (
+                {sourceRecordsLoading ? (
+                  <div className="billingSearchNoResults">
+                    <div className="billingSpinner"></div>
+                    <p>Loading completed appointments...</p>
+                  </div>
+                ) : filteredAppointments.length > 0 ? (
                   filteredAppointments.map(app => (
                     <div key={app.id} className="billingSearchResultItem" onClick={() => selectAppointmentRecord(app)}>
                       <div className="billingSearchResultIcon">
