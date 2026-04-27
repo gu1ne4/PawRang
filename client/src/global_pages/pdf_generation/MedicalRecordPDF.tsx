@@ -192,6 +192,7 @@ interface LabResult {
 interface Prescription {
   medicationName: string;
   dosage: string;
+  route?: string;
   frequency: string;
   duration: string;
   instructions?: string;
@@ -239,6 +240,40 @@ interface MedicalRecordPDFProps {
 const stripHtml = (html: string): string => {
   if (!html) return '';
   return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&[a-z]+;/gi, '');
+};
+
+const formatPrescriptionSummary = (prescription: Prescription): string[] => {
+  const parts = [
+    prescription.dosage || '',
+    prescription.route || '',
+    prescription.frequency ? `Freq: ${prescription.frequency}` : '',
+    prescription.duration ? `Duration: ${prescription.duration}` : '',
+  ];
+
+  return parts.filter((part): part is string => !!part && part.trim() !== '');
+};
+
+const getSharedPrescriptionInstructions = (prescriptions: Prescription[] = []): string => {
+  const instructionItems = prescriptions
+    .filter((prescription) => (prescription.medicationName || '').trim() !== '')
+    .map((prescription) => ({
+      medicationName: prescription.medicationName || 'Medication',
+      instructions: stripHtml(prescription.instructions || '').trim(),
+    }))
+    .filter((item) => item.instructions !== '');
+
+  if (instructionItems.length === 0) {
+    return '';
+  }
+
+  const uniqueInstructions = Array.from(new Set(instructionItems.map((item) => item.instructions)));
+  if (uniqueInstructions.length === 1) {
+    return uniqueInstructions[0];
+  }
+
+  return instructionItems
+    .map((item) => `${item.medicationName}: ${item.instructions}`)
+    .join('\n\n');
 };
 
 // Component for a single visit card with page break prevention
@@ -313,13 +348,32 @@ const VisitCardComponent: React.FC<{ visit: VisitHistory; index: number }> = ({ 
       )}
       {visit.prescriptions && visit.prescriptions.length > 0 && (
         <>
+          {(() => {
+            const sharedPrescriptionInstructions = getSharedPrescriptionInstructions(visit.prescriptions || []);
+
+            return (
+              <>
           <View style={styles.visitDetailRow}>
             <Text style={styles.visitDetailLabel}>Prescriptions:</Text>
             <Text style={styles.visitDetailValue}>
               {visit.prescriptions.length} medication(s)
             </Text>
           </View>
-          {visit.prescriptions.map((pres, idx) => (
+          <>
+            {visit.prescriptions.map((pres, idx) => (
+              <View key={`${pres.medicationName || 'medication'}-${idx}`} style={styles.prescriptionItem}>
+                <Text>
+                  - {pres.medicationName || 'Medication'}
+                  {formatPrescriptionSummary(pres).length > 0 ? ` - ${formatPrescriptionSummary(pres).join(' | ')}` : ''}
+                </Text>
+              </View>
+            ))}
+            {sharedPrescriptionInstructions && (
+              <Text style={{ fontSize: 8, color: '#666666', marginLeft: 12 }}>
+                Instructions: {sharedPrescriptionInstructions}
+              </Text>
+            )}
+            {false && visit.prescriptions?.map((pres, idx) => (
             <View key={idx} style={styles.prescriptionItem}>
               <Text>
                 • {pres.medicationName || 'Medication'} - {pres.dosage}, {pres.frequency} for {pres.duration}
@@ -330,7 +384,11 @@ const VisitCardComponent: React.FC<{ visit: VisitHistory; index: number }> = ({ 
                 </Text>
               )}
             </View>
-          ))}
+            ))}
+          </>
+              </>
+            );
+          })()}
         </>
       )}
       {visit.labResults && visit.labResults.length > 0 && (

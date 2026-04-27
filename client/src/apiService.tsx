@@ -4,12 +4,76 @@
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 
+const getRequestCache = new Map<string, { expiresAt: number; data: any }>();
+const inFlightGetRequests = new Map<string, Promise<any>>();
+
+function cloneForConsumer<T>(value: T): T {
+  try {
+    if (typeof structuredClone === 'function') {
+      return structuredClone(value);
+    }
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+}
+
+function getCacheTtl(path: string): number {
+  if (path.startsWith('/api/billing/services') || path.startsWith('/api/billing/products')) {
+    return 5 * 60 * 1000;
+  }
+
+  if (
+    path.startsWith('/api/doctors') ||
+    path.startsWith('/api/emr/search-pets') ||
+    path.startsWith('/api/billing/source-records')
+  ) {
+    return 30 * 1000;
+  }
+
+  if (path.startsWith('/api/billing/invoices') || path.startsWith('/api/emr/records')) {
+    return 10 * 1000;
+  }
+
+  return 0;
+}
+
+export function invalidateApiCache(prefix?: string): void {
+  if (!prefix) {
+    getRequestCache.clear();
+    return;
+  }
+
+  for (const key of Array.from(getRequestCache.keys())) {
+    if (key.startsWith(prefix)) {
+      getRequestCache.delete(key);
+    }
+  }
+}
+
 // ─── Generic fetch wrapper ────────────────────────────────────────────────────
 
 async function request<T = any>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
+  const method = (options.method || 'GET').toUpperCase();
+  const isCacheableGet = method === 'GET' && !options.body;
+  const cacheTtl = isCacheableGet ? getCacheTtl(path) : 0;
+  const cacheKey = path;
+
+  if (cacheTtl > 0) {
+    const cached = getRequestCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cloneForConsumer(cached.data);
+    }
+
+    const inFlight = inFlightGetRequests.get(cacheKey);
+    if (inFlight) {
+      return inFlight.then((data) => cloneForConsumer(data));
+    }
+  }
+
   const token = localStorage.getItem('access_token');
 
   const headers: Record<string, string> = {
@@ -21,22 +85,45 @@ async function request<T = any>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const runFetch = async (): Promise<T> => {
+    const res = await fetch(`${BASE_URL}${path}`, { ...options, method, headers });
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    const error = Object.assign(new Error(body.error ?? 'Request failed'), {
-      status: res.status,
-      data: body,
-      response: {
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      const error = Object.assign(new Error(body.error ?? 'Request failed'), {
         status: res.status,
         data: body,
-      },
+        response: {
+          status: res.status,
+          data: body,
+        },
+      });
+      throw error;
+    }
+
+    const data = await res.json();
+
+    if (cacheTtl > 0) {
+      getRequestCache.set(cacheKey, {
+        expiresAt: Date.now() + cacheTtl,
+        data: cloneForConsumer(data),
+      });
+    } else if (!isCacheableGet) {
+      invalidateApiCache();
+    }
+
+    return data;
+  };
+
+  if (cacheTtl > 0) {
+    const requestPromise = runFetch().finally(() => {
+      inFlightGetRequests.delete(cacheKey);
     });
-    throw error;
+    inFlightGetRequests.set(cacheKey, requestPromise);
+    return requestPromise.then((data) => cloneForConsumer(data));
   }
 
-  return res.json();
+  return runFetch();
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -89,6 +176,20 @@ export const apiService = {
     payload: { current_password: string; new_password: string }
   ) {
     return request(`/profile/${userId}/change-password`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  requestEmailChangeOtp(userId: string, payload: { newEmail: string }) {
+    return request(`/profile/${userId}/change-email/request-otp`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  verifyEmailChangeOtp(userId: string, payload: { newEmail: string; otp: string }) {
+    return request(`/profile/${userId}/change-email/verify`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -282,6 +383,32 @@ export const apiService = {
     });
   },
 
+  confirmRescheduleRequest(requestId: number) {
+    return request(`/api/reschedule-requests/${requestId}/confirm`, {
+      method: 'PUT',
+    });
+  },
+
+  cancelRescheduleAppointment(requestId: number) {
+    return request(`/api/reschedule-requests/${requestId}/cancel-appointment`, {
+      method: 'PUT',
+    });
+  },
+
+  chooseAnotherDateForRescheduleRequest(
+    requestId: number,
+    payload: {
+      preferred_date: string;
+      preferred_time: string;
+      response_note?: string;
+    }
+  ) {
+    return request(`/api/reschedule-requests/${requestId}/choose-another-date`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
   // ─── Grooming details ────────────────────────────────────────────────────
 
   saveGroomingDetails(payload: {
@@ -330,6 +457,105 @@ export const apiService = {
     return request('/api/admin/appointment-search-data');
   },
 
+  getEmrSearchPets() {
+    return request('/api/emr/search-pets');
+  },
+
+  getEmrRecords() {
+    return request('/api/emr/records');
+  },
+
+  getEmrRecord(recordId: number | string) {
+    return request(`/api/emr/records/${recordId}`);
+  },
+
+  createEmrRecord(payload: any) {
+    return request('/api/emr/records', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateEmrRecord(recordId: number | string, payload: any) {
+    return request(`/api/emr/records/${recordId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteEmrRecord(recordId: number | string) {
+    return request(`/api/emr/records/${recordId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  getEmrPetAppointments(petId: number | string) {
+    return request(`/api/emr/pets/${petId}/appointments`);
+  },
+
+  getBillingServices() {
+    return request('/api/billing/services').then(
+      (data: any) => data?.services || []
+    );
+  },
+
+  getBillingProducts() {
+    return request('/api/billing/products').then(
+      (data: any) => data?.products || []
+    );
+  },
+
+  getBillingSourceRecords() {
+    return request('/api/billing/source-records');
+  },
+
+  getBillingInvoices() {
+    return request('/api/billing/invoices').then(
+      (data: any) => data?.invoices || []
+    );
+  },
+
+  createBillingInvoice(payload: any) {
+    return request('/api/billing/invoices', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  recordBillingInvoicePayment(invoiceId: number | string, payload: any) {
+    return request(`/api/billing/invoices/${invoiceId}/payments`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteBillingInvoices(invoiceIds: Array<number | string>) {
+    return request('/api/billing/invoices/bulk', {
+      method: 'DELETE',
+      body: JSON.stringify({ invoiceIds }),
+    });
+  },
+
+  updateEmrLabResultOwnerVisibility(labResultId: number | string, payload: {
+    visibleToOwner: boolean;
+    visibleToOwnerBy?: string;
+  }) {
+    return request(`/api/emr/lab-results/${labResultId}/owner-visibility`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  updateEmrVaccinationOwnerVisibility(vaccinationId: number | string, payload: {
+    visibleToOwner: boolean;
+    visibleToOwnerBy?: string;
+  }) {
+    return request(`/api/emr/vaccinations/${vaccinationId}/owner-visibility`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
   logout() {
     return request('/logout', {
       method: 'POST',
@@ -368,10 +594,20 @@ export const apiService = {
     );
   },
 
+  getAvailableTimeSlots(date: string) {
+    return request(`/api/available-time-slots?date=${encodeURIComponent(date)}`).then(
+      (data: any) => data?.timeSlots || []
+    );
+  },
+
   getSpecialDates() {
     return request('/api/special-dates').then(
       (data: any) => data?.specialDates || []
     );
+  },
+
+  getPetSharedRecords(petId: number | string) {
+    return request(`/api/pets/${petId}/shared-records`);
   },
 
   updateProfile(userId: string, payload: Partial<{

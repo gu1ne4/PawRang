@@ -77,6 +77,7 @@ interface AlertConfig {
 }
 
 type AppointmentModalLayer = 'details' | 'cancel' | 'reschedule';
+type RescheduleFlowMode = 'request' | 'respondToProposal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -255,6 +256,17 @@ const canWithdrawRescheduleRequest = (appointment: Appointment) => {
   const request = getOpenRescheduleRequest(appointment);
   return Boolean(request && isPatientInitiatedRescheduleRequest(request));
 };
+
+const canRespondToClinicProposal = (appointment: Appointment) => {
+  const request = getOpenRescheduleRequest(appointment);
+  const normalizedStatus = (request?.status || '').toLowerCase();
+  return Boolean(
+    request &&
+    normalizedStatus === 'pending' &&
+    !isPatientInitiatedRescheduleRequest(request)
+  );
+};
+
 const DEFAULT_PET_IMG  = 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400';
 const isMobileViewport = () =>
   typeof window !== 'undefined' && window.innerWidth <= 768;
@@ -404,6 +416,8 @@ const UserAppointmentView: React.FC = () => {
   const [rescheduleUnderstoodChecked,   setRescheduleUnderstoodChecked]   = useState(false);
   const [rescheduleReasonError,         setRescheduleReasonError]         = useState('');
   const [rescheduleTarget,              setRescheduleTarget]              = useState<Appointment | null>(null);
+  const [rescheduleFlowMode,            setRescheduleFlowMode]            = useState<RescheduleFlowMode>('request');
+  const [activeRescheduleRequestId,     setActiveRescheduleRequestId]     = useState<number | null>(null);
   const [rescheduleParentModal,         setRescheduleParentModal]         = useState<AppointmentModalLayer | null>(null);
   const [rescheduleAvailableDays,       setRescheduleAvailableDays]       = useState<DayAvailability | null>(null);
   const [rescheduleSpecialDates,        setRescheduleSpecialDates]        = useState<string[]>([]);
@@ -560,20 +574,32 @@ const UserAppointmentView: React.FC = () => {
     let isActive = true;
     const dayNamesList = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const selectedDayName = dayNamesList[new Date(`${newDate}T00:00:00`).getDay()];
+    const today = new Date();
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const monthAfterNext = new Date(today.getFullYear(), today.getMonth() + 2, 1);
+    const monthAfterNextKey = `${monthAfterNext.getFullYear()}-${String(monthAfterNext.getMonth() + 1).padStart(2, '0')}-${String(monthAfterNext.getDate()).padStart(2, '0')}`;
+    const isBlockedSpecialDate = rescheduleSpecialDates.includes(newDate);
+    const isAllowedDay = rescheduleAvailableDays ? Boolean(rescheduleAvailableDays[selectedDayName]) : true;
+    const isWithinWindow = newDate >= todayKey && newDate < monthAfterNextKey;
+
+    const mapSlots = (slots: any[]): RescheduleTimeSlot[] => (slots || []).map((slot: any) => ({
+      id: slot.id,
+      startTime: slot.start_time,
+      endTime: slot.end_time,
+      displayText: slot.displayText || formatTimeSlotDisplay(slot.start_time, slot.end_time),
+    }));
+
+    if (!isAllowedDay || isBlockedSpecialDate || !isWithinWindow) {
+      setRescheduleTimeSlots([]);
+      setLoadingRescheduleSlots(false);
+      return;
+    }
 
     setLoadingRescheduleSlots(true);
     apiService.getTimeSlotsForDay(selectedDayName)
       .then((slots: any[]) => {
         if (!isActive) return;
-
-        const formattedSlots: RescheduleTimeSlot[] = (slots || []).map((slot: any) => ({
-          id: slot.id,
-          startTime: slot.start_time,
-          endTime: slot.end_time,
-          displayText: formatTimeSlotDisplay(slot.start_time, slot.end_time),
-        }));
-
-        setRescheduleTimeSlots(formattedSlots);
+        setRescheduleTimeSlots(mapSlots(slots));
       })
       .catch((error) => {
         if (!isActive) return;
@@ -587,7 +613,7 @@ const UserAppointmentView: React.FC = () => {
     return () => {
       isActive = false;
     };
-  }, [newDate, rescheduleModalVisible]);
+  }, [newDate, rescheduleAvailableDays, rescheduleModalVisible, rescheduleSpecialDates]);
 
   const handleLogout = () => {
     localStorage.removeItem('userSession');
@@ -686,9 +712,18 @@ const UserAppointmentView: React.FC = () => {
   const selectedOpenRescheduleRequest = selectedForDetails ? getOpenRescheduleRequest(selectedForDetails) : null;
   const isSelectedRescheduleLocked = Boolean(selectedOpenRescheduleRequest);
   const canWithdrawSelectedReschedule = selectedForDetails ? canWithdrawRescheduleRequest(selectedForDetails) : false;
+  const canRespondToSelectedReschedule = selectedForDetails ? canRespondToClinicProposal(selectedForDetails) : false;
+  const isRespondingToClinicProposal = rescheduleFlowMode === 'respondToProposal';
+  const activeProposalRequest = isRespondingToClinicProposal && rescheduleTarget
+    ? getOpenRescheduleRequest(rescheduleTarget)
+    : null;
   const selectedRescheduleHelperMessage = canWithdrawSelectedReschedule
     ? 'This reschedule request is under clinic review. If your plans changed, you can withdraw it and keep your current appointment schedule.'
-    : RESCHEDULE_LOCK_MESSAGE;
+    : canRespondToSelectedReschedule
+      ? 'The clinic proposed a new schedule above. Review it here to confirm, choose another date, or cancel the appointment.'
+      : selectedOpenRescheduleRequest?.status === 'needs_new_schedule'
+        ? 'Your preferred schedule is already under clinic review. Please wait for their response before making another change.'
+        : RESCHEDULE_LOCK_MESSAGE;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Cancel
@@ -764,6 +799,16 @@ const UserAppointmentView: React.FC = () => {
   // Reschedule
   // ─────────────────────────────────────────────────────────────────────────
 
+  const resetRescheduleForm = () => {
+    setRescheduleStep(1);
+    setNewDate('');
+    setNewTime('');
+    setRescheduleReason('');
+    setRescheduleUnderstoodChecked(false);
+    setRescheduleReasonError('');
+    setRescheduleTimeSlots([]);
+  };
+
   const openReschedule = (appt: Appointment) => {
     if (getOpenRescheduleRequest(appt)) {
       showAlert('info', 'Request Under Review', RESCHEDULE_LOCK_MESSAGE);
@@ -776,15 +821,39 @@ const UserAppointmentView: React.FC = () => {
     } else {
       setRescheduleParentModal(null);
     }
-    setRescheduleTarget(appt); setRescheduleStep(1); setNewDate(''); setNewTime('');
-    setRescheduleReason(''); setRescheduleUnderstoodChecked(false); setRescheduleReasonError('');
-    setRescheduleTimeSlots([]);
+    setRescheduleTarget(appt);
+    setRescheduleFlowMode('request');
+    setActiveRescheduleRequestId(null);
+    resetRescheduleForm();
+    setRescheduleModalVisible(true);
+  };
+
+  const openRespondToClinicProposal = (appt: Appointment) => {
+    const openRequest = getOpenRescheduleRequest(appt);
+    if (!openRequest?.request_id || isPatientInitiatedRescheduleRequest(openRequest)) {
+      showAlert('info', 'Unavailable', 'This clinic proposal is no longer available for review.');
+      return;
+    }
+
+    if (detailsModalVisible) {
+      setDetailsModalVisible(false);
+      setRescheduleParentModal('details');
+    } else {
+      setRescheduleParentModal(null);
+    }
+
+    setRescheduleTarget(appt);
+    setRescheduleFlowMode('respondToProposal');
+    setActiveRescheduleRequestId(openRequest.request_id);
+    resetRescheduleForm();
     setRescheduleModalVisible(true);
   };
 
   const closeRescheduleModal = (restoreParent = true) => {
     setRescheduleModalVisible(false);
     setRescheduleTarget(null);
+    setRescheduleFlowMode('request');
+    setActiveRescheduleRequestId(null);
 
     if (restoreParent && rescheduleParentModal === 'details' && selectedForDetails && isMobileView) {
       setDetailsModalVisible(true);
@@ -794,6 +863,8 @@ const UserAppointmentView: React.FC = () => {
   };
 
   const handleRescheduleNext = () => {
+    const requiresReason = rescheduleFlowMode === 'request';
+
     if (rescheduleStep === 1) {
       if (!newDate || !newTime) {
         showAlert('info','Incomplete','Please select both date and time');
@@ -801,7 +872,7 @@ const UserAppointmentView: React.FC = () => {
       }
       setRescheduleStep(2);
     } else if (rescheduleStep === 2) {
-      if (rescheduleReason.trim().length < MIN_REASON_CHARS) {
+      if (requiresReason && rescheduleReason.trim().length < MIN_REASON_CHARS) {
         setRescheduleReasonError(`Reason must be at least ${MIN_REASON_CHARS} characters`); return;
       }
       setRescheduleReasonError(''); setRescheduleStep(3);
@@ -813,30 +884,56 @@ const UserAppointmentView: React.FC = () => {
     setIsMutating(true);
     const restoreModal = rescheduleParentModal;
     try {
-      await apiService.rescheduleAppointment(rescheduleTarget.appointment_id, {
-        new_date: newDate,
-        new_time: toDbTime(newTime),
-        reschedule_reason: rescheduleReason,
-        requested_by: currentUser?.id ?? null,
-        recordType: 'appointment',
-      });
-      await fetchAppointments();
-      if (selectedForDetails?.appointment_id === rescheduleTarget.appointment_id)
-        setSelectedForDetails(prev => prev ? { ...prev, status: 'pending' } : prev);
-      showAlert(
-        'success',
-        'Submitted',
-        'Reschedule request submitted for review',
-        null,
-        false,
-        'OK',
-        { restoreModal },
-      );
+      if (rescheduleFlowMode === 'respondToProposal') {
+        if (!activeRescheduleRequestId) {
+          throw new Error('This clinic proposal is no longer available.');
+        }
+
+        await apiService.chooseAnotherDateForRescheduleRequest(activeRescheduleRequestId, {
+          preferred_date: newDate,
+          preferred_time: toDbTime(newTime),
+          response_note: rescheduleReason.trim() || undefined,
+        });
+        await fetchAppointments();
+        showAlert(
+          'success',
+          'Preference Sent',
+          'Your preferred schedule has been sent to the clinic for review.',
+          null,
+          false,
+          'OK',
+          { restoreModal },
+        );
+      } else {
+        await apiService.rescheduleAppointment(rescheduleTarget.appointment_id, {
+          new_date: newDate,
+          new_time: toDbTime(newTime),
+          reschedule_reason: rescheduleReason,
+          requested_by: currentUser?.id ?? null,
+          recordType: 'appointment',
+        });
+        await fetchAppointments();
+        if (selectedForDetails?.appointment_id === rescheduleTarget.appointment_id)
+          setSelectedForDetails(prev => prev ? { ...prev, status: 'pending' } : prev);
+        showAlert(
+          'success',
+          'Submitted',
+          'Reschedule request submitted for review',
+          null,
+          false,
+          'OK',
+          { restoreModal },
+        );
+      }
     } catch (err: any) {
       showAlert(
         'error',
         'Error',
-        err.response?.data?.error ?? err.data?.error ?? err.message ?? 'Failed to reschedule',
+        err.response?.data?.error ?? err.data?.error ?? err.message ?? (
+          rescheduleFlowMode === 'respondToProposal'
+            ? 'Failed to send your preferred schedule'
+            : 'Failed to reschedule'
+        ),
         null,
         false,
         'OK',
@@ -846,8 +943,97 @@ const UserAppointmentView: React.FC = () => {
       setIsMutating(false);
       setRescheduleModalVisible(false);
       setRescheduleTarget(null);
+      setRescheduleFlowMode('request');
+      setActiveRescheduleRequestId(null);
       setRescheduleParentModal(null);
     }
+  };
+
+  const confirmClinicProposal = (appointment: Appointment) => {
+    const openRequest = getOpenRescheduleRequest(appointment);
+    if (!openRequest?.request_id) return;
+
+    const restoreModal = detailsModalVisible ? 'details' : null;
+    const proposedDate = formatDate(openRequest.proposed_appointment_date);
+    const proposedTime = formatTime(openRequest.proposed_appointment_time);
+
+    showAlert(
+      'confirm',
+      'Confirm Proposed Schedule',
+      `Confirm the clinic's proposed schedule of ${proposedDate} at ${proposedTime}?`,
+      async () => {
+        setIsMutating(true);
+        try {
+          await apiService.confirmRescheduleRequest(openRequest.request_id);
+          await fetchAppointments();
+          showAlert(
+            'success',
+            'Schedule Confirmed',
+            `Your appointment is now set for ${proposedDate} at ${proposedTime}.`,
+            null,
+            false,
+            'OK',
+            { restoreModal },
+          );
+        } catch (err: any) {
+          showAlert(
+            'error',
+            'Error',
+            err.response?.data?.error ?? err.data?.error ?? err.message ?? 'Failed to confirm the proposed schedule',
+            null,
+            false,
+            'OK',
+            { restoreModal },
+          );
+        } finally {
+          setIsMutating(false);
+        }
+      },
+      true,
+      'Confirm Date',
+    );
+  };
+
+  const cancelAppointmentFromClinicProposal = (appointment: Appointment) => {
+    const openRequest = getOpenRescheduleRequest(appointment);
+    if (!openRequest?.request_id) return;
+
+    const restoreModal = detailsModalVisible ? 'details' : null;
+    showAlert(
+      'confirm',
+      'Cancel Appointment',
+      'Cancel this appointment instead of accepting the clinic-proposed schedule?',
+      async () => {
+        setIsMutating(true);
+        try {
+          await apiService.cancelRescheduleAppointment(openRequest.request_id);
+          await fetchAppointments();
+          showAlert(
+            'success',
+            'Appointment Cancelled',
+            'Your appointment has been cancelled successfully.',
+            null,
+            false,
+            'OK',
+            { restoreModal },
+          );
+        } catch (err: any) {
+          showAlert(
+            'error',
+            'Error',
+            err.response?.data?.error ?? err.data?.error ?? err.message ?? 'Failed to cancel the appointment',
+            null,
+            false,
+            'OK',
+            { restoreModal },
+          );
+        } finally {
+          setIsMutating(false);
+        }
+      },
+      true,
+      'Cancel Appointment',
+    );
   };
 
   const withdrawRescheduleRequest = async (appointment: Appointment) => {
@@ -879,6 +1065,8 @@ const UserAppointmentView: React.FC = () => {
     if (!request) return null;
 
     const patientInitiated = isPatientInitiatedRescheduleRequest(request);
+    const normalizedStatus = (request.status || '').toLowerCase();
+    const awaitingPatientReview = normalizedStatus === 'pending' && !patientInitiated;
     const extractedPatientNote = extractRescheduleRequestNote(request.response_note);
     const noteDisplay = extractedPatientNote ||
       (!hasStructuredRescheduleMetadata(request.response_note) ? (request.response_note?.trim() || 'Not provided') : 'Not provided');
@@ -924,7 +1112,9 @@ const UserAppointmentView: React.FC = () => {
     const noteLabel = patientInitiated ? 'Your Reason' : 'Clinic Note';
     const reviewLabel = patientInitiated
       ? 'Waiting for clinic review. If your plans changed, you can withdraw this request below.'
-      : 'Waiting for your review';
+      : awaitingPatientReview
+        ? 'Waiting for your review. If email is unavailable, you can respond right here.'
+        : 'Your preferred schedule has been sent to the clinic and is now waiting for their review.';
     const noteValue = patientInitiated
       ? noteDisplay
       : (request.reason?.trim() || noteDisplay || 'Not provided');
@@ -956,6 +1146,35 @@ const UserAppointmentView: React.FC = () => {
           <h5>{noteLabel}</h5>
           <p>{noteValue || 'Not provided'}</p>
         </div>
+
+        {awaitingPatientReview && (
+          <div className="app-reschedule-request-actions">
+            <button
+              className="app-action-btn confirm"
+              onClick={() => confirmClinicProposal(appointment)}
+              disabled={isMutating}
+            >
+              <IoCheckmarkCircleOutline size={18} color="white" />
+              <span>Confirm Date</span>
+            </button>
+            <button
+              className="app-action-btn reschedule"
+              onClick={() => openRespondToClinicProposal(appointment)}
+              disabled={isMutating}
+            >
+              <IoCalendar size={18} color="white" />
+              <span>Choose Another Date</span>
+            </button>
+            <button
+              className="app-action-btn cancel"
+              onClick={() => cancelAppointmentFromClinicProposal(appointment)}
+              disabled={isMutating}
+            >
+              <IoClose size={18} color="white" />
+              <span>Cancel Appointment</span>
+            </button>
+          </div>
+        )}
       </div>
     );
   };
@@ -1413,15 +1632,25 @@ const UserAppointmentView: React.FC = () => {
             <button className="app-modal-close" onClick={() => closeRescheduleModal()}><IoClose size={24} color="#999" /></button>
             <div className="app-reschedule-header">
               <div className="app-reschedule-icon"><IoCalendar size={40} color="#3d67ee" /></div>
-              <h2>Reschedule Appointment</h2>
+              <h2>{isRespondingToClinicProposal ? 'Choose Another Date' : 'Reschedule Appointment'}</h2>
               <p className="app-step-subtitle">Step {rescheduleStep} of 3</p>
             </div>
             <div className="app-modal-body">
               {rescheduleStep === 1 && (
                 <div>
-                  <div className="app-step-guide"><h3>Select New Date & Time</h3></div>
+                  <div className="app-step-guide">
+                    <h3>{isRespondingToClinicProposal ? 'Select Preferred Date & Time' : 'Select New Date & Time'}</h3>
+                    {isRespondingToClinicProposal && activeProposalRequest && (
+                      <p>
+                        Clinic proposed {formatDate(activeProposalRequest.proposed_appointment_date)} at {formatTime(activeProposalRequest.proposed_appointment_time)}.
+                        Choose another date here if that schedule does not work for you.
+                      </p>
+                    )}
+                  </div>
                   <div className="app-calendar-panel">
-                    <label style={{ display:'block', marginBottom:10, fontSize:14, color:'#333', fontWeight:600 }}>Select New Date</label>
+                    <label style={{ display:'block', marginBottom:10, fontSize:14, color:'#333', fontWeight:600 }}>
+                      {isRespondingToClinicProposal ? 'Select Preferred Date' : 'Select New Date'}
+                    </label>
                     <div style={{ border: '1px solid #ddd', borderRadius: '12px', padding: '15px', backgroundColor: '#fafafa' }}>
                       <RescheduleCalendar
                         selectedDate={newDate}
@@ -1443,7 +1672,7 @@ const UserAppointmentView: React.FC = () => {
                     <div className="app-time-panel">
                       <div className="app-time-header">
                         <IoTimeOutline size={18} color="#3d67ee" />
-                        <h4>Select New Time Slot</h4>
+                        <h4>{isRespondingToClinicProposal ? 'Select Preferred Time Slot' : 'Select New Time Slot'}</h4>
                         {loadingRescheduleSlots && <span style={{ fontSize: '12px', color: '#999', fontWeight: 400 }}>Loading...</span>}
                       </div>
 
@@ -1485,9 +1714,11 @@ const UserAppointmentView: React.FC = () => {
               )}
               {rescheduleStep === 2 && (
                 <div>
-                  <div className="app-step-guide"><h3>Reason for Rescheduling</h3></div>
+                  <div className="app-step-guide"><h3>{isRespondingToClinicProposal ? 'Notes for the Clinic' : 'Reason for Rescheduling'}</h3></div>
                   <div className="app-input-group">
-                    <label className="app-field-label required">Reschedule Reason</label>
+                    <label className={`app-field-label ${isRespondingToClinicProposal ? '' : 'required'}`}>
+                      {isRespondingToClinicProposal ? 'Optional Note' : 'Reschedule Reason'}
+                    </label>
                     <textarea
                       className={`app-textarea-field ${rescheduleReasonError ? 'error' : ''}`}
                       rows={5}
@@ -1498,14 +1729,16 @@ const UserAppointmentView: React.FC = () => {
                     <div className="app-input-footer">
                       {rescheduleReasonError
                         ? <span className="error-message"><IoAlertCircleOutline size={14} /> {rescheduleReasonError}</span>
-                        : <span className="app-char-indicator"><IoDocumentTextOutline size={14} /> {rescheduleReason.length}/{MIN_REASON_CHARS} min. chars</span>}
+                        : isRespondingToClinicProposal
+                          ? <span className="app-char-indicator"><IoDocumentTextOutline size={14} /> Optional note for the clinic</span>
+                          : <span className="app-char-indicator"><IoDocumentTextOutline size={14} /> {rescheduleReason.length}/{MIN_REASON_CHARS} min. chars</span>}
                     </div>
                   </div>
                 </div>
               )}
               {rescheduleStep === 3 && (
                 <div>
-                  <div className="app-step-guide"><h3>Review Request</h3></div>
+                  <div className="app-step-guide"><h3>{isRespondingToClinicProposal ? 'Review Response' : 'Review Request'}</h3></div>
                   <div className="app-summary-card original">
                     <div className="app-card-header"><IoCalendar size={18} color="#ee3d5a" /><h4>Original Schedule</h4></div>
                     <div className="app-card-body">
@@ -1513,8 +1746,17 @@ const UserAppointmentView: React.FC = () => {
                       <div className="app-summary-line"><span className="app-summary-tag">Time:</span><span className="app-summary-data">{formatTime(rescheduleTarget.appointment_time)}</span></div>
                     </div>
                   </div>
+                  {isRespondingToClinicProposal && activeProposalRequest && (
+                    <div className="app-summary-card original">
+                      <div className="app-card-header"><IoCalendar size={18} color="#3d67ee" /><h4>Clinic Proposed Schedule</h4></div>
+                      <div className="app-card-body">
+                        <div className="app-summary-line"><span className="app-summary-tag">Date:</span><span className="app-summary-data">{formatDate(activeProposalRequest.proposed_appointment_date)}</span></div>
+                        <div className="app-summary-line"><span className="app-summary-tag">Time:</span><span className="app-summary-data">{formatTime(activeProposalRequest.proposed_appointment_time)}</span></div>
+                      </div>
+                    </div>
+                  )}
                   <div className="app-summary-card new">
-                    <div className="app-card-header"><IoCalendar size={18} color="#00aa00" /><h4>Requested Schedule</h4></div>
+                    <div className="app-card-header"><IoCalendar size={18} color="#00aa00" /><h4>{isRespondingToClinicProposal ? 'Preferred Schedule' : 'Requested Schedule'}</h4></div>
                     <div className="app-card-body">
                       <div className="app-summary-line"><span className="app-summary-tag">Date:</span><span className="app-summary-data highlight">{formatDate(newDate)}</span></div>
                       <div className="app-summary-line"><span className="app-summary-tag">Time:</span><span className="app-summary-data highlight">{formatTime(newTime)}</span></div>
@@ -1525,11 +1767,19 @@ const UserAppointmentView: React.FC = () => {
                   </div>
                   <div className="app-info-box">
                     <div className="app-info-header"><IoTimeOutline size={20} color="#856404" /><h4>⏳ Under Review</h4></div>
-                    <p>Your request will be reviewed within 1-2 business days. You will receive an email once approved.</p>
+                    <p>
+                      {isRespondingToClinicProposal
+                        ? 'Your preferred schedule will be sent to the clinic for review. They can approve it or suggest another schedule.'
+                        : 'Your request will be reviewed within 1-2 business days. You will receive an email once approved.'}
+                    </p>
                   </div>
                   <label className="app-checkbox-wrapper">
                     <input type="checkbox" checked={rescheduleUnderstoodChecked} onChange={() => setRescheduleUnderstoodChecked(p => !p)} />
-                    <span className="app-checkbox-label">I understand this request must be reviewed before approval</span>
+                    <span className="app-checkbox-label">
+                      {isRespondingToClinicProposal
+                        ? 'I understand the clinic will review my preferred schedule before confirming any change'
+                        : 'I understand this request must be reviewed before approval'}
+                    </span>
                   </label>
                 </div>
               )}
@@ -1540,7 +1790,11 @@ const UserAppointmentView: React.FC = () => {
                   ? <button className="app-btn-outline" onClick={() => setRescheduleStep(p => p-1)}>Back</button>
                   : <button className="app-btn-outline" onClick={() => closeRescheduleModal()}><IoClose size={16} /> Cancel</button>}
                 {rescheduleStep < 3
-                  ? <button className="app-btn-primary" onClick={handleRescheduleNext} disabled={rescheduleStep===1 ? (!newDate||!newTime) : rescheduleReason.length < MIN_REASON_CHARS}>
+                  ? <button
+                      className="app-btn-primary"
+                      onClick={handleRescheduleNext}
+                      disabled={rescheduleStep === 1 ? (!newDate || !newTime) : (isRespondingToClinicProposal ? false : rescheduleReason.trim().length < MIN_REASON_CHARS)}
+                    >
                       Next
                     </button>
                   : <button className={`app-btn-primary ${!rescheduleUnderstoodChecked?'disabled':''}`} onClick={confirmReschedule} disabled={!rescheduleUnderstoodChecked || isMutating}>

@@ -5,6 +5,7 @@ import profileHeader from '../assets/ProfileHeader.png';
 import petsPeeking from '../assets/PetsPeeking.png';
 import ClientNavBar from '../reusable_components/ClientNavBar';
 import { formatPetAge } from '../utils/formatPetAge';
+import { ImLab } from 'react-icons/im';
 import {
   IoPaw, IoMedical, IoDocumentText, IoEyeOutline,
   IoCloudUploadOutline, IoTrashOutline, IoClose, IoCameraOutline,
@@ -42,6 +43,38 @@ interface Pet {
   is_vaccinated?: boolean | null;
   vaccination_urls: string[] | null;
   created_at: string;
+}
+
+interface SharedLabRecord {
+  id: string;
+  visitId: string;
+  testType: string;
+  fileName: string;
+  fileUrl: string;
+  interpretation: string;
+  visitDate: string;
+  veterinarian: string;
+  sharedAt: string;
+  sharedBy: string;
+}
+
+interface SharedVaccinationRecord {
+  id: string;
+  visitId: string;
+  vaccineName: string;
+  doseVolume: string;
+  injectionSite: string;
+  manufacturer: string;
+  dateAdministered: string;
+  nextDueDate: string;
+  veterinarian: string;
+  sharedAt: string;
+  sharedBy: string;
+}
+
+interface SharedPetRecords {
+  labResults: SharedLabRecord[];
+  vaccinations: SharedVaccinationRecord[];
 }
 
 interface AlertConfig {
@@ -93,6 +126,18 @@ const formatDate = (s: string) =>
   new Date(s).toLocaleDateString(undefined, {
     year: 'numeric', month: 'long', day: 'numeric',
   });
+
+const formatOptionalDate = (value?: string | null, fallback = 'Not provided') => {
+  if (!value) return fallback;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? fallback : formatDate(value);
+};
+
+const formatOptionalDateTime = (value?: string | null, fallback = 'Not provided') => {
+  if (!value) return fallback;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed.toLocaleString();
+};
 
 const parseBirthdayDate = (value?: string | null) => {
   if (!value) return null;
@@ -208,6 +253,9 @@ const UserPetProfile: React.FC = () => {
   const [selectedPet, setSelectedPet] = useState<Pet | null>(null);
   // ── Only profile and records tabs (appointments tab removed) ──────────────
   const [activeTab, setActiveTab]     = useState<'profile' | 'records'>('profile');
+  const [sharedRecordsByPetId, setSharedRecordsByPetId] = useState<Record<number, SharedPetRecords>>({});
+  const [sharedRecordsLoadingPetId, setSharedRecordsLoadingPetId] = useState<number | null>(null);
+  const [sharedRecordsError, setSharedRecordsError] = useState('');
   const [isMobileView, setIsMobileView] = useState(isMobileViewport);
   const [mobilePetModalOpen, setMobilePetModalOpen] = useState(false);
   const [alertRestoreModal, setAlertRestoreModal] = useState<PetModalLayer | null>(null);
@@ -324,6 +372,35 @@ const UserPetProfile: React.FC = () => {
     }
   }, []);
 
+  const fetchSharedRecords = useCallback(async (petId: number, force = false): Promise<SharedPetRecords | null> => {
+    if (!force && sharedRecordsByPetId[petId]) {
+      return sharedRecordsByPetId[petId];
+    }
+
+    setSharedRecordsLoadingPetId(petId);
+    setSharedRecordsError('');
+
+    try {
+      const response = await apiService.getPetSharedRecords(petId);
+      const records: SharedPetRecords = {
+        labResults: response?.labResults ?? [],
+        vaccinations: response?.vaccinations ?? [],
+      };
+
+      setSharedRecordsByPetId((previous) => ({
+        ...previous,
+        [petId]: records,
+      }));
+      return records;
+    } catch (err: any) {
+      console.error('fetchSharedRecords error:', err);
+      setSharedRecordsError(getPetApiErrorMessage(err, 'We could not load the shared vet records right now.'));
+      return null;
+    } finally {
+      setSharedRecordsLoadingPetId((current) => (current === petId ? null : current));
+    }
+  }, [sharedRecordsByPetId]);
+
   const uploadFile = useCallback(async (
     base64: string, fileName: string, mime: string,
   ): Promise<string> => {
@@ -338,6 +415,12 @@ const UserPetProfile: React.FC = () => {
   useEffect(() => {
     if (currentUser?.id) fetchPets(currentUser.id);
   }, [currentUser?.id, fetchPets]);
+
+  useEffect(() => {
+    if (activeTab === 'records' && selectedPet?.pet_id) {
+      void fetchSharedRecords(selectedPet.pet_id);
+    }
+  }, [activeTab, selectedPet?.pet_id, fetchSharedRecords]);
 
   useEffect(() => {
     const handleResize = () => setIsMobileView(isMobileViewport());
@@ -827,6 +910,141 @@ const UserPetProfile: React.FC = () => {
     );
   };
 
+  const renderSharedRecordsTab = (pet: Pet) => {
+    const sharedRecords = sharedRecordsByPetId[pet.pet_id] ?? { labResults: [], vaccinations: [] };
+    const isLoadingSharedRecords = sharedRecordsLoadingPetId === pet.pet_id;
+    const hasSharedRecords = sharedRecords.labResults.length > 0 || sharedRecords.vaccinations.length > 0;
+
+    return (
+      <div className="records-tab-content">
+        <div className="section-header with-action">
+          <div>
+            <IoFolderOutline size={22} color="#3d67ee" />
+            <h3>Shared Vet Records</h3>
+          </div>
+          <button
+            type="button"
+            className="refresh-shared-records-btn"
+            onClick={() => { void fetchSharedRecords(pet.pet_id, true); }}
+            disabled={isLoadingSharedRecords}
+          >
+            {isLoadingSharedRecords ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
+        <p className="records-note">
+          Only clinic-shared laboratory results and vaccination records appear here.
+        </p>
+
+        {isLoadingSharedRecords && !hasSharedRecords ? (
+          <div className="shared-records-empty-state">
+            <IoDocumentText size={46} color="#cbd4eb" />
+            <p>Loading shared records...</p>
+          </div>
+        ) : sharedRecordsError && !hasSharedRecords ? (
+          <div className="shared-records-empty-state">
+            <IoAlertCircleOutline size={46} color="#f08a24" />
+            <p>{sharedRecordsError}</p>
+          </div>
+        ) : !hasSharedRecords ? (
+          <div className="shared-records-empty-state">
+            <IoDocumentText size={46} color="#cbd4eb" />
+            <p>No lab or vaccination records have been shared for {pet.pet_name} yet.</p>
+          </div>
+        ) : (
+          <div className="shared-records-sections">
+            <section className="shared-records-section">
+              <div className="shared-records-section-header">
+                <div className="shared-records-section-title">
+                  <ImLab size={18} color="#3d67ee" />
+                  <h4>Laboratory Results</h4>
+                </div>
+                <span className="record-count">{sharedRecords.labResults.length}</span>
+              </div>
+              {sharedRecords.labResults.length > 0 ? (
+                <div className="shared-records-list">
+                  {sharedRecords.labResults.map((lab) => (
+                    <div key={lab.id} className="medical-record-card shared-record-card">
+                      <div className="record-header">
+                        <div className="record-title">
+                          <ImLab size={18} color="#3d67ee" />
+                          <span>{lab.testType}</span>
+                        </div>
+                        <span className="record-date">{formatOptionalDate(lab.visitDate)}</span>
+                      </div>
+                      <div className="shared-record-grid">
+                        <div className="record-vet">Veterinarian: {lab.veterinarian || 'Not provided'}</div>
+                        {lab.interpretation && (
+                          <div className="record-notes">Interpretation: {lab.interpretation}</div>
+                        )}
+                        {lab.fileName && (
+                          <div className="record-notes">File: {lab.fileName}</div>
+                        )}
+                        <div className="record-notes">
+                          Shared: {formatOptionalDateTime(lab.sharedAt)}
+                          {lab.sharedBy ? ` by ${lab.sharedBy}` : ''}
+                        </div>
+                      </div>
+                      {lab.fileUrl && (
+                        <button
+                          type="button"
+                          className="view-doc-btn"
+                          onClick={() => window.open(lab.fileUrl, '_blank')}
+                        >
+                          <IoEyeOutline size={18} />
+                          <span>View Lab File</span>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="shared-records-empty-copy">No laboratory results have been shared yet.</p>
+              )}
+            </section>
+
+            <section className="shared-records-section">
+              <div className="shared-records-section-header">
+                <div className="shared-records-section-title">
+                  <IoMedicalOutline size={18} color="#3d67ee" />
+                  <h4>Vaccination Records</h4>
+                </div>
+                <span className="record-count">{sharedRecords.vaccinations.length}</span>
+              </div>
+              {sharedRecords.vaccinations.length > 0 ? (
+                <div className="shared-records-list">
+                  {sharedRecords.vaccinations.map((vaccination) => (
+                    <div key={vaccination.id} className="medical-record-card shared-record-card">
+                      <div className="record-header">
+                        <div className="record-title">
+                          <IoMedicalOutline size={18} color="#3d67ee" />
+                          <span>{vaccination.vaccineName}</span>
+                        </div>
+                        <span className="record-date">{formatOptionalDate(vaccination.dateAdministered)}</span>
+                      </div>
+                      <div className="shared-record-grid">
+                        <div className="record-vet">Veterinarian: {vaccination.veterinarian || 'Not provided'}</div>
+                        <div className="record-notes">Dose/Volume: {vaccination.doseVolume || 'Not provided'}</div>
+                        <div className="record-notes">Injection Site: {vaccination.injectionSite || 'Not provided'}</div>
+                        <div className="record-notes">Manufacturer: {vaccination.manufacturer || 'Not provided'}</div>
+                        <div className="record-notes">Next Due Date: {formatOptionalDate(vaccination.nextDueDate)}</div>
+                        <div className="record-notes">
+                          Shared: {formatOptionalDateTime(vaccination.sharedAt)}
+                          {vaccination.sharedBy ? ` by ${vaccination.sharedBy}` : ''}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="shared-records-empty-copy">No vaccination records have been shared yet.</p>
+              )}
+            </section>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const handlePetSelect = (pet: Pet) => {
     setSelectedPet(pet);
     setActiveTab('profile');
@@ -870,7 +1088,7 @@ const UserPetProfile: React.FC = () => {
             className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
             onClick={() => setActiveTab(tab)}
           >
-            {tab === 'records' ? 'Records (VET EMR)' : 'Profile'}
+            {tab === 'records' ? 'Shared Vet Records' : 'Profile'}
           </button>
         ))}
       </div>
@@ -925,23 +1143,7 @@ const UserPetProfile: React.FC = () => {
         </div>
       )}
 
-      {activeTab === 'records' && (
-        <div className="records-tab-content">
-          <div className="section-header">
-            <IoFolderOutline size={22} color="#3d67ee" />
-            <h3>Electronic Medical Records</h3>
-          </div>
-          <p className="records-note">
-            These records are added by PetShield veterinarians and are view-only.
-          </p>
-          <div style={{ color: '#999', textAlign: 'center', padding: 40 }}>
-            <IoDocumentText size={50} color="#ccc" />
-            <p style={{ marginTop: 10 }}>
-              Medical records will appear here once added by your vet.
-            </p>
-          </div>
-        </div>
-      )}
+      {activeTab === 'records' && renderSharedRecordsTab(pet)}
     </div>
   );
 
@@ -1143,7 +1345,7 @@ const UserPetProfile: React.FC = () => {
                     className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
                     onClick={() => setActiveTab(tab)}
                   >
-                    {tab === 'records' ? 'Records (VET EMR)' : 'Profile'}
+                    {tab === 'records' ? 'Shared Vet Records' : 'Profile'}
                   </button>
                 ))}
               </div>
@@ -1195,23 +1397,7 @@ const UserPetProfile: React.FC = () => {
               )}
 
               {/* ── Records tab ── */}
-              {activeTab === 'records' && (
-                <div className="records-tab-content">
-                  <div className="section-header">
-                    <IoFolderOutline size={22} color="#3d67ee" />
-                    <h3>Electronic Medical Records</h3>
-                  </div>
-                  <p className="records-note">
-                    These records are added by PetShield veterinarians and are view-only.
-                  </p>
-                  <div style={{ color: '#999', textAlign: 'center', padding: 40 }}>
-                    <IoDocumentText size={50} color="#ccc" />
-                    <p style={{ marginTop: 10 }}>
-                      Medical records will appear here once added by your vet.
-                    </p>
-                  </div>
-                </div>
-              )}
+              {activeTab === 'records' && renderSharedRecordsTab(selectedPet)}
             </>
           )}
         </div>

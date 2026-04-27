@@ -75,7 +75,7 @@ function App() {
         <Route path="/settings" element={<Navigate to="/admin/settings" replace />} />
 
         <Route path="/doctor/home" element={<DoctorHome />} />
-        <Route path="/doctor-home" element={<Navigate to="/doctor/home" replace />} />\
+        <Route path="/doctor-home" element={<Navigate to="/doctor/home" replace />} />
 
         <Route path="/analytics" element={<AdminAnalytics />} />
         <Route path="/billing" element={<GlobalBilling />} />

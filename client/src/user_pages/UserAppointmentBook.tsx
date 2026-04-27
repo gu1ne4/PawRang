@@ -528,6 +528,36 @@ const UserAppointmentBook: React.FC = () => {
     setAlertVisible(true);
   };
 
+  const buildMissingFieldsMessage = (fields: string[]): React.ReactNode => (
+    <div style={{ display: 'grid', gap: '6px', textAlign: 'left' }}>
+      <div>Please complete the required fields:</div>
+      {Array.from(new Set(fields)).map((field, index) => (
+        <div key={`${index}-${field}`}>- {field}</div>
+      ))}
+    </div>
+  );
+
+  const getBookingMissingFields = (): string[] => {
+    const missingFields: string[] = [];
+
+    if (!currentUser) missingFields.push('Active user session');
+    if (!selectedService) missingFields.push('Service');
+    if (selectedService?.id === 1 && selectedGroomingOptions.length === 0) missingFields.push('Grooming option');
+    if (selectedService?.id === 8 && selectedLabOptions.length === 0) missingFields.push('Laboratory test');
+    if (!selectedPet) missingFields.push('Pet');
+    if (isGrooming && !selectedHaircutStyle) missingFields.push('Haircut style');
+    if (isGrooming && selectedHaircutStyle === 'h6' && !customHaircutDescription.trim()) missingFields.push('Custom haircut description');
+    if (!selectedBranch) missingFields.push('Branch');
+    if (!selectedDate) missingFields.push('Appointment date');
+    if (!selectedTime) missingFields.push('Time slot');
+
+    const allMedicalAnswered = medicalQuestions.every(question => medicalAnswers[question.key] !== null);
+    if (!allMedicalAnswered) missingFields.push('Medical information');
+    if (medicalAnswers.medications72h === true && !medicationDetails.trim()) missingFields.push('Medication details');
+
+    return missingFields;
+  };
+
   const openConfirmModal = () => {
     setIsChecked(false);
     setConfirmModalStage('terms');
@@ -756,14 +786,26 @@ const UserAppointmentBook: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   const handleConfirmBooking = async () => {
-    if (!currentUser || !selectedPet || !selectedDate || !selectedTime || !selectedBranch || !selectedService) return;
+    const missingFields = getBookingMissingFields();
+    if (missingFields.length > 0) {
+      showAlert('error', 'Missing Information', buildMissingFieldsMessage(missingFields));
+      return;
+    }
+
+    if (!currentUser || !selectedPet || !selectedDate || !selectedTime || !selectedBranch || !selectedService) {
+      showAlert('error', 'Missing Information', buildMissingFieldsMessage(['Booking details']));
+      return;
+    }
+
+    const bookingService = selectedService;
+
     setConfirmModalStage('submitting');
 
     try {
-      let typeLabel = selectedService.name;
-      if (selectedService.id === 1 && selectedGroomingOptions.length)
+      let typeLabel = bookingService.name;
+      if (bookingService.id === 1 && selectedGroomingOptions.length)
         typeLabel = `Pet Grooming (${selectedGroomingOptions.map(o => o.name).join(', ')})`;
-      if (selectedService.id === 8 && selectedLabOptions.length)
+      if (bookingService.id === 8 && selectedLabOptions.length)
         typeLabel = `Laboratory Tests (${selectedLabOptions.map(o => o.name).join(', ')})`;
       
       // appointments POST — cast ids to Number

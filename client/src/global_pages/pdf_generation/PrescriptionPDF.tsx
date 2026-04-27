@@ -1,6 +1,6 @@
 // pdf_generation/PrescriptionPDF.tsx
 import React from 'react';
-import { Document, Page, Text, View, StyleSheet, Font, Line } from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
 
 // Register fonts
 Font.register({
@@ -84,20 +84,87 @@ const styles = StyleSheet.create({
   },
   prescriptionHeaderCell: {
     flex: 1,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: 700,
     color: '#3d67ee',
+    paddingRight: 6,
   },
   prescriptionRow: {
     flexDirection: 'row',
-    padding: 8,
+    paddingHorizontal: 8,
+    paddingTop: 10,
+    paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
+    alignItems: 'flex-start',
   },
   prescriptionCell: {
     flex: 1,
+    fontSize: 9,
+    color: '#333333',
+    lineHeight: 12,
+  },
+  prescriptionCellBlock: {
+    paddingRight: 6,
+  },
+  prescriptionMedicationCell: {
+    flex: 1.4,
+    paddingRight: 8,
+  },
+  prescriptionCard: {
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: '#fafafa',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+  },
+  prescriptionCardHeader: {
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#dbe4ff',
+  },
+  prescriptionMedicationName: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#333333',
+  },
+  prescriptionDetailsRow: {
+    flexDirection: 'row',
+    marginTop: 8,
+  },
+  prescriptionDetailCell: {
+    flex: 1,
+  },
+  prescriptionDetailCellWide: {
+    flex: 2,
+  },
+  prescriptionFieldLabel: {
+    fontSize: 8,
+    fontWeight: 700,
+    color: '#3d67ee',
+    marginBottom: 3,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  prescriptionFieldValue: {
     fontSize: 10,
     color: '#333333',
+    lineHeight: 1.5,
+  },
+  prescriptionInstructionBlock: {
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e8e8e8',
+  },
+  prescriptionEmptyState: {
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    backgroundColor: '#fafafa',
   },
   instructionsBox: {
     marginTop: 20,
@@ -117,6 +184,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#555555',
     lineHeight: 1.5,
+  },
+  instructionItem: {
+    fontSize: 10,
+    color: '#555555',
+    lineHeight: 1.5,
+    marginBottom: 4,
   },
   refillSection: {
     marginTop: 20,
@@ -187,6 +260,7 @@ const styles = StyleSheet.create({
 interface Prescription {
   medicationName: string;
   dosage: string;
+  route?: string;
   frequency: string;
   duration: string;
   instructions?: string;
@@ -198,8 +272,21 @@ interface PrescriptionPDFProps {
   visitDate: string;
   veterinarian: string;
   prescriptions: Prescription[];
-  doctorRemarks?: string;
+  instructionsText?: string;
 }
+
+const stripHtml = (value: string): string =>
+  String(value || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const displayValue = (value?: string): string => {
+  const normalized = String(value || '').trim();
+  return normalized || '-';
+};
 
 const PrescriptionPDF: React.FC<PrescriptionPDFProps> = ({
   petName,
@@ -207,20 +294,14 @@ const PrescriptionPDF: React.FC<PrescriptionPDFProps> = ({
   visitDate,
   veterinarian,
   prescriptions,
-  doctorRemarks,
+  instructionsText,
 }) => {
-  const currentDate = new Date().toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-
-
   const clinicName = "PetShield Veterinary Clinic and Grooming Center";
   const clinicAddress = "123 PawRang Street, Veterinary District";
   const clinicContact = "Tel: (02) 1234-5678 | Email: clinic@petshield.com";
 
   const validPrescriptions = prescriptions.filter(p => p.medicationName && p.medicationName.trim() !== '');
+  const sharedInstructions = String(instructionsText || '').trim();
 
   return (
     <Document>
@@ -258,27 +339,40 @@ const PrescriptionPDF: React.FC<PrescriptionPDFProps> = ({
           <Text style={styles.infoValue}>{veterinarian}</Text>
         </View>
 
-        {/* Prescription Table */}
+        {/* Prescription Details */}
         <View style={styles.prescriptionSection}>
-          <View style={styles.prescriptionHeader}>
-            <Text style={[styles.prescriptionHeaderCell, { flex: 2 }]}>Medication</Text>
-            <Text style={[styles.prescriptionHeaderCell, { flex: 1 }]}>Dosage</Text>
-            <Text style={[styles.prescriptionHeaderCell, { flex: 1 }]}>Frequency</Text>
-            <Text style={[styles.prescriptionHeaderCell, { flex: 1 }]}>Duration</Text>
-          </View>
-          
           {validPrescriptions.length > 0 ? (
-            validPrescriptions.map((pres, index) => (
-              <View key={index} style={styles.prescriptionRow}>
-                <Text style={[styles.prescriptionCell, { flex: 2 }]}>{pres.medicationName}</Text>
-                <Text style={[styles.prescriptionCell, { flex: 1 }]}>{pres.dosage || '—'}</Text>
-                <Text style={[styles.prescriptionCell, { flex: 1 }]}>{pres.frequency || '—'}</Text>
-                <Text style={[styles.prescriptionCell, { flex: 1 }]}>{pres.duration || '—'}</Text>
+            <>
+              <View style={styles.prescriptionHeader}>
+                <Text style={[styles.prescriptionHeaderCell, { flex: 1.55 }]}>Medication</Text>
+                <Text style={[styles.prescriptionHeaderCell, { flex: 1.0 }]}>Dose</Text>
+                <Text style={[styles.prescriptionHeaderCell, { flex: 1.0 }]}>Route</Text>
+                <Text style={[styles.prescriptionHeaderCell, { flex: 1.25 }]}>Frequency</Text>
+                <Text style={[styles.prescriptionHeaderCell, { flex: 1.0, paddingRight: 0 }]}>Duration</Text>
               </View>
-            ))
+              {validPrescriptions.map((pres, index) => (
+                <View key={`${pres.medicationName || 'medication'}-${index}`} style={styles.prescriptionRow}>
+                  <View style={[styles.prescriptionCellBlock, { flex: 1.55 }]}>
+                    <Text style={styles.prescriptionCell}>{displayValue(pres.medicationName)}</Text>
+                  </View>
+                  <View style={[styles.prescriptionCellBlock, { flex: 1.0 }]}>
+                    <Text style={styles.prescriptionCell}>{displayValue(pres.dosage)}</Text>
+                  </View>
+                  <View style={[styles.prescriptionCellBlock, { flex: 1.0 }]}>
+                    <Text style={styles.prescriptionCell}>{displayValue(pres.route)}</Text>
+                  </View>
+                  <View style={[styles.prescriptionCellBlock, { flex: 1.25 }]}>
+                    <Text style={styles.prescriptionCell}>{displayValue(pres.frequency)}</Text>
+                  </View>
+                  <View style={{ flex: 1.0 }}>
+                    <Text style={styles.prescriptionCell}>{displayValue(pres.duration)}</Text>
+                  </View>
+                </View>
+              ))}
+            </>
           ) : (
-            <View style={styles.prescriptionRow}>
-              <Text style={[styles.prescriptionCell, { flex: 4, textAlign: 'center' }]}>
+            <View style={styles.prescriptionEmptyState}>
+              <Text style={[styles.prescriptionFieldValue, { textAlign: 'center' }]}>
                 No medications prescribed
               </Text>
             </View>
@@ -286,20 +380,10 @@ const PrescriptionPDF: React.FC<PrescriptionPDFProps> = ({
         </View>
 
         {/* Instructions */}
-        {validPrescriptions.some(p => p.instructions) && (
+        {sharedInstructions && (
           <View style={styles.instructionsBox}>
             <Text style={styles.instructionsTitle}>Instructions:</Text>
-            <Text style={styles.instructionsText}>
-              {validPrescriptions.find(p => p.instructions)?.instructions || 'Take as directed by veterinarian'}
-            </Text>
-          </View>
-        )}
-
-        {/* Doctor's Remarks */}
-        {doctorRemarks && (
-          <View style={styles.instructionsBox}>
-            <Text style={styles.instructionsTitle}>Doctor's Remarks:</Text>
-            <Text style={styles.instructionsText}>{doctorRemarks}</Text>
+            <Text style={styles.instructionsText}>{sharedInstructions}</Text>
           </View>
         )}
 

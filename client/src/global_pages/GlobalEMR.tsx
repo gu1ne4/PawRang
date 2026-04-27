@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useBeforeUnload, useLocation, useNavigate } from 'react-router-dom';
 import Navbar from '../reusable_components/NavBar';
 import Notifications from '../reusable_components/Notifications';
 import { HiOutlineClipboardDocumentList } from "react-icons/hi2";
@@ -9,6 +9,7 @@ import { FaEye } from "react-icons/fa";
 import { TbReportMedical } from "react-icons/tb";
 import RichTextEditor from '../reusable_components/RichTextEditor';
 import { FaFilePdf } from "react-icons/fa6";
+import { apiService } from '../apiService';
 
 import './GlobalEMR.css';
 import './GlobalEMR2.css';
@@ -49,9 +50,13 @@ import {
   IoChevronDownOutline
 } from 'react-icons/io5';
 
+const BILLING_NAVIGATION_DELAY_MS = 450;
+
 interface MedicalRecord {
   id?: number;
   pk?: number;
+  petId?: number;
+  ownerId?: string;
   patientId: string;
   petName: string;
   ownerName: string;
@@ -60,9 +65,11 @@ interface MedicalRecord {
   ownerEmail: string;
   ownerContact: string;
   lastVisit: string;
+  lastVisitRaw?: string;
   veterinarian: string;
   reason: string;
   deceased?: boolean;
+  detailsLoaded?: boolean;
   visitHistory?: VisitHistory[];
   petDetails?: PetDetails;
 }
@@ -78,20 +85,47 @@ interface LabResult {
   fileUrl: string;
   fileData?: string;
   interpretation: string;
+  visibleToOwner?: boolean;
+  visibleToOwnerAt?: string;
+  visibleToOwnerBy?: string;
 }
 
 interface Prescription {
   id: string;
   medicationName: string;
   dosage: string;
+  route?: string;
   frequency: string;
   duration: string;
   prescribedDate: string;
   instructions?: string;
 }
 
+interface MedicalInformation {
+  id?: string | number;
+  record_type?: string;
+  target_id?: string | number | null;
+  appointment_id?: string | number | null;
+  walkin_id?: string | number | null;
+  on_medication?: boolean | null;
+  medication_details?: string;
+  flea_tick_prevention?: boolean | null;
+  is_vaccinated?: boolean | null;
+  is_pregnant?: boolean | null;
+  additional_notes?: string;
+  has_allergies?: boolean | null;
+  allergy_details?: string;
+  has_skin_condition?: boolean | null;
+  skin_condition_details?: string;
+  been_groomed_before?: boolean | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 interface VisitHistory {
   id: string;
+  sourceType?: 'manual' | 'appointment' | 'walkin';
+  sourceId?: string | null;
   date: string;
   time: string;
   veterinarian: string;
@@ -116,7 +150,13 @@ interface VisitHistory {
   prescriptions?: Prescription[];
   selectedServices?: ServiceItem[];
   appointmentId?: string;
+  billingSourceType?: 'visit';
+  billingSourceId?: string;
+  hasBillingInvoice?: boolean;
+  billingInvoiceId?: string | null;
+  billingInvoiceNumber?: string | null;
   vaccinationDetails?: VaccinationDetails;
+  medicalInformation?: MedicalInformation | null;
 }
 
 interface PetDetails {
@@ -154,12 +194,14 @@ interface ModalConfig {
   title: string;
   message: React.ReactNode;
   onConfirm?: () => void;
+  onCancel?: () => void;
   showCancel: boolean;
 }
 
 interface FormErrors {
   patientId?: string;
   petName?: string;
+  breed?: string;
   ownerFirstName?: string;
   ownerLastName?: string;
   ownerEmail?: string;
@@ -168,10 +210,33 @@ interface FormErrors {
   reason?: string;
 }
 
+interface VisitFormErrors {
+  visitType?: string;
+  appointment?: string;
+  primaryService?: string;
+  veterinarian?: string;
+  weight?: string;
+  length?: string;
+  temperature?: string;
+  heartRate?: string;
+  breathingRate?: string;
+}
+
+interface VisitFieldInputs {
+  weight: string;
+  length: string;
+  temperature: string;
+  heartRate: string;
+  breathingRate: string;
+}
+
 interface SearchResult {
   id: number;
+  petId?: number;
   petName: string;
   ownerName: string;
+  ownerFirstName?: string;
+  ownerLastName?: string;
   ownerUsername?: string;
   species: string;
   breed: string;
@@ -179,6 +244,7 @@ interface SearchResult {
   ownerContact: string;
   gender: string;
   dateOfBirth: string;
+  weightKg?: string;
   colorMarkings: string;
   neutered: boolean;
   vaccinated: boolean;
@@ -189,10 +255,20 @@ interface SearchResult {
   deceased?: boolean;
 }
 
+interface VeterinarianAccount {
+  id: string;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+  email?: string;
+  role?: string;
+}
+
 interface MedicationTemplate {
   id: string;
   name: string;
   dosage: string;
+  route?: string;
   frequency: string;
   duration: string;
   instructions: string;
@@ -201,20 +277,28 @@ interface MedicationTemplate {
 interface AppointmentRecord {
   id: string;
   date: string;
+  dateRaw?: string;
   time: string;
   veterinarian: string;
   reason: string;
   services: ServiceItem[];
   status: 'scheduled' | 'completed' | 'cancelled';
+  medicalInformation?: MedicalInformation | null;
 }
 
+type AppointmentDateFilter = 'today' | 'future';
+
 interface VaccinationDetails {
+  id?: string;
   vaccineName: string;
   doseVolume: string;
   injectionSite: string;
   manufacturer: string;
   dateAdministered: string;
   nextDueDate: string;
+  visibleToOwner?: boolean;
+  visibleToOwnerAt?: string;
+  visibleToOwnerBy?: string;
 }
 
 interface ServiceItem {
@@ -229,6 +313,110 @@ type Species = 'Dog' | 'Cat';
 type Gender = 'Male' | 'Female';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
+const PH_PHONE_TOTAL_DIGITS = 12;
+const DEFAULT_VETERINARIAN = 'Dr. Sarah Johnson';
+const PRESCRIPTION_FREQUENCY_OPTIONS = [
+  'Once daily',
+  'Twice daily',
+  'Every 12 hours',
+  'Every 8 hours',
+  'Every 6 hours',
+  'Every 24 hours',
+  'Once weekly',
+  'Monthly',
+  'As needed',
+];
+const PRESCRIPTION_DURATION_OPTIONS = [
+  'Single dose',
+  '3 days',
+  '5 days',
+  '7 days',
+  '10 days',
+  '14 days',
+  '21 days',
+  '28 days',
+  'Monthly',
+  'As needed',
+  'Until finished',
+];
+const PRESCRIPTION_ROUTE_OPTIONS = [
+  'By mouth',
+  'Topical',
+  'Eye',
+  'Ear',
+  'Subcutaneous injection',
+  'Intramuscular injection',
+  'Intravenous injection',
+  'As directed',
+];
+const CUSTOM_PRESCRIPTION_OPTION = '__custom__';
+
+const normalizePhilippinePhoneDigits = (value: string): string => {
+  let digits = String(value || '').replace(/\D/g, '');
+
+  if (!digits) return '';
+
+  if (digits.startsWith('0')) {
+    digits = `63${digits.slice(1)}`;
+  } else if (digits.startsWith('9')) {
+    digits = `63${digits}`;
+  } else if (digits.startsWith('639')) {
+    digits = digits;
+  }
+
+  if (digits.startsWith('63')) {
+    return digits.slice(0, PH_PHONE_TOTAL_DIGITS);
+  }
+
+  return digits.slice(0, 10);
+};
+
+const formatPhoneNumber = (value: string): string => {
+  const digits = normalizePhilippinePhoneDigits(value);
+
+  if (!digits) return '';
+
+  const localDigits = digits.startsWith('63') ? digits.slice(2) : digits;
+  const parts = [
+    localDigits.slice(0, 3),
+    localDigits.slice(3, 6),
+    localDigits.slice(6, 10),
+  ].filter(Boolean);
+
+  return `+63 ${parts.join(' ')}`.trim();
+};
+
+const toStoredPhoneNumber = (value: string): string => {
+  const digits = normalizePhilippinePhoneDigits(value);
+  return digits ? `+${digits}` : '';
+};
+
+const formatVeterinarianName = (value: string): string => {
+  const cleaned = String(value || '').replace(/^\s*dr\.?\s*/i, '').trim();
+  return cleaned ? `Dr. ${cleaned}` : '';
+};
+
+const getVeterinarianNameFromAccount = (account: VeterinarianAccount): string => {
+  const combined = `${account.first_name || ''} ${account.last_name || ''}`.trim();
+  const baseName = combined || account.username || account.email || '';
+  return formatVeterinarianName(baseName);
+};
+
+const getPrescriptionPresetValue = (value: string, options: string[]): string => (
+  options.includes(value) ? value : CUSTOM_PRESCRIPTION_OPTION
+);
+
+const formatPrescriptionDisplayParts = (prescription: Prescription): string[] => {
+  const parts = [
+    prescription.dosage,
+    prescription.route,
+    prescription.frequency ? `Freq: ${prescription.frequency}` : '',
+    prescription.duration ? `Duration: ${prescription.duration}` : '',
+  ];
+
+  return parts.filter((part): part is string => !!part && part.trim() !== '');
+};
+
 const DOG_BREEDS = [
   'Labrador Retriever', 'German Shepherd', 'Golden Retriever', 'Bulldog', 
   'Beagle', 'Poodle', 'Rottweiler', 'Yorkshire Terrier', 'Boxer', 
@@ -258,18 +446,143 @@ const LAB_TEST_TYPES = [
   'Allergy Testing',
   'Other'
 ];
-const VETERINARIANS = ['Dr. Sarah Johnson', 'Dr. Michael Chen', 'Dr. Emily Rodriguez', 'Dr. James Wilson'];
+const VETERINARIANS = [
+  DEFAULT_VETERINARIAN,
+  'Dr. Michael Chen',
+  'Dr. Emily Rodriguez',
+  'Dr. James Wilson'
+];
+
+const normalizeVisitHistoryForSnapshot = (history: VisitHistory[]) =>
+  history.map((visit) => ({
+    id: visit.id,
+    date: visit.date,
+    time: visit.time,
+    veterinarian: visit.veterinarian,
+    reason: visit.reason,
+    doctorRemarks: visit.doctorRemarks,
+    weight: visit.weight,
+    weightUnit: visit.weightUnit,
+    sameAsLastWeight: !!visit.sameAsLastWeight,
+    neutered: visit.neutered ?? null,
+    vaccinated: visit.vaccinated ?? null,
+    deceased: visit.deceased ?? null,
+    clinicalExam: visit.clinicalExam
+      ? {
+          length: visit.clinicalExam.length,
+          lengthUnit: visit.clinicalExam.lengthUnit,
+          temperature: visit.clinicalExam.temperature,
+          tempUnit: visit.clinicalExam.tempUnit,
+          heartRate: visit.clinicalExam.heartRate,
+          breathingRate: visit.clinicalExam.breathingRate,
+          additionalFindings: visit.clinicalExam.additionalFindings,
+        }
+      : null,
+    labResults: (visit.labResults || []).map((lab) => ({
+      id: lab.id,
+      testType: lab.testType,
+      fileName: lab.fileName,
+      fileUrl: lab.fileUrl,
+      fileData: lab.fileData || '',
+      interpretation: lab.interpretation,
+      visibleToOwner: !!lab.visibleToOwner,
+      visibleToOwnerAt: lab.visibleToOwnerAt || '',
+      visibleToOwnerBy: lab.visibleToOwnerBy || '',
+    })),
+    prescriptions: (visit.prescriptions || []).map((prescription) => ({
+      id: prescription.id,
+      medicationName: prescription.medicationName,
+      dosage: prescription.dosage,
+      route: prescription.route || '',
+      frequency: prescription.frequency,
+      duration: prescription.duration,
+      prescribedDate: prescription.prescribedDate,
+      instructions: prescription.instructions || '',
+    })),
+    selectedServices: (visit.selectedServices || []).map((service) => ({
+      id: service.id,
+      name: service.name,
+      price: service.price,
+      description: service.description || '',
+    })),
+    appointmentId: visit.appointmentId || '',
+    medicalInformation: visit.medicalInformation
+      ? {
+          id: visit.medicalInformation.id,
+          record_type: visit.medicalInformation.record_type || '',
+          target_id: visit.medicalInformation.target_id ?? null,
+          appointment_id: visit.medicalInformation.appointment_id ?? null,
+          walkin_id: visit.medicalInformation.walkin_id ?? null,
+          on_medication: visit.medicalInformation.on_medication ?? null,
+          medication_details: visit.medicalInformation.medication_details || '',
+          flea_tick_prevention: visit.medicalInformation.flea_tick_prevention ?? null,
+          is_vaccinated: visit.medicalInformation.is_vaccinated ?? null,
+          is_pregnant: visit.medicalInformation.is_pregnant ?? null,
+          additional_notes: visit.medicalInformation.additional_notes || '',
+          has_allergies: visit.medicalInformation.has_allergies ?? null,
+          allergy_details: visit.medicalInformation.allergy_details || '',
+          has_skin_condition: visit.medicalInformation.has_skin_condition ?? null,
+          skin_condition_details: visit.medicalInformation.skin_condition_details || '',
+          been_groomed_before: visit.medicalInformation.been_groomed_before ?? null,
+          created_at: visit.medicalInformation.created_at || '',
+          updated_at: visit.medicalInformation.updated_at || '',
+        }
+      : null,
+    vaccinationDetails: visit.vaccinationDetails
+      ? {
+          id: visit.vaccinationDetails.id || '',
+          vaccineName: visit.vaccinationDetails.vaccineName,
+          doseVolume: visit.vaccinationDetails.doseVolume,
+          injectionSite: visit.vaccinationDetails.injectionSite,
+          manufacturer: visit.vaccinationDetails.manufacturer,
+          dateAdministered: visit.vaccinationDetails.dateAdministered,
+          nextDueDate: visit.vaccinationDetails.nextDueDate,
+          visibleToOwner: !!visit.vaccinationDetails.visibleToOwner,
+          visibleToOwnerAt: visit.vaccinationDetails.visibleToOwnerAt || '',
+          visibleToOwnerBy: visit.vaccinationDetails.visibleToOwnerBy || '',
+        }
+      : null,
+  }));
 
 const AVAILABLE_SERVICES: ServiceItem[] = [
-  { id: 's1', name: 'Consultation', price: 0, description: 'Standard veterinary consultation' },
-  { id: 's2', name: 'Vaccination', price: 0, description: 'Annual vaccination' },
-  { id: 's3', name: 'Laboratory Test', price: 0, description: 'Blood work and lab tests' },
-  { id: 's4', name: 'X-Ray', price: 0, description: 'Radiology services' },
-  { id: 's5', name: 'Ultrasound', price: 0, description: 'Ultrasound examination' },
-  { id: 's6', name: 'Surgery', price: 0, description: 'Surgical procedure' },
-  { id: 's7', name: 'Dental Cleaning', price: 0, description: 'Professional dental cleaning' },
-  { id: 's8', name: 'Grooming', price: 0, description: 'Basic grooming services' },
+  { id: 's1', name: 'Consultation', price: 500, description: 'Standard veterinary consultation' },
+  { id: 's2', name: 'Vaccination', price: 1200, description: 'Annual vaccination' },
+  { id: 's3', name: 'Laboratory Test', price: 800, description: 'Blood work and lab tests' },
+  { id: 's4', name: 'X-Ray', price: 1500, description: 'Radiology services' },
+  { id: 's5', name: 'Ultrasound', price: 2000, description: 'Ultrasound examination' },
+  { id: 's6', name: 'Surgery', price: 3000, description: 'Surgical procedure' },
+  { id: 's7', name: 'Dental Cleaning', price: 800, description: 'Professional dental cleaning' },
+  { id: 's8', name: 'Grooming', price: 500, description: 'Basic grooming services' },
 ];
+
+const normalizeServiceName = (value: string): string =>
+  (value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+const getServiceCategoryKey = (serviceName?: string): string => {
+  const normalized = normalizeServiceName(serviceName || '');
+
+  if (!normalized) return '';
+  if (normalized.includes('consult') || normalized.includes('checkup')) return 'consultation';
+  if (normalized.includes('vaccin') || normalized.includes('anti rabies') || normalized.includes('rabies')) return 'vaccination';
+  if (normalized.includes('laboratory') || normalized === 'laboratory' || normalized.includes('lab test') || normalized.includes('blood work')) return 'laboratory-test';
+  if (normalized.includes('x ray') || normalized.includes('xray') || normalized.includes('radiology')) return 'x-ray';
+  if (normalized.includes('ultrasound')) return 'ultrasound';
+  if (normalized.includes('surgery') || normalized.includes('surgical')) return 'surgery';
+  if (normalized.includes('dental')) return 'dental-cleaning';
+  if (normalized.includes('groom')) return 'grooming';
+
+  return normalized;
+};
+
+const areServicesEquivalent = (firstServiceName?: string, secondServiceName?: string): boolean => {
+  const firstCategory = getServiceCategoryKey(firstServiceName);
+  const secondCategory = getServiceCategoryKey(secondServiceName);
+
+  return !!firstCategory && !!secondCategory && firstCategory === secondCategory;
+};
 
 // Mock appointment data
 const MOCK_APPOINTMENTS: AppointmentRecord[] = [
@@ -304,6 +617,91 @@ const MOCK_APPOINTMENTS: AppointmentRecord[] = [
     status: 'scheduled'
   }
 ];
+
+const APPOINTMENT_DATE_FILTER_OPTIONS: Array<{ value: AppointmentDateFilter; label: string }> = [
+  { value: 'today', label: 'Today' },
+  { value: 'future', label: 'Future' },
+];
+
+const EMPTY_VISIT_FIELD_INPUTS: VisitFieldInputs = {
+  weight: '',
+  length: '',
+  temperature: '',
+  heartRate: '',
+  breathingRate: '',
+};
+
+const getCurrentDateInTimeZone = (timeZone: string): string => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+
+  const year = parts.find((part) => part.type === 'year')?.value || '';
+  const month = parts.find((part) => part.type === 'month')?.value || '';
+  const day = parts.find((part) => part.type === 'day')?.value || '';
+
+  return year && month && day ? `${year}-${month}-${day}` : '';
+};
+
+const normalizeAppointmentDateValue = (dateRaw?: string, displayDate?: string): string => {
+  const normalizedRawDate = (dateRaw || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalizedRawDate)) {
+    return normalizedRawDate;
+  }
+
+  const normalizedDisplayDate = (displayDate || '').trim();
+  const match = normalizedDisplayDate.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) {
+    return '';
+  }
+
+  const [, month, day, year] = match;
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+};
+
+const getAppointmentEmptyStateMessage = (filter: AppointmentDateFilter): string => {
+  switch (filter) {
+    case 'future':
+      return 'No future scheduled appointments found.';
+    case 'today':
+    default:
+      return 'No scheduled appointments found for today.';
+  }
+};
+
+const hasMedicalInformationContent = (medicalInformation?: MedicalInformation | null): boolean => {
+  if (!medicalInformation) return false;
+
+  return [
+    medicalInformation.on_medication,
+    medicalInformation.flea_tick_prevention,
+    medicalInformation.is_vaccinated,
+    medicalInformation.is_pregnant,
+    medicalInformation.has_allergies,
+    medicalInformation.has_skin_condition,
+    medicalInformation.been_groomed_before,
+  ].some((value) => value !== null && value !== undefined)
+    || Boolean(
+      medicalInformation.medication_details?.trim()
+      || medicalInformation.additional_notes?.trim()
+      || medicalInformation.allergy_details?.trim()
+      || medicalInformation.skin_condition_details?.trim()
+    );
+};
+
+const formatMedicalInformationAnswer = (value?: boolean | null): string => {
+  if (value === null || value === undefined) {
+    return 'Not recorded';
+  }
+
+  return value ? 'Yes' : 'No';
+};
+
+const RATE_RANGE_INPUT_PATTERN = /^\d{0,3}(?:-\d{0,3})?$/;
+const RATE_RANGE_COMPLETE_PATTERN = /^(\d{2,3})-(\d{2,3})$/;
 
 // Medication templates database with "Other" option
 const MEDICATION_TEMPLATES: MedicationTemplate[] = [
@@ -557,6 +955,9 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [records, setRecords] = useState<MedicalRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
+  const [isSavingRecord, setIsSavingRecord] = useState<boolean>(false);
+  const [openingRecordId, setOpeningRecordId] = useState<number | null>(null);
+  const [billingNavigationVisitId, setBillingNavigationVisitId] = useState<string | null>(null);
 
   // Medication Modal States
   const [showMedicationModal, setShowMedicationModal] = useState<boolean>(false);
@@ -566,9 +967,11 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   const [showLabPanel, setShowLabPanel] = useState<boolean>(false);
   
   // Appointment/Walk-in States
-  const [visitType, setVisitType] = useState<'appointment' | 'walkin'>('walkin');
+  const [visitType, setVisitType] = useState<'' | 'appointment' | 'walkin'>('');
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentRecord | null>(null);
+  const [selectedPrimaryServiceId, setSelectedPrimaryServiceId] = useState<string>('');
   const [appointmentRecords, setAppointmentRecords] = useState<AppointmentRecord[]>([]);
+  const [appointmentDateFilter, setAppointmentDateFilter] = useState<AppointmentDateFilter>('today');
   const [selectedServices, setSelectedServices] = useState<ServiceItem[]>([]);
   const [showServicesPanel, setShowServicesPanel] = useState<boolean>(false);
   
@@ -583,7 +986,9 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   const [activeFilter, setActiveFilter] = useState<string>('');
   const [showPetSearch, setShowPetSearch] = useState<boolean>(false);
   const [petSearchQuery, setPetSearchQuery] = useState<string>('');
-  const [searchResults, setSearchResults] = useState<SearchResult[]>(MOCK_PET_DATABASE);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [allSearchResults, setAllSearchResults] = useState<SearchResult[]>([]);
+  const [veterinarianOptions, setVeterinarianOptions] = useState<string[]>(VETERINARIANS);
   const [showVaccinationProof, setShowVaccinationProof] = useState<boolean>(false);
   const [selectedVaccinationProof, setSelectedVaccinationProof] = useState<string>('');
   const [editModeEnabled, setEditModeEnabled] = useState<boolean>(false);
@@ -598,14 +1003,15 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   const [petImageFile, setPetImageFile] = useState<File | null>(null);
   const [lastWeight, setLastWeight] = useState<{ value: number; unit: 'kg' | 'lbs' } | null>(null);
   const [showPrescriptionPanel, setShowPrescriptionPanel] = useState<boolean>(false);
+  const [prescriptionRemarks, setPrescriptionRemarks] = useState<string>('');
   const [expandedVisitId, setExpandedVisitId] = useState<string | null>(null);
   
   const [newVisit, setNewVisit] = useState<VisitHistory>({
     id: '',
     date: '',
     time: '',
-    veterinarian: VETERINARIANS[0],
-    reason: REASONS[0],
+    veterinarian: '',
+    reason: '',
     doctorRemarks: '',
     weight: 0,
     weightUnit: 'kg',
@@ -635,6 +1041,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     message: '',
     showCancel: false
   });
+  const [ownerShareActionKey, setOwnerShareActionKey] = useState<string>('');
 
   // Filter States
   const [dateFilter, setDateFilter] = useState<string>('');
@@ -646,6 +1053,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
 
   // Form States
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [selectedPetId, setSelectedPetId] = useState<number | null>(null);
   const [patientId, setPatientId] = useState<string>('');
   const [petName, setPetName] = useState<string>('');
   const [species, setSpecies] = useState<Species>('Dog');
@@ -662,7 +1070,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   const [vaccinated, setVaccinated] = useState<boolean>(false);
   const [vaccinationProof, setVaccinationProof] = useState<string>('');
   const [doctorRemarks, setDoctorRemarks] = useState<string>('');
-  const [doctorAssigned, setDoctorAssigned] = useState<string>(VETERINARIANS[0]);
+  const [doctorAssigned, setDoctorAssigned] = useState<string>(DEFAULT_VETERINARIAN);
   const [reasonForVisit, setReasonForVisit] = useState<string>(REASONS[0]);
   const [reasonOther, setReasonOther] = useState<string>('');
   const [visitHistory, setVisitHistory] = useState<VisitHistory[]>([]);
@@ -680,18 +1088,215 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   // Vaccination Details State
   const [showVaccinationDetails, setShowVaccinationDetails] = useState<boolean>(false);
   const [vaccinationDetails, setVaccinationDetails] = useState<VaccinationDetails>({
+    id: '',
     vaccineName: '',
     doseVolume: '',
     injectionSite: '',
     manufacturer: '',
     dateAdministered: new Date().toISOString().split('T')[0],
-    nextDueDate: ''
+    nextDueDate: '',
+    visibleToOwner: false,
+    visibleToOwnerAt: '',
+    visibleToOwnerBy: '',
   });
     
   // Form Errors
   const [formErrors, setFormErrors] = useState<FormErrors>({});
+  const [visitFormErrors, setVisitFormErrors] = useState<VisitFormErrors>({});
+  const [visitFieldInputs, setVisitFieldInputs] = useState<VisitFieldInputs>({ ...EMPTY_VISIT_FIELD_INPUTS });
+  const [formBaselineSnapshot, setFormBaselineSnapshot] = useState<string>('');
+  const canEditPetProfileFields = editModeEnabled && !deceased;
+  const canEditDeceasedStatus = editModeEnabled;
+  const selectedPrimaryService =
+    AVAILABLE_SERVICES.find((service) => service.id === selectedPrimaryServiceId) || null;
 
   // Helper functions
+  const buildPatientDisplayId = (petId: number | string): string => {
+    const normalized = Number(petId);
+    if (Number.isNaN(normalized)) return `PET-${petId}`;
+    return `PET-${normalized.toString().padStart(3, '0')}`;
+  };
+
+  const serializeFormSnapshot = (data: {
+    selectedPetId: number | null;
+    patientId: string;
+    petName: string;
+    species: Species;
+    breed: string;
+    breedOther: string;
+    gender: Gender;
+    dateOfBirth: string;
+    age: string;
+    weight: string;
+    weightUnit: 'kg' | 'lbs';
+    colorMarkings: string;
+    neutered: boolean;
+    deceased: boolean;
+    vaccinated: boolean;
+    vaccinationProof: string;
+    petImage: string;
+    ownerFirstName: string;
+    ownerLastName: string;
+    ownerEmail: string;
+    ownerContact: string;
+    doctorAssigned: string;
+    reasonForVisit: string;
+    reasonOther: string;
+    visitHistory: VisitHistory[];
+  }): string =>
+    JSON.stringify({
+      ...data,
+      visitHistory: normalizeVisitHistoryForSnapshot(data.visitHistory),
+    });
+
+  const buildEmptyFormSnapshot = (): string =>
+    serializeFormSnapshot({
+      selectedPetId: null,
+      patientId: '',
+      petName: '',
+      species: 'Dog',
+      breed: '',
+      breedOther: '',
+      gender: 'Male',
+      dateOfBirth: '',
+      age: '',
+      weight: '',
+      weightUnit: 'kg',
+      colorMarkings: '',
+      neutered: false,
+      deceased: false,
+      vaccinated: false,
+      vaccinationProof: '',
+      petImage: '',
+      ownerFirstName: '',
+      ownerLastName: '',
+      ownerEmail: '',
+      ownerContact: '',
+      doctorAssigned: veterinarianOptions[0] || DEFAULT_VETERINARIAN,
+      reasonForVisit: REASONS[0],
+      reasonOther: '',
+      visitHistory: [],
+    });
+
+  const buildCurrentFormSnapshot = (): string =>
+    serializeFormSnapshot({
+      selectedPetId,
+      patientId,
+      petName,
+      species,
+      breed,
+      breedOther,
+      gender,
+      dateOfBirth,
+      age,
+      weight,
+      weightUnit,
+      colorMarkings,
+      neutered,
+      deceased,
+      vaccinated,
+      vaccinationProof,
+      petImage,
+      ownerFirstName,
+      ownerLastName,
+      ownerEmail,
+      ownerContact,
+      doctorAssigned,
+      reasonForVisit,
+      reasonOther,
+      visitHistory,
+    });
+
+  const buildFormSnapshotWithVisitHistory = (nextVisitHistory: VisitHistory[]): string =>
+    serializeFormSnapshot({
+      selectedPetId,
+      patientId,
+      petName,
+      species,
+      breed,
+      breedOther,
+      gender,
+      dateOfBirth,
+      age,
+      weight,
+      weightUnit,
+      colorMarkings,
+      neutered,
+      deceased,
+      vaccinated,
+      vaccinationProof,
+      petImage,
+      ownerFirstName,
+      ownerLastName,
+      ownerEmail,
+      ownerContact,
+      doctorAssigned,
+      reasonForVisit,
+      reasonOther,
+      visitHistory: nextVisitHistory,
+    });
+
+  const buildRecordFormSnapshot = (record: MedicalRecord): string =>
+    serializeFormSnapshot({
+      selectedPetId: record.petId || null,
+      patientId: record.patientId || buildPatientDisplayId(record.petId || record.id || ''),
+      petName: record.petName || '',
+      species: record.petDetails?.species || 'Dog',
+      breed: record.petDetails?.breed || '',
+      breedOther: '',
+      gender: record.petDetails?.gender || 'Male',
+      dateOfBirth: record.petDetails?.dateOfBirth || '',
+      age: record.petDetails?.age || '',
+      weight: record.petDetails?.weight?.toString() || '',
+      weightUnit: record.petDetails?.weightUnit || 'kg',
+      colorMarkings: record.petDetails?.colorMarkings || '',
+      neutered: record.petDetails?.neutered || false,
+      deceased: record.deceased || record.petDetails?.deceased || false,
+      vaccinated: record.petDetails?.vaccinated || false,
+      vaccinationProof: record.petDetails?.vaccinationProof || '',
+      petImage: record.petDetails?.image || '',
+      ownerFirstName: record.ownerFirstName || '',
+      ownerLastName: record.ownerLastName || '',
+      ownerEmail: record.ownerEmail || '',
+      ownerContact: formatPhoneNumber(record.ownerContact || ''),
+      doctorAssigned: formatVeterinarianName(record.veterinarian) || DEFAULT_VETERINARIAN,
+      reasonForVisit: record.reason || REASONS[0],
+      reasonOther: '',
+      visitHistory: record.visitHistory || [],
+    });
+
+  const hasUnsavedChanges = viewMode !== 'list' && buildCurrentFormSnapshot() !== formBaselineSnapshot;
+
+  const confirmLeaveCurrentView = (
+    onProceed: () => void,
+    message: React.ReactNode = 'You have unsaved changes. Are you sure you want to leave without saving?'
+  ) => {
+    if (!hasUnsavedChanges) {
+      onProceed();
+      return;
+    }
+
+    showAlert('confirm', 'Unsaved Changes', message, onProceed, true);
+  };
+
+  const handleProtectedNavigation = (path: string, navigateFn: () => void) => {
+    if (path === location.pathname) {
+      navigateFn();
+      return;
+    }
+
+    confirmLeaveCurrentView(
+      navigateFn,
+      'You have unsaved changes. Are you sure you want to leave this page without saving?'
+    );
+  };
+
+  useBeforeUnload((event) => {
+    if (!hasUnsavedChanges) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+
   const formatRate = (value: string): string => {
     const cleaned = value.replace(/[^\d-]/g, '');
     if (cleaned.match(/^\d+-\d+$/)) return cleaned;
@@ -729,7 +1334,9 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     const filtered = MEDICATION_TEMPLATES.filter(med =>
       med.name.toLowerCase().includes(query.toLowerCase()) ||
       med.dosage.toLowerCase().includes(query.toLowerCase()) ||
-      med.frequency.toLowerCase().includes(query.toLowerCase())
+      (med.route || '').toLowerCase().includes(query.toLowerCase()) ||
+      med.frequency.toLowerCase().includes(query.toLowerCase()) ||
+      med.duration.toLowerCase().includes(query.toLowerCase())
     );
     // Keep "Other" at the top if it matches or always show it
     const otherMed = filtered.find(m => m.id === 'other');
@@ -742,20 +1349,265 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   };
 
   const isVaccinationSelected = () => {
-    const isReasonVaccination = newVisit.reason === 'Vaccination';
-    const isServiceVaccination = selectedServices.some(service => service.name === 'Vaccination');
-    return isReasonVaccination || isServiceVaccination;
+    return selectedServices.some((service) => getServiceCategoryKey(service.name) === 'vaccination');
   };
 
-  const fetchAppointmentsForPet = async (petId: string) => {
-    setAppointmentRecords(MOCK_APPOINTMENTS);
+  const normalizePrescriptionForForm = (prescription: Prescription): Prescription => ({
+    ...prescription,
+    frequency: prescription.frequency || '',
+    duration: prescription.duration || '',
+    route: prescription.route || '',
+    instructions: prescription.instructions || '',
+  });
+
+  const getSharedPrescriptionInstructions = (prescriptions: Prescription[] = []): string => {
+    const instructionItems = prescriptions
+      .filter((prescription) => (prescription.medicationName || '').trim() !== '')
+      .map((prescription) => ({
+        medicationName: prescription.medicationName || 'Medication',
+        instructions: stripHtmlForPDF(prescription.instructions || '').trim(),
+      }))
+      .filter((item) => item.instructions !== '');
+
+    if (instructionItems.length === 0) {
+      return '';
+    }
+
+    const uniqueInstructions = Array.from(new Set(instructionItems.map((item) => item.instructions)));
+    if (uniqueInstructions.length === 1) {
+      return uniqueInstructions[0];
+    }
+
+    return instructionItems
+      .map((item) => `${item.medicationName}: ${item.instructions}`)
+      .join('\n\n');
+  };
+
+  const applySharedPrescriptionInstructions = (
+    prescriptions: Prescription[] = [],
+    sharedInstructions: string
+  ): Prescription[] => {
+    const normalizedInstructions = sharedInstructions.trim();
+    let sharedInstructionsAssigned = false;
+
+    return prescriptions.map((prescription) => {
+      if (!(prescription.medicationName || '').trim()) {
+        return {
+          ...prescription,
+          instructions: '',
+        };
+      }
+
+      if (!normalizedInstructions || sharedInstructionsAssigned) {
+        return {
+          ...prescription,
+          instructions: '',
+        };
+      }
+
+      sharedInstructionsAssigned = true;
+      return {
+        ...prescription,
+        instructions: normalizedInstructions,
+      };
+    });
+  };
+
+  const normalizeVisitForDisplay = (visit: VisitHistory): VisitHistory => ({
+    ...visit,
+    veterinarian: formatVeterinarianName(visit.veterinarian) || visit.veterinarian,
+    prescriptions: (visit.prescriptions || []).map(normalizePrescriptionForForm),
+  });
+
+  const normalizeRecordForDisplay = (record: MedicalRecord): MedicalRecord => ({
+    ...record,
+    veterinarian: formatVeterinarianName(record.veterinarian) || record.veterinarian,
+    petDetails: record.petDetails
+      ? {
+          ...record.petDetails,
+          doctorAssigned: formatVeterinarianName(record.petDetails.doctorAssigned) || record.petDetails.doctorAssigned,
+        }
+      : record.petDetails,
+    visitHistory: (record.visitHistory || []).map(normalizeVisitForDisplay),
+  });
+
+  const fetchVeterinarians = async (): Promise<void> => {
+    try {
+      const response = await apiService.getDoctors();
+      const doctors = Array.isArray(response) ? response : [];
+      const names = Array.from(
+        new Set(
+          doctors
+            .map((doctor: VeterinarianAccount) => getVeterinarianNameFromAccount(doctor))
+            .filter(Boolean)
+        )
+      );
+
+      if (names.length > 0) {
+        setVeterinarianOptions(names);
+        setDoctorAssigned((prev) => {
+          const normalized = formatVeterinarianName(prev);
+          if (!normalized || normalized === DEFAULT_VETERINARIAN || !names.includes(normalized)) {
+            return names[0];
+          }
+          return normalized;
+        });
+        setNewVisit((prev) => {
+          const normalized = formatVeterinarianName(prev.veterinarian);
+          if (!normalized) {
+            return prev;
+          }
+          if (normalized === prev.veterinarian) {
+            return prev;
+          }
+          return { ...prev, veterinarian: normalized };
+        });
+        if (
+          viewMode === 'add' &&
+          !selectedPetId &&
+          !patientId &&
+          !petName &&
+          !ownerFirstName &&
+          !ownerLastName &&
+          visitHistory.length === 0
+        ) {
+          setFormBaselineSnapshot(
+            serializeFormSnapshot({
+              selectedPetId: null,
+              patientId: '',
+              petName: '',
+              species: 'Dog',
+              breed: '',
+              breedOther: '',
+              gender: 'Male',
+              dateOfBirth: '',
+              age: '',
+              weight: '',
+              weightUnit: 'kg',
+              colorMarkings: '',
+              neutered: false,
+              deceased: false,
+              vaccinated: false,
+              vaccinationProof: '',
+              petImage: '',
+              ownerFirstName: '',
+              ownerLastName: '',
+              ownerEmail: '',
+              ownerContact: '',
+              doctorAssigned: names[0],
+              reasonForVisit: REASONS[0],
+              reasonOther: '',
+              visitHistory: [],
+            })
+          );
+        }
+        return;
+      }
+
+      setVeterinarianOptions(VETERINARIANS);
+    } catch (error) {
+      console.error('Error fetching veterinarians:', error);
+      setVeterinarianOptions(VETERINARIANS);
+    }
+  };
+
+  const fetchAppointmentsForPet = async (petId: number): Promise<void> => {
+    try {
+      const response = await apiService.getEmrPetAppointments(petId);
+      setAppointmentRecords(
+        (response?.appointments || []).map((appointment: AppointmentRecord) => ({
+          ...appointment,
+          veterinarian: formatVeterinarianName(appointment.veterinarian) || appointment.veterinarian,
+        }))
+      );
+    } catch (error) {
+      console.error('Error fetching appointments for pet:', error);
+      setAppointmentRecords([]);
+    }
+  };
+
+  const clearVisitFieldError = (field: keyof VisitFormErrors): void => {
+    setVisitFormErrors((prev) => {
+      if (!prev[field]) {
+        return prev;
+      }
+
+      const nextErrors = { ...prev };
+      delete nextErrors[field];
+      return nextErrors;
+    });
+  };
+
+  const openAddVisitModal = (): void => {
+    setAppointmentDateFilter('today');
+    setVisitFormErrors({});
+    setVisitType('');
+    setSelectedAppointment(null);
+    setSelectedPrimaryServiceId('');
+    setSelectedServices([]);
+    setNewVisit((prev) => ({
+      ...prev,
+      veterinarian: '',
+      reason: ''
+    }));
+    setVisitFieldInputs({
+      weight: newVisit.weight > 0 ? newVisit.weight.toString() : '',
+      length: (newVisit.clinicalExam?.length || 0) > 0 ? newVisit.clinicalExam?.length.toString() || '' : '',
+      temperature: (newVisit.clinicalExam?.temperature || 0) > 0 ? newVisit.clinicalExam?.temperature.toString() || '' : '',
+      heartRate: newVisit.clinicalExam?.heartRate || '',
+      breathingRate: newVisit.clinicalExam?.breathingRate || '',
+    });
+    setPrescriptionRemarks((current) => current || getSharedPrescriptionInstructions(newVisit.prescriptions || []));
+    setShowAddVisit(true);
+  };
+
+  const getLockedPrimaryServiceNames = (): string[] => {
+    if (visitType === 'appointment') {
+      return (selectedAppointment?.services || []).map((service) => service.name).filter(Boolean);
+    }
+
+    return visitType === 'walkin' && selectedPrimaryService ? [selectedPrimaryService.name] : [];
+  };
+
+  const isServiceSelectedInVisit = (service: ServiceItem): boolean =>
+    selectedServices.some((selectedService) => areServicesEquivalent(selectedService.name, service.name));
+
+  const isServiceLockedInVisit = (service: ServiceItem): boolean =>
+    getLockedPrimaryServiceNames().some((lockedServiceName) => areServicesEquivalent(lockedServiceName, service.name));
+
+  const handleWalkInPrimaryServiceChange = (serviceId: string): void => {
+    const previousPrimaryService = AVAILABLE_SERVICES.find((service) => service.id === selectedPrimaryServiceId) || null;
+    const nextPrimaryService = AVAILABLE_SERVICES.find((service) => service.id === serviceId) || null;
+
+    setSelectedPrimaryServiceId(serviceId);
+    clearVisitFieldError('primaryService');
+
+    setSelectedServices((prev) => {
+      const withoutPreviousPrimary = previousPrimaryService
+        ? prev.filter((service) => !areServicesEquivalent(service.name, previousPrimaryService.name))
+        : prev;
+
+      if (!nextPrimaryService) {
+        return withoutPreviousPrimary;
+      }
+
+      if (withoutPreviousPrimary.some((service) => areServicesEquivalent(service.name, nextPrimaryService.name))) {
+        return withoutPreviousPrimary;
+      }
+
+      return [nextPrimaryService, ...withoutPreviousPrimary];
+    });
   };
 
   const toggleService = (service: ServiceItem) => {
+    if (isServiceLockedInVisit(service)) {
+      return;
+    }
+
     setSelectedServices(prev => {
-      const exists = prev.find(s => s.id === service.id);
+      const exists = prev.some((selectedService) => areServicesEquivalent(selectedService.name, service.name));
       if (exists) {
-        return prev.filter(s => s.id !== service.id);
+        return prev.filter((selectedService) => !areServicesEquivalent(selectedService.name, service.name));
       } else {
         return [...prev, service];
       }
@@ -763,9 +1615,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   };
 
   const isLaboratorySelected = () => {
-    const isReasonLaboratory = newVisit.reason === 'Laboratory';
-    const isServiceLaboratory = selectedServices.some(service => service.name === 'Laboratory Test');
-    return isReasonLaboratory || isServiceLaboratory;
+    return selectedServices.some((service) => getServiceCategoryKey(service.name) === 'laboratory-test');
   };
 
   const getTotalServicesPrice = () => {
@@ -779,6 +1629,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
         id: Date.now().toString(),
         medicationName: '',
         dosage: '',
+        route: '',
         frequency: '',
         duration: '',
         prescribedDate: new Date().toISOString().split('T')[0],
@@ -786,21 +1637,22 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
       };
       setNewVisit({
         ...newVisit,
-        prescriptions: [...(newVisit.prescriptions || []), newPrescription]
+        prescriptions: [...(newVisit.prescriptions || []), normalizePrescriptionForForm(newPrescription)]
       });
     } else {
       const newPrescription: Prescription = {
         id: Date.now().toString(),
         medicationName: medication.name,
         dosage: medication.dosage,
+        route: medication.route || '',
         frequency: medication.frequency,
         duration: medication.duration,
         prescribedDate: new Date().toISOString().split('T')[0],
-        instructions: medication.instructions
+        instructions: ''
       };
       setNewVisit({
         ...newVisit,
-        prescriptions: [...(newVisit.prescriptions || []), newPrescription]
+        prescriptions: [...(newVisit.prescriptions || []), normalizePrescriptionForForm(newPrescription)]
       });
     }
     setShowMedicationModal(false);
@@ -863,10 +1715,39 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     title: string, 
     message: React.ReactNode,
     onConfirm?: () => void, 
-    showCancel: boolean = false
+    showCancel: boolean = false,
+    onCancel?: () => void
   ) => {
-    setModalConfig({ type, title, message, onConfirm, showCancel });
+    setModalConfig({ type, title, message, onConfirm, onCancel, showCancel });
     setModalVisible(true);
+  };
+
+  const buildValidationSummary = (messages: string[]): React.ReactNode => (
+    <div style={{ display: 'grid', gap: '6px', textAlign: 'left' }}>
+      <div>Please complete the required fields:</div>
+      {Array.from(new Set(messages.filter(Boolean))).map((message, index) => (
+        <div key={`${index}-${message}`}>- {message}</div>
+      ))}
+    </div>
+  );
+
+  const showValidationAlert = (title: string, messages: string[]): void => {
+    const filteredMessages = Array.from(new Set(messages.filter(Boolean)));
+    if (filteredMessages.length === 0) return;
+    showAlert('error', title, buildValidationSummary(filteredMessages));
+  };
+
+  const getApiErrorMessage = (error: any, fallback: string): string => {
+    if (typeof error?.response?.data?.error === 'string' && error.response.data.error.trim()) {
+      return error.response.data.error;
+    }
+    if (typeof error?.data?.error === 'string' && error.data.error.trim()) {
+      return error.data.error;
+    }
+    if (typeof error?.message === 'string' && error.message.trim()) {
+      return error.message;
+    }
+    return fallback;
   };
 
   const loadCurrentUser = async (): Promise<void> => {
@@ -881,16 +1762,142 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     }
   };
 
+  const getOwnerShareActorName = (): string => {
+    const candidate = [
+      currentUser?.fullName,
+      currentUser?.username,
+    ].find((value): value is string => typeof value === 'string' && value.trim() !== '');
+
+    return candidate || 'Clinic staff';
+  };
+
+  const updateLabResultOwnerVisibilityInState = (
+    labResultId: string,
+    visibility: { visibleToOwner: boolean; visibleToOwnerAt: string; visibleToOwnerBy: string },
+    shouldRefreshBaseline: boolean
+  ) => {
+    const nextVisitHistory = visitHistory.map((visit) => ({
+      ...visit,
+      labResults: (visit.labResults || []).map((lab) =>
+        lab.id === labResultId
+          ? { ...lab, ...visibility }
+          : lab
+      ),
+    }));
+
+    setVisitHistory(nextVisitHistory);
+    if (shouldRefreshBaseline) {
+      setFormBaselineSnapshot(buildFormSnapshotWithVisitHistory(nextVisitHistory));
+    }
+  };
+
+  const updateVaccinationOwnerVisibilityInState = (
+    vaccinationId: string,
+    visibility: { visibleToOwner: boolean; visibleToOwnerAt: string; visibleToOwnerBy: string },
+    shouldRefreshBaseline: boolean
+  ) => {
+    const nextVisitHistory = visitHistory.map((visit) =>
+      visit.vaccinationDetails?.id === vaccinationId
+        ? {
+            ...visit,
+            vaccinationDetails: {
+              ...visit.vaccinationDetails,
+              ...visibility,
+            },
+          }
+        : visit
+    );
+
+    setVisitHistory(nextVisitHistory);
+    if (shouldRefreshBaseline) {
+      setFormBaselineSnapshot(buildFormSnapshotWithVisitHistory(nextVisitHistory));
+    }
+  };
+
+  const handleSetLabResultOwnerVisibility = async (labResult: LabResult, visibleToOwner: boolean): Promise<void> => {
+    if (!labResult.id) {
+      showAlert('error', 'Share Unavailable', 'Only saved lab results can be shared to the owner portal.');
+      return;
+    }
+
+    const actionKey = `lab-${labResult.id}`;
+    const hadUnsavedChangesBeforeShare = hasUnsavedChanges;
+    setOwnerShareActionKey(actionKey);
+
+    try {
+      const response = await apiService.updateEmrLabResultOwnerVisibility(labResult.id, {
+        visibleToOwner,
+        visibleToOwnerBy: getOwnerShareActorName(),
+      });
+      const updatedLabResult = response?.labResult || {};
+      updateLabResultOwnerVisibilityInState(labResult.id, {
+        visibleToOwner: !!updatedLabResult.visibleToOwner,
+        visibleToOwnerAt: updatedLabResult.visibleToOwnerAt || '',
+        visibleToOwnerBy: updatedLabResult.visibleToOwnerBy || '',
+      }, !hadUnsavedChangesBeforeShare);
+    } catch (error) {
+      console.error('Failed to update lab result visibility:', error);
+      showAlert('error', 'Share Failed', 'We could not update the owner portal visibility for this lab result.');
+    } finally {
+      setOwnerShareActionKey('');
+    }
+  };
+
+  const handleSetVaccinationOwnerVisibility = async (
+    vaccination: VaccinationDetails | null | undefined,
+    vaccineName: string
+  ): Promise<void> => {
+    if (!vaccination?.id) {
+      showAlert('error', 'Share Unavailable', 'Only saved vaccination records can be shared to the owner portal.');
+      return;
+    }
+
+    const actionKey = `vaccination-${vaccination.id}`;
+    const hadUnsavedChangesBeforeShare = hasUnsavedChanges;
+    setOwnerShareActionKey(actionKey);
+
+    try {
+      const response = await apiService.updateEmrVaccinationOwnerVisibility(vaccination.id, {
+        visibleToOwner: !vaccination.visibleToOwner,
+        visibleToOwnerBy: getOwnerShareActorName(),
+      });
+      const updatedVaccination = response?.vaccination || {};
+      updateVaccinationOwnerVisibilityInState(vaccination.id, {
+        visibleToOwner: !!updatedVaccination.visibleToOwner,
+        visibleToOwnerAt: updatedVaccination.visibleToOwnerAt || '',
+        visibleToOwnerBy: updatedVaccination.visibleToOwnerBy || '',
+      }, !hadUnsavedChangesBeforeShare);
+    } catch (error) {
+      console.error('Failed to update vaccination visibility:', error);
+      showAlert('error', 'Share Failed', `We could not update the owner portal visibility for ${vaccineName || 'this vaccination record'}.`);
+    } finally {
+      setOwnerShareActionKey('');
+    }
+  };
+
   const fetchRecords = async (): Promise<void> => {
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setRecords(MOCK_RECORDS);
+      const response = await apiService.getEmrRecords();
+      setRecords((response?.records || []).map((record: MedicalRecord) => normalizeRecordForDisplay(record)));
     } catch (error) {
       console.error(error);
       showAlert('error', 'Error', 'Failed to fetch medical records.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSearchPets = async (): Promise<void> => {
+    try {
+      const response = await apiService.getEmrSearchPets();
+      const pets: SearchResult[] = response?.pets || [];
+      setAllSearchResults(pets);
+      setSearchResults(pets);
+    } catch (error) {
+      console.error('Error fetching EMR pet search data:', error);
+      setAllSearchResults([]);
+      setSearchResults([]);
     }
   };
 
@@ -941,6 +1948,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
       const validPrescriptions = (visit.prescriptions || []).filter(
         p => p.medicationName && p.medicationName.trim() !== ''
       );
+      const sharedPrescriptionInstructions = getSharedPrescriptionInstructions(validPrescriptions);
 
       if (validPrescriptions.length === 0) {
         showAlert('error', 'No Prescription', 'This visit has no prescribed medications.');
@@ -953,7 +1961,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
         visitDate: `${visit.date} at ${visit.time}`,
         veterinarian: visit.veterinarian,
         prescriptions: validPrescriptions,
-        doctorRemarks: visit.doctorRemarks ? stripHtmlForPDF(visit.doctorRemarks) : '',
+        instructionsText: sharedPrescriptionInstructions,
       };
 
 
@@ -980,10 +1988,10 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
 
   const filterSearchResults = (query: string) => {
     if (!query.trim()) {
-      setSearchResults(MOCK_PET_DATABASE);
+      setSearchResults(allSearchResults);
       return;
     }
-    const filtered = MOCK_PET_DATABASE.filter(result => 
+    const filtered = allSearchResults.filter(result =>
       result.petName.toLowerCase().includes(query.toLowerCase()) ||
       result.ownerName.toLowerCase().includes(query.toLowerCase()) ||
       result.ownerUsername?.toLowerCase().includes(query.toLowerCase())
@@ -1010,7 +2018,92 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     }
   };
 
+  const handleEditModeToggle = (shouldEnable: boolean): void => {
+    if (!shouldEnable) {
+      setEditModeEnabled(false);
+      return;
+    }
+
+    showAlert(
+      'confirm',
+      'Enable Edit Mode',
+      'Turn on edit mode for this patient record?',
+      () => setEditModeEnabled(true),
+      true
+    );
+  };
+
   const addNewVisit = () => {
+    const errors: VisitFormErrors = {};
+    const trimmedWeight = visitFieldInputs.weight.trim();
+    const trimmedLength = visitFieldInputs.length.trim();
+    const trimmedTemperature = visitFieldInputs.temperature.trim();
+    const trimmedHeartRate = visitFieldInputs.heartRate.trim();
+    const trimmedBreathingRate = visitFieldInputs.breathingRate.trim();
+
+    if (!visitType) {
+      errors.visitType = 'Select whether this visit is an appointment or a walk-in.';
+    }
+
+    if (visitType === 'appointment' && !selectedAppointment) {
+      errors.appointment = 'Select a scheduled appointment from the current filter.';
+    }
+
+    if (visitType === 'walkin' && !selectedPrimaryServiceId) {
+      errors.primaryService = 'Select a primary service for this walk-in visit.';
+    }
+
+    if (visitType === 'walkin' && !newVisit.veterinarian.trim()) {
+      errors.veterinarian = 'Select a doctor for this walk-in visit.';
+    }
+
+    if (!newVisit.sameAsLastWeight && trimmedWeight !== '') {
+      const parsedWeight = Number(trimmedWeight);
+      if (!Number.isFinite(parsedWeight) || parsedWeight <= 0) {
+        errors.weight = 'Enter a valid positive weight.';
+      }
+    }
+
+    if (trimmedLength !== '') {
+      const parsedLength = Number(trimmedLength);
+      if (!Number.isFinite(parsedLength) || parsedLength <= 0) {
+        errors.length = 'Enter a valid positive length.';
+      }
+    }
+
+    if (trimmedTemperature !== '') {
+      const parsedTemperature = Number(trimmedTemperature);
+      if (!Number.isFinite(parsedTemperature) || parsedTemperature <= 0) {
+        errors.temperature = 'Enter a valid positive temperature.';
+      }
+    }
+
+    const heartRateMatch = trimmedHeartRate.match(RATE_RANGE_COMPLETE_PATTERN);
+    if (trimmedHeartRate !== '') {
+      if (!heartRateMatch) {
+        errors.heartRate = 'Enter a bpm range like 80-120.';
+      } else if (Number(heartRateMatch[1]) > Number(heartRateMatch[2])) {
+        errors.heartRate = 'Enter the lower bpm first, then the higher bpm.';
+      }
+    }
+
+    const breathingRateMatch = trimmedBreathingRate.match(RATE_RANGE_COMPLETE_PATTERN);
+    if (trimmedBreathingRate !== '') {
+      if (!breathingRateMatch) {
+        errors.breathingRate = 'Enter a breaths/min range like 15-30.';
+      } else if (Number(breathingRateMatch[1]) > Number(breathingRateMatch[2])) {
+        errors.breathingRate = 'Enter the lower breaths/min first, then the higher value.';
+      }
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setVisitFormErrors(errors);
+      showValidationAlert('Missing Visit Information', Object.values(errors).filter((message): message is string => Boolean(message)));
+      return;
+    }
+
+    setVisitFormErrors({});
+
     // Show confirmation dialog first
     showAlert(
       'confirm',
@@ -1028,13 +2121,23 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
         
         const finalWeight = newVisit.sameAsLastWeight && lastWeightValue 
           ? lastWeightValue.value 
-          : parseFloat(newVisit.weight.toString()) || 0;
+          : parseFloat(trimmedWeight) || 0;
         const finalWeightUnit = newVisit.sameAsLastWeight && lastWeightValue 
           ? lastWeightValue.unit 
           : newVisit.weightUnit;
+        const finalClinicalExam = {
+          ...newVisit.clinicalExam!,
+          length: parseFloat(trimmedLength) || 0,
+          temperature: parseFloat(trimmedTemperature) || 0,
+          heartRate: trimmedHeartRate,
+          breathingRate: trimmedBreathingRate,
+        };
+        const finalPrescriptions = applySharedPrescriptionInstructions(newVisit.prescriptions || [], prescriptionRemarks);
         
         const newVisitEntry: VisitHistory = {
           id: Date.now().toString(),
+          sourceType: visitType === 'appointment' && selectedAppointment ? 'appointment' : 'manual',
+          sourceId: selectedAppointment?.id || null,
           date: visitType === 'appointment' && selectedAppointment 
             ? selectedAppointment.date 
             : now.toLocaleDateString(),
@@ -1045,8 +2148,8 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
             ? selectedAppointment.veterinarian
             : newVisit.veterinarian,
           reason: visitType === 'appointment' && selectedAppointment
-            ? selectedAppointment.reason
-            : newVisit.reason,
+            ? (selectedAppointment.reason || 'Not specified')
+            : (newVisit.reason.trim() || 'Not specified'),
           doctorRemarks: newVisit.doctorRemarks,
           weight: finalWeight,
           weightUnit: finalWeightUnit,
@@ -1054,14 +2157,23 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
           neutered: newVisit.neutered,
           vaccinated: newVisit.vaccinated,
           deceased: newVisit.deceased,
-          clinicalExam: newVisit.clinicalExam,
+          clinicalExam: finalClinicalExam,
           labResults: newVisit.labResults,
-          prescriptions: newVisit.prescriptions,
+          prescriptions: finalPrescriptions,
           selectedServices: selectedServices,
           appointmentId: selectedAppointment?.id,
+          billingSourceId: '',
+          hasBillingInvoice: false,
+          billingInvoiceId: null,
+          billingInvoiceNumber: null,
+          medicalInformation: visitType === 'appointment' && selectedAppointment
+            ? selectedAppointment.medicalInformation || null
+            : null,
           vaccinationDetails: isVaccinationSelected() && showVaccinationDetails ? vaccinationDetails : undefined
         };
         setVisitHistory([...visitHistory, newVisitEntry]);
+        setWeight(finalWeight ? finalWeight.toString() : '');
+        setWeightUnit(finalWeightUnit);
         
         if (newVisit.neutered && !neutered) setNeutered(true);
         if (newVisit.vaccinated && !vaccinated) setVaccinated(true);
@@ -1073,22 +2185,31 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
         setShowServicesPanel(false);
         setSelectedServices([]);
         setSelectedAppointment(null);
-        setVisitType('walkin');
+        setSelectedPrimaryServiceId('');
+        setVisitType('');
+        setAppointmentDateFilter('today');
         setShowVaccinationDetails(false);
+        setVisitFormErrors({});
+        setVisitFieldInputs({ ...EMPTY_VISIT_FIELD_INPUTS });
+        setPrescriptionRemarks('');
         setVaccinationDetails({
+          id: '',
           vaccineName: '',
           doseVolume: '',
           injectionSite: '',
           manufacturer: '',
           dateAdministered: new Date().toISOString().split('T')[0],
-          nextDueDate: ''
+          nextDueDate: '',
+          visibleToOwner: false,
+          visibleToOwnerAt: '',
+          visibleToOwnerBy: '',
         });
         setNewVisit({
           id: '',
           date: '',
           time: '',
-          veterinarian: VETERINARIANS[0],
-          reason: REASONS[0],
+          veterinarian: '',
+          reason: '',
           doctorRemarks: '',
           weight: 0,
           weightUnit: 'kg',
@@ -1109,6 +2230,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
           prescriptions: [],
           selectedServices: []
         });
+        showAlert('success', 'Visit Added', 'Visit record has been added to this medical record. Save the medical record to keep it.');
       },
       true  // Show cancel button
     );
@@ -1121,78 +2243,147 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
         'Existing Medical Record Found',
         `${pet.petName} already has an existing medical record. Would you like to edit the existing record?`,
         () => {
-          loadRecordForEdit(pet.existingRecordId || 0);
+          void loadRecordForEdit(pet.existingRecordId || 0);
           setShowPetSearch(false);
           setPetSearchQuery('');
-          setSearchResults(MOCK_PET_DATABASE);
+          setSearchResults(allSearchResults);
         },
         true
       );
       return;
     }
 
+    const resolvedPetId = pet.petId || pet.id;
+
+    setSelectedPetId(resolvedPetId);
     setPetName(pet.petName);
     setSpecies(pet.species as Species);
     setBreed(pet.breed);
     setGender(pet.gender as Gender);
     setDateOfBirth(pet.dateOfBirth);
     setAge(calculateAge(pet.dateOfBirth));
+    setWeight(pet.weightKg || '');
+    setWeightUnit('kg');
     setColorMarkings(pet.colorMarkings);
     setNeutered(pet.neutered);
     setVaccinated(pet.vaccinated);
     setVaccinationProof(pet.vaccinationProof || '');
     setDeceased(pet.deceased || false);
     setPetImage(pet.image || '');
-    setOwnerFirstName(pet.ownerName.split(' ')[0]);
-    setOwnerLastName(pet.ownerName.split(' ').slice(1).join(' '));
+    setOwnerFirstName(pet.ownerFirstName || pet.ownerName.split(' ')[0] || '');
+    setOwnerLastName(pet.ownerLastName || pet.ownerName.split(' ').slice(1).join(' ') || '');
     setOwnerEmail(pet.ownerEmail);
-    setOwnerContact(pet.ownerContact);
-    setPatientId(`PET-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`);
+    setOwnerContact(formatPhoneNumber(pet.ownerContact));
+    setPatientId(buildPatientDisplayId(resolvedPetId));
     setShowPetSearch(false);
     setPetSearchQuery('');
-    setSearchResults(MOCK_PET_DATABASE);
+    setSearchResults(allSearchResults);
+    if (resolvedPetId) {
+      void fetchAppointmentsForPet(resolvedPetId);
+    }
   };
 
-  const loadRecordForEdit = (recordId: number) => {
-    const record = records.find(r => r.id === recordId);
-    if (record) {
-      setEditingId(recordId);
-      setPatientId(record.patientId);
-      setPetName(record.petName);
-      setOwnerFirstName(record.ownerFirstName);
-      setOwnerLastName(record.ownerLastName);
-      setOwnerEmail(record.ownerEmail);
-      setOwnerContact(record.ownerContact);
-      setDeceased(record.deceased || false);
-      setVisitHistory(record.visitHistory || []);
-      
-      if (record.petDetails) {
-        setSpecies(record.petDetails.species);
-        setBreed(record.petDetails.breed);
-        setGender(record.petDetails.gender);
-        setDateOfBirth(record.petDetails.dateOfBirth);
-        setAge(record.petDetails.age);
-        setWeight(record.petDetails.weight.toString());
-        setWeightUnit(record.petDetails.weightUnit);
-        setColorMarkings(record.petDetails.colorMarkings);
-        setNeutered(record.petDetails.neutered);
-        setVaccinated(record.petDetails.vaccinated);
-        setVaccinationProof(record.petDetails.vaccinationProof || '');
-        setPetImage(record.petDetails.image || '');
-        
-        if (record.visitHistory && record.visitHistory.length > 0) {
-          const lastVisit = record.visitHistory[record.visitHistory.length - 1];
-          setLastWeight({ value: lastVisit.weight, unit: lastVisit.weightUnit });
-        }
-        
-        // Fetch appointments for this pet
-        fetchAppointmentsForPet(record.patientId);
+  const applyRecordToForm = (record: MedicalRecord) => {
+    setPrescriptionRemarks('');
+    setSelectedPrimaryServiceId('');
+    setSelectedServices([]);
+    setSelectedAppointment(null);
+    setVisitType('');
+    setVisitFormErrors({});
+    setVisitFieldInputs({ ...EMPTY_VISIT_FIELD_INPUTS });
+    setNewVisit({
+      id: '',
+      date: '',
+      time: '',
+      veterinarian: '',
+      reason: '',
+      doctorRemarks: '',
+      weight: 0,
+      weightUnit: 'kg',
+      sameAsLastWeight: false,
+      neutered: false,
+      vaccinated: false,
+      deceased: false,
+      clinicalExam: {
+        length: 0,
+        lengthUnit: 'cm',
+        temperature: 0,
+        tempUnit: 'C',
+        heartRate: '',
+        breathingRate: '',
+        additionalFindings: ''
+      },
+      labResults: [],
+      prescriptions: [],
+      selectedServices: []
+    });
+    setEditingId(record.id || record.pk || null);
+    setSelectedPetId(record.petId || null);
+    setPatientId(record.patientId);
+    setPetName(record.petName);
+    setOwnerFirstName(record.ownerFirstName);
+    setOwnerLastName(record.ownerLastName);
+    setOwnerEmail(record.ownerEmail);
+    setOwnerContact(formatPhoneNumber(record.ownerContact));
+    setDoctorAssigned(formatVeterinarianName(record.veterinarian) || veterinarianOptions[0] || DEFAULT_VETERINARIAN);
+    setReasonForVisit(record.reason || REASONS[0]);
+    setReasonOther('');
+    setDeceased(record.deceased || false);
+    setVisitHistory(record.visitHistory || []);
+
+    if (record.petDetails) {
+      setSpecies(record.petDetails.species);
+      setBreed(record.petDetails.breed);
+      setGender(record.petDetails.gender);
+      setDateOfBirth(record.petDetails.dateOfBirth);
+      setAge(record.petDetails.age);
+      setWeight(record.petDetails.weight.toString());
+      setWeightUnit(record.petDetails.weightUnit);
+      setColorMarkings(record.petDetails.colorMarkings);
+      setNeutered(record.petDetails.neutered);
+      setVaccinated(record.petDetails.vaccinated);
+      setVaccinationProof(record.petDetails.vaccinationProof || '');
+      setPetImage(record.petDetails.image || '');
+    }
+
+    if (record.visitHistory && record.visitHistory.length > 0) {
+      const lastVisit = record.visitHistory[record.visitHistory.length - 1];
+      setLastWeight({ value: lastVisit.weight, unit: lastVisit.weightUnit });
+    } else {
+      setLastWeight(null);
+    }
+
+    if (record.petId) {
+      void fetchAppointmentsForPet(record.petId);
+    } else {
+      setAppointmentRecords([]);
+    }
+
+    setFormBaselineSnapshot(buildRecordFormSnapshot(record));
+    setViewMode('edit');
+    setEditModeEnabled(false);
+    setShowModeOverlay(true);
+    setActiveTab('info');
+  };
+
+  const loadRecordForEdit = async (recordId: number) => {
+    setOpeningRecordId(recordId);
+    try {
+      const localRecord = records.find(r => (r.id || r.pk) === recordId);
+      if (localRecord?.detailsLoaded) {
+        applyRecordToForm(localRecord);
+        return;
       }
-      
-      setViewMode('edit');
-      setEditModeEnabled(false);
-      setShowModeOverlay(true);
-      setActiveTab('info');
+
+      const response = await apiService.getEmrRecord(recordId);
+      if (response?.record) {
+        applyRecordToForm(normalizeRecordForDisplay(response.record));
+      }
+    } catch (error) {
+      console.error('Error loading EMR record for edit:', error);
+      showAlert('error', 'Error', 'Failed to load the selected medical record.');
+    } finally {
+      setOpeningRecordId(null);
     }
   };
 
@@ -1247,11 +2438,49 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
 
   useEffect(() => {
     fetchRecords();
+    fetchSearchPets();
+    fetchVeterinarians();
     loadCurrentUser();
   }, []);
 
+  useEffect(() => {
+    if (visitType !== 'appointment' || !selectedAppointment) {
+      return;
+    }
+
+    const todayDate = getCurrentDateInTimeZone('Asia/Manila');
+    const selectedStillVisible = appointmentRecords.some((appointment) => {
+      if (appointment.id !== selectedAppointment.id || appointment.status !== 'scheduled') {
+        return false;
+      }
+
+      const appointmentDate = normalizeAppointmentDateValue(appointment.dateRaw, appointment.date);
+      if (!appointmentDate || !todayDate) {
+        return false;
+      }
+
+      if (appointmentDateFilter === 'today') {
+        return appointmentDate === todayDate;
+      }
+
+      return appointmentDate > todayDate;
+    });
+
+    if (!selectedStillVisible) {
+      setSelectedAppointment(null);
+      setSelectedPrimaryServiceId('');
+      setSelectedServices([]);
+      setNewVisit((prev) => ({
+        ...prev,
+        veterinarian: '',
+        reason: ''
+      }));
+    }
+  }, [appointmentDateFilter, appointmentRecords, selectedAppointment, visitType]);
+
 
   const resetForm = (): void => {
+    setSelectedPetId(null);
     setPatientId('');
     setPetName('');
     setSpecies('Dog');
@@ -1268,7 +2497,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     setVaccinated(false);
     setVaccinationProof('');
     setDoctorRemarks('');
-    setDoctorAssigned(VETERINARIANS[0]);
+    setDoctorAssigned(veterinarianOptions[0] || DEFAULT_VETERINARIAN);
     setReasonForVisit(REASONS[0]);
     setReasonOther('');
     setVisitHistory([]);
@@ -1285,18 +2514,55 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
     setActiveTab('info');
     setLastWeight(null);
     setExpandedVisitId(null);
+    setSelectedPrimaryServiceId('');
     setSelectedServices([]);
     setSelectedAppointment(null);
-    setVisitType('walkin');
+    setAppointmentRecords([]);
+    setAppointmentDateFilter('today');
+    setVisitType('');
+    setVisitFormErrors({});
+    setVisitFieldInputs({ ...EMPTY_VISIT_FIELD_INPUTS });
+    setNewVisit({
+      id: '',
+      date: '',
+      time: '',
+      veterinarian: '',
+      reason: '',
+      doctorRemarks: '',
+      weight: 0,
+      weightUnit: 'kg',
+      sameAsLastWeight: false,
+      neutered: false,
+      vaccinated: false,
+      deceased: false,
+      clinicalExam: {
+        length: 0,
+        lengthUnit: 'cm',
+        temperature: 0,
+        tempUnit: 'C',
+        heartRate: '',
+        breathingRate: '',
+        additionalFindings: ''
+      },
+      labResults: [],
+      prescriptions: [],
+      selectedServices: []
+    });
+    setPrescriptionRemarks('');
     setShowVaccinationDetails(false);
     setVaccinationDetails({
+      id: '',
       vaccineName: '',
       doseVolume: '',
       injectionSite: '',
       manufacturer: '',
       dateAdministered: new Date().toISOString().split('T')[0],
-      nextDueDate: ''
+      nextDueDate: '',
+      visibleToOwner: false,
+      visibleToOwnerAt: '',
+      visibleToOwnerBy: '',
     });
+    setFormBaselineSnapshot(buildEmptyFormSnapshot());
   };
 
   useEffect(() => {
@@ -1380,85 +2646,116 @@ useEffect(() => {
   };
 
   const handleLogoutPress = (): void => {
-    showAlert('confirm', 'Log Out', 'Are you sure you want to log out?', async () => {
-      try {
-        if (currentUser && (currentUser.id || currentUser.pk)) {
-          await fetch(`${API_URL}/logout`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: currentUser.id || currentUser.pk,
-              userType: 'EMPLOYEE',
-              username: currentUser.username || currentUser.fullName,
-              role: currentUser.role
-            })
-          });
+    confirmLeaveCurrentView(() => {
+      showAlert('confirm', 'Log Out', 'Are you sure you want to log out?', async () => {
+        try {
+          if (currentUser && (currentUser.id || currentUser.pk)) {
+            await fetch(`${API_URL}/logout`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: currentUser.id || currentUser.pk,
+                userType: 'EMPLOYEE',
+                username: currentUser.username || currentUser.fullName,
+                role: currentUser.role
+              })
+            });
+          }
+        } catch (error) {
+          console.log("Logout audit failed:", error);
         }
-      } catch (error) {
-        console.log("Logout audit failed:", error);
-      }
 
-      localStorage.removeItem('userSession');
-      navigate('/login');
-    }, true);
+        localStorage.removeItem('userSession');
+        navigate('/login');
+      }, true);
+    }, 'You have unsaved changes. Are you sure you want to leave this page and log out?');
   };
 
   const handleCreateInvoice = (visit: VisitHistory) => {
-    console.log('Create invoice for visit:', visit);
-    showAlert('info', 'Coming Soon', 'Invoice feature will be available soon.');
+    const billingSourceType = visit.billingSourceType || 'visit';
+    const billingSourceId = visit.billingSourceId || visit.id;
+    const invoiceType = visit.sourceType === 'appointment' ? 'appointment' : 'walkin';
+
+    if (!billingSourceId || Number.isNaN(Number(billingSourceId))) {
+      showAlert('info', 'Save Record First', 'Save this medical record first so the visit can be linked to billing.');
+      return;
+    }
+
+    setBillingNavigationVisitId(visit.id);
+    window.setTimeout(() => {
+      navigate('/billing', {
+        state: {
+          billingAction: {
+            invoiceType,
+            sourceRecordType: billingSourceType,
+            sourceRecordId: billingSourceId,
+            billingInvoiceId: visit.billingInvoiceId || null,
+          }
+        }
+      });
+    }, BILLING_NAVIGATION_DELAY_MS);
   };
 
   const handleCancel = (): void => {
-    let hasUnsavedChanges = false;
-    
-    if (viewMode === 'add') {
-      hasUnsavedChanges = !!(petName || ownerFirstName || ownerLastName);
-    } else if (viewMode === 'edit') {
-      hasUnsavedChanges = false;
-    }
-
-    if (hasUnsavedChanges) {
-      showAlert('confirm', 'Unsaved Changes', 'You have unsaved changes. Are you sure you want to discard them?', () => {
+    confirmLeaveCurrentView(
+      () => {
         setViewMode('list');
         resetForm();
-      }, true);
-    } else {
-      setViewMode('list');
-      resetForm();
-    }
+      },
+      'You have unsaved changes. Are you sure you want to discard them?'
+    );
   };
 
   const validateForm = (): boolean => {
     const errors: FormErrors = {};
+    const finalBreed = breed === 'Others' ? breedOther.trim() : breed.trim();
     
     if (!petName.trim()) errors.petName = 'Pet name is required';
+    if (!finalBreed) errors.breed = 'Breed is required';
     if (!ownerFirstName.trim()) errors.ownerFirstName = 'Owner first name is required';
     if (!ownerLastName.trim()) errors.ownerLastName = 'Owner last name is required';
     if (!ownerEmail.trim()) errors.ownerEmail = 'Email is required';
     else if (!/\S+@\S+\.\S+/.test(ownerEmail)) errors.ownerEmail = 'Email is invalid';
+    const ownerContactDigits = normalizePhilippinePhoneDigits(ownerContact);
     if (!ownerContact.trim()) errors.ownerContact = 'Contact number is required';
-    else if (!/^\d{11}$/.test(ownerContact.replace(/\D/g, ''))) errors.ownerContact = 'Contact number must be 11 digits';
+    else if (!ownerContactDigits.startsWith('63')) errors.ownerContact = 'Please enter a valid PH number starting with 63';
+    else if (ownerContactDigits.length !== PH_PHONE_TOTAL_DIGITS) errors.ownerContact = 'Please enter a valid 12-digit number (including 63)';
     if (!doctorAssigned) errors.veterinarian = 'Veterinarian is required';
     if (!reasonForVisit) errors.reason = 'Reason for visit is required';
     
     setFormErrors(errors);
-    return !Object.values(errors).some(error => error);
+    const validationMessages = Object.values(errors).filter((error): error is string => Boolean(error));
+    if (validationMessages.length > 0) {
+      showValidationAlert('Missing Record Information', validationMessages);
+      return false;
+    }
+    return true;
   };
 
   const handleSaveRecord = async (): Promise<void> => {
+    if (isSavingRecord) return;
     if (!validateForm()) return;
+    if (!selectedPetId) {
+      showAlert('error', 'Pet Profile Required', 'Please search and select an existing pet profile before saving a medical record.');
+      return;
+    }
+    if (viewMode === 'edit' && !editingId) {
+      showAlert('error', 'Record Not Found', 'We could not determine which medical record to update.');
+      return;
+    }
 
     const finalBreed = breed === 'Others' ? breedOther : breed;
 
     const recordData = {
-      patientId: patientId || `PET-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
+      petId: selectedPetId,
+      patientId: patientId || buildPatientDisplayId(selectedPetId),
       petName,
       ownerName: `${ownerFirstName} ${ownerLastName}`,
       ownerFirstName,
       ownerLastName,
       ownerEmail,
-      ownerContact,
-      lastVisit: new Date().toLocaleDateString(),
+      ownerContact: toStoredPhoneNumber(ownerContact),
+      lastVisit: new Date().toISOString().split('T')[0],
       veterinarian: doctorAssigned,
       reason: reasonForVisit === 'Others' ? reasonOther : reasonForVisit,
       deceased,
@@ -1487,33 +2784,26 @@ useEffect(() => {
     showAlert('confirm', viewMode === 'add' ? 'Create Record' : 'Save Changes', 
       `Are you sure you want to ${viewMode === 'add' ? 'create this medical record' : 'save changes to this record'}?`, 
       async () => {
+        setIsSavingRecord(true);
         try {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          let updatedRecords;
           if (viewMode === 'add') {
-            const newRecord = {
-              ...recordData,
-              id: Math.max(...records.map(r => r.id || 0), 0) + 1
-            };
-            updatedRecords = [...records, newRecord];
+            await apiService.createEmrRecord(recordData);
           } else {
-            updatedRecords = records.map(r => 
-              (r.id === editingId || r.pk === editingId) 
-                ? { ...r, ...recordData, visitHistory }
-                : r
-            );
+            await apiService.updateEmrRecord(editingId || 0, recordData);
           }
-          
-          setRecords(updatedRecords);
+          await Promise.all([fetchRecords(), fetchSearchPets()]);
           setViewMode('list');
           setShowModeOverlay(false);
+          setSelectedRecords(new Set());
           showAlert('success', 'Success', 
             viewMode === 'add' ? 'Medical record created successfully!' : 'Record updated successfully!', 
             () => resetForm()
           );
-        } catch (error) {
-          showAlert('error', 'Error', 'Failed to save medical record.');
+        } catch (error: any) {
+          console.error('Failed to save medical record:', error);
+          showAlert('error', 'Error', getApiErrorMessage(error, 'Failed to save medical record.'));
+        } finally {
+          setIsSavingRecord(false);
         }
       }, true);
   };
@@ -1528,17 +2818,15 @@ useEffect(() => {
       `Are you sure you want to delete ${selectedRecords.size} selected record(s)?`, 
       async () => {
         try {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          const updatedRecords = records.filter(r => 
-            !selectedRecords.has(r.id || r.pk || 0)
+          await Promise.all(
+            Array.from(selectedRecords).map(recordId => apiService.deleteEmrRecord(recordId))
           );
-          
-          setRecords(updatedRecords);
+          await Promise.all([fetchRecords(), fetchSearchPets()]);
           setSelectedRecords(new Set());
           
           showAlert('success', 'Success', 'Records deleted successfully!');
         } catch (error) {
+          console.error('Failed to delete medical records:', error);
           showAlert('error', 'Error', 'Failed to delete records.');
         }
       }, true);
@@ -1560,6 +2848,16 @@ useEffect(() => {
     }
   };
 
+  const availableVeterinarians = Array.from(
+    new Set([
+      ...veterinarianOptions,
+      formatVeterinarianName(doctorAssigned),
+      formatVeterinarianName(newVisit.veterinarian),
+      ...records.map(record => formatVeterinarianName(record.veterinarian)).filter(Boolean),
+      ...visitHistory.map(visit => formatVeterinarianName(visit.veterinarian)).filter(Boolean)
+    ].filter(Boolean) as string[])
+  );
+
   const filteredRecords = records.filter(record => {
     const searchLower = searchQuery.toLowerCase();
     const matchesSearch = 
@@ -1567,7 +2865,7 @@ useEffect(() => {
       record.petName.toLowerCase().includes(searchLower) ||
       record.ownerName.toLowerCase().includes(searchLower);
 
-    const matchesDate = dateFilter ? record.lastVisit === dateFilter : true;
+    const matchesDate = dateFilter ? (record.lastVisitRaw || '') === dateFilter : true;
     const matchesDoctor = doctorFilter ? record.veterinarian === doctorFilter : true;
     
     let matchesStatus = true;
@@ -1589,6 +2887,100 @@ useEffect(() => {
     const matchesDoctor = visitDoctorFilter === '' || visit.veterinarian === visitDoctorFilter;
     return matchesSearch && matchesDate && matchesDoctor;
   });
+
+  const todayAppointmentDate = getCurrentDateInTimeZone('Asia/Manila');
+  const filteredAppointmentRecords = appointmentRecords.filter((appointment) => {
+    if (appointment.status !== 'scheduled') {
+      return false;
+    }
+
+    const appointmentDate = normalizeAppointmentDateValue(appointment.dateRaw, appointment.date);
+    if (!appointmentDate || !todayAppointmentDate) {
+      return false;
+    }
+
+    if (appointmentDateFilter === 'today') {
+      return appointmentDate === todayAppointmentDate;
+    }
+
+    return appointmentDate > todayAppointmentDate;
+  });
+  const selectedAppointmentMedicalInformation =
+    visitType === 'appointment' ? selectedAppointment?.medicalInformation || null : null;
+  const selectedAppointmentServiceLabel =
+    visitType === 'appointment' && selectedAppointment
+      ? ((selectedAppointment.services || []).map((service) => service.name).filter(Boolean).join(', ') || 'Not specified')
+      : '';
+  const selectedVisitReasonValue =
+    visitType === 'appointment'
+      ? (selectedAppointment ? (newVisit.reason || selectedAppointment.reason || 'Not specified') : '')
+      : visitType === 'walkin'
+        ? newVisit.reason
+        : '';
+
+  const renderMedicalInformationBlock = (
+    medicalInformation?: MedicalInformation | null,
+    title: string = 'Medical Information'
+  ) => {
+    if (!hasMedicalInformationContent(medicalInformation)) {
+      return null;
+    }
+
+    const summaryItems = [
+      { key: 'medications72h', label: 'Medications in Past 72 Hours', value: formatMedicalInformationAnswer(medicalInformation?.on_medication) },
+      { key: 'fleaTick', label: 'Flea/Tick Prevention', value: formatMedicalInformationAnswer(medicalInformation?.flea_tick_prevention) },
+      { key: 'vaccinations', label: 'Up-to-Date Vaccinations', value: formatMedicalInformationAnswer(medicalInformation?.is_vaccinated) },
+      { key: 'pregnant', label: 'Pregnant', value: formatMedicalInformationAnswer(medicalInformation?.is_pregnant) },
+    ];
+
+    const optionalItems = [
+      medicalInformation?.medication_details?.trim()
+        ? { key: 'medicationDetails', label: 'Medication Details', value: medicalInformation.medication_details.trim() }
+        : null,
+      medicalInformation?.has_allergies !== null && medicalInformation?.has_allergies !== undefined
+        ? { key: 'allergies', label: 'Allergies', value: formatMedicalInformationAnswer(medicalInformation.has_allergies) }
+        : null,
+      medicalInformation?.allergy_details?.trim()
+        ? { key: 'allergyDetails', label: 'Allergy Details', value: medicalInformation.allergy_details.trim() }
+        : null,
+      medicalInformation?.has_skin_condition !== null && medicalInformation?.has_skin_condition !== undefined
+        ? { key: 'skinCondition', label: 'Skin Condition', value: formatMedicalInformationAnswer(medicalInformation.has_skin_condition) }
+        : null,
+      medicalInformation?.skin_condition_details?.trim()
+        ? { key: 'skinConditionDetails', label: 'Skin Condition Details', value: medicalInformation.skin_condition_details.trim() }
+        : null,
+      medicalInformation?.been_groomed_before !== null && medicalInformation?.been_groomed_before !== undefined
+        ? { key: 'groomedBefore', label: 'Been Groomed Before', value: formatMedicalInformationAnswer(medicalInformation.been_groomed_before) }
+        : null,
+      medicalInformation?.additional_notes?.trim()
+        ? { key: 'additionalNotes', label: 'Additional Notes', value: medicalInformation.additional_notes.trim() }
+        : null,
+    ].filter((item): item is { key: string; label: string; value: string } => item !== null);
+
+    return (
+      <div className="emrMedicalInfoBlock">
+        <div className="emrMedicalInfoTitle">{title}</div>
+        <div className="emrMedicalInfoGrid">
+          {summaryItems.map((item) => (
+            <div key={item.key} className="emrMedicalInfoItem">
+              <span className="emrMedicalInfoLabel">{item.label}</span>
+              <span
+                className={`emrMedicalInfoValue ${item.value === 'Yes' ? 'isYes' : item.value === 'No' ? 'isNo' : 'isNeutral'}`}
+              >
+                {item.value}
+              </span>
+            </div>
+          ))}
+          {optionalItems.map((item) => (
+            <div key={item.key} className="emrMedicalInfoItem emrMedicalInfoItemFull">
+              <span className="emrMedicalInfoLabel">{item.label}</span>
+              <span className="emrMedicalInfoValue isNeutral">{item.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   // Medical History filtered data
 const filteredLabResults = visitHistory.flatMap(visit => 
@@ -1641,6 +3033,14 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
 
   return (
     <div className="emrContainer">
+      {billingNavigationVisitId !== null && (
+        <div className="emrBillingNavigationOverlay" aria-live="polite" aria-busy="true">
+          <div className="emrBillingNavigationPanel">
+            <span className="emrActionSpinner" aria-hidden="true" />
+            <span>Opening Billing...</span>
+          </div>
+        </div>
+      )}
       {showModeOverlay && viewMode !== 'list' && (
         <div className="emrToast">
           <div className="emrToastContent">
@@ -1657,7 +3057,11 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
         </div>
       )}
       
-      <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
+      <Navbar
+        currentUser={currentUser}
+        onLogout={handleLogoutPress}
+        onNavigateAttempt={handleProtectedNavigation}
+      />
       
       <div className="emrBodyContainer">
         <div className="emrTopContainer">
@@ -1673,7 +3077,10 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
               iconClassName="emrBlueIcon"
               onViewAll={() => console.log('View all notifications')}
               onNotificationClick={(notification) => {
-                if (notification.link) navigate(notification.link);
+                const notificationLink = notification.link;
+                if (notificationLink) {
+                  handleProtectedNavigation(notificationLink, () => navigate(notificationLink));
+                }
               }}
             />
           </div>
@@ -1733,7 +3140,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                         className="emrFilterSelect"
                       >
                         <option value="">All Veterinarians</option>
-                        {VETERINARIANS.map(doc => (
+                        {veterinarianOptions.map(doc => (
                           <option key={doc} value={doc}>{doc}</option>
                         ))}
                       </select>
@@ -1814,6 +3221,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                         paginatedRecords.map(record => {
                           const recordId = record.id || record.pk || 0;
                           const isDeceased = record.deceased || false;
+                          const isOpeningRecord = openingRecordId === recordId;
                           return (
                             <tr key={recordId} className={isDeceased ? 'emrDeceasedRow' : ''}>
                               <td>
@@ -1846,11 +3254,15 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                 <div className="emrActionButtons">
                                   <button 
                                     className="emrActionBtn" 
-                                    onClick={() => loadRecordForEdit(recordId)}
-                                    disabled={isDeceased}
-                                    title={isDeceased ? "Cannot edit deceased pet" : "Edit record"}
+                                    onClick={() => { void loadRecordForEdit(recordId); }}
+                                    disabled={openingRecordId !== null}
+                                    title={isDeceased ? "Open deceased record" : "Open record"}
                                   >
-                                    <FaEye size={14} />
+                                    {isOpeningRecord ? (
+                                      <span className="emrActionSpinner" aria-label="Opening record" />
+                                    ) : (
+                                      <FaEye size={14} />
+                                    )}
                                   </button>
                                 </div>
                               </td>
@@ -1894,7 +3306,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                   <IoCreateOutline size={20} className="emrHeaderIcon" />
                   <h3>Create New Medical Record</h3>
                 </div>
-                <button className="emrFormClose" onClick={handleCancel}>×</button>
+                <button className="emrFormClose" onClick={handleCancel} disabled={isSavingRecord}>×</button>
               </div>
 
               <div className="emrFormContent">
@@ -1970,6 +3382,8 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           onClick={() => {
                             setSpecies('Dog');
                             setBreed('');
+                            setBreedOther('');
+                            setFormErrors((prev) => ({ ...prev, breed: undefined }));
                           }}
                         >
                           <IoPawOutline size={14} /> Dog
@@ -1980,6 +3394,8 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           onClick={() => {
                             setSpecies('Cat');
                             setBreed('');
+                            setBreedOther('');
+                            setFormErrors((prev) => ({ ...prev, breed: undefined }));
                           }}
                         >
                           <IoPawOutline size={14} /> Cat
@@ -1988,11 +3404,14 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                     </div>
 
                     <div className="emrFormGroup">
-                      <label>Breed</label>
+                      <label>Breed <span className="emrRequired">*</span></label>
                       <select 
                         value={breed}
-                        onChange={(e) => setBreed(e.target.value)}
-                        className="emrFormSelect"
+                        onChange={(e) => {
+                          setBreed(e.target.value);
+                          setFormErrors((prev) => ({ ...prev, breed: undefined }));
+                        }}
+                        className={`emrFormSelect ${formErrors.breed ? 'emrError' : ''}`}
                       >
                         <option value="">Select breed</option>
                         {breedOptions.map(b => (
@@ -2003,11 +3422,15 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                         <input
                           type="text"
                           value={breedOther}
-                          onChange={(e) => setBreedOther(e.target.value)}
+                          onChange={(e) => {
+                            setBreedOther(e.target.value);
+                            setFormErrors((prev) => ({ ...prev, breed: undefined }));
+                          }}
                           placeholder="Please specify breed"
-                          className="emrFormInput emrMarginTop"
+                          className={`emrFormInput emrMarginTop ${formErrors.breed ? 'emrError' : ''}`}
                         />
                       )}
+                      {formErrors.breed && <div className="emrErrorText">{formErrors.breed}</div>}
                     </div>
                   </div>
 
@@ -2220,8 +3643,8 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       <input 
                         type="tel"
                         value={ownerContact}
-                        onChange={(e) => setOwnerContact(e.target.value.replace(/[^\d]/g, '').slice(0, 11))}
-                        placeholder="09123456789"
+                        onChange={(e) => setOwnerContact(formatPhoneNumber(e.target.value))}
+                        placeholder="+63 XXX XXX XXXX"
                         className={`emrFormInput ${formErrors.ownerContact ? 'emrError' : ''}`}
                       />
                       {formErrors.ownerContact && <div className="emrErrorText">{formErrors.ownerContact}</div>}
@@ -2230,11 +3653,12 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                 </div>
 
                 <div className="emrFormActions">
-                  <button className="emrCancelBtn" onClick={handleCancel}>
+                  <button className="emrCancelBtn" onClick={handleCancel} disabled={isSavingRecord}>
                     Cancel
                   </button>
-                  <button className="emrSubmitBtn" onClick={handleSaveRecord}>
-                    Create Record
+                  <button className="emrSubmitBtn" onClick={handleSaveRecord} disabled={isSavingRecord}>
+                    {isSavingRecord && <span className="emrBtnSpinner" aria-hidden="true"></span>}
+                    {isSavingRecord ? 'Creating Record...' : 'Create Record'}
                   </button>
                 </div>
               </div>
@@ -2246,20 +3670,20 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                   <CiMedicalClipboard size={20} className="emrHeaderIcon" />
                   <h3>Medical Record</h3>
                 </div>
-                {!deceased && (
+                {activeTab === 'info' && (
                   <div className="emrHeaderActions">
                     <label className="emrSwitch">
                       <input
                         type="checkbox"
                         checked={editModeEnabled}
-                        onChange={(e) => setEditModeEnabled(e.target.checked)}
+                        onChange={(e) => handleEditModeToggle(e.target.checked)}
                       />
                       <span className="emrSlider"></span>
                       <span className="emrSwitchLabel">{editModeEnabled ? 'Edit Mode ON' : 'Edit Mode OFF'}</span>
                     </label>
                   </div>
                 )}
-                <button className="emrFormClose" onClick={handleCancel}>×</button>
+                <button className="emrFormClose" onClick={handleCancel} disabled={isSavingRecord}>×</button>
               </div>
 
               <div className="emrTabs">
@@ -2302,7 +3726,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                 </div>
                               )}
                             </div>
-                            {editModeEnabled && (
+                            {canEditPetProfileFields && (
                               <div className="emrImageUploadBtn">
                                 <input
                                   type="file"
@@ -2331,7 +3755,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                             type="text"
                             value={petName}
                             onChange={(e) => setPetName(e.target.value)}
-                            disabled={!editModeEnabled}
+                            disabled={!canEditPetProfileFields}
                             className={`emrFormInput ${formErrors.petName ? 'emrError' : ''}`}
                           />
                           {formErrors.petName && <div className="emrErrorText">{formErrors.petName}</div>}
@@ -2343,16 +3767,16 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                             <button 
                               type="button"
                               className={`emrToggleBtnFull ${species === 'Dog' ? 'emrToggleActiveFull' : ''}`}
-                              onClick={() => { if (editModeEnabled) { setSpecies('Dog'); setBreed(''); } }}
-                              disabled={!editModeEnabled}
+                              onClick={() => { if (canEditPetProfileFields) { setSpecies('Dog'); setBreed(''); setBreedOther(''); setFormErrors((prev) => ({ ...prev, breed: undefined })); } }}
+                              disabled={!canEditPetProfileFields}
                             >
                               <IoPawOutline size={14} /> Dog
                             </button>
                             <button 
                               type="button"
                               className={`emrToggleBtnFull ${species === 'Cat' ? 'emrToggleActiveFull' : ''}`}
-                              onClick={() => { if (editModeEnabled) { setSpecies('Cat'); setBreed(''); } }}
-                              disabled={!editModeEnabled}
+                              onClick={() => { if (canEditPetProfileFields) { setSpecies('Cat'); setBreed(''); setBreedOther(''); setFormErrors((prev) => ({ ...prev, breed: undefined })); } }}
+                              disabled={!canEditPetProfileFields}
                             >
                               <IoPawOutline size={14} /> Cat
                             </button>
@@ -2360,12 +3784,15 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                         </div>
 
                         <div className="emrFormGroup">
-                          <label>Breed</label>
+                          <label>Breed <span className="emrRequired">*</span></label>
                           <select 
                             value={breed}
-                            onChange={(e) => setBreed(e.target.value)}
-                            disabled={!editModeEnabled}
-                            className="emrFormSelect"
+                            onChange={(e) => {
+                              setBreed(e.target.value);
+                              setFormErrors((prev) => ({ ...prev, breed: undefined }));
+                            }}
+                            disabled={!canEditPetProfileFields}
+                            className={`emrFormSelect ${formErrors.breed ? 'emrError' : ''}`}
                           >
                             <option value="">Select breed</option>
                             {breedOptions.map(b => (
@@ -2376,12 +3803,16 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                             <input
                               type="text"
                               value={breedOther}
-                              onChange={(e) => setBreedOther(e.target.value)}
+                              onChange={(e) => {
+                                setBreedOther(e.target.value);
+                                setFormErrors((prev) => ({ ...prev, breed: undefined }));
+                              }}
                               placeholder="Please specify breed"
-                              className="emrFormInput emrMarginTop"
-                              disabled={!editModeEnabled}
+                              className={`emrFormInput emrMarginTop ${formErrors.breed ? 'emrError' : ''}`}
+                              disabled={!canEditPetProfileFields}
                             />
                           )}
+                          {formErrors.breed && <div className="emrErrorText">{formErrors.breed}</div>}
                         </div>
                       </div>
 
@@ -2392,16 +3823,16 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                             <button 
                               type="button"
                               className={`emrToggleBtnFull emrGenderMale ${gender === 'Male' ? 'emrToggleActiveFull' : ''}`}
-                              onClick={() => { if (editModeEnabled) setGender('Male'); }}
-                              disabled={!editModeEnabled}
+                              onClick={() => { if (canEditPetProfileFields) setGender('Male'); }}
+                              disabled={!canEditPetProfileFields}
                             >
                               <IoMaleFemaleOutline size={14} /> Male
                             </button>
                             <button 
                               type="button"
                               className={`emrToggleBtnFull emrGenderFemale ${gender === 'Female' ? 'emrToggleActiveFull' : ''}`}
-                              onClick={() => { if (editModeEnabled) setGender('Female'); }}
-                              disabled={!editModeEnabled}
+                              onClick={() => { if (canEditPetProfileFields) setGender('Female'); }}
+                              disabled={!canEditPetProfileFields}
                             >
                               <IoMaleFemaleOutline size={14} /> Female
                             </button>
@@ -2416,7 +3847,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                             onChange={(e) => handleDateOfBirthChange(e.target.value)}
                             className="emrFormInput"
                             max={new Date().toISOString().split('T')[0]}
-                            disabled={!editModeEnabled}
+                            disabled={!canEditPetProfileFields}
                           />
                         </div>
 
@@ -2442,22 +3873,22 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                               onChange={(e) => setWeight(e.target.value.replace(/[^\d.]/g, ''))}
                               placeholder="0.0"
                               className="emrWeightInput"
-                              disabled={!editModeEnabled}
+                              disabled={!canEditPetProfileFields}
                             />
                             <div className="emrWeightUnitSelect">
                               <button 
                                 type="button"
                                 className={`emrWeightUnitBtn ${weightUnit === 'kg' ? 'emrWeightUnitActive' : ''}`}
-                                onClick={() => { if (editModeEnabled) setWeightUnit('kg'); }}
-                                disabled={!editModeEnabled}
+                                onClick={() => { if (canEditPetProfileFields) setWeightUnit('kg'); }}
+                                disabled={!canEditPetProfileFields}
                               >
                                 kg
                               </button>
                               <button 
                                 type="button"
                                 className={`emrWeightUnitBtn ${weightUnit === 'lbs' ? 'emrWeightUnitActive' : ''}`}
-                                onClick={() => { if (editModeEnabled) setWeightUnit('lbs'); }}
-                                disabled={!editModeEnabled}
+                                onClick={() => { if (canEditPetProfileFields) setWeightUnit('lbs'); }}
+                                disabled={!canEditPetProfileFields}
                               >
                                 lbs
                               </button>
@@ -2473,7 +3904,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                             onChange={(e) => setColorMarkings(e.target.value)}
                             placeholder="e.g., Brown with white spots"
                             className="emrFormInput"
-                            disabled={!editModeEnabled}
+                            disabled={!canEditPetProfileFields}
                           />
                         </div>
                       </div>
@@ -2485,16 +3916,16 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                             <button 
                               type="button"
                               className={`emrToggleBtnFull emrToggleYes ${neutered === true ? 'emrToggleActiveFull' : ''}`}
-                              onClick={() => { if (editModeEnabled) setNeutered(true); }}
-                              disabled={!editModeEnabled}
+                              onClick={() => { if (canEditPetProfileFields) setNeutered(true); }}
+                              disabled={!canEditPetProfileFields}
                             >
                               <IoCheckmarkCircleOutline size={14} /> Yes
                             </button>
                             <button 
                               type="button"
                               className={`emrToggleBtnFull emrToggleNo ${neutered === false ? 'emrToggleActiveFull' : ''}`}
-                              onClick={() => { if (editModeEnabled) setNeutered(false); }}
-                              disabled={!editModeEnabled}
+                              onClick={() => { if (canEditPetProfileFields) setNeutered(false); }}
+                              disabled={!canEditPetProfileFields}
                             >
                               <IoCloseCircleOutline size={14} /> No
                             </button>
@@ -2507,16 +3938,16 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                             <button 
                               type="button"
                               className={`emrToggleBtnFull emrToggleYes ${deceased === true ? 'emrToggleActiveFull' : ''}`}
-                              onClick={() => { if (editModeEnabled) setDeceased(true); }}
-                              disabled={!editModeEnabled}
+                              onClick={() => { if (canEditDeceasedStatus) setDeceased(true); }}
+                              disabled={!canEditDeceasedStatus}
                             >
                               <IoAlertCircleOutline size={14} /> Yes
                             </button>
                             <button 
                               type="button"
                               className={`emrToggleBtnFull emrToggleNo ${deceased === false ? 'emrToggleActiveFull' : ''}`}
-                              onClick={() => { if (editModeEnabled) setDeceased(false); }}
-                              disabled={!editModeEnabled}
+                              onClick={() => { if (canEditDeceasedStatus) setDeceased(false); }}
+                              disabled={!canEditDeceasedStatus}
                             >
                               <IoCheckmarkCircleOutline size={14} /> No
                             </button>
@@ -2530,16 +3961,16 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                               <button 
                                 type="button"
                                 className={`emrToggleBtnFull emrToggleYes ${vaccinated === true ? 'emrToggleActiveFull' : ''}`}
-                                onClick={() => { if (editModeEnabled) setVaccinated(true); }}
-                                disabled={!editModeEnabled}
+                                onClick={() => { if (canEditPetProfileFields) setVaccinated(true); }}
+                                disabled={!canEditPetProfileFields}
                               >
                                 <IoCheckmarkCircleOutline size={14} /> Yes
                               </button>
                               <button 
                                 type="button"
                                 className={`emrToggleBtnFull emrToggleNo ${vaccinated === false ? 'emrToggleActiveFull' : ''}`}
-                                onClick={() => { if (editModeEnabled) setVaccinated(false); }}
-                                disabled={!editModeEnabled}
+                                onClick={() => { if (canEditPetProfileFields) setVaccinated(false); }}
+                                disabled={!canEditPetProfileFields}
                               >
                                 <IoCloseCircleOutline size={14} /> No
                               </button>
@@ -2570,7 +4001,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                             type="text"
                             value={ownerFirstName}
                             onChange={(e) => setOwnerFirstName(e.target.value)}
-                            disabled={!editModeEnabled}
+                            disabled
                             className={`emrFormInput ${formErrors.ownerFirstName ? 'emrError' : ''}`}
                           />
                           {formErrors.ownerFirstName && <div className="emrErrorText">{formErrors.ownerFirstName}</div>}
@@ -2582,7 +4013,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                             type="text"
                             value={ownerLastName}
                             onChange={(e) => setOwnerLastName(e.target.value)}
-                            disabled={!editModeEnabled}
+                            disabled
                             className={`emrFormInput ${formErrors.ownerLastName ? 'emrError' : ''}`}
                           />
                           {formErrors.ownerLastName && <div className="emrErrorText">{formErrors.ownerLastName}</div>}
@@ -2596,7 +4027,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                             type="email"
                             value={ownerEmail}
                             onChange={(e) => setOwnerEmail(e.target.value)}
-                            disabled={!editModeEnabled}
+                            disabled
                             className={`emrFormInput ${formErrors.ownerEmail ? 'emrError' : ''}`}
                           />
                           {formErrors.ownerEmail && <div className="emrErrorText">{formErrors.ownerEmail}</div>}
@@ -2607,8 +4038,9 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           <input 
                             type="tel"
                             value={ownerContact}
-                            onChange={(e) => setOwnerContact(e.target.value.replace(/[^\d]/g, '').slice(0, 11))}
-                            disabled={!editModeEnabled}
+                            onChange={(e) => setOwnerContact(formatPhoneNumber(e.target.value))}
+                            disabled
+                            placeholder="+63 XXX XXX XXXX"
                             className={`emrFormInput ${formErrors.ownerContact ? 'emrError' : ''}`}
                           />
                           {formErrors.ownerContact && <div className="emrErrorText">{formErrors.ownerContact}</div>}
@@ -2649,7 +4081,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           className="emrFilterSelectSmall"
                         >
                           <option value="">All Doctors</option>
-                          {VETERINARIANS.map(doc => (
+                          {availableVeterinarians.map(doc => (
                             <option key={doc} value={doc}>{doc}</option>
                           ))}
                         </select>
@@ -2661,7 +4093,12 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                     
                     <div className="emrVisitHistoryContainer">
                       {filteredVisits.length > 0 ? (
-                        filteredVisits.map((visit, index) => (
+                        filteredVisits.map((visit, index) => {
+                          const visitServices = visit.selectedServices ?? [];
+                          const visitPrescriptionRemarks = getSharedPrescriptionInstructions(visit.prescriptions || []);
+                          const isOpeningBilling = billingNavigationVisitId === visit.id;
+
+                          return (
                           <div key={visit.id}>
                             <div className="emrVisitCard" onClick={() => toggleVisitExpand(visit.id)} style={{ cursor: 'pointer' }}>
                               <div className="emrVisitHeader">
@@ -2673,9 +4110,9 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                       <IoCalendarOutline size={10} /> Appointment
                                     </span>
                                   )}
-                                  {visit.selectedServices && visit.selectedServices.length > 0 && (
+                                  {visitServices.length > 0 && (
                                     <span className="emrStatusActive" style={{ marginLeft: '8px', fontSize: '10px', backgroundColor: '#e3f2fd', color: '#1565c0' }}>
-                                      <IoListOutline size={10} /> {visit.selectedServices.length} Service(s)
+                                      <IoListOutline size={10} /> {visitServices.length} Service(s)
                                     </span>
                                   )}
                                 </div>
@@ -2687,9 +4124,19 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                       e.stopPropagation();
                                       handleCreateInvoice(visit);
                                     }}
-                                    title="Create Invoice"
+                                    disabled={billingNavigationVisitId !== null}
+                                    title={visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
                                   >
-                                    <IoReceipt size={14} /> Create Invoice
+                                    {isOpeningBilling ? (
+                                      <>
+                                        <span className="emrBtnSpinner" aria-hidden="true"></span>
+                                        Opening Billing...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <IoReceipt size={14} /> {visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
+                                      </>
+                                    )}
                                   </button>
                                   
                                   {(visit.prescriptions && visit.prescriptions.length > 0 && 
@@ -2715,20 +4162,17 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                               </div>
                               <div className="emrVisitDetails">
                                 <div><strong>Veterinarian:</strong> {visit.veterinarian}</div>
-                                <div><strong>Reason:</strong> {visit.reason}</div>
-                                {visit.selectedServices && visit.selectedServices.length > 0 && (
+                                <div><strong>Reason / Chief Complaint:</strong> {visit.reason}</div>
+                                {visitServices.length > 0 && (
                                   <div className="emrFullWidth">
                                     <strong>Services Provided:</strong>
                                     <div className="emrServicesList">
-                                      {visit.selectedServices.map((service, idx) => (
+                                      {visitServices.map((service, idx) => (
                                         <span key={service.id} className="emrServiceTag">
                                           {service.name}
-                                          {idx < (visit.selectedServices?.length ?? 0) - 1 && ', '}
+                                          {idx < visitServices.length - 1 && ', '}
                                         </span>
                                       ))}
-                                      <span className="emrServicesTotalPrice">
-                                        (₱{visit.selectedServices.reduce((sum, s) => sum + s.price, 0).toLocaleString()})
-                                      </span>
                                     </div>
                                   </div>
                                 )}
@@ -2758,34 +4202,31 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                       )}
                                     </>
                                   )}
+                                  {visit.medicalInformation && (
+                                    <div className="emrFullWidth">
+                                      {renderMedicalInformationBlock(visit.medicalInformation, 'Medical Information')}
+                                    </div>
+                                  )}
                                   
                                   {/* Display all services in expanded view with more details */}
-                                  {visit.selectedServices && visit.selectedServices.length > 0 && (
+                                  {visitServices.length > 0 && (
                                     <div className="emrFullWidth">
-                                      <strong>Additional Services:</strong>
+                                      <strong>Services:</strong>
                                       <div className="emrServicesDetailedList">
                                         <table className="emrServicesTable">
                                           <thead>
                                             <tr>
                                               <th>Service</th>
                                               <th>Description</th>
-                                              <th>Price</th>
                                             </tr>
                                           </thead>
                                           <tbody>
-                                            {visit.selectedServices.map(service => (
+                                            {visitServices.map(service => (
                                               <tr key={service.id}>
                                                 <td>{service.name}</td>
                                                 <td className="emrServiceDescCell">{service.description || '—'}</td>
-                                                <td className="emrServicePriceCell">₱{service.price.toLocaleString()}</td>
                                               </tr>
                                             ))}
-                                            <tr className="emrServicesTotalRow">
-                                              <td colSpan={2}><strong>Total</strong></td>
-                                              <td className="emrServicePriceCell">
-                                                <strong>₱{visit.selectedServices.reduce((sum, s) => sum + s.price, 0).toLocaleString()}</strong>
-                                              </td>
-                                            </tr>
                                           </tbody>
                                         </table>
                                       </div>
@@ -2810,7 +4251,26 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                   {visit.prescriptions && visit.prescriptions.length > 0 && (
                                     <div className="emrFullWidth">
                                       <strong>Prescriptions:</strong>
-                                      {visit.prescriptions.map((pres, idx) => (
+                                      {visit.prescriptions.map((pres) => (
+                                        <div key={pres.id} className="emrPrescriptionItem">
+                                          <span>&bull; <strong>{pres.medicationName || 'Medication'}</strong></span>
+                                          {formatPrescriptionDisplayParts(pres).length > 0 && (
+                                            <span> - {formatPrescriptionDisplayParts(pres).join(' | ')}</span>
+                                          )}
+                                        </div>
+                                      ))}
+                                      {visitPrescriptionRemarks && (
+                                        <div className="emrPrescriptionInstructions" style={{ whiteSpace: 'pre-wrap' }}>
+                                          Instructions: {visitPrescriptionRemarks}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {false && ((visit.prescriptions?.length || 0) > 0) && (
+                                    <div className="emrFullWidth">
+                                      <strong>Prescriptions:</strong>
+                                      {visit.prescriptions?.map((pres, idx) => (
                                         <div key={pres.id} className="emrPrescriptionItem">
                                           • {pres.medicationName || 'Medication'} - {pres.dosage}, {pres.frequency} for {pres.duration}
                                           {pres.instructions && <div className="emrPrescriptionInstructions">Instructions: {pres.instructions}</div>}
@@ -2834,7 +4294,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                               </div>
                             )}
                           </div>
-                        ))
+                        )})
                       ) : (
                         <div className="emrNoVisits">
                           <IoMedicalOutline size={48} style={{ opacity: 0.3, marginBottom: '12px' }} />
@@ -2846,7 +4306,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       )}
                     </div>
                     
-                    <button className="emrFloatingBtn" onClick={() => setShowAddVisit(true)}>
+                    <button className="emrFloatingBtn" onClick={openAddVisitModal}>
                       <IoAddCircleOutline size={18} /> Add New Visit
                     </button>
                   </div>
@@ -2905,7 +4365,11 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
           </div>
           <div className="emrHistoryItems">
             {filteredLabResults.length > 0 ? (
-              filteredLabResults.map((lab, idx) => (
+              filteredLabResults.map((lab) => {
+                const isSharedToOwner = !!lab.visibleToOwner;
+                const shareActionKey = `lab-${lab.id}`;
+
+                return (
                 <div key={lab.id} className="emrHistoryCard">
                   <div className="emrHistoryCardHeader">
                     <div className="emrHistoryCardTitle">
@@ -2913,6 +4377,20 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       <span className="emrHistoryDate">{lab.visitDate}</span>
                     </div>
                     <div className="emrHistoryCardActions">
+                      <span className={`emrOwnerShareBadge ${isSharedToOwner ? 'isShared' : 'isPrivate'}`}>
+                        {isSharedToOwner ? 'Visible to owner' : 'Private to clinic'}
+                      </span>
+                      <button
+                        className={`emrOwnerShareBtn ${isSharedToOwner ? 'isShared' : ''}`}
+                        onClick={() => { void handleSetLabResultOwnerVisibility(lab, !isSharedToOwner); }}
+                        disabled={ownerShareActionKey === shareActionKey}
+                      >
+                        {ownerShareActionKey === shareActionKey
+                          ? 'Saving...'
+                          : isSharedToOwner
+                            ? 'Hide from Owner'
+                            : 'Share to Owner'}
+                      </button>
                       {lab.fileData && (
                         <button 
                           className="emrViewFileBtn"
@@ -2945,9 +4423,19 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                         <span>{lab.fileName}</span>
                       </div>
                     )}
+                    {isSharedToOwner && (
+                      <div className="emrHistoryDetail">
+                        <span className="emrHistoryLabel">Owner Portal:</span>
+                        <span>
+                          Shared
+                          {lab.visibleToOwnerAt ? ` on ${new Date(lab.visibleToOwnerAt).toLocaleString()}` : ''}
+                          {lab.visibleToOwnerBy ? ` by ${lab.visibleToOwnerBy}` : ''}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))
+              )})
             ) : (
               <div className="emrHistoryEmpty">
                 <ImLab size={32} />
@@ -2968,7 +4456,10 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
           </div>
           <div className="emrHistoryItems">
             {filteredPrescriptionsVisits.length > 0 ? (
-              filteredPrescriptionsVisits.map((visit, idx) => (
+              filteredPrescriptionsVisits.map((visit, idx) => {
+                const visitPrescriptionRemarks = getSharedPrescriptionInstructions(visit.prescriptions || []);
+
+                return (
                 <div key={visit.id} className="emrHistoryCard">
                   <div className="emrHistoryCardHeader">
                     <div className="emrHistoryCardTitle">
@@ -2997,6 +4488,21 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           .map((pres) => (
                             <div key={pres.id} className="emrPrescriptionItemCompact">
                               <strong>{pres.medicationName}</strong>
+                              {formatPrescriptionDisplayParts(pres).length > 0 && (
+                                <span> - {formatPrescriptionDisplayParts(pres).join(' | ')}</span>
+                              )}
+                            </div>
+                          ))}
+                        {visitPrescriptionRemarks && (
+                          <div className="emrPrescriptionInstructionsCompact" style={{ whiteSpace: 'pre-wrap' }}>
+                            Instructions: {visitPrescriptionRemarks}
+                          </div>
+                        )}
+                        {false && (visit.prescriptions || [])
+                          .filter(p => p.medicationName && p.medicationName.trim() !== '')
+                          .map((pres) => (
+                            <div key={pres.id} className="emrPrescriptionItemCompact">
+                              <strong>{pres.medicationName}</strong>
                               {pres.dosage && <span> - {pres.dosage}</span>}
                               {pres.frequency && <span> - {pres.frequency}</span>}
                               {pres.duration && <span> - {pres.duration}</span>}
@@ -3011,7 +4517,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                     </div>
                   </div>
                 </div>
-              ))
+              )})
             ) : (
               <div className="emrHistoryEmpty">
                 <TbReportMedical size={32} />
@@ -3032,12 +4538,33 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
           </div>
           <div className="emrHistoryItems">
             {filteredVaccinations.length > 0 ? (
-              filteredVaccinations.map((visit, idx) => (
+              filteredVaccinations.map((visit) => {
+                const vaccination = visit.vaccinationDetails!;
+                const isSharedToOwner = !!vaccination.visibleToOwner;
+                const shareActionKey = `vaccination-${vaccination.id || visit.id}`;
+
+                return (
                 <div key={visit.id} className="emrHistoryCard">
                   <div className="emrHistoryCardHeader">
                     <div className="emrHistoryCardTitle">
-                      <strong>{visit.vaccinationDetails!.vaccineName}</strong>
+                      <strong>{vaccination.vaccineName}</strong>
                       <span className="emrHistoryDate">{visit.date}</span>
+                    </div>
+                    <div className="emrHistoryCardActions">
+                      <span className={`emrOwnerShareBadge ${isSharedToOwner ? 'isShared' : 'isPrivate'}`}>
+                        {isSharedToOwner ? 'Visible to owner' : 'Private to clinic'}
+                      </span>
+                      <button
+                        className={`emrOwnerShareBtn ${isSharedToOwner ? 'isShared' : ''}`}
+                        onClick={() => { void handleSetVaccinationOwnerVisibility(vaccination, vaccination.vaccineName); }}
+                        disabled={ownerShareActionKey === shareActionKey}
+                      >
+                        {ownerShareActionKey === shareActionKey
+                          ? 'Saving...'
+                          : isSharedToOwner
+                            ? 'Hide from Owner'
+                            : 'Share to Owner'}
+                      </button>
                     </div>
                   </div>
                   <div className="emrHistoryCardBody">
@@ -3047,29 +4574,39 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                     </div>
                     <div className="emrHistoryDetail">
                       <span className="emrHistoryLabel">Dose/Volume:</span>
-                      <span>{visit.vaccinationDetails!.doseVolume || 'N/A'}</span>
+                      <span>{vaccination.doseVolume || 'N/A'}</span>
                     </div>
                     <div className="emrHistoryDetail">
                       <span className="emrHistoryLabel">Injection Site:</span>
-                      <span>{visit.vaccinationDetails!.injectionSite || 'N/A'}</span>
+                      <span>{vaccination.injectionSite || 'N/A'}</span>
                     </div>
                     <div className="emrHistoryDetail">
                       <span className="emrHistoryLabel">Manufacturer:</span>
-                      <span>{visit.vaccinationDetails!.manufacturer || 'N/A'}</span>
+                      <span>{vaccination.manufacturer || 'N/A'}</span>
                     </div>
                     <div className="emrHistoryDetail">
                       <span className="emrHistoryLabel">Date Administered:</span>
-                      <span>{visit.vaccinationDetails!.dateAdministered}</span>
+                      <span>{vaccination.dateAdministered}</span>
                     </div>
-                    {visit.vaccinationDetails!.nextDueDate && (
+                    {vaccination.nextDueDate && (
                       <div className="emrHistoryDetail">
                         <span className="emrHistoryLabel">Next Due Date:</span>
-                        <span>{visit.vaccinationDetails!.nextDueDate}</span>
+                        <span>{vaccination.nextDueDate}</span>
+                      </div>
+                    )}
+                    {isSharedToOwner && (
+                      <div className="emrHistoryDetail">
+                        <span className="emrHistoryLabel">Owner Portal:</span>
+                        <span>
+                          Shared
+                          {vaccination.visibleToOwnerAt ? ` on ${new Date(vaccination.visibleToOwnerAt).toLocaleString()}` : ''}
+                          {vaccination.visibleToOwnerBy ? ` by ${vaccination.visibleToOwnerBy}` : ''}
+                        </span>
                       </div>
                     )}
                   </div>
                 </div>
-              ))
+              )})
             ) : (
               <div className="emrHistoryEmpty">
                 <IoMedicalOutline size={32} />
@@ -3089,11 +4626,12 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                   <FaFilePdf size={14} /> Generate PDF Medical Record
                 </button>
                 <div style={{ flex: 1 }} />
-                <button className="emrCancelBtn" onClick={handleCancel}>
+                <button className="emrCancelBtn" onClick={handleCancel} disabled={isSavingRecord}>
                   Cancel
                 </button>
-                <button className="emrSubmitBtn" onClick={handleSaveRecord}>
-                  Save Changes
+                <button className="emrSubmitBtn" onClick={handleSaveRecord} disabled={isSavingRecord}>
+                  {isSavingRecord && <span className="emrBtnSpinner" aria-hidden="true"></span>}
+                  {isSavingRecord ? 'Saving Changes...' : 'Save Changes'}
                 </button>
               </div>
             </div>
@@ -3181,6 +4719,17 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           onClick={() => {
                             setVisitType('walkin');
                             setSelectedAppointment(null);
+                            setSelectedPrimaryServiceId('');
+                            setSelectedServices([]);
+                            setNewVisit((prev) => ({
+                              ...prev,
+                              veterinarian: '',
+                              reason: ''
+                            }));
+                            clearVisitFieldError('visitType');
+                            clearVisitFieldError('appointment');
+                            clearVisitFieldError('primaryService');
+                            clearVisitFieldError('veterinarian');
                           }}
                         >
                           <IoTimeSharp size={14} /> Walk-in
@@ -3190,14 +4739,26 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           className={`emrToggleBtnFull ${visitType === 'appointment' ? 'emrToggleActiveFull' : ''}`}
                           onClick={() => {
                             setVisitType('appointment');
-                            if (appointmentRecords.length === 0 && patientId) {
-                              fetchAppointmentsForPet(patientId);
+                            setSelectedPrimaryServiceId('');
+                            setSelectedServices([]);
+                            setNewVisit((prev) => ({
+                              ...prev,
+                              veterinarian: '',
+                              reason: ''
+                            }));
+                            clearVisitFieldError('visitType');
+                            clearVisitFieldError('appointment');
+                            clearVisitFieldError('primaryService');
+                            clearVisitFieldError('veterinarian');
+                            if (appointmentRecords.length === 0 && selectedPetId) {
+                              void fetchAppointmentsForPet(selectedPetId);
                             }
                           }}
                         >
                           <IoCalendarOutline size={14} /> Appointment
                         </button>
                       </div>
+                      {visitFormErrors.visitType && <div className="emrErrorText">{visitFormErrors.visitType}</div>}
                     </div>
                   </div>
                 </div>
@@ -3206,21 +4767,48 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                 {visitType === 'appointment' && (
                   <div className="emrFormSection">
                     <h4>Select Appointment</h4>
+                    <div className="emrAppointmentFilterBar">
+                      {APPOINTMENT_DATE_FILTER_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          className={`emrAppointmentFilterBtn ${appointmentDateFilter === option.value ? 'emrAppointmentFilterBtnActive' : ''}`}
+                          onClick={() => {
+                            setAppointmentDateFilter(option.value);
+                            clearVisitFieldError('appointment');
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
                     <div className="emrFormRow">
                       <div className="emrFormGroup emrFullWidth">
-                        {appointmentRecords.filter(app => app.status === 'scheduled').length > 0 ? (
+                        {filteredAppointmentRecords.length > 0 ? (
                           <div className="emrAppointmentList">
-                            {appointmentRecords.filter(app => app.status === 'scheduled').map(app => (
+                            {filteredAppointmentRecords.map(app => (
                               <div 
                                 key={app.id}
                                 className={`emrAppointmentItem ${selectedAppointment?.id === app.id ? 'emrAppointmentSelected' : ''}`}
                                 onClick={() => {
                                   setSelectedAppointment(app);
-                                  setNewVisit({
-                                    ...newVisit,
+                                  setSelectedPrimaryServiceId('');
+                                  setSelectedServices(
+                                    (app.services || []).map((service) => ({
+                                      id: service.id,
+                                      name: service.name,
+                                      price: typeof service.price === 'number' ? service.price : 0,
+                                      description: service.description || ''
+                                    }))
+                                  );
+                                  clearVisitFieldError('appointment');
+                                  clearVisitFieldError('primaryService');
+                                  clearVisitFieldError('veterinarian');
+                                  setNewVisit((prev) => ({
+                                    ...prev,
                                     veterinarian: app.veterinarian,
-                                    reason: app.reason
-                                  });
+                                    reason: app.reason || 'Not specified'
+                                  }));
                                 }}
                               >
                                 <div className="emrAppointmentInfo">
@@ -3231,7 +4819,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                   <div className="emrAppointmentDetails">
                                     <span>{app.veterinarian}</span>
                                     <span>•</span>
-                                    <span>{app.reason}</span>
+                                    <span>{app.reason || 'No stated reason'}</span>
                                   </div>
                                   {app.services && app.services.length > 0 && (
                                     <div className="emrAppointmentServices">
@@ -3249,19 +4837,26 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           </div>
                         ) : (
                           <div className="emrNoAppointments">
-                            <p>No upcoming appointments found</p>
-                            <button 
-                              type="button"
-                              className="emrBlackBtn"
-                              onClick={() => setVisitType('walkin')}
-                              style={{ marginTop: '8px' }}
-                            >
-                              Switch to Walk-in
-                            </button>
+                            <p>{getAppointmentEmptyStateMessage(appointmentDateFilter)}</p>
                           </div>
                         )}
+                        {visitFormErrors.appointment && <div className="emrErrorText">{visitFormErrors.appointment}</div>}
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {visitType === 'appointment' && (
+                  <div className="emrFormSection">
+                    {selectedAppointment && hasMedicalInformationContent(selectedAppointmentMedicalInformation) ? (
+                      renderMedicalInformationBlock(selectedAppointmentMedicalInformation, 'Medical Information From Appointment')
+                    ) : (
+                      <div className="emrMedicalInfoEmptyState">
+                        {selectedAppointment
+                          ? 'This appointment has no saved medical information yet.'
+                          : 'Select an appointment to load its medical information into this visit.'}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -3273,27 +4868,80 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       <label>Veterinarian</label>
                       <select
                         value={newVisit.veterinarian}
-                        onChange={(e) => setNewVisit({...newVisit, veterinarian: e.target.value})}
-                        className="emrFormSelect"
-                        disabled={visitType === 'appointment' && selectedAppointment !== null}
+                        onChange={(e) => {
+                          clearVisitFieldError('veterinarian');
+                          setNewVisit({...newVisit, veterinarian: e.target.value});
+                        }}
+                        className={`emrFormSelect ${visitFormErrors.veterinarian ? 'emrError' : ''}`}
+                        disabled={visitType !== 'walkin'}
                       >
-                        {VETERINARIANS.map(doc => (
+                        <option value="">
+                          {visitType === 'walkin'
+                            ? 'Select a doctor'
+                            : visitType === 'appointment'
+                              ? 'Loaded from selected appointment'
+                              : 'Select visit type first'}
+                        </option>
+                        {veterinarianOptions.map(doc => (
                           <option key={doc} value={doc}>{doc}</option>
                         ))}
                       </select>
+                      {visitType === 'walkin' && visitFormErrors.veterinarian && (
+                        <div className="emrErrorText">{visitFormErrors.veterinarian}</div>
+                      )}
                     </div>
                     <div className="emrFormGroup">
-                      <label>Reason</label>
-                      <select
-                        value={newVisit.reason}
-                        onChange={(e) => setNewVisit({...newVisit, reason: e.target.value})}
-                        className="emrFormSelect"
-                        disabled={visitType === 'appointment' && selectedAppointment !== null}
-                      >
-                        {REASONS.map(reason => (
-                          <option key={reason} value={reason}>{reason}</option>
-                        ))}
-                      </select>
+                      <label>Primary Service</label>
+                      {visitType === 'appointment' ? (
+                        <input
+                          type="text"
+                          value={selectedAppointmentServiceLabel}
+                          className="emrFormInput"
+                          disabled
+                          placeholder="Loaded from selected appointment"
+                        />
+                      ) : visitType === 'walkin' ? (
+                        <>
+                          <select
+                            value={selectedPrimaryServiceId}
+                            onChange={(e) => handleWalkInPrimaryServiceChange(e.target.value)}
+                            className={`emrFormSelect ${visitFormErrors.primaryService ? 'emrError' : ''}`}
+                          >
+                            <option value="">Select primary service</option>
+                            {AVAILABLE_SERVICES.map((service) => (
+                              <option key={service.id} value={service.id}>{service.name}</option>
+                            ))}
+                          </select>
+                          {visitFormErrors.primaryService && <div className="emrErrorText">{visitFormErrors.primaryService}</div>}
+                        </>
+                      ) : (
+                        <input
+                          type="text"
+                          value=""
+                          className="emrFormInput"
+                          disabled
+                          placeholder="Select visit type first"
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <div className="emrFormRow">
+                    <div className="emrFormGroup emrFullWidth">
+                      <label>Reason / Chief Complaint</label>
+                      <input
+                        type="text"
+                        value={selectedVisitReasonValue}
+                        onChange={(e) => setNewVisit({ ...newVisit, reason: e.target.value })}
+                        className="emrFormInput"
+                        disabled={visitType !== 'walkin'}
+                        placeholder={
+                          visitType === 'appointment'
+                            ? 'Loaded from selected appointment'
+                            : visitType === 'walkin'
+                              ? 'e.g., vomiting for 2 days, annual booster, wound recheck'
+                              : 'Select visit type first'
+                        }
+                      />
                     </div>
                   </div>
                   
@@ -3301,7 +4949,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                   {selectedServices.length > 0 && (
                     <div className="emrSelectedServicesDisplay" style={{ marginTop: '12px', padding: '10px', backgroundColor: '#e8f5e9', borderRadius: '8px', borderLeft: '3px solid #2e9e0c' }}>
                       <div>
-                        <strong style={{ fontSize: '12px', color: '#2e7d32' }}>Additional Services Selected:</strong>
+                        <strong style={{ fontSize: '12px', color: '#2e7d32' }}>Services Selected:</strong>
                         <div style={{ marginTop: '4px' }}>
                           {selectedServices.map((service, idx) => (
                             <span key={service.id} style={{ fontSize: '11px', color: '#555', marginRight: '12px', display: 'inline-block' }}>
@@ -3457,16 +5105,19 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           type="text"
                           value={newVisit.sameAsLastWeight && getLastWeight() 
                             ? getLastWeight()?.value || '' 
-                            : newVisit.weight || ''}
+                            : visitFieldInputs.weight}
                           onChange={(e) => {
                             const value = e.target.value;
                             if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                              clearVisitFieldError('weight');
+                              setVisitFieldInputs((prev) => ({ ...prev, weight: value }));
                               setNewVisit({...newVisit, weight: parseFloat(value) || 0, sameAsLastWeight: false});
                             }
                           }}
                           placeholder="0.0"
-                          className="emrWeightInput"
+                          className={`emrWeightInput ${visitFormErrors.weight ? 'emrError' : ''}`}
                           disabled={newVisit.sameAsLastWeight}
+                          inputMode="decimal"
                         />
                         <div className="emrWeightUnitSelect">
                           <button
@@ -3490,12 +5141,16 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           <input
                             type="checkbox"
                             checked={newVisit.sameAsLastWeight}
-                            onChange={(e) => setNewVisit({...newVisit, sameAsLastWeight: e.target.checked})}
+                            onChange={(e) => {
+                              clearVisitFieldError('weight');
+                              setNewVisit({...newVisit, sameAsLastWeight: e.target.checked});
+                            }}
                             style={{marginRight: '10px'}}
                           />
                           Same as last appointment ({getLastWeight()?.value} {getLastWeight()?.unit})
                         </label>
                       )}
+                      {visitFormErrors.weight && <div className="emrErrorText">{visitFormErrors.weight}</div>}
                     </div>
 
                     {/* Length Section */}
@@ -3504,10 +5159,12 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       <div className="emrWeightInputWrapper">
                         <input
                           type="text"
-                          value={newVisit.clinicalExam?.length || ''}
+                          value={visitFieldInputs.length}
                           onChange={(e) => {
                             const value = e.target.value;
                             if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                              clearVisitFieldError('length');
+                              setVisitFieldInputs((prev) => ({ ...prev, length: value }));
                               setNewVisit({
                                 ...newVisit, 
                                 clinicalExam: { ...newVisit.clinicalExam!, length: parseFloat(value) || 0 }
@@ -3515,7 +5172,8 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                             }
                           }}
                           placeholder="0.0"
-                          className="emrWeightInput"
+                          className={`emrWeightInput ${visitFormErrors.length ? 'emrError' : ''}`}
+                          inputMode="decimal"
                         />
                         <div className="emrWeightUnitSelect">
                           <button
@@ -3540,6 +5198,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           </button>
                         </div>
                       </div>
+                      {visitFormErrors.length && <div className="emrErrorText">{visitFormErrors.length}</div>}
                     </div>
 
                     {/* Temperature Section */}
@@ -3548,10 +5207,12 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       <div className="emrWeightInputWrapper">
                         <input
                           type="text"
-                          value={newVisit.clinicalExam?.temperature || ''}
+                          value={visitFieldInputs.temperature}
                           onChange={(e) => {
                             const value = e.target.value;
                             if (value === '' || /^\d*\.?\d*$/.test(value)) {
+                              clearVisitFieldError('temperature');
+                              setVisitFieldInputs((prev) => ({ ...prev, temperature: value }));
                               setNewVisit({
                                 ...newVisit,
                                 clinicalExam: { ...newVisit.clinicalExam!, temperature: parseFloat(value) || 0 }
@@ -3559,7 +5220,8 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                             }
                           }}
                           placeholder="0.0"
-                          className="emrWeightInput"
+                          className={`emrWeightInput ${visitFormErrors.temperature ? 'emrError' : ''}`}
+                          inputMode="decimal"
                         />
                         <div className="emrWeightUnitSelect">
                           <button
@@ -3584,6 +5246,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           </button>
                         </div>
                       </div>
+                      {visitFormErrors.temperature && <div className="emrErrorText">{visitFormErrors.temperature}</div>}
                     </div>
                   </div>
 
@@ -3592,30 +5255,48 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       <label>Heart Rate (per minute)</label>
                       <input
                         type="text"
-                        value={newVisit.clinicalExam?.heartRate || ''}
-                        onChange={(e) => setNewVisit({
-                          ...newVisit,
-                          clinicalExam: { ...newVisit.clinicalExam!, heartRate: e.target.value }
-                        })}
-                        placeholder="e.g., 80-120 or 100"
-                        className="emrFormInput"
+                        value={visitFieldInputs.heartRate}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (value === '' || RATE_RANGE_INPUT_PATTERN.test(value)) {
+                            clearVisitFieldError('heartRate');
+                            setVisitFieldInputs((prev) => ({ ...prev, heartRate: value }));
+                            setNewVisit({
+                              ...newVisit,
+                              clinicalExam: { ...newVisit.clinicalExam!, heartRate: value }
+                            });
+                          }
+                        }}
+                        placeholder="e.g., 80-120"
+                        className={`emrFormInput ${visitFormErrors.heartRate ? 'emrError' : ''}`}
+                        inputMode="text"
                       />
-                      <small className="emrHelperText">Format: 80-120 (range) or 100 (single value)</small>
+                      <small className="emrHelperText">Use a simple range like 80-120.</small>
+                      {visitFormErrors.heartRate && <div className="emrErrorText">{visitFormErrors.heartRate}</div>}
                     </div>
 
                     <div className="emrFormGroup">
                       <label>Breathing Rate (per minute)</label>
                       <input
                         type="text"
-                        value={newVisit.clinicalExam?.breathingRate || ''}
-                        onChange={(e) => setNewVisit({
-                          ...newVisit,
-                          clinicalExam: { ...newVisit.clinicalExam!, breathingRate: e.target.value }
-                        })}
-                        placeholder="e.g., 15-30 or 20"
-                        className="emrFormInput"
+                        value={visitFieldInputs.breathingRate}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (value === '' || RATE_RANGE_INPUT_PATTERN.test(value)) {
+                            clearVisitFieldError('breathingRate');
+                            setVisitFieldInputs((prev) => ({ ...prev, breathingRate: value }));
+                            setNewVisit({
+                              ...newVisit,
+                              clinicalExam: { ...newVisit.clinicalExam!, breathingRate: value }
+                            });
+                          }
+                        }}
+                        placeholder="e.g., 15-30"
+                        className={`emrFormInput ${visitFormErrors.breathingRate ? 'emrError' : ''}`}
+                        inputMode="text"
                       />
-                      <small className="emrHelperText">Format: 15-30 (range) or 20 (single value)</small>
+                      <small className="emrHelperText">Use a simple range like 15-30.</small>
+                      {visitFormErrors.breathingRate && <div className="emrErrorText">{visitFormErrors.breathingRate}</div>}
                     </div>
                   </div>
 
@@ -3753,21 +5434,34 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                         <p style={{ fontSize: '12px', color: '#666', marginBottom: '16px' }}>
                           Select additional services to include in this visit:
                         </p>
-                        {AVAILABLE_SERVICES.map(service => (
-                          <div 
-                            key={service.id}
-                            className={`emrServiceItem ${selectedServices.find(s => s.id === service.id) ? 'emrServiceSelected' : ''}`}
-                            onClick={() => toggleService(service)}
-                          >
-                            <div className="emrServiceInfo">
-                              <div className="emrServiceName">{service.name}</div>
-                              <div className="emrServiceDescription">{service.description}</div>
+                        {AVAILABLE_SERVICES.map(service => {
+                          const serviceSelected = isServiceSelectedInVisit(service);
+                          const serviceLocked = isServiceLockedInVisit(service);
+
+                          return (
+                            <div 
+                              key={service.id}
+                              className={`emrServiceItem ${serviceSelected ? 'emrServiceSelected' : ''} ${serviceLocked ? 'emrServiceLocked' : ''}`}
+                              onClick={() => toggleService(service)}
+                              aria-disabled={serviceLocked}
+                            >
+                              <div className="emrServiceInfo">
+                                <div className="emrServiceName">
+                                  {service.name}
+                                  {serviceLocked && <span className="emrServiceLockBadge">Primary</span>}
+                                </div>
+                                <div className="emrServiceDescription">
+                                  {serviceLocked
+                                    ? 'Already included as the primary booked service for this visit.'
+                                    : service.description}
+                                </div>
+                              </div>
+                              {serviceSelected && (
+                                <IoCheckmarkCircleOutline size={20} color="#2e9e0c" />
+                              )}
                             </div>
-                            {selectedServices.find(s => s.id === service.id) && (
-                              <IoCheckmarkCircleOutline size={20} color="#2e9e0c" />
-                            )}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
@@ -3790,58 +5484,122 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                         <thead>
                           <tr>
                             <th>Medication Name</th>
-                            <th>Dosage</th>
+                            <th>Dose</th>
                             <th>Frequency</th>
                             <th>Duration</th>
                             <th style={{ width: '40px' }}></th>
                           </tr>
                         </thead>
                         <tbody>
-                          {(newVisit.prescriptions || []).map((pres) => (
-                            <tr key={pres.id}>
-                              <td>
-                                <input
-                                  type="text"
-                                  value={pres.medicationName}
-                                  onChange={(e) => updatePrescription(pres.id, 'medicationName', e.target.value)}
-                                  placeholder="Medication name"
-                                />
-                              </td>
-                              <td>
-                                <input
-                                  type="text"
-                                  value={pres.dosage}
-                                  onChange={(e) => updatePrescription(pres.id, 'dosage', e.target.value)}
-                                  placeholder="e.g., 250mg"
-                                />
-                              </td>
-                              <td>
-                                <input
-                                  type="text"
-                                  value={pres.frequency}
-                                  onChange={(e) => updatePrescription(pres.id, 'frequency', e.target.value)}
-                                  placeholder="e.g., Twice daily"
-                                />
-                              </td>
-                              <td>
-                                <input
-                                  type="text"
-                                  value={pres.duration}
-                                  onChange={(e) => updatePrescription(pres.id, 'duration', e.target.value)}
-                                  placeholder="e.g., 7 days"
-                                />
-                              </td>
-                              <td>
-                                <button
-                                  type="button"
-                                  className="emrRemoveRowBtn"
-                                  onClick={() => removePrescription(pres.id)}
-                                >
-                                  <IoTrashBinOutline size={16} />
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
+                          {(newVisit.prescriptions || []).map((pres) => {
+                            const selectedFrequency = getPrescriptionPresetValue(pres.frequency, PRESCRIPTION_FREQUENCY_OPTIONS);
+                            const selectedDuration = getPrescriptionPresetValue(pres.duration, PRESCRIPTION_DURATION_OPTIONS);
+
+                            return (
+                              <React.Fragment key={pres.id}>
+                                <tr>
+                                  <td>
+                                    <input
+                                      type="text"
+                                      value={pres.medicationName}
+                                      onChange={(e) => updatePrescription(pres.id, 'medicationName', e.target.value)}
+                                      placeholder="Medication name"
+                                    />
+                                  </td>
+                                  <td>
+                                    <input
+                                      type="text"
+                                      value={pres.dosage}
+                                      onChange={(e) => updatePrescription(pres.id, 'dosage', e.target.value)}
+                                      placeholder="e.g., 1 tablet, 5 mL, or 5 mg/kg"
+                                    />
+                                  </td>
+                                  <td>
+                                    <div className="emrPrescriptionFieldGroup">
+                                      <select
+                                        value={selectedFrequency}
+                                        onChange={(e) => updatePrescription(pres.id, 'frequency', e.target.value === CUSTOM_PRESCRIPTION_OPTION ? '' : e.target.value)}
+                                        className="emrPrescriptionSelect"
+                                      >
+                                        {PRESCRIPTION_FREQUENCY_OPTIONS.map((option) => (
+                                          <option key={option} value={option}>{option}</option>
+                                        ))}
+                                        <option value={CUSTOM_PRESCRIPTION_OPTION}>Custom</option>
+                                      </select>
+                                      {selectedFrequency === CUSTOM_PRESCRIPTION_OPTION && (
+                                        <input
+                                          type="text"
+                                          value={pres.frequency}
+                                          onChange={(e) => updatePrescription(pres.id, 'frequency', e.target.value)}
+                                          placeholder="Custom frequency"
+                                        />
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td>
+                                    <div className="emrPrescriptionFieldGroup">
+                                      <select
+                                        value={selectedDuration}
+                                        onChange={(e) => updatePrescription(pres.id, 'duration', e.target.value === CUSTOM_PRESCRIPTION_OPTION ? '' : e.target.value)}
+                                        className="emrPrescriptionSelect"
+                                      >
+                                        {PRESCRIPTION_DURATION_OPTIONS.map((option) => (
+                                          <option key={option} value={option}>{option}</option>
+                                        ))}
+                                        <option value={CUSTOM_PRESCRIPTION_OPTION}>Custom</option>
+                                      </select>
+                                      {selectedDuration === CUSTOM_PRESCRIPTION_OPTION && (
+                                        <input
+                                          type="text"
+                                          value={pres.duration}
+                                          onChange={(e) => updatePrescription(pres.id, 'duration', e.target.value)}
+                                          placeholder="Custom duration"
+                                        />
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td>
+                                    <button
+                                      type="button"
+                                      className="emrRemoveRowBtn"
+                                      onClick={() => removePrescription(pres.id)}
+                                    >
+                                      <IoTrashBinOutline size={16} />
+                                    </button>
+                                  </td>
+                                </tr>
+                                <tr className="emrPrescriptionDetailRow">
+                                  <td colSpan={5}>
+                                    <div className="emrPrescriptionDetailsGrid">
+                                      <div className="emrPrescriptionDetailField">
+                                        <label className="emrPrescriptionInstructionLabel">Route</label>
+                                        <div className="emrPrescriptionFieldGroup">
+                                          <select
+                                            value={getPrescriptionPresetValue(pres.route || '', PRESCRIPTION_ROUTE_OPTIONS)}
+                                            onChange={(e) => updatePrescription(pres.id, 'route', e.target.value === CUSTOM_PRESCRIPTION_OPTION ? '' : e.target.value)}
+                                            className="emrPrescriptionSelect"
+                                          >
+                                            {PRESCRIPTION_ROUTE_OPTIONS.map((option) => (
+                                              <option key={option} value={option}>{option}</option>
+                                            ))}
+                                            <option value={CUSTOM_PRESCRIPTION_OPTION}>Custom</option>
+                                          </select>
+                                          {getPrescriptionPresetValue(pres.route || '', PRESCRIPTION_ROUTE_OPTIONS) === CUSTOM_PRESCRIPTION_OPTION && (
+                                            <input
+                                              type="text"
+                                              value={pres.route || ''}
+                                              onChange={(e) => updatePrescription(pres.id, 'route', e.target.value)}
+                                              placeholder="Custom route"
+                                            />
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              </React.Fragment>
+                            );
+                          })}
                           {(newVisit.prescriptions || []).length === 0 && (
                             <tr>
                               <td colSpan={5} style={{ textAlign: 'center', padding: '20px', color: '#999', fontSize: '14px' }}>
@@ -3851,23 +5609,16 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           )}
                         </tbody>
                       </table>
-                      
-                      <div className="emrInstructionsField">
-                        <label>Instructions</label>
+
+                      <div className="emrPrescriptionSharedInstructionBox">
+                        <label className="emrPrescriptionInstructionLabel">Instructions</label>
                         <textarea
-                          value={newVisit.prescriptions?.[0]?.instructions || ''}
-                          onChange={(e) => {
-                            const instructions = e.target.value;
-                            setNewVisit({
-                              ...newVisit,
-                              prescriptions: newVisit.prescriptions?.map(pres => ({ ...pres, instructions }))
-                            });
-                          }}
+                          value={prescriptionRemarks}
+                          onChange={(e) => setPrescriptionRemarks(e.target.value)}
                           rows={4}
-                          placeholder="Enter instructions for these medications..."
-                          className="emrInstructionsTextarea"
+                          placeholder="e.g., Give with food. Finish all medication. Monitor for vomiting or diarrhea."
+                          className="emrPrescriptionInstructionTextarea"
                         />
-                        <small className="emrHelperText">These instructions will apply to all medications in this prescription</small>
                       </div>
                       
                       <button
@@ -4086,7 +5837,13 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
             </div>
             <div className="emrAlertActions">
               {modalConfig.showCancel && (
-                <button onClick={() => setModalVisible(false)} className="emrAlertBtn emrCancelAlertBtn">
+                <button
+                  onClick={() => {
+                    setModalVisible(false);
+                    if (modalConfig.onCancel) modalConfig.onCancel();
+                  }}
+                  className="emrAlertBtn emrCancelAlertBtn"
+                >
                   Cancel
                 </button>
               )}

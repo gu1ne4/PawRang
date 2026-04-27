@@ -504,7 +504,8 @@ const GlobalInventory: React.FC = () => {
       calculateAnalytics(items);
     } catch (error) {
       console.error(error);
-      showAlert('error', 'Error', 'Failed to fetch inventory data.');
+      const message = error instanceof Error ? error.message : 'Failed to fetch inventory data.';
+      showAlert('error', 'Error', message);
     } finally {
       setLoading(false);
     }

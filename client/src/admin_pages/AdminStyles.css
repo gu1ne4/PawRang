@@ -936,6 +936,41 @@ html, body {
   animation: spin 1s linear infinite;
 }
 
+.adminInlineButtonSpinner {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border: 2px solid rgba(61, 103, 238, 0.25);
+  border-top-color: #3d67ee;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.billingNavigationOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(248, 250, 252, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.billingNavigationPanel {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  border: 1px solid #dbe4ff;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #3d67ee;
+  font-size: 13px;
+  font-weight: 700;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.14);
+}
+
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }

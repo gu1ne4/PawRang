@@ -113,11 +113,12 @@ export const availabilityService = {
   // Save time slots for a day
   async saveTimeSlots(dayName: string, slots: any[]): Promise<any[]> {
     try {
-      console.log('Saving slots to API:', { dayName, slots });
+      const sanitizedSlots = (slots || []).map(({ capacity, ...slot }) => slot);
+      console.log('Saving slots to API:', { dayName, slots: sanitizedSlots });
       const response = await fetch(`${API_URL}/api/time-slots/${dayName.toLowerCase()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slots })
+        body: JSON.stringify({ slots: sanitizedSlots })
       });
       
       if (!response.ok) {

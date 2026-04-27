@@ -994,6 +994,25 @@ html, body {
   font-size: 16px;
 }
 
+.upf-otp-timer {
+  width: 100%;
+  margin: -12px 0 22px;
+  padding: 10px 12px;
+  border: 1px solid #dbe5ff;
+  border-radius: 12px;
+  background: #f6f8ff;
+  color: #3150c8;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.upf-otp-timer.upf-expired {
+  border-color: #fecaca;
+  background: #fff5f5;
+  color: #dc2626;
+}
+
 .upf-otp-resend {
   text-align: center;
   margin: 20px 0;
@@ -1012,6 +1031,12 @@ html, body {
 
 .upf-resend-btn:hover {
   color: #2d4fb0;
+}
+
+.upf-resend-btn:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+  text-decoration: none;
 }
 
 .upf-password-hint {
@@ -1129,6 +1154,41 @@ html, body {
 .upf-btn-secondary:hover {
   background: #e2e8f0;
   transform: translateY(-2px);
+}
+
+.upf-btn-primary:disabled,
+.upf-btn-secondary:disabled,
+.upf-modal-close-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  transform: none;
+}
+
+.upf-btn-primary:disabled:hover,
+.upf-btn-secondary:disabled:hover,
+.upf-modal-close-btn:disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.upf-button-loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.upf-button-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: upf-spin 0.75s linear infinite;
+}
+
+@keyframes upf-spin {
+  to { transform: rotate(360deg); }
 }
 
 .upf-modal-actions-row {
