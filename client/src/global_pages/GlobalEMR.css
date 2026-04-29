@@ -4335,8 +4335,200 @@ input:checked ~ .emrSwitchLabel {
   opacity: 0.4;
 }
 
+.emrDoctorAiPanel {
+  margin: 0 30px 18px;
+  padding: 18px;
+  border: 1px solid rgba(61, 103, 238, 0.18);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top left, rgba(61, 103, 238, 0.12), transparent 32%),
+    linear-gradient(135deg, #f7fbff 0%, #ffffff 58%, #eef6ff 100%);
+  box-shadow: 0 14px 32px rgba(38, 62, 132, 0.08);
+}
+
+.emrDoctorAiHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+}
+
+.emrDoctorAiEyebrow {
+  color: #3d67ee;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.emrDoctorAiHeader h4 {
+  margin: 4px 0 6px;
+  color: #14213d;
+  font-size: 20px;
+}
+
+.emrDoctorAiHeader p {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.emrDoctorAiActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.emrDoctorAiPrimaryBtn,
+.emrDoctorAiSecondaryBtn {
+  border: none;
+  border-radius: 999px;
+  padding: 9px 14px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.emrDoctorAiPrimaryBtn {
+  background: #14213d;
+  color: #ffffff;
+  box-shadow: 0 10px 20px rgba(20, 33, 61, 0.16);
+}
+
+.emrDoctorAiSecondaryBtn {
+  background: #ffffff;
+  color: #3d67ee;
+  border: 1px solid rgba(61, 103, 238, 0.2);
+}
+
+.emrDoctorAiPrimaryBtn:hover:not(:disabled),
+.emrDoctorAiSecondaryBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.emrDoctorAiPrimaryBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.emrDoctorAiHint,
+.emrDoctorAiError {
+  margin-top: 14px;
+  padding: 11px 13px;
+  border-radius: 14px;
+  font-size: 12px;
+}
+
+.emrDoctorAiHint {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.emrDoctorAiError {
+  background: #fff1f2;
+  color: #be123c;
+}
+
+.emrDoctorAiBody {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.emrDoctorAiSummary {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(61, 103, 238, 0.12);
+}
+
+.emrDoctorAiSummary span,
+.emrDoctorAiColumn h5 {
+  display: block;
+  margin-bottom: 7px;
+  color: #3d67ee;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.emrDoctorAiSummary p {
+  margin: 0;
+  color: #1f2937;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.emrDoctorAiGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.emrDoctorAiColumn {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.emrDoctorAiColumnCritical {
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.emrDoctorAiColumnCritical h5 {
+  color: #be123c;
+}
+
+.emrDoctorAiColumn ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.emrDoctorAiColumnCritical ul {
+  color: #b91c1c;
+  font-weight: 650;
+}
+
+.emrDoctorAiColumn li + li {
+  margin-top: 7px;
+}
+
+.emrDoctorAiFooter {
+  color: #64748b;
+  font-size: 11px;
+  text-align: right;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
+  .emrDoctorAiPanel {
+    margin: 0 14px 14px;
+  }
+
+  .emrDoctorAiHeader {
+    flex-direction: column;
+  }
+
+  .emrDoctorAiActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .emrDoctorAiGrid {
+    grid-template-columns: 1fr;
+  }
+
   .emrHistoryDetail {
     flex-direction: column;
     gap: 4px;

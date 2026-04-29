@@ -1,0 +1,649 @@
+.doctorTableContainer {
+    height: 100%;
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+    overflow: hidden;
+}
+
+.leftContainer {
+    flex: 2.5;
+    padding-right: 20px;
+    padding-left: 10px;
+    overflow-y: scroll;
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+.rightContainer {
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-right: 10px;
+    flex: 0.5;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Responsive heading for upcoming events */
+.upcoming-events-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    margin: 0;
+    color: #1e293b;
+}
+
+.rightContainer::-webkit-scrollbar,
+.leftContainer::-webkit-scrollbar {
+    width: 4px;
+}
+/* Profile Card */
+.profileCard {
+    border-radius: 12px;
+    margin-bottom: 30px;
+    overflow: visible;
+    position: relative;
+    min-height: 180px;
+}
+
+.profileHeader {
+    background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9, #0f3bca,  #3db6ee);
+    border-radius: 12px 12px 12px 12px;
+    padding: 20px;
+    width: 100%;
+    min-height: 130px;
+}
+
+.profileInfo {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-start;
+    width: 100%;
+    padding-top: 5px;
+}
+
+.profileNameSection {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-left: 170px;
+}
+
+.doctorName {
+    font-size: 20px;
+    font-weight: 600;
+    color: #ffffff;
+    margin: 0;
+}
+
+.doctorUsername {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.8);
+    margin: 4px 0;
+}
+
+.doctorRole {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.9);
+    margin: 4px 0;
+}
+
+.profileDateTime {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.profileGlassContainer {
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(10px);
+    border-radius: 10px;
+    padding: 10px 14px;
+}
+
+.dateTimeText {
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.editProfileBtn {
+    background: rgba(255, 255, 255, 0.15);
+    border: none;
+    border-radius: 10px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+}
+
+.profileAvatar {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 2;
+}
+
+.doctorAvatar {
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 5px solid white;
+}
+
+.sectionTitle {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0 0 6px 0;
+}
+
+.sectionSubtitle {
+    font-size: 13px;
+    color: #64748b;
+    margin: 0 0 16px 0;
+}
+
+.reportsContainer {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.reportCard {
+    background: white;
+    border-radius: 16px;
+    padding: 18px;
+    border: 1px solid #f0f2f5;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.reportHeader {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 12px;
+}
+
+.reportValue {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.valueNumber {
+    font-size: 28px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.trendBadge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 999px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.trend-up {
+    color: #16a34a;
+    background: rgba(22, 163, 74, 0.1);
+}
+
+.trend-down {
+    color: #dc2626;
+    background: rgba(220, 38, 38, 0.1);
+}
+
+.quickActions {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 28px;
+}
+
+.quickActionBtn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 110px;
+    border-radius: 16px;
+    border: 1px solid transparent;
+    background: white;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.quickActionBtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+.appointmentsCard {
+    background: white;
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+    border: 1px solid #f0f2f5;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.cardHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.cardTitle {
+    font-size: 18px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+}
+
+.viewAllBtn {
+    border: none;
+    background: transparent;
+    color: #3d67ee;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.appointmentTotal {
+    font-size: 13px;
+    color: #64748b;
+    margin: 0 0 14px 0;
+}
+
+.appointmentsList,
+.patientsList {
+    display: flex;
+    flex-direction: column;
+}
+
+.appointmentsHeader,
+.appointmentRow,
+.patientsHeader,
+.patientRow {
+    display: grid;
+    align-items: center;
+    gap: 12px;
+}
+
+.appointmentsHeader,
+.patientsHeader {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 10px 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.appointmentRow,
+.patientRow {
+    padding: 14px 0;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 13px;
+    color: #334155;
+}
+
+.appointmentsHeader,
+.appointmentRow {
+    grid-template-columns: 1.5fr 1.5fr 1fr;
+}
+
+.patientsHeader,
+.patientRow {
+    grid-template-columns: 1.3fr 1.3fr 1fr 0.8fr;
+}
+
+.clientName,
+.patientName {
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.appointmentDateTime,
+.patientOwner,
+.patientDate {
+    color: #475569;
+}
+
+.statusCell,
+.serviceCell,
+.text-center {
+    display: flex;
+    justify-content: center;
+}
+
+.statusBadge,
+.serviceBadge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 96px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.status-confirmed {
+    color: #15803d;
+    background: rgba(22, 163, 74, 0.12);
+}
+
+.status-pending {
+    color: #b45309;
+    background: rgba(245, 158, 11, 0.15);
+}
+
+.status-cancelled {
+    color: #b91c1c;
+    background: rgba(239, 68, 68, 0.12);
+}
+
+.service-checkup {
+    color: #1d4ed8;
+    background: rgba(59, 130, 246, 0.12);
+}
+
+.service-grooming {
+    color: #c2410c;
+    background: rgba(249, 115, 22, 0.12);
+}
+
+.service-vaccination {
+    color: #7c3aed;
+    background: rgba(139, 92, 246, 0.12);
+}
+
+.service-dental {
+    color: #be185d;
+    background: rgba(236, 72, 153, 0.12);
+}
+
+.patientsCard {
+    background: white;
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid #f0f2f5;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.notificationsCard {
+    background: white;
+    border-radius: 16px;
+    padding: 16px;
+    border: 1px solid #f0f2f5;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.notificationsHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.notificationsTitle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #0f172a;
+}
+
+.notificationsTitle h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.notificationsList {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.notificationItem {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 14px;
+    background: #f8fafc;
+}
+
+.notificationIcon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.notificationContent {
+    flex: 1;
+    min-width: 0;
+}
+
+.notificationTitle {
+    margin: 0 0 4px 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.notificationDesc {
+    margin: 0;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.notificationTime {
+    font-size: 11px;
+    color: #94a3b8;
+    white-space: nowrap;
+}
+
+.calendarCard {
+    background: white;
+    border-radius: 16px;
+    padding: 14px;
+    border: 1px solid #f0f2f5;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.calendarGradient {
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(61, 182, 238, 0.08), rgba(61, 103, 238, 0.03));
+    padding: 10px;
+}
+
+.calendarCard .react-calendar {
+    width: 100%;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+}
+
+.calendarCard .react-calendar__navigation {
+    margin-bottom: 10px;
+}
+
+.calendarCard .react-calendar__navigation button {
+    color: #0f172a;
+    min-width: 32px;
+    background: transparent;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.calendarCard .react-calendar__navigation button:enabled:hover,
+.calendarCard .react-calendar__navigation button:enabled:focus {
+    background: rgba(61, 103, 238, 0.08);
+    border-radius: 10px;
+}
+
+.calendarCard .react-calendar__navigation button[disabled] {
+    background-color: transparent;
+}
+
+.calendarCard .react-calendar__month-view__weekdays {
+    text-align: center;
+    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+}
+
+.calendarCard .react-calendar__month-view__weekdays__weekday {
+    padding: 8px 0;
+}
+
+.calendarCard .react-calendar__month-view__weekdays__weekday abbr {
+    text-decoration: none;
+}
+
+.calendarCard .react-calendar__month-view__days {
+    gap: 4px 0;
+}
+
+.calendarCard .react-calendar__tile {
+    border-radius: 10px;
+    padding: 10px 6px;
+    background: transparent;
+}
+
+.calendarCard .react-calendar__navigation__label {
+    font-weight: 700;
+}
+
+.calendarCard .react-calendar__navigation__label:hover {
+    background: transparent;
+}
+
+.calendarCard .react-calendar__tile:enabled:hover,
+.calendarCard .react-calendar__tile:enabled:focus {
+    background: rgba(61, 103, 238, 0.08);
+}
+
+.calendarCard .react-calendar__tile--active {
+    background: #3d67ee;
+    color: #ffffff;
+}
+
+.calendarCard .react-calendar__tile--now {
+    background: rgba(61, 182, 238, 0.18);
+}
+
+.calendarCard .react-calendar__tile--now:enabled:hover,
+.calendarCard .react-calendar__tile--now:enabled:focus {
+    background: rgba(61, 182, 238, 0.28);
+}
+
+.calendarCard .react-calendar__month-view__days__day--neighboringMonth {
+    color: #cbd5e1;
+}
+
+.calendarCard .react-calendar__tile:disabled {
+    background-color: transparent;
+    color: #cbd5e1;
+}
+
+.calendarCard .react-calendar__navigation__arrow {
+    font-size: 18px;
+}
+
+@media (max-width: 1200px) {
+    .quickActions {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .reportsContainer {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 960px) {
+    .doctorTableContainer {
+        flex-direction: column;
+        overflow: visible;
+    }
+
+    .leftContainer,
+    .rightContainer {
+        padding-right: 0;
+        padding-left: 0;
+        overflow: visible;
+    }
+
+    .profileNameSection {
+        margin-left: 0;
+        margin-top: 150px;
+    }
+
+    .profileInfo {
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .profileDateTime {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .appointmentsHeader,
+    .appointmentRow,
+    .patientsHeader,
+    .patientRow {
+        grid-template-columns: 1fr;
+    }
+
+    .text-center,
+    .statusCell,
+    .serviceCell {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 640px) {
+    .quickActions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .profileHeader {
+        padding: 16px;
+    }
+
+    .profileAvatar {
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    .profileNameSection {
+        align-items: center;
+        text-align: center;
+    }
+}

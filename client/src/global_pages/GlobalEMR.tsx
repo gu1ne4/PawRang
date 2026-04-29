@@ -76,6 +76,8 @@ interface MedicalRecord {
 
 interface GlobalEMRProps {
   autoOpenAddMode?: boolean;
+  layoutMode?: 'admin' | 'doctor';
+  doctorMode?: boolean;
 }
 
 interface LabResult {
@@ -118,9 +120,48 @@ interface MedicalInformation {
   has_skin_condition?: boolean | null;
   skin_condition_details?: string;
   been_groomed_before?: boolean | null;
+  reported_symptoms?: string[];
+  owner_symptom_notes?: string;
+  symptom_duration?: string;
+  eating_status?: string;
+  drinking_status?: string;
+  worsening_status?: string;
+  ai_symptom_summary?: string;
   created_at?: string;
   updated_at?: string;
 }
+
+interface DoctorAiSummary {
+  summary: string;
+  important_flags: string[];
+  follow_up_questions: string[];
+  missing_information: string[];
+  model?: string;
+}
+
+const AI_BUSY_FALLBACK_MESSAGE = 'Server is busy. Please try again later.';
+
+const getAiFallbackMessage = (error: any, defaultMessage: string) => {
+  const message = String(error?.message || '');
+  const status = Number(error?.status || error?.response?.status || 0);
+  const lowered = message.toLowerCase();
+
+  if (
+    status === 429 ||
+    status === 503 ||
+    lowered.includes('busy') ||
+    lowered.includes('overload') ||
+    lowered.includes('rate limit') ||
+    lowered.includes('resource_exhausted') ||
+    lowered.includes('unavailable') ||
+    lowered.includes('quota') ||
+    lowered.includes('high demand')
+  ) {
+    return AI_BUSY_FALLBACK_MESSAGE;
+  }
+
+  return message || defaultMessage;
+};
 
 interface VisitHistory {
   id: string;
@@ -524,6 +565,15 @@ const normalizeVisitHistoryForSnapshot = (history: VisitHistory[]) =>
           has_skin_condition: visit.medicalInformation.has_skin_condition ?? null,
           skin_condition_details: visit.medicalInformation.skin_condition_details || '',
           been_groomed_before: visit.medicalInformation.been_groomed_before ?? null,
+          reported_symptoms: Array.isArray(visit.medicalInformation.reported_symptoms)
+            ? visit.medicalInformation.reported_symptoms
+            : [],
+          owner_symptom_notes: visit.medicalInformation.owner_symptom_notes || '',
+          symptom_duration: visit.medicalInformation.symptom_duration || '',
+          eating_status: visit.medicalInformation.eating_status || '',
+          drinking_status: visit.medicalInformation.drinking_status || '',
+          worsening_status: visit.medicalInformation.worsening_status || '',
+          ai_symptom_summary: visit.medicalInformation.ai_symptom_summary || '',
           created_at: visit.medicalInformation.created_at || '',
           updated_at: visit.medicalInformation.updated_at || '',
         }
@@ -675,6 +725,10 @@ const getAppointmentEmptyStateMessage = (filter: AppointmentDateFilter): string 
 const hasMedicalInformationContent = (medicalInformation?: MedicalInformation | null): boolean => {
   if (!medicalInformation) return false;
 
+  const reportedSymptoms = Array.isArray(medicalInformation.reported_symptoms)
+    ? medicalInformation.reported_symptoms
+    : [];
+
   return [
     medicalInformation.on_medication,
     medicalInformation.flea_tick_prevention,
@@ -689,6 +743,13 @@ const hasMedicalInformationContent = (medicalInformation?: MedicalInformation | 
       || medicalInformation.additional_notes?.trim()
       || medicalInformation.allergy_details?.trim()
       || medicalInformation.skin_condition_details?.trim()
+      || medicalInformation.owner_symptom_notes?.trim()
+      || medicalInformation.symptom_duration?.trim()
+      || medicalInformation.eating_status?.trim()
+      || medicalInformation.drinking_status?.trim()
+      || medicalInformation.worsening_status?.trim()
+      || medicalInformation.ai_symptom_summary?.trim()
+      || reportedSymptoms.length > 0
     );
 };
 
@@ -946,10 +1007,11 @@ const MOCK_RECORDS: MedicalRecord[] = [
 ];
 
 
-const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
+const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMode = 'admin', doctorMode = false }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = location.state as { autoOpenAddMode?: boolean } | null;
+  const isDoctorLayout = layoutMode === 'doctor';
 
   // State
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -1105,6 +1167,10 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   const [visitFormErrors, setVisitFormErrors] = useState<VisitFormErrors>({});
   const [visitFieldInputs, setVisitFieldInputs] = useState<VisitFieldInputs>({ ...EMPTY_VISIT_FIELD_INPUTS });
   const [formBaselineSnapshot, setFormBaselineSnapshot] = useState<string>('');
+  const [doctorAiSummary, setDoctorAiSummary] = useState<DoctorAiSummary | null>(null);
+  const [doctorAiLoading, setDoctorAiLoading] = useState<boolean>(false);
+  const [doctorAiError, setDoctorAiError] = useState<string>('');
+  const [doctorAiCollapsed, setDoctorAiCollapsed] = useState<boolean>(false);
   const canEditPetProfileFields = editModeEnabled && !deceased;
   const canEditDeceasedStatus = editModeEnabled;
   const selectedPrimaryService =
@@ -2284,6 +2350,9 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false }) => {
   };
 
   const applyRecordToForm = (record: MedicalRecord) => {
+    setDoctorAiSummary(null);
+    setDoctorAiError('');
+    setDoctorAiCollapsed(false);
     setPrescriptionRemarks('');
     setSelectedPrimaryServiceId('');
     setSelectedServices([]);
@@ -2955,6 +3024,24 @@ useEffect(() => {
       medicalInformation?.additional_notes?.trim()
         ? { key: 'additionalNotes', label: 'Additional Notes', value: medicalInformation.additional_notes.trim() }
         : null,
+      Array.isArray(medicalInformation?.reported_symptoms) && medicalInformation.reported_symptoms.length > 0
+        ? { key: 'reportedSymptoms', label: 'Owner-Reported Symptoms', value: medicalInformation.reported_symptoms.join(', ') }
+        : null,
+      medicalInformation?.symptom_duration?.trim()
+        ? { key: 'symptomDuration', label: 'Symptom Duration', value: medicalInformation.symptom_duration.trim() }
+        : null,
+      medicalInformation?.worsening_status?.trim()
+        ? { key: 'worseningStatus', label: 'Condition Getting Worse', value: medicalInformation.worsening_status.trim() }
+        : null,
+      medicalInformation?.eating_status?.trim()
+        ? { key: 'eatingStatus', label: 'Eating Status', value: medicalInformation.eating_status.trim() }
+        : null,
+      medicalInformation?.drinking_status?.trim()
+        ? { key: 'drinkingStatus', label: 'Drinking Status', value: medicalInformation.drinking_status.trim() }
+        : null,
+      medicalInformation?.owner_symptom_notes?.trim()
+        ? { key: 'ownerSymptomNotes', label: 'Owner Symptom Notes', value: medicalInformation.owner_symptom_notes.trim() }
+        : null,
     ].filter((item): item is { key: string; label: string; value: string } => item !== null);
 
     return (
@@ -3021,6 +3108,94 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
          visit.vaccinationDetails?.manufacturer?.toLowerCase().includes(searchLower);
 });
 
+  const formatMedicalInformationForAi = (medicalInformation?: MedicalInformation | null) => {
+    if (!medicalInformation) return null;
+
+    return {
+      medications_in_past_72_hours: formatMedicalInformationAnswer(medicalInformation.on_medication),
+      medication_details: medicalInformation.medication_details || '',
+      flea_tick_prevention: formatMedicalInformationAnswer(medicalInformation.flea_tick_prevention),
+      up_to_date_vaccinations: formatMedicalInformationAnswer(medicalInformation.is_vaccinated),
+      pregnant: formatMedicalInformationAnswer(medicalInformation.is_pregnant),
+      has_allergies: formatMedicalInformationAnswer(medicalInformation.has_allergies),
+      allergy_details: medicalInformation.allergy_details || '',
+      has_skin_condition: formatMedicalInformationAnswer(medicalInformation.has_skin_condition),
+      skin_condition_details: medicalInformation.skin_condition_details || '',
+      been_groomed_before: formatMedicalInformationAnswer(medicalInformation.been_groomed_before),
+      additional_notes: medicalInformation.additional_notes || '',
+      reported_symptoms: Array.isArray(medicalInformation.reported_symptoms) ? medicalInformation.reported_symptoms : [],
+      owner_symptom_notes: medicalInformation.owner_symptom_notes || '',
+      symptom_duration: medicalInformation.symptom_duration || '',
+      eating_status: medicalInformation.eating_status || '',
+      drinking_status: medicalInformation.drinking_status || '',
+      worsening_status: medicalInformation.worsening_status || '',
+    };
+  };
+
+  const buildDoctorAiPayload = () => ({
+    pet: {
+      name: petName,
+      species,
+      breed,
+      gender,
+      age,
+      weight: weight ? `${weight} ${weightUnit}` : '',
+      neutered,
+      vaccinated,
+    },
+    owner: {
+      name: `${ownerFirstName} ${ownerLastName}`.trim(),
+      contact: ownerContact,
+      email: ownerEmail,
+    },
+    current_record: {
+      reason_for_visit: reasonForVisit,
+      assigned_doctor: doctorAssigned,
+    },
+    visit_history: visitHistory.map((visit) => ({
+      date: visit.date,
+      time: visit.time,
+      veterinarian: visit.veterinarian,
+      reason: visit.reason,
+      weight: `${visit.weight} ${visit.weightUnit}`,
+      neutered: visit.neutered,
+      vaccinated: visit.vaccinated,
+      deceased: visit.deceased,
+      clinical_exam: visit.clinicalExam || null,
+      services: (visit.selectedServices || []).map((service) => service.name).filter(Boolean),
+      lab_results: (visit.labResults || []).map((lab) => ({
+        test_type: lab.testType,
+        interpretation: lab.interpretation,
+      })),
+      prescriptions: (visit.prescriptions || []).map((prescription) => ({
+        medication_name: prescription.medicationName,
+        dosage: prescription.dosage,
+        route: prescription.route || '',
+        frequency: prescription.frequency,
+        duration: prescription.duration,
+        instructions: prescription.instructions || '',
+      })),
+      medical_information: formatMedicalInformationForAi(visit.medicalInformation),
+      doctor_remarks: visit.doctorRemarks?.replace(/<[^>]*>/g, ' ') || '',
+    })),
+  });
+
+  const handleGenerateDoctorAiBrief = async () => {
+    setDoctorAiLoading(true);
+    setDoctorAiError('');
+
+    try {
+      const response = await apiService.generateDoctorEmrBrief(buildDoctorAiPayload());
+      setDoctorAiSummary(response.summary || null);
+      setDoctorAiCollapsed(false);
+    } catch (error: any) {
+      setDoctorAiSummary(null);
+      setDoctorAiError(getAiFallbackMessage(error, 'Unable to generate the EMR prep brief right now.'));
+    } finally {
+      setDoctorAiLoading(false);
+    }
+  };
+
   const breedOptions = species === 'Dog' ? DOG_BREEDS : CAT_BREEDS;
 
   const getLastWeight = () => {
@@ -3068,7 +3243,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
           <div className="emrSubTopContainer">
             <div className="emrSubTopLeft">
               <CiMedicalClipboard size={20} className="emrBlueIcon" />
-              <span className="emrBlueText">Medical Records</span>
+              <span className="emrBlueText">{isDoctorLayout ? 'Doctor Medical Records' : 'Medical Records'}</span>
             </div>
           </div>
           <div className="emrSubTopContainer emrNotificationContainer">
@@ -3161,7 +3336,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                 </div>
 
                 <div className="emrActionSection">
-                  {selectedRecords.size > 0 && (
+                  {!doctorMode && selectedRecords.size > 0 && (
                     <button className="emrDeleteBtn" onClick={handleDeleteSelected}>
                       <IoTrashOutline size={14} /> Delete ({selectedRecords.size})
                     </button>
@@ -3171,9 +3346,11 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       <IoArrowBackOutline size={14} /> Return
                     </button>
                   )}
-                  <button className="emrBlackBtn" onClick={() => { resetForm(); setViewMode('add'); setShowModeOverlay(true); }}>
-                    <IoAdd size={14} /> New Record
-                  </button>
+                  {!doctorMode && (
+                    <button className="emrBlackBtn" onClick={() => { resetForm(); setViewMode('add'); setShowModeOverlay(true); }}>
+                      <IoAdd size={14} /> New Record
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -3199,12 +3376,14 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                     <thead>
                       <tr>
                         <th style={{ width: '32px' }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedRecords.size === paginatedRecords.length && paginatedRecords.length > 0}
-                            onChange={toggleAllRecords}
-                            className="emrCheckbox"
-                          />
+                          {!doctorMode && (
+                            <input
+                              type="checkbox"
+                              checked={selectedRecords.size === paginatedRecords.length && paginatedRecords.length > 0}
+                              onChange={toggleAllRecords}
+                              className="emrCheckbox"
+                            />
+                          )}
                         </th>
                         <th>Patient ID</th>
                         <th>Pet Name</th>
@@ -3225,12 +3404,14 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           return (
                             <tr key={recordId} className={isDeceased ? 'emrDeceasedRow' : ''}>
                               <td>
-                                <input
-                                  type="checkbox"
-                                  checked={selectedRecords.has(recordId)}
-                                  onChange={() => toggleRecordSelection(recordId)}
-                                  className="emrCheckbox"
-                                />
+                                {!doctorMode && (
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedRecords.has(recordId)}
+                                    onChange={() => toggleRecordSelection(recordId)}
+                                    className="emrCheckbox"
+                                  />
+                                )}
                               </td>
                               <td>{record.patientId}</td>
                               <td>
@@ -3299,7 +3480,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                 </div>
               )}
             </>
-          ) : viewMode === 'add' ? (
+          ) : viewMode === 'add' && !doctorMode ? (
             <div className="emrFormContainer">
               <div className="emrFormHeader">
                 <div className="emrFormHeaderLeft">
@@ -3706,6 +3887,89 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                   <IoMedicalOutline size={14} /> Medical History
                 </button>
               </div>
+
+              {viewMode === 'edit' && (
+                <div className="emrDoctorAiPanel">
+                  <div className="emrDoctorAiHeader">
+                    <div>
+                      <div className="emrDoctorAiEyebrow">{doctorMode ? 'Doctor AI Support' : 'Admin EMR AI Support'}</div>
+                      <h4>Clinical Prep Brief</h4>
+                      <p>
+                        Summarizes EMR history and owner symptom intake for faster review by clinic staff and veterinarians. It does not diagnose or prescribe.
+                      </p>
+                    </div>
+                    <div className="emrDoctorAiActions">
+                      {(doctorAiSummary || doctorAiError) && (
+                        <button
+                          type="button"
+                          className="emrDoctorAiSecondaryBtn"
+                          onClick={() => setDoctorAiCollapsed(prev => !prev)}
+                        >
+                          {doctorAiCollapsed ? 'Expand' : 'Collapse'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="emrDoctorAiPrimaryBtn"
+                        onClick={handleGenerateDoctorAiBrief}
+                        disabled={doctorAiLoading || visitHistory.length === 0}
+                      >
+                        {doctorAiLoading ? 'Generating...' : doctorAiSummary ? 'Regenerate Brief' : 'Generate Brief'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {visitHistory.length === 0 && (
+                    <div className="emrDoctorAiHint">
+                      Add or load at least one visit record before generating an EMR prep brief.
+                    </div>
+                  )}
+
+                  {doctorAiError && (
+                    <div className="emrDoctorAiError">{doctorAiError}</div>
+                  )}
+
+                  {doctorAiSummary && !doctorAiCollapsed && (
+                    <div className="emrDoctorAiBody">
+                      <div className="emrDoctorAiSummary">
+                        <span>Case Overview</span>
+                        <p>{doctorAiSummary.summary}</p>
+                      </div>
+                      <div className="emrDoctorAiGrid">
+                        <div className="emrDoctorAiColumn emrDoctorAiColumnCritical">
+                          <h5>Clinical Considerations</h5>
+                          <ul>
+                            {(doctorAiSummary.important_flags || []).length > 0
+                              ? doctorAiSummary.important_flags.map((item, index) => <li key={`flag-${index}`}>{item}</li>)
+                              : <li>No major considerations were identified from the provided EMR data.</li>}
+                          </ul>
+                        </div>
+                        <div className="emrDoctorAiColumn">
+                          <h5>Owner Questions</h5>
+                          <ul>
+                            {(doctorAiSummary.follow_up_questions || []).length > 0
+                              ? doctorAiSummary.follow_up_questions.map((item, index) => <li key={`question-${index}`}>{item}</li>)
+                              : <li>No follow-up questions were suggested.</li>}
+                          </ul>
+                        </div>
+                        <div className="emrDoctorAiColumn">
+                          <h5>Missing Context</h5>
+                          <ul>
+                            {(doctorAiSummary.missing_information || []).length > 0
+                              ? doctorAiSummary.missing_information.map((item, index) => <li key={`missing-${index}`}>{item}</li>)
+                              : <li>No major missing context was identified.</li>}
+                          </ul>
+                        </div>
+                      </div>
+                      {doctorAiSummary.model && (
+                        <div className="emrDoctorAiFooter">
+                          Generated by {doctorAiSummary.model}. Vet review remains required.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="emrFormContent">
                 {activeTab === 'info' && (

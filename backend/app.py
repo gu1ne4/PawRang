@@ -573,6 +573,7 @@ EMAIL_PROVIDER       = (
 EMPLOYEE_SETUP_URL_BASE = os.environ.get('EMPLOYEE_SETUP_URL_BASE', 'http://localhost:5173/employee/setup-account')
 GEMINI_API_KEY       = os.environ.get('GEMINI_API_KEY')
 GEMINI_MODEL         = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
+AI_BUSY_MESSAGE      = "Server is busy. Please try again later."
 
 if not SUPABASE_URL or not SUPABASE_KEY or not SUPABASE_SERVICE_KEY:
     raise ValueError("Missing Supabase credentials in .env")
@@ -609,6 +610,14 @@ ADMIN_AI_SUMMARY_SCHEMA = {
         "follow_up_questions",
         "missing_information"
     ]
+}
+
+USER_SYMPTOM_SUMMARY_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "summary": {"type": "STRING"}
+    },
+    "required": ["summary"]
 }
 
 
@@ -687,6 +696,12 @@ def build_admin_ai_case_context(payload):
             "has_skin_condition": _bool_to_phrase(medical.get("has_skin_condition")),
             "medication_details": _text_or_default(medical.get("medication_details")),
             "additional_notes": _text_or_default(medical.get("additional_notes")),
+            "reported_symptoms": medical.get("reported_symptoms") or [],
+            "owner_symptom_notes": _text_or_default(medical.get("owner_symptom_notes")),
+            "symptom_duration": _text_or_default(medical.get("symptom_duration")),
+            "eating_status": _text_or_default(medical.get("eating_status")),
+            "drinking_status": _text_or_default(medical.get("drinking_status")),
+            "worsening_status": _text_or_default(medical.get("worsening_status")),
         }
     }
 
@@ -723,6 +738,7 @@ Your role:
 - summarize the provided case details clearly
 - identify possible admin-relevant flags that may need clarification
 - suggest follow-up questions for staff before endorsement to the veterinarian
+- use symptom intake details when they are provided, especially the reported symptoms, owner notes, duration, appetite, drinking, and worsening status
 
 Rules:
 - Do NOT provide a diagnosis
@@ -734,7 +750,10 @@ Rules:
 - Return at most 5 follow_up_questions
 - Return at most 6 missing_information items
 - If data is missing, list it under missing_information
+- Do NOT list AI-generated summary fields as missing; staff-side summaries are generated from the raw symptom intake
+- If reported_symptoms or owner_symptom_notes are present, do NOT treat symptom intake as missing
 - important_flags should focus on intake concerns, missing preventive info, recent medication, skin concerns, pregnancy, and anything that may need staff attention
+- If symptom intake is present, reflect it naturally in the summary and use it to improve follow-up questions
 - follow_up_questions should be short and directly usable by clinic staff
 - Avoid repeating the exact same issue in all sections unless absolutely necessary
 - If a field is already clearly identified as missing, prefer one good follow-up question instead of many similar ones
@@ -746,6 +765,118 @@ Service-aware focus:
 Use only the data below.
 
 Case context:
+{json.dumps(case_context, indent=2)}
+""".strip()
+
+
+def build_user_symptom_summary_prompt(payload):
+    pet = payload.get("pet") or {}
+    symptom_intake = payload.get("symptom_intake") or {}
+
+    context = {
+        "pet": {
+            "name": _text_or_default(pet.get("name"), "Unknown Pet"),
+            "species": _text_or_default(pet.get("species"), "Unknown"),
+            "breed": _text_or_default(pet.get("breed"), "Unknown"),
+            "gender": _text_or_default(pet.get("gender"), "Unknown"),
+        },
+        "service": _text_or_default(payload.get("service"), "Appointment"),
+        "symptom_intake": {
+            "selected_symptoms": symptom_intake.get("selected_symptoms") or [],
+            "owner_symptom_notes": _text_or_default(symptom_intake.get("owner_symptom_notes")),
+            "duration": _text_or_default(symptom_intake.get("duration")),
+            "eating_status": _text_or_default(symptom_intake.get("eating_status")),
+            "drinking_status": _text_or_default(symptom_intake.get("drinking_status")),
+            "worsening_status": _text_or_default(symptom_intake.get("worsening_status")),
+        }
+    }
+
+    return f"""
+You are an AI assistant helping a veterinary clinic collect booking information.
+
+Your role:
+- summarize the owner's reported symptoms clearly
+- keep the wording neutral and practical
+- prepare a short intake-ready summary for clinic staff
+
+Rules:
+- Do NOT provide a diagnosis
+- Do NOT prescribe treatment
+- Do NOT mention probabilities or disease names
+- Use only the information provided
+- Keep the summary to 1 to 3 sentences
+- Write in a professional tone suitable for clinic intake notes
+- If no symptoms were clearly reported, say that no specific symptoms were reported during booking
+
+Return a JSON object matching the requested schema.
+
+Booking context:
+{json.dumps(context, indent=2)}
+""".strip()
+
+
+def build_doctor_emr_case_context(payload):
+    pet = payload.get("pet") or {}
+    owner = payload.get("owner") or {}
+    current_record = payload.get("current_record") or {}
+    visit_history = payload.get("visit_history") if isinstance(payload.get("visit_history"), list) else []
+
+    return {
+        "pet": {
+            "name": _text_or_default(pet.get("name"), "Unknown Pet"),
+            "species": _text_or_default(pet.get("species"), "Unknown"),
+            "breed": _text_or_default(pet.get("breed"), "Unknown"),
+            "gender": _text_or_default(pet.get("gender"), "Unknown"),
+            "age": _text_or_default(pet.get("age")),
+            "weight": _text_or_default(pet.get("weight")),
+            "neutered": _bool_to_phrase(pet.get("neutered")),
+            "vaccinated": _bool_to_phrase(pet.get("vaccinated")),
+        },
+        "owner": {
+            "name": _text_or_default(owner.get("name")),
+            "contact": _text_or_default(owner.get("contact")),
+            "email": _text_or_default(owner.get("email")),
+        },
+        "current_record": {
+            "reason_for_visit": _text_or_default(current_record.get("reason_for_visit")),
+            "assigned_doctor": _text_or_default(current_record.get("assigned_doctor")),
+        },
+        "visit_history": visit_history[-6:],
+    }
+
+
+def build_doctor_emr_prompt(case_context):
+    return f"""
+You are an AI assistant supporting a licensed veterinarian reviewing an EMR.
+
+Your role:
+- create a concise clinical prep brief from the EMR and booking intake
+- highlight relevant history, symptom intake, preventive-care concerns, and owner-reported changes
+- suggest exam focus areas and clarifying questions the veterinarian may consider
+- help the doctor prepare faster, not replace clinical judgment
+
+Rules:
+- Do NOT provide a diagnosis
+- Do NOT prescribe treatment
+- Do NOT rank diseases or claim probabilities
+- Do NOT tell the doctor what final decision to make
+- Use cautious language such as "consider checking", "owner reported", and "may be relevant"
+- If symptoms are present, connect them to exam focus areas without naming a definitive disease
+- If information is missing, list only items that could affect the doctor's assessment
+- Return at most 4 important_flags
+- Return at most 5 follow_up_questions
+- Return at most 6 missing_information items
+- Keep the summary in 2 to 4 sentences
+
+Interpret the output fields this way:
+- summary: doctor-facing clinical prep overview
+- important_flags: relevant clinical or intake considerations, not diagnoses
+- follow_up_questions: questions the veterinarian may ask the owner
+- missing_information: data gaps that may matter before or during exam
+
+Use only the data below.
+
+EMR context:
 {json.dumps(case_context, indent=2)}
 """.strip()
 
@@ -807,6 +938,31 @@ def call_gemini_with_structured_output(prompt, schema):
         "missing_information": result.get("missing_information") if isinstance(result.get("missing_information"), list) else [],
         "model": GEMINI_MODEL
     }
+
+
+def build_ai_error_response(error, fallback_message):
+    message = str(error or "")
+    lowered = message.lower()
+    busy_markers = (
+        "429",
+        "503",
+        "overload",
+        "overloaded",
+        "busy",
+        "rate limit",
+        "resource_exhausted",
+        "unavailable",
+        "quota",
+        "high demand",
+    )
+
+    if any(marker in lowered for marker in busy_markers):
+        return jsonify({"error": AI_BUSY_MESSAGE}), 503
+
+    if "missing gemini_api_key" in lowered:
+        return jsonify({"error": "AI service is not configured yet."}), 500
+
+    return jsonify({"error": fallback_message}), 502
 
 otp_store = {}
 RESEND_COOLDOWN_SECONDS = 60
@@ -1325,6 +1481,13 @@ def normalize_medical_information_record(record):
         "has_skin_condition": record.get("has_skin_condition"),
         "skin_condition_details": record.get("skin_condition_details"),
         "been_groomed_before": record.get("been_groomed_before"),
+        "reported_symptoms": record.get("reported_symptoms") or [],
+        "owner_symptom_notes": record.get("owner_symptom_notes"),
+        "symptom_duration": record.get("symptom_duration"),
+        "eating_status": record.get("eating_status"),
+        "drinking_status": record.get("drinking_status"),
+        "worsening_status": record.get("worsening_status"),
+        "ai_symptom_summary": record.get("ai_symptom_summary"),
         "created_at": record.get("created_at"),
         "updated_at": record.get("updated_at"),
     }
@@ -4867,12 +5030,16 @@ def create_appointment_record(data, allow_walk_in=False):
             "emailSent": email_sent,
         }
 
+    appointment_type = data.get('appointment_type') or data.get('service')
+    appointment_date = data.get('appointment_date') or data.get('date')
+    appointment_time = data.get('appointment_time') or data.get('time')
+
     required_fields = {
         "Owner": owner_id,
         "Pet": pet_id,
-        "Appointment service": data.get('appointment_type') or data.get('service'),
-        "Appointment date": data.get('appointment_date') or data.get('date'),
-        "Appointment time": data.get('appointment_time') or data.get('time'),
+        "Appointment service": appointment_type,
+        "Appointment date": appointment_date,
+        "Appointment time": appointment_time,
         "Branch": branch_id,
     }
     missing = [label for label, value in required_fields.items() if value in (None, "")]
@@ -4882,9 +5049,9 @@ def create_appointment_record(data, allow_walk_in=False):
     response = supabase_admin.table('appointments').insert({
         "owner_id": owner_id,
         "pet_id": pet_id,
-        "appointment_type": required_fields["appointment_type"],
-        "appointment_date": required_fields["appointment_date"],
-        "appointment_time": required_fields["appointment_time"],
+        "appointment_type": appointment_type,
+        "appointment_date": appointment_date,
+        "appointment_time": appointment_time,
         "patient_reason": data.get('patient_reason') or data.get('reason') or '',
         "branch_id": branch_id,
         "status": "pending",
@@ -5121,6 +5288,13 @@ def medical_information_collection():
             "skin_condition_details": skin_condition_details,
             "flea_tick_prevention": flea_tick_prevention,
             "additional_notes": str(data.get('additional_notes') or '').strip(),
+            "reported_symptoms": data.get('reported_symptoms') or [],
+            "owner_symptom_notes": str(data.get('owner_symptom_notes') or '').strip(),
+            "symptom_duration": str(data.get('symptom_duration') or '').strip(),
+            "eating_status": str(data.get('eating_status') or '').strip(),
+            "drinking_status": str(data.get('drinking_status') or '').strip(),
+            "worsening_status": str(data.get('worsening_status') or '').strip(),
+            "ai_symptom_summary": str(data.get('ai_symptom_summary') or '').strip(),
         }
 
         lookup_column = 'walkin_id' if record_type == 'walkin' else 'appointment_id'
@@ -5154,6 +5328,30 @@ def get_medical_information_by_target(appointment_id):
         return jsonify({"medicalInformation": None}), 200
 
 
+@app.route('/api/ai/symptom-summary', methods=['POST'])
+def generate_user_symptom_summary():
+    payload = request.get_json() or {}
+    if not payload:
+        return jsonify({"error": "Symptom intake context is required"}), 400
+
+    try:
+        prompt = build_user_symptom_summary_prompt(payload)
+        ai_result = call_gemini_with_structured_output(prompt, USER_SYMPTOM_SUMMARY_SCHEMA)
+        summary = str(ai_result.get("summary") or "").strip()
+        if not summary:
+            return jsonify({"error": "AI summary could not be generated"}), 502
+
+        return jsonify({
+            "summary": summary,
+            "model": GEMINI_MODEL,
+        }), 200
+    except ValueError as value_error:
+        return build_ai_error_response(value_error, "Unable to generate the symptom summary right now.")
+    except Exception as e:
+        print("Symptom summary AI error:", str(e))
+        return build_ai_error_response(e, "Unable to generate the symptom summary right now.")
+
+
 @app.route('/api/ai/admin-appointment-summary', methods=['POST'])
 def generate_admin_appointment_summary():
     payload = request.get_json() or {}
@@ -5169,10 +5367,31 @@ def generate_admin_appointment_summary():
             "caseContext": case_context
         }), 200
     except ValueError as e:
-        return jsonify({"error": str(e)}), 400
+        return build_ai_error_response(e, "Unable to generate the AI summary right now.")
     except Exception as e:
         print("Admin AI summary error:", str(e))
-        return jsonify({"error": str(e)}), 500
+        return build_ai_error_response(e, "Unable to generate the AI summary right now.")
+
+
+@app.route('/api/ai/doctor-emr-brief', methods=['POST'])
+def generate_doctor_emr_brief():
+    payload = request.get_json() or {}
+    if not payload:
+        return jsonify({"error": "EMR context is required"}), 400
+
+    try:
+        case_context = build_doctor_emr_case_context(payload)
+        prompt = build_doctor_emr_prompt(case_context)
+        ai_result = call_gemini_with_structured_output(prompt, ADMIN_AI_SUMMARY_SCHEMA)
+        return jsonify({
+            "summary": ai_result,
+            "caseContext": case_context
+        }), 200
+    except ValueError as e:
+        return build_ai_error_response(e, "Unable to generate the EMR prep brief right now.")
+    except Exception as e:
+        print("Doctor EMR AI brief error:", str(e))
+        return build_ai_error_response(e, "Unable to generate the EMR prep brief right now.")
 
 
 # -----------------------------------------------

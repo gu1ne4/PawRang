@@ -1,404 +1,180 @@
-import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import Calendar from 'react-calendar';
-import 'react-calendar/dist/Calendar.css';
-import './DoctorStyles.css'
-import userImg from '../assets/userAvatar.jpg';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { apiService } from '../apiService';
+import Navbar from '../reusable_components/NavBar';
+import './DoctorPortal.css';
 
-
-// Icons
-import { 
-  IoCalendarClearOutline,
-  IoCalendarOutline,
-  IoCreateOutline,
-  IoNotificationsOutline,
-  IoPersonAddOutline,
-  IoLayersOutline,
-  IoHourglassOutline,
-  IoArrowUpOutline,
-  IoArrowDownOutline,
-  IoCheckmarkCircleOutline,
-  IoDocumentTextOutline as IoDocumentText,
-  IoPeopleOutline as IoPeople
-} from 'react-icons/io5';
-
-import DoctorNavbar from '../reusable_components/DoctorNavBar';
-
-// ========== ADD ALL THESE INTERFACES HERE ==========
-
-interface Doctor {
-  id: number;
-  name: string;
-  username: string;
-  role: string;
-  image?: string;
+interface CurrentUser {
+  id?: string | number;
+  username?: string;
+  fullName?: string;
+  role?: string;
+  userImage?: string;
 }
 
-interface Appointment {
-  id: number;
-  clientName: string;
-  date: string;
-  time: string;
-  status: 'Confirmed' | 'Pending' | 'Cancelled';
+interface AppointmentItem {
+  id?: string | number;
+  dbId?: string | number;
+  ownerName?: string;
+  petName?: string;
+  doctor?: string;
+  assignedDoctor?: string;
+  veterinarian?: string;
+  appointment_date?: string;
+  appointmentDate?: string;
+  date_only?: string;
+  date_time?: string;
+  appointment_time?: string;
+  appointmentTime?: string;
+  service?: string;
+  status?: string;
 }
 
-interface Patient {
-  id: number;
-  name: string;
-  owner: string;
-  service: string;
-  date: string;
-}
+const getCurrentUser = (): CurrentUser | null => {
+  try {
+    const session = localStorage.getItem('userSession');
+    return session ? JSON.parse(session) : null;
+  } catch {
+    return null;
+  }
+};
 
-interface Notification {
-  id: number;
-  title: string;
-  description: string;
-  time: string;
-  icon: string;
-  color: string;
-}
+const normalize = (value: unknown) => String(value || '').trim().toLowerCase();
 
-// ========== END OF INTERFACES ==========
+const matchesDoctor = (appointment: AppointmentItem, user: CurrentUser | null) => {
+  if (!user) return true;
+
+  const doctorCandidates = [appointment.doctor, appointment.assignedDoctor, appointment.veterinarian]
+    .map(normalize)
+    .filter(Boolean);
+  const userCandidates = [user.fullName, user.username].map(normalize).filter(Boolean);
+
+  if (doctorCandidates.length === 0) return true;
+  return userCandidates.some((candidate) => doctorCandidates.some((doctor) => doctor.includes(candidate) || candidate.includes(doctor)));
+};
 
 const DoctorHome: React.FC = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  
-  // State
-  const [date, setDate] = useState<Date>(new Date());
-  const [showAccountDropdown, setShowAccountDropdown] = useState<boolean>(false);
-  const [showAppointmentsDropdown, setShowAppointmentsDropdown] = useState<boolean>(false);
-  
-  // Mock data - replace with actual data from API
-  const currentUser: Doctor = {
-    id: 1,
-    name: 'Dr. Margaret Hilario',
-    username: 'margaret.hilario',
-    role: 'Veterinarian',
-    image: userImg
-  };
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
 
-  const appointments: Appointment[] = [
-    { id: 1, clientName: 'Sarah Johnson', date: 'Mar 15, 2024', time: '09:30 AM', status: 'Confirmed' },
-    { id: 2, clientName: 'Michael Chen', date: 'Mar 15, 2024', time: '11:00 AM', status: 'Pending' },
-    { id: 3, clientName: 'Emily Rodriguez', date: 'Mar 16, 2024', time: '02:15 PM', status: 'Confirmed' },
-    { id: 4, clientName: 'David Kim', date: 'Mar 16, 2024', time: '04:30 PM', status: 'Cancelled' },
-    { id: 5, clientName: 'Lisa Thompson', date: 'Mar 17, 2024', time: '10:00 AM', status: 'Confirmed' },
-  ];
+  useEffect(() => {
+    const sessionUser = getCurrentUser();
+    setCurrentUser(sessionUser);
 
-  const recentPatients: Patient[] = [
-    { id: 1, name: 'Max', owner: 'John Smith', service: 'Check-up', date: 'Mar 15' },
-    { id: 2, name: 'Luna', owner: 'Maria Garcia', service: 'Grooming', date: 'Mar 14' },
-    { id: 3, name: 'Rocky', owner: 'Robert Taylor', service: 'Vaccination', date: 'Mar 11' },
-    { id: 4, name: 'Bella', owner: 'Sarah Johnson', service: 'Dental', date: 'Mar 10' },
-  ];
+    const loadAppointments = async () => {
+      try {
+        const response = await apiService.getAppointmentsForTable();
+        const items = response?.appointments || response || [];
+        setAppointments(Array.isArray(items) ? items : []);
+      } catch (error) {
+        console.error('Failed to load doctor overview appointments:', error);
+      }
+    };
 
-  const notifications: Notification[] = [
-    { 
-      id: 1, 
-      title: 'New appointment scheduled', 
-      description: 'John Smith - Tomorrow at 9:00 AM', 
-      time: '5 min ago',
-      icon: 'calendar',
-      color: '#3d67ee'
-    },
-    { 
-      id: 2, 
-      title: 'Lab results ready', 
-      description: 'Maria Garcia - Blood work completed', 
-      time: '2 hours ago',
-      icon: 'document',
-      color: '#f59e0b'
-    },
-    { 
-      id: 3, 
-      title: 'Appointment completed', 
-      description: 'Robert Johnson - Check-up finished', 
-      time: '3 hours ago',
-      icon: 'checkmark',
-      color: '#10b981'
-    },
-    { 
-      id: 4, 
-      title: 'New patient registered', 
-      description: 'Sarah Williams - Initial consultation', 
-      time: '1 day ago',
-      icon: 'people',
-      color: '#8b5cf6'
-    },
-  ];
+    loadAppointments();
+  }, []);
 
-  // Helper functions
-  const getStatusStyle = (status: string): string => {
-    switch(status) {
-      case 'Confirmed': return 'status-confirmed';
-      case 'Pending': return 'status-pending';
-      case 'Cancelled': return 'status-cancelled';
-      default: return '';
-    }
-  };
+  const scopedAppointments = useMemo(() => {
+    const filtered = appointments.filter((appointment) => matchesDoctor(appointment, currentUser));
+    return filtered.length > 0 ? filtered : appointments;
+  }, [appointments, currentUser]);
 
-  const getServiceStyle = (service: string): string => {
-    switch(service) {
-      case 'Check-up': return 'service-checkup';
-      case 'Grooming': return 'service-grooming';
-      case 'Vaccination': return 'service-vaccination';
-      case 'Dental': return 'service-dental';
-      default: return '';
-    }
-  };
-
-  const formatDate = (): string => {
-    const date = new Date();
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    });
-  };
-
-  const formatTime = (): string => {
-    const date = new Date();
-    return date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
-  };
-
-  const handleLogout = (): void => {
-    // Add logout logic here
-    navigate('/login');
-  };
-  
-  // Handle calendar date change
-  const handleDateChange = (value: any) => {
-    setDate(value);
-    console.log('Selected date:', value);
+  const upcomingAppointments = scopedAppointments.slice(0, 5);
+  const pendingCount = scopedAppointments.filter((item) => normalize(item.status) === 'pending').length;
+  const handledCount = scopedAppointments.filter((item) => {
+    const status = normalize(item.status);
+    return status === 'confirmed' || status === 'accepted' || status === 'completed';
+  }).length;
+  const handleLogout = () => {
+    localStorage.removeItem('userSession');
+    localStorage.removeItem('access_token');
+    window.location.href = '/login';
   };
 
   return (
-    <div className="biContainer">
-      <DoctorNavbar currentUser={currentUser} onLogout={handleLogout} />
-
-      {/* Main Content */}
-      <div className="bodyContainer">
-        <div className="doctorTableContainer">
-          {/* Left Column */}
-          <div className="leftContainer">
-            {/* Doctor Profile Card */}
-            <div className="profileCard">
-              <div className="profileHeader">
-                <div className="profileInfo">
-                  <div className="profileNameSection">
-                    <h2 className="doctorName">{currentUser.name}</h2>
-                    <p className="doctorUsername">@{currentUser.username}</p>
-                    <p className="doctorRole">{currentUser.role}</p>
-                  </div>
-                  <div className="profileDateTime">
-                    <div className="profileGlassContainer">
-                      <span className="dateTimeText">
-                        {formatDate()} - {formatTime()}
-                      </span>
-                    </div>
-                    <button className="editProfileBtn">
-                      <IoCreateOutline size={20} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className="profileAvatar">
-                <img 
-                  src={currentUser.image || '../assets/AgsikapLogo-Temp.png'}
-                  alt={currentUser.name}
-                  className="doctorAvatar"
-                  style={{width: "140px", height: "140px", borderRadius: "50%", objectFit: "cover", border: "5px solid white"}}
-                />
-              </div>
-            </div>
-
-            {/* Monthly Reports */}
-            <h3 className="sectionTitle">Monthly Reports</h3>
-            <p className="sectionSubtitle">Overview of this month's clinic activity and performance.</p>
-            
-            <div className="reportsContainer">
-              <div className="reportCard">
-                <div className="reportHeader">
-                  <IoPeople size={21} color="#3d67ee" />
-                  <span>Total Patients</span>
-                </div>
-                <div className="reportValue">
-                  <span className="valueNumber">75</span>
-                  <span className="trendBadge trend-up">
-                    <IoArrowUpOutline size={12} />
-                    <span>2%</span>
-                  </span>
-                </div>
-              </div>
-
-              <div className="reportCard">
-                <div className="reportHeader">
-                  <IoCalendarClearOutline size={21} color="#3d67ee" />
-                  <span>Total Appointments</span>
-                </div>
-                <div className="reportValue">
-                  <span className="valueNumber">50</span>
-                  <span className="trendBadge trend-down">
-                    <IoArrowDownOutline size={12} />
-                    <span>5%</span>
-                  </span>
-                </div>
-              </div>
-
-              <div className="reportCard">
-                <div className="reportHeader">
-                  <IoHourglassOutline size={21} color="#3d67ee" />
-                  <span>Pending Appointments</span>
-                </div>
-                <div className="reportValue">
-                  <span className="valueNumber">20</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Actions */}
-            <h3 className="sectionTitle">Quick Actions</h3>
-            <p className="sectionSubtitle">Shortcuts for frequently used tasks.</p>
-            
-            <div className="quickActions">
-              <button className="quickActionBtn" style={{ borderColor: '#3566ee', backgroundColor: '#3566ee13' }}>
-                <IoCalendarOutline size={30} color="#3566ee" />
-                <span style={{ color: '#3566ee' }}>Appointments</span>
-              </button>
-              <button className="quickActionBtn" style={{ borderColor: '#eb8716', backgroundColor: '#eb871613' }}>
-                <IoNotificationsOutline size={30} color="#eb8716" />
-                <span style={{ color: '#eb8716' }}>Notifications</span>
-              </button>
-              <button className="quickActionBtn" style={{ borderColor: '#c201c2', backgroundColor: '#c201c213' }}>
-                <IoPersonAddOutline size={30} color="#c201c2" />
-                <span style={{ color: '#c201c2' }}>Add Patient</span>
-              </button>
-              <button className="quickActionBtn" style={{ borderColor: '#f12ba5', backgroundColor: '#f12ba513' }}>
-                <IoDocumentText size={30} color="#f12ba5" />
-                <span style={{ color: '#f12ba5' }}>Patient Records</span>
-              </button>
-              <button className="quickActionBtn" style={{ borderColor: '#ff2222', backgroundColor: '#ff222213' }}>
-                <IoLayersOutline size={30} color="#ff2222" />
-                <span style={{ color: '#ff2222' }}>Inventory</span>
-              </button>
-            </div>
-
-            {/* My Appointments */}
-            <div className="appointmentsCard">
-              <div className="cardHeader">
-                <h3 className="cardTitle">My Appointments</h3>
-                <button className="viewAllBtn">View All</button>
-              </div>
-              <p className="appointmentTotal">Total: 8</p>
-
-              <div className="appointmentsList">
-                <div className="appointmentsHeader">
-                  <span>Client Name</span>
-                  <span>Date & Time</span>
-                  <span className="text-center">Status</span>
-                </div>
-
-                {appointments.map(apt => (
-                  <div key={apt.id} className="appointmentRow">
-                    <span className="clientName">{apt.clientName}</span>
-                    <span className="appointmentDateTime">{apt.date} • {apt.time}</span>
-                    <div className="statusCell">
-                      <span className={`statusBadge ${getStatusStyle(apt.status)}`}>
-                        {apt.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Recent Patients */}
-            <div className="patientsCard">
-              <div className="cardHeader">
-                <h3 className="cardTitle" style={{marginBottom: '10px'}}>Recent Patients</h3>
-                <button className="viewAllBtn">View All</button>
-              </div>
-
-              <div className="patientsList">
-                <div className="patientsHeader">
-                  <span>Patient Name</span>
-                  <span>Owner</span>
-                  <span className="text-center">Service</span>
-                  <span className="text-center">Date</span>
-                </div>
-
-                {recentPatients.map(patient => (
-                  <div key={patient.id} className="patientRow">
-                    <span className="patientName">{patient.name}</span>
-                    <span className="patientOwner">{patient.owner}</span>
-                    <div className="serviceCell">
-                      <span className={`serviceBadge ${getServiceStyle(patient.service)}`}>
-                        {patient.service}
-                      </span>
-                    </div>
-                    <span className="patientDate">{patient.date}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+    <div className="doctorPortalShell">
+      <Navbar currentUser={currentUser} onLogout={handleLogout} />
+      <main className="doctorPortalContent">
+        <div className="doctorHeader">
+          <div>
+            <div className="doctorHeaderEyebrow">Doctor Side</div>
+            <h1 className="doctorHeaderTitle">Clinical workflow support for everyday case handling.</h1>
+            <p className="doctorHeaderText">
+              This workspace is separated from admin operations and focuses on doctor priorities:
+              appointments, medical records, and read-only inventory visibility.
+            </p>
           </div>
-
-          {/* Right Column */}
-          <div className="rightContainer">
-            {/* Notifications */}
-            <div className="notificationsCard">
-              <div className="notificationsHeader">
-                <div className="notificationsTitle">
-                  <IoNotificationsOutline size={18} />
-                  <h3>Recent Notifications</h3>
-                </div>
-                <button className="viewAllBtn">View All</button>
-              </div>
-
-              <div className="notificationsList">
-                {notifications.map(notif => (
-                  <div key={notif.id} className="notificationItem">
-                    <div className="notificationIcon" style={{ backgroundColor: `${notif.color}20` }}>
-                      {notif.icon === 'calendar' && <IoCalendarOutline size={16} color={notif.color} />}
-                      {notif.icon === 'document' && <IoDocumentText size={16} color={notif.color} />}
-                      {notif.icon === 'checkmark' && <IoCheckmarkCircleOutline size={16} color={notif.color} />}
-                      {notif.icon === 'people' && <IoPeople size={16} color={notif.color} />}
-                    </div>
-                    <div className="notificationContent">
-                      <p className="notificationTitle">{notif.title}</p>
-                      <p className="notificationDesc">{notif.description}</p>
-                    </div>
-                    <span className="notificationTime">{notif.time}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Calendar - Now using react-calendar */}
-            <div className="calendarCard">
-              <div className="calendarGradient">
-                <Calendar
-                  onChange={handleDateChange}
-                  value={date}
-                  tileClassName={({ date, view }) => 
-                    view === 'month' && date.toDateString() === new Date().toDateString() 
-                      ? 'today' 
-                      : ''
-                  }
-                  formatShortWeekday={(locale, date) => 
-                    ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()]
-                  }
-                />
-              </div>
-            </div>
+          <div className="doctorHeaderBadge">
+            <span className="doctorHeaderBadgeLabel">Signed In As</span>
+            <span className="doctorHeaderBadgeValue">{currentUser?.fullName || currentUser?.username || 'Veterinarian'}</span>
           </div>
         </div>
-      </div>
+
+        <div className="doctorGrid">
+          <div className="doctorCard doctorStatCard">
+            <span className="doctorStatLabel">Appointments in scope</span>
+            <span className="doctorStatValue">{scopedAppointments.length}</span>
+            <span className="doctorStatHint">Active appointment list visible from the doctor workspace.</span>
+          </div>
+          <div className="doctorCard doctorStatCard">
+            <span className="doctorStatLabel">Pending</span>
+            <span className="doctorStatValue">{pendingCount}</span>
+            <span className="doctorStatHint">Cases that may still need confirmation, review, or preparation.</span>
+          </div>
+          <div className="doctorCard doctorStatCard">
+            <span className="doctorStatLabel">Handled</span>
+            <span className="doctorStatValue">{handledCount}</span>
+            <span className="doctorStatHint">Confirmed or completed cases currently visible in the schedule feed.</span>
+          </div>
+
+          <section className="doctorCard doctorWideCard pad">
+            <h2 className="doctorSectionTitle">Core Doctor Modules</h2>
+            <p className="doctorSectionText">
+              The doctor side is organized around the three areas you defined, with inventory kept read-only.
+            </p>
+            <div className="doctorQuickLinks">
+              <Link className="doctorQuickLink" to="/doctor/appointments">
+                <span className="doctorQuickLinkTitle">Appointment Management</span>
+                <span className="doctorQuickLinkText">Review cases, scan schedule context, and prepare consultations quickly.</span>
+              </Link>
+              <Link className="doctorQuickLink" to="/doctor/inventory">
+                <span className="doctorQuickLinkTitle">Inventory</span>
+                <span className="doctorQuickLinkText">View stock, expiration, and item status without doctor-side edit controls.</span>
+              </Link>
+              <Link className="doctorQuickLink" to="/doctor/medical-records">
+                <span className="doctorQuickLinkTitle">Medical Records</span>
+                <span className="doctorQuickLinkText">Open records, review visits, and continue documentation in the doctor workspace.</span>
+              </Link>
+            </div>
+          </section>
+
+          <section className="doctorCard doctorSideCard pad">
+            <h2 className="doctorSectionTitle">Upcoming Cases</h2>
+            <p className="doctorSectionText">A quick view of upcoming appointments from the current schedule feed.</p>
+            <div className="doctorList">
+              {upcomingAppointments.length > 0 ? (
+                upcomingAppointments.map((appointment, index) => (
+                  <div className="doctorListItem" key={`${appointment.dbId || appointment.id || 'appointment'}-${index}`}>
+                    <div className="doctorListPrimary">
+                      <div className="doctorListTitle">{appointment.petName || 'Unnamed Pet'} • {appointment.ownerName || 'Unknown Owner'}</div>
+                      <div className="doctorListMeta">
+                        {appointment.date_only || appointment.appointment_date || appointment.appointmentDate || appointment.date_time || 'Date TBD'}
+                        {' • '}
+                        {appointment.appointment_time || appointment.appointmentTime || appointment.service || 'General appointment'}
+                      </div>
+                    </div>
+                    <span className={`doctorStatusPill ${normalize(appointment.status) || 'pending'}`}>
+                      {appointment.status || 'Pending'}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="doctorEmptyState">No appointments are available yet for this doctor workspace.</div>
+              )}
+            </div>
+          </section>
+        </div>
+      </main>
     </div>
   );
 };

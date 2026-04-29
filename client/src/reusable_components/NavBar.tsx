@@ -7,6 +7,8 @@ import { TbLayoutSidebarLeftCollapse, TbLayoutSidebarRightCollapse } from "react
 import { CiBoxes } from "react-icons/ci";
 import { TbArrowsUpDown } from "react-icons/tb";
 import { IoIosArchive } from "react-icons/io";
+import petShieldLogo from '../assets/PetshieldLogo.png';
+import { isAdminRole, isDoctorRole, normalizeRole } from '../auth/roles';
 
 // Icons
 import { 
@@ -24,10 +26,11 @@ import {
   IoDocumentTextOutline as IoDocumentText, 
   IoLayersOutline,  
   IoFileTrayFullOutline,
-  IoReceipt,
   IoArrowDownOutline,
   IoArrowUpOutline,
-  IoReceiptOutline
+  IoReceiptOutline,
+  IoCloseOutline,
+  IoMenuOutline
 } from 'react-icons/io5';
 
 interface NavbarProps {
@@ -59,27 +62,57 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isHoveringTitle, setIsHoveringTitle] = useState<boolean>(false);
+  const [isMobile, setIsMobile] = useState<boolean>(() => window.innerWidth <= 900);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   
   const accountDropdownRef = useRef<HTMLDivElement>(null);
   const appointmentsDropdownRef = useRef<HTMLDivElement>(null);
   const inventoryDropdownRef = useRef<HTMLDivElement>(null);
+  const normalizedRole = normalizeRole(currentUser?.role);
+  const isAdminWorkspace = isAdminRole(currentUser?.role);
+  const isDoctorWorkspace =
+    !isAdminWorkspace &&
+    (location.pathname.startsWith('/doctor') || isDoctorRole(normalizedRole));
+  const homePath = isDoctorWorkspace ? '/doctor/home' : '/admin/home';
+  const appointmentsPath = isDoctorWorkspace ? '/doctor/appointments' : '/admin/schedule';
+  const recordsPath = isDoctorWorkspace ? '/doctor/medical-records' : '/patient-records';
+  const inventoryPath = isDoctorWorkspace ? '/doctor/inventory' : '/inventory';
 
   const isActive = (path: string): boolean => {
     return location.pathname === path;
   };
 
   const isAppointmentsActive = (): boolean => {
-    return isActive('/schedule') || isActive('/availSettings') || isActive('/history');
+    if (isDoctorWorkspace) {
+      return isActive('/doctor/appointments');
+    }
+    return isActive('/admin/schedule') || isActive('/admin/availability') || isActive('/admin/history');
   };
 
   const isAccountActive = (): boolean => {
-    return isActive('/accounts') || isActive('/useraccounts');
+    return isActive('/admin/dashboard') || isActive('/admin/users');
   };
 
   const isInventoryActive = (): boolean => {
-    return isActive('/manage-inventory') || isActive('/inventory-logs') || isActive('/inventory-in') || isActive('/inventory-out') || isActive('/inventory-archive');
+    if (isDoctorWorkspace) {
+      return isActive('/doctor/inventory');
+    }
+    return isActive('/manage-inventory') || isActive('/inventory') || isActive('/inventory-logs') || isActive('/inventory-in') || isActive('/inventory-out') || isActive('/inventory-archive');
   };
   
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth <= 900;
+      setIsMobile(mobile);
+      if (!mobile) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -113,9 +146,24 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
         setShowInventoryDropdown(true);
       }
     }
-  }, [location.pathname, isCollapsed]);
+  }, [location.pathname, isCollapsed, isDoctorWorkspace]);
+
+  useEffect(() => {
+    if (isMobile) {
+      setIsCollapsed(false);
+    }
+  }, [isMobile]);
+
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   const toggleNavbar = () => {
+    if (isMobile) {
+      setIsMobileMenuOpen((current) => !current);
+      return;
+    }
+
     const newCollapsedState = !isCollapsed;
     setIsCollapsed(newCollapsedState);
     localStorage.setItem('navbarCollapsed', JSON.stringify(newCollapsedState));
@@ -127,7 +175,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
   };
 
   const handleMouseEnter = (e: React.MouseEvent, itemName: string) => {
-    if (isCollapsed) {
+    if (isCollapsed && !isMobile) {
       const rect = e.currentTarget.getBoundingClientRect();
       setHoverPosition({
         x: rect.right + 10,
@@ -138,7 +186,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
   };
 
   const handleMouseLeave = () => {
-    if (isCollapsed) {
+    if (isCollapsed && !isMobile) {
       setHoveredItem(null);
     }
   };
@@ -189,7 +237,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
   };
 
   const renderTooltip = () => {
-    if (!hoveredItem || !isCollapsed) return null;
+    if (!hoveredItem || !isCollapsed || isMobile) return null;
 
     let tooltipText = '';
     switch(hoveredItem) {
@@ -197,7 +245,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
       case 'Analytics': tooltipText = 'Analytics'; break;
       case 'Account Overview': tooltipText = 'Account Overview'; break;
       case 'Appointments': tooltipText = 'Appointments'; break;
-      case 'Patient Records': tooltipText = 'Patient Records'; break;
+      case 'Patient Records': tooltipText = isDoctorWorkspace ? 'Medical Records' : 'Patient Records'; break;
       case 'Inventory': tooltipText = 'Inventory'; break;
       case 'System Audit': tooltipText = 'System Audit'; break;
       case 'Settings': tooltipText = 'Settings'; break;
@@ -222,7 +270,28 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
 
   return (
     <>
-      <div className={`navbarContainer ${isCollapsed ? 'collapsed' : ''}`}>
+      {isMobile && (
+        <>
+          <button
+            type="button"
+            className="mobileNavToggle"
+            onClick={() => setIsMobileMenuOpen(true)}
+            aria-label="Open navigation menu"
+          >
+            <IoMenuOutline size={24} />
+          </button>
+          {isMobileMenuOpen && (
+            <button
+              type="button"
+              className="mobileNavBackdrop"
+              onClick={() => setIsMobileMenuOpen(false)}
+              aria-label="Close navigation menu"
+            />
+          )}
+        </>
+      )}
+
+      <div className={`navbarContainer ${isCollapsed ? 'collapsed' : ''} ${isMobile ? 'mobile' : ''} ${isMobileMenuOpen ? 'mobileOpen' : ''}`}>
         <div className="navBody navGradient">
           <div 
             className="navTitle"
@@ -230,20 +299,28 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
             onMouseLeave={() => setIsHoveringTitle(false)}
           >
             <div className="navLogoContainer">
-              {isCollapsed && isHoveringTitle ? (
+              {isCollapsed && !isMobile && isHoveringTitle ? (
                 <button className="navLogoCollapseBtn" onClick={toggleNavbar}>
                   <TbLayoutSidebarRightCollapse size={24} />
                 </button>
               ) : (
                 <img 
-                  src="/src/assets/AgsikapLogo-Temp.png"
-                  alt="PawRang Logo"
+                  src={petShieldLogo}
+                  alt="PetShield Logo"
                   className="navLogo"
                 />
               )}
-              {!isCollapsed && <span className="brandFont">PawRang</span>}
+              {(!isCollapsed || isMobile) && <span className="brandFont">PetShield</span>}
             </div>
-            {!isCollapsed && isHoveringTitle && (
+            {isMobile ? (
+              <button
+                className="navMobileCloseBtn"
+                onClick={() => setIsMobileMenuOpen(false)}
+                aria-label="Close navigation menu"
+              >
+                <IoCloseOutline size={22} />
+              </button>
+            ) : !isCollapsed && isHoveringTitle && (
               <button 
                 className="navCollapseBtn" 
                 onClick={toggleNavbar}
@@ -261,7 +338,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                 alt="User"
                 className="navAvatar"
               />
-              {!isCollapsed && (
+              {(!isCollapsed || isMobile) && (
                 <div style={{lineHeight: '20px'}}>
                   <div className="navUserName">{currentUser?.username || "Username Here"}</div>
                   <div className="navUserRole">{currentUser?.role || "User Role Here"}</div>
@@ -270,14 +347,14 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
             </div>
           </div>
 
-          {!isCollapsed && <div className="navOverview">Overview</div>}
+          {(!isCollapsed || isMobile) && <div className="navOverview">Overview</div>}
 
           <div className="navGlassContainer scrollable-nav">
             <div className="navMenu">
               <div className="navMenuSection">
                 <button 
-                  className={`navBtn ${isActive('/home') ? 'active' : ''}`} 
-                  onClick={() => handleNavigate('/home')}
+                  className={`navBtn ${isActive(homePath) ? 'active' : ''}`} 
+                  onClick={() => handleNavigate(homePath)}
                   onMouseEnter={(e) => handleMouseEnter(e, 'Home')}
                   onMouseLeave={handleMouseLeave}
                 >
@@ -286,18 +363,21 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                 </button>
               </div>
 
-              <div className="navMenuSection">
-                <button 
-                  className={`navBtn ${isActive('/analytics') ? 'active' : ''}`} 
-                  onClick={() => handleNavigate('/analytics')}
-                  onMouseEnter={(e) => handleMouseEnter(e, 'Analytics')}
-                  onMouseLeave={handleMouseLeave}
-                >
-                  <TbPresentationAnalytics size={isCollapsed ? 20 : 16} />
-                  {!isCollapsed && <span>Analytics</span>}
-                </button>
-              </div>
+              {!isDoctorWorkspace && (
+                <div className="navMenuSection">
+                  <button 
+                    className={`navBtn ${isActive('/analytics') ? 'active' : ''}`} 
+                    onClick={() => handleNavigate('/analytics')}
+                    onMouseEnter={(e) => handleMouseEnter(e, 'Analytics')}
+                    onMouseLeave={handleMouseLeave}
+                  >
+                    <TbPresentationAnalytics size={isCollapsed ? 20 : 16} />
+                    {!isCollapsed && <span>Analytics</span>}
+                  </button>
+                </div>
+              )}
 
+              {!isDoctorWorkspace && (
               <div className="navMenuSection" ref={accountDropdownRef}>
                 {!isCollapsed ? (
                   <>
@@ -313,15 +393,15 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                     {showAccountDropdown && (
                       <div className="navSubMenu">
                         <button 
-                          className={`navBtn subNavBtn ${isActive('/accounts') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/accounts')}
+                          className={`navBtn subNavBtn ${isActive('/admin/dashboard') ? 'active' : ''}`}
+                          onClick={() => handleNavigate('/admin/dashboard')}
                         >
                           <IoPersonOutline size={14} />
                           <span>Employees</span>
                         </button>
                         <button 
-                          className={`navBtn subNavBtn ${isActive('/useraccounts') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/useraccounts')}
+                          className={`navBtn subNavBtn ${isActive('/admin/users') ? 'active' : ''}`}
+                          onClick={() => handleNavigate('/admin/users')}
                         >
                           <PiUsersThree size={16} />
                           <span>Users</span>
@@ -342,13 +422,13 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                     {showAccountDropdown && (
                       <div className="collapsedDropdown">
                         <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/accounts', () => setShowAccountDropdown(false));
+                          handleNavigate('/admin/dashboard', () => setShowAccountDropdown(false));
                         }}>
                           <IoPersonOutline size={14} />
                           <span>Employees</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/useraccounts', () => setShowAccountDropdown(false));
+                          handleNavigate('/admin/users', () => setShowAccountDropdown(false));
                         }}>
                           <PiUsersThree size={16} />
                           <span>Users</span>
@@ -358,9 +438,20 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                   </>
                 )}
               </div>
+              )}
 
               <div className="navMenuSection" ref={appointmentsDropdownRef}>
-                {!isCollapsed ? (
+                {isDoctorWorkspace ? (
+                  <button 
+                    className={`navBtn ${isAppointmentsActive() ? 'active' : ''}`}
+                    onClick={() => handleNavigate(appointmentsPath)}
+                    onMouseEnter={(e) => handleMouseEnter(e, 'Appointments')}
+                    onMouseLeave={handleMouseLeave}
+                  >
+                    <IoCalendarClearOutline size={isCollapsed ? 20 : 16} />
+                    {!isCollapsed && <span>Appointments</span>}
+                  </button>
+                ) : !isCollapsed ? (
                   <>
                     <button 
                       className={`navBtn ${isAppointmentsActive() ? 'active' : ''}`}
@@ -374,22 +465,22 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                     {showAppointmentsDropdown && (
                       <div className="navSubMenu">
                         <button 
-                          className={`navBtn subNavBtn ${isActive('/schedule') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/schedule')}
+                          className={`navBtn subNavBtn ${isActive('/admin/schedule') ? 'active' : ''}`}
+                          onClick={() => handleNavigate('/admin/schedule')}
                         >
                           <IoCalendarOutline size={14} />
                           <span>Schedule</span>
                         </button>
                         <button 
-                          className={`navBtn subNavBtn ${isActive('/availSettings') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/availSettings')}
+                          className={`navBtn subNavBtn ${isActive('/admin/availability') ? 'active' : ''}`}
+                          onClick={() => handleNavigate('/admin/availability')}
                         >
                           <IoTodayOutline size={14} />
                           <span>Availability Settings</span>
                         </button>
                         <button 
-                          className={`navBtn subNavBtn ${isActive('/history') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/history')}
+                          className={`navBtn subNavBtn ${isActive('/admin/history') ? 'active' : ''}`}
+                          onClick={() => handleNavigate('/admin/history')}
                         >
                           <IoTimeOutline size={14} />
                           <span>History</span>
@@ -410,19 +501,19 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                     {showAppointmentsDropdown && (
                       <div className="collapsedDropdown">
                         <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/schedule', () => setShowAppointmentsDropdown(false));
+                          handleNavigate('/admin/schedule', () => setShowAppointmentsDropdown(false));
                         }}>
                           <IoCalendarOutline size={14} />
                           <span>Schedule</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/availSettings', () => setShowAppointmentsDropdown(false));
+                          handleNavigate('/admin/availability', () => setShowAppointmentsDropdown(false));
                         }}>
                           <IoTodayOutline size={14} />
                           <span>Availability Settings</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/history', () => setShowAppointmentsDropdown(false));
+                          handleNavigate('/admin/history', () => setShowAppointmentsDropdown(false));
                         }}>
                           <IoTimeOutline size={14} />
                           <span>History</span>
@@ -436,31 +527,43 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
               {/* Patient Records */}
               <div className="navMenuSection">
                 <button 
-                  className={`navBtn ${isActive('/patient-records') ? 'active' : ''}`} 
-                  onClick={() => handleNavigate('/patient-records')}
+                  className={`navBtn ${isActive(recordsPath) ? 'active' : ''}`} 
+                  onClick={() => handleNavigate(recordsPath)}
                   onMouseEnter={(e) => handleMouseEnter(e, 'Patient Records')}
                   onMouseLeave={handleMouseLeave}
                 >
                   <IoDocumentText size={isCollapsed ? 20 : 16} />
-                  {!isCollapsed && <span>Patient Records</span>}
+                  {!isCollapsed && <span>{isDoctorWorkspace ? 'Medical Records' : 'Patient Records'}</span>}
                 </button>
               </div>
 
-              <div className="navMenuSection">
-                <button 
-                  className={`navBtn ${isActive('/billing') ? 'active' : ''}`} 
-                  onClick={() => handleNavigate('/billing')}
-                  onMouseEnter={(e) => handleMouseEnter(e, 'Billing')}
-                  onMouseLeave={handleMouseLeave}
-                >
-                  <IoReceiptOutline size={isCollapsed ? 20 : 16} />
-                  {!isCollapsed && <span>Billing</span>}
-                </button>
-              </div>
+              {!isDoctorWorkspace && (
+                <div className="navMenuSection">
+                  <button 
+                    className={`navBtn ${isActive('/billing') ? 'active' : ''}`} 
+                    onClick={() => handleNavigate('/billing')}
+                    onMouseEnter={(e) => handleMouseEnter(e, 'Billing')}
+                    onMouseLeave={handleMouseLeave}
+                  >
+                    <IoReceiptOutline size={isCollapsed ? 20 : 16} />
+                    {!isCollapsed && <span>Billing</span>}
+                  </button>
+                </div>
+              )}
 
               {/* Inventory with Dropdown */}
               <div className="navMenuSection" ref={inventoryDropdownRef}>
-                {!isCollapsed ? (
+                {isDoctorWorkspace ? (
+                  <button 
+                    className={`navBtn ${isInventoryActive() ? 'active' : ''}`}
+                    onClick={() => handleNavigate(inventoryPath)}
+                    onMouseEnter={(e) => handleMouseEnter(e, 'Inventory')}
+                    onMouseLeave={handleMouseLeave}
+                  >
+                    <IoLayersOutline size={isCollapsed ? 20 : 16} />
+                    {!isCollapsed && <span>Inventory</span>}
+                  </button>
+                ) : !isCollapsed ? (
                   <>
                     <button 
                       className={`navBtn ${isInventoryActive() ? 'active' : ''}`}
@@ -475,7 +578,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                       <div className="navSubMenu">
                         <button 
                           className={`navBtn subNavBtn ${isActive('/manage-inventory') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/inventory')}
+                          onClick={() => handleNavigate(inventoryPath)}
                         >
                           <CiBoxes size={14} />
                           <span>Item Catalog</span>
@@ -559,29 +662,33 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                 )}
               </div>
 
-              <div className="navMenuSection">
-                <button 
-                  className={`navBtn ${isActive('/audit') ? 'active' : ''}`} 
-                  onClick={() => handleNavigate('/audit')}
-                  onMouseEnter={(e) => handleMouseEnter(e, 'System Audit')}
-                  onMouseLeave={handleMouseLeave}
-                >
-                  <IoFileTrayFullOutline size={isCollapsed ? 20 : 16} />
-                  {!isCollapsed && <span>System Audit</span>}
-                </button>
-              </div>
+              {!isDoctorWorkspace && (
+                <div className="navMenuSection">
+                  <button 
+                    className={`navBtn ${isActive('/admin/audit') ? 'active' : ''}`} 
+                    onClick={() => handleNavigate('/admin/audit')}
+                    onMouseEnter={(e) => handleMouseEnter(e, 'System Audit')}
+                    onMouseLeave={handleMouseLeave}
+                  >
+                    <IoFileTrayFullOutline size={isCollapsed ? 20 : 16} />
+                    {!isCollapsed && <span>System Audit</span>}
+                  </button>
+                </div>
+              )}
 
-              <div className="navMenuSection">
-                <button 
-                  className={`navBtn ${isActive('/settings') ? 'active' : ''}`} 
-                  onClick={() => handleNavigate('/settings')}
-                  onMouseEnter={(e) => handleMouseEnter(e, 'Settings')}
-                  onMouseLeave={handleMouseLeave}
-                >
-                  <IoSettingsOutline size={isCollapsed ? 20 : 16} />
-                  {!isCollapsed && <span>Settings</span>}
-                </button>
-              </div>
+              {!isDoctorWorkspace && (
+                <div className="navMenuSection">
+                  <button 
+                    className={`navBtn ${isActive('/admin/settings') ? 'active' : ''}`} 
+                    onClick={() => handleNavigate('/admin/settings')}
+                    onMouseEnter={(e) => handleMouseEnter(e, 'Settings')}
+                    onMouseLeave={handleMouseLeave}
+                  >
+                    <IoSettingsOutline size={isCollapsed ? 20 : 16} />
+                    {!isCollapsed && <span>Settings</span>}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -597,10 +704,11 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                 {!isCollapsed && <span>Log Out</span>}
               </button>
             </div>
+            {(!isCollapsed || isMobile) && <div className="navPoweredBy">Powered by PawRang</div>}
           </div>
         </div>
       </div>
-      {renderTooltip()}
+      {!isMobile && renderTooltip()}
     </>
   );
 };

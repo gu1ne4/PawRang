@@ -1,30 +1,34 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-
-// Web icons equivalent to Ionicons
-import { 
-  IoHomeOutline, IoPeopleOutline, IoChevronDownOutline, IoChevronUpOutline,
-  IoPersonOutline, IoMedkitOutline, IoCalendarClearOutline, IoCalendarOutline,
-  IoTodayOutline, IoTimeOutline, IoDocumentTextOutline, IoSettingsOutline,
-  IoLogOutOutline, IoRefresh, IoSearchSharp, IoFilterSharp, IoCloseCircleSharp,
-  IoPersonCircleOutline, IoCheckmarkCircleOutline, IoCloseCircleOutline, IoAlertCircleOutline
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  IoAlertCircleOutline,
+  IoAlbumsOutline,
+  IoArrowDownCircleOutline,
+  IoArrowUpCircleOutline,
+  IoCalendarOutline,
+  IoCheckmarkCircleOutline,
+  IoCloseCircleOutline,
+  IoCloseCircleSharp,
+  IoDocumentTextOutline,
+  IoFilterSharp,
+  IoFlashOutline,
+  IoPeopleOutline,
+  IoSearchSharp,
+  IoSettingsOutline,
+  IoShieldCheckmarkOutline
 } from 'react-icons/io5';
 
-// Import your merged CSS file
 import './AdminStyles.css';
 import Navbar from '../reusable_components/NavBar';
+import Notifications from '../reusable_components/Notifications';
+import { getStoredAuditLogs, type AuditLogEntry } from './auditLogService';
 
-// Using standard imports for Vite images
-import logoImg from '../assets/AgsikapLogo-Temp.png';
-import defaultUserImg from '../assets/userImg.jpg';
-
-// --- TYPESCRIPT INTERFACES ---
 interface CurrentUser {
   id?: string | number;
   pk?: string | number;
-  username?: string;
+  username: string;
   fullName?: string;
-  role?: string;
+  role: string;
   userImage?: string;
 }
 
@@ -36,65 +40,209 @@ interface ModalConfigType {
   showCancel: boolean;
 }
 
+const MOCK_AUDIT_LOGS: AuditLogEntry[] = [
+  {
+    id: 1,
+    module: 'Authentication',
+    event: 'Login Successful',
+    actor: 'maggie.admin',
+    role: 'Admin',
+    target: 'Admin Portal',
+    summary: 'Authenticated using employee credentials.',
+    dateTime: '2026-04-28T08:45:00',
+    status: 'Success'
+  },
+  {
+    id: 2,
+    module: 'Employee Accounts',
+    event: 'Employee Created',
+    actor: 'maggie.admin',
+    role: 'Admin',
+    target: 'Dr. Sofia Reyes',
+    summary: 'Created veterinarian account and sent setup email.',
+    dateTime: '2026-04-28T08:12:00',
+    status: 'Success'
+  },
+  {
+    id: 3,
+    module: 'Patient Accounts',
+    event: 'Account Deactivated',
+    actor: 'frontdesk.anne',
+    role: 'Receptionist',
+    target: 'Luis Dela Cruz',
+    summary: 'Patient account was temporarily disabled.',
+    dateTime: '2026-04-28T07:50:00',
+    status: 'Warning'
+  },
+  {
+    id: 4,
+    module: 'Appointments',
+    event: 'Appointment Rescheduled',
+    actor: 'maggie.admin',
+    role: 'Admin',
+    target: 'Rocky - Vaccination',
+    summary: 'Moved appointment from 9:00 AM to 11:00 AM.',
+    dateTime: '2026-04-28T07:30:00',
+    status: 'Success'
+  },
+  {
+    id: 5,
+    module: 'Availability Settings',
+    event: 'Time Slot Removed',
+    actor: 'dr.sofia',
+    role: 'Veterinarian',
+    target: 'Monday 1:00 PM - 2:00 PM',
+    summary: 'Removed slot due to clinic procedure block.',
+    dateTime: '2026-04-27T18:22:00',
+    status: 'Warning'
+  },
+  {
+    id: 6,
+    module: 'Inventory',
+    event: 'Stock Out Recorded',
+    actor: 'frontdesk.anne',
+    role: 'Receptionist',
+    target: 'Canine Multivitamins',
+    summary: 'Issued 3 units for over-the-counter sale.',
+    dateTime: '2026-04-27T17:40:00',
+    status: 'Success'
+  },
+  {
+    id: 7,
+    module: 'EMR',
+    event: 'Medical Record Updated',
+    actor: 'dr.sofia',
+    role: 'Veterinarian',
+    target: 'Milo - Visit #12',
+    summary: 'Added prescriptions and laboratory findings.',
+    dateTime: '2026-04-27T16:05:00',
+    status: 'Success'
+  },
+  {
+    id: 8,
+    module: 'Billing',
+    event: 'Invoice Deleted',
+    actor: 'frontdesk.anne',
+    role: 'Receptionist',
+    target: 'INV-2026-0418',
+    summary: 'Draft invoice removed before payment posting.',
+    dateTime: '2026-04-27T15:48:00',
+    status: 'Failed'
+  },
+  {
+    id: 9,
+    module: 'Pet Profiles',
+    event: 'Pet Profile Added',
+    actor: 'client.portal',
+    role: 'User',
+    target: 'Coco',
+    summary: 'New cat profile registered by owner.',
+    dateTime: '2026-04-27T14:55:00',
+    status: 'Success'
+  },
+  {
+    id: 10,
+    module: 'Appointments',
+    event: 'Walk-In Created',
+    actor: 'frontdesk.anne',
+    role: 'Receptionist',
+    target: 'Guest - Bruno',
+    summary: 'Created walk-in appointment and auto-generated profile.',
+    dateTime: '2026-04-27T13:20:00',
+    status: 'Success'
+  },
+  {
+    id: 11,
+    module: 'Authentication',
+    event: 'Password Reset Requested',
+    actor: 'julia.owner',
+    role: 'User',
+    target: 'Owner Portal',
+    summary: 'OTP flow started for password recovery.',
+    dateTime: '2026-04-27T12:03:00',
+    status: 'Warning'
+  },
+  {
+    id: 12,
+    module: 'Inventory',
+    event: 'Product Restored',
+    actor: 'maggie.admin',
+    role: 'Admin',
+    target: 'Feline Dewormer',
+    summary: 'Archived item returned to active inventory.',
+    dateTime: '2026-04-27T10:25:00',
+    status: 'Success'
+  }
+];
+
+const MODULE_OPTIONS = [
+  'All Modules',
+  'Authentication',
+  'Employee Accounts',
+  'Patient Accounts',
+  'Pet Profiles',
+  'Appointments',
+  'Settings',
+  'Availability Settings',
+  'Inventory',
+  'EMR',
+  'Billing'
+];
+
+const ROLE_OPTIONS = ['All Roles', 'Admin', 'Veterinarian', 'Receptionist', 'User'];
+const STATUS_OPTIONS = ['All Statuses', 'Success', 'Warning', 'Failed'];
+
+const getStatusClassName = (status: AuditLogEntry['status']) => {
+  if (status === 'Success') return 'activeBadge';
+  if (status === 'Warning') return 'auditWarningBadge';
+  return 'inactiveBadge';
+};
+
+const getStatusTextClassName = (status: AuditLogEntry['status']) => {
+  if (status === 'Success') return 'activeText';
+  if (status === 'Warning') return 'auditWarningText';
+  return 'auditFailedText';
+};
+
 export default function AdminAuditPage() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const isActive = location.pathname === '/Audit';
-  const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000'; 
 
-  // ==========================================
-  //  STATE MANAGEMENT
-  // ==========================================
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
-  
-  // Navbar Dropdowns
-  const [showAccountDropdown, setShowAccountDropdown] = useState(false);
-  const [showAppointmentsDropdown, setShowAppointmentsDropdown] = useState(false);
-
-  // Table UI State
+  const [loading, setLoading] = useState(true);
   const [searchVisible, setSearchVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHovered, setSearchHovered] = useState(false);
   const [filterHovered, setFilterHovered] = useState(false);
-
-  // Pagination & Filter
   const [page, setPage] = useState(0);
-  const itemsPerPage = 8;
-  const [statusFilter, setStatusFilter] = useState("defaultStatus");
-  const [roleFilter, setRoleFilter] = useState("defaultRole");
+  const [moduleFilter, setModuleFilter] = useState('All Modules');
+  const [roleFilter, setRoleFilter] = useState('All Roles');
+  const [statusFilter, setStatusFilter] = useState('All Statuses');
+  const [selectedModule, setSelectedModule] = useState('All Modules');
+  const [settingsAuditLogs, setSettingsAuditLogs] = useState<AuditLogEntry[]>([]);
 
-  // ==========================================
-  //  1. MODAL STATE
-  // ==========================================
   const [modalVisible, setModalVisible] = useState(false);
   const [modalConfig, setModalConfig] = useState<ModalConfigType>({
-    type: 'info', 
+    type: 'info',
     title: '',
-    message: '', 
-    onConfirm: null, 
-    showCancel: false 
+    message: '',
+    onConfirm: null,
+    showCancel: false
   });
 
-  // ==========================================
-  //  2. HELPER FUNCTION
-  // ==========================================
+  const itemsPerPage = 7;
+
   const showAlert = (
-      type: 'info' | 'success' | 'error' | 'confirm', 
-      title: string, 
-      message: string | React.ReactNode, 
-      onConfirm: (() => void) | null = null, 
-      showCancel = false
+    type: 'info' | 'success' | 'error' | 'confirm',
+    title: string,
+    message: string | React.ReactNode,
+    onConfirm: (() => void) | null = null,
+    showCancel = false
   ) => {
     setModalConfig({ type, title, message, onConfirm, showCancel });
     setModalVisible(true);
   };
 
-  // ==========================================
-  //  API FUNCTIONS
-  // ==========================================
   useEffect(() => {
     const loadUser = () => {
       try {
@@ -103,286 +251,487 @@ export default function AdminAuditPage() {
           setCurrentUser(JSON.parse(session));
         }
       } catch (error) {
-        console.error("Failed to load user session", error);
+        console.error('Failed to load user session', error);
+      } finally {
+        setLoading(false);
       }
     };
+
     loadUser();
   }, []);
 
-  const fetchAuditLogs = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/access_logs`); 
-      const data = await res.json();
-      
-      if (Array.isArray(data)) {
-        // Sort newest first
-        setAuditLogs(data.sort((a, b) => new Date(b.login_time).getTime() - new Date(a.login_time).getTime()));
-      } else {
-        setAuditLogs([]);
-      }
-    } catch (error) {
-      console.error("Error fetching audit logs:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchAuditLogs();
+    setSettingsAuditLogs(getStoredAuditLogs());
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === 'petshieldSettingsAuditLogs') {
+        setSettingsAuditLogs(getStoredAuditLogs());
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // ==========================================
-  //  3. LOGOUT HANDLER
-  // ==========================================
   const handleLogoutPress = () => {
     showAlert('confirm', 'Log Out', 'Are you sure you want to log out?', async () => {
-      try {
-        if (currentUser) {
-          console.log("Sending logout audit for:", currentUser.username);
-          await fetch(`${API_URL}/logout`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: currentUser.id || currentUser.pk, 
-              userType: 'EMPLOYEE', 
-              username: currentUser.username || currentUser.fullName,
-              role: currentUser.role
-            })
-          });
-        }
-      } catch (error) {
-        console.error("Logout audit failed:", error);
-      }
-
-      localStorage.removeItem('userSession'); 
+      localStorage.removeItem('userSession');
       setCurrentUser(null);
-      navigate('/Login'); 
-    }, true); 
+      navigate('/Login');
+    }, true);
   };
 
-  // ==========================================
-  //  FILTER LOGIC
-  // ==========================================
-  const filteredLogs = auditLogs.filter(log => {
-    const uName = (log.username || 'Unknown').toLowerCase();
-    const uAction = (log.action || '').toLowerCase();
-    const uStatus = log.status || '';
-    const uRole = log.role || '';
+  const auditLogs = useMemo(() => {
+    return [...settingsAuditLogs, ...MOCK_AUDIT_LOGS].sort(
+      (firstLog, secondLog) => new Date(secondLog.dateTime).getTime() - new Date(firstLog.dateTime).getTime()
+    );
+  }, [settingsAuditLogs]);
 
-    const matchesSearch = 
-      uName.includes(searchQuery.toLowerCase()) || 
-      uAction.includes(searchQuery.toLowerCase());
+  const filteredLogs = useMemo(() => {
+    return auditLogs.filter((log) => {
+      const searchLower = searchQuery.toLowerCase();
+      const matchesSearch =
+        searchLower === '' ||
+        log.actor.toLowerCase().includes(searchLower) ||
+        log.event.toLowerCase().includes(searchLower) ||
+        log.module.toLowerCase().includes(searchLower) ||
+        log.target.toLowerCase().includes(searchLower) ||
+        log.summary.toLowerCase().includes(searchLower);
 
-    const matchesStatus = statusFilter !== "defaultStatus" ? uStatus === statusFilter : true;
-    const matchesRole = roleFilter !== "defaultRole" ? uRole === roleFilter : true;
+      const activeModuleFilter = selectedModule !== 'All Modules' ? selectedModule : moduleFilter;
+      const matchesModule = activeModuleFilter === 'All Modules' ? true : log.module === activeModuleFilter;
+      const matchesRole = roleFilter === 'All Roles' ? true : log.role === roleFilter;
+      const matchesStatus = statusFilter === 'All Statuses' ? true : log.status === statusFilter;
 
-    return matchesSearch && matchesStatus && matchesRole;
-  });
+      return matchesSearch && matchesModule && matchesRole && matchesStatus;
+    });
+  }, [auditLogs, moduleFilter, roleFilter, searchQuery, selectedModule, statusFilter]);
 
-  const noMatchFilters = statusFilter === "defaultStatus" && roleFilter === "defaultRole";
-  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage);
+  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / itemsPerPage));
+  const paginatedLogs = filteredLogs.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
+  const paginationWindowStart = Math.max(0, Math.min(page - 1, totalPages - 3));
+  const paginationNumbers = Array.from(
+    { length: Math.min(3, totalPages) },
+    (_, index) => paginationWindowStart + index
+  );
 
-  // ==========================================
-  //  RENDER
-  // ==========================================
+  const summaryStats = useMemo(() => {
+    const total = auditLogs.length;
+    const success = auditLogs.filter((log) => log.status === 'Success').length;
+    const warning = auditLogs.filter((log) => log.status === 'Warning').length;
+    const failed = auditLogs.filter((log) => log.status === 'Failed').length;
+
+    return { total, success, warning, failed };
+  }, [auditLogs]);
+
+  const moduleCards = useMemo(() => {
+    return [
+      {
+        title: 'Authentication',
+        count: auditLogs.filter((log) => log.module === 'Authentication').length,
+        detail: 'Logins, logouts, and credential flows',
+        icon: <IoShieldCheckmarkOutline size={22} />
+      },
+      {
+        title: 'Appointments',
+        count: auditLogs.filter((log) => log.module === 'Appointments').length,
+        detail: 'Scheduling, completion, and rescheduling',
+        icon: <IoCalendarOutline size={22} />
+      },
+      {
+        title: 'Settings',
+        count: auditLogs.filter((log) => log.module === 'Settings').length,
+        detail: 'Homepage, services, prices, and publishing changes',
+        icon: <IoSettingsOutline size={22} />
+      },
+      {
+        title: 'Inventory',
+        count: auditLogs.filter((log) => log.module === 'Inventory').length,
+        detail: 'Stock movements and archive actions',
+        icon: <IoAlbumsOutline size={22} />
+      },
+      {
+        title: 'Records & Billing',
+        count: auditLogs.filter((log) => log.module === 'EMR' || log.module === 'Billing').length,
+        detail: 'Medical records, invoices, and sensitive edits',
+        icon: <IoDocumentTextOutline size={22} />
+      }
+    ];
+  }, [auditLogs]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [filteredLogs.length]);
+
+  const clearFilters = () => {
+    setModuleFilter('All Modules');
+    setRoleFilter('All Roles');
+    setStatusFilter('All Statuses');
+    setSelectedModule('All Modules');
+    setSearchQuery('');
+    setPage(0);
+  };
+
   return (
     <div className="biContainer">
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
 
-      {/* BODY */}
       <div className="bodyContainer">
-        <div className="topContainer">
-          <div className="subTopContainer">
+        <div className="topContainer auditTopContainer">
+          <div className="subTopContainer auditSubTopContainer">
             <IoDocumentTextOutline size={20} color="#3d67ee" style={{ marginTop: '2px' }} />
-            <span className="blueText" style={{ marginLeft: '10px' }}>System Audit / Access Logs</span>
+            <span className="blueText">Audit Logs</span>
           </div>
-          <div className="subTopContainer" style={{ justifyContent: 'center', flex: 0.5, marginLeft: '12px' }}>
-            <button style={{ background: 'none', border: 'none', cursor: 'pointer' }} onClick={fetchAuditLogs}>
-              <IoRefresh size={21} color="#3d67ee" style={{ marginTop: '3px' }} />
-            </button>
+          <div className="subTopContainer notificationContainer auditNotificationContainer">
+            <Notifications
+              buttonClassName="iconButton"
+              iconClassName="blueIcon"
+              onViewAll={() => showAlert('info', 'Notifications', 'Notifications preview is not wired on this screen yet.')}
+            />
           </div>
         </div>
 
-        {/* TABLE CONTAINER */}
-        <div className="tableContainer">
-          <div className="tableToolbar">
-            
-            {/* SEARCH AND FILTER BAR */}
-            <div className="searchFilterSection">
-              
-              {/* Search Icon */}
-              <div className="toolbarItem" onMouseEnter={() => setSearchHovered(true)} onMouseLeave={() => setSearchHovered(false)}>
-                <button className="iconButton" onClick={() => setSearchVisible(!searchVisible)}>
-                  <IoSearchSharp size={25} color={searchVisible ? "#afccf8" : "#3d67ee"} />
-                </button>
-                {searchHovered && <div className="tooltip">Search</div>}
-              </div>
-
-              {searchVisible && (
-                <input
-                  type="text"
-                  placeholder="Search user or action..."
-                  value={searchQuery}
-                  onChange={(e) => {setSearchQuery(e.target.value); setPage(0);}}
-                  className="searchInput"
-                  maxLength={60} 
-                />
-              )}
-
-              {/* Filter Icon */}
-              <div className="toolbarItem" onMouseEnter={() => setFilterHovered(true)} onMouseLeave={() => setFilterHovered(false)}>
-                <button className="iconButton" onClick={() => setFilterVisible(!filterVisible)}>
-                  <IoFilterSharp size={25} color={filterVisible ? "#afccf8" : "#3d67ee"} />
-                </button>
-                {filterHovered && <div className="tooltip">Filter</div>}
-              </div>
-              
-              {filterVisible && (
-                <div className="filterSection">
-                  {/* Status Picker (Success/Failed) */}
-                  <select 
-                    value={statusFilter} 
-                    className="filterSelect" 
-                    onChange={(e) => {setStatusFilter(e.target.value); setPage(0);}}
-                  >
-                    <option value="defaultStatus" style={{color: '#a8a8a8'}}>Status</option>
-                    <option value="SUCCESS">Success</option>
-                    <option value="FAILED">Failed</option>
-                  </select>
-
-                  {/* Role Picker */}
-                  <select 
-                    value={roleFilter} 
-                    className="filterSelect wide" 
-                    onChange={(e) => {setRoleFilter(e.target.value); setPage(0);}}
-                  >
-                    <option value="defaultRole" style={{color: '#a8a8a8'}}>Role</option>
-                    <option value="Admin">Admin</option>
-                    <option value="Veterinarian">Veterinarian</option>
-                    <option value="Receptionist">Receptionist</option>
-                    <option value="User">User</option>
-                  </select>
-
-                  {/* Clear Filters Button */}
-                  <button
-                    onClick={() => {
-                      setStatusFilter("defaultStatus");
-                      setRoleFilter("defaultRole");
-                      setSearchQuery("");
-                      setPage(0);
-                    }}
-                    className="clearFilterBtn"
-                  >
-                    <IoCloseCircleSharp size={15} color="#ffffff" style={{ marginTop: '1px' }} />
-                    <span>Clear Filters</span>
-                  </button>
-                </div>
-              )}
-            </div>
-            
-            <div className="actionSection">
-               {/* Placeholder for future Export button */}
-            </div>
-          </div>
-
-          {/* DATATABLE */}
+        <div className="tableContainer auditTableContainer">
           {loading ? (
             <div className="loadingContainer"><div className="spinner"></div></div>
           ) : (
-            <div className="tableWrapper">
-              <table className="dataTable">
-                <thead>
-                  <tr>
-                    <th style={{ width: '25%' }}>User</th>
-                    <th style={{ textAlign: 'center', width: '15%' }}>Role</th>
-                    <th style={{ textAlign: 'center', width: '15%' }}>Action</th>
-                    <th style={{ textAlign: 'center', width: '20%' }}>Date & Time</th>
-                    <th style={{ textAlign: 'center', width: '15%' }}>IP Address</th>
-                    <th style={{ textAlign: 'center', width: '10%' }}>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredLogs.length > 0 ? (
-                    filteredLogs.slice(page * itemsPerPage, (page + 1) * itemsPerPage).map((log, index) => {
-                      const isSuccess = log.status === 'SUCCESS';
-                      const dateObj = new Date(log.login_time);
-                      const formattedDate = dateObj.toLocaleDateString() + ' ' + dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            <>
+              <div className="auditOverviewGrid">
+                <div className="auditHeroCard">
+                  <div className="auditHeroText">
+                    <span className="auditEyebrow">Clinic Oversight</span>
+                    <h2>Centralized visibility for every important system action.</h2>
+                    <p>Preview how audit logs can be grouped across authentication, appointments, settings, records, inventory, and billing before backend wiring starts.</p>
+                  </div>
+
+                  <div className="auditStatRow">
+                    <div className="auditStatCard">
+                      <div className="auditStatIcon auditBlueIconWrap"><IoFlashOutline size={18} /></div>
+                      <div>
+                        <strong>{summaryStats.total}</strong>
+                        <span>Total events</span>
+                      </div>
+                    </div>
+                    <div className="auditStatCard">
+                      <div className="auditStatIcon auditGreenIconWrap"><IoCheckmarkCircleOutline size={18} /></div>
+                      <div>
+                        <strong>{summaryStats.success}</strong>
+                        <span>Successful</span>
+                      </div>
+                    </div>
+                    <div className="auditStatCard">
+                      <div className="auditStatIcon auditAmberIconWrap"><IoAlertCircleOutline size={18} /></div>
+                      <div>
+                        <strong>{summaryStats.warning}</strong>
+                        <span>Needs review</span>
+                      </div>
+                    </div>
+                    <div className="auditStatCard">
+                      <div className="auditStatIcon auditRedIconWrap"><IoCloseCircleOutline size={18} /></div>
+                      <div>
+                        <strong>{summaryStats.failed}</strong>
+                        <span>Failed</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="auditMiniCardStack">
+                  {moduleCards.map((card) => (
+                    <button
+                      key={card.title}
+                      type="button"
+                      className={`auditMiniCard ${selectedModule === card.title ? 'auditMiniCardActive' : ''}`}
+                      onClick={() => setSelectedModule((current) => current === card.title ? 'All Modules' : card.title)}
+                    >
+                      <div className="auditMiniCardHeader">
+                        <div className="auditMiniCardIcon">{card.icon}</div>
+                        <span>{card.count} events</span>
+                      </div>
+                      <strong>{card.title}</strong>
+                      <p>{card.detail}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="auditChipRow">
+                {MODULE_OPTIONS.map((module) => (
+                  <button
+                    key={module}
+                    type="button"
+                    className={`auditChip ${selectedModule === module ? 'auditChipActive' : ''}`}
+                    onClick={() => setSelectedModule(module)}
+                  >
+                    {module}
+                  </button>
+                ))}
+              </div>
+
+              <div className="tableToolbar">
+                <div className="searchFilterSection">
+                  <div className="toolbarItem" onMouseEnter={() => setSearchHovered(true)} onMouseLeave={() => setSearchHovered(false)}>
+                    <button className="iconButton" onClick={() => setSearchVisible(!searchVisible)}>
+                      <IoSearchSharp size={25} color={searchVisible ? '#afccf8' : '#3d67ee'} />
+                    </button>
+                    {searchHovered && <div className="tooltip">Search</div>}
+                  </div>
+
+                  {searchVisible && (
+                    <input
+                      type="text"
+                      placeholder="Search actor, module, event, or target..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="searchInput auditSearchInput"
+                      maxLength={80}
+                    />
+                  )}
+
+                  <div className="toolbarItem" onMouseEnter={() => setFilterHovered(true)} onMouseLeave={() => setFilterHovered(false)}>
+                    <button className="iconButton" onClick={() => setFilterVisible(!filterVisible)}>
+                      <IoFilterSharp size={25} color={filterVisible ? '#afccf8' : '#3d67ee'} />
+                    </button>
+                    {filterHovered && <div className="tooltip">Filter</div>}
+                  </div>
+
+                  {filterVisible && (
+                    <div className="filterSection auditFilterSection">
+                      <select value={moduleFilter} className="filterSelect wide" onChange={(e) => setModuleFilter(e.target.value)}>
+                        {MODULE_OPTIONS.map((option) => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+
+                      <select value={roleFilter} className="filterSelect wide" onChange={(e) => setRoleFilter(e.target.value)}>
+                        {ROLE_OPTIONS.map((option) => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+
+                      <select value={statusFilter} className="filterSelect wide" onChange={(e) => setStatusFilter(e.target.value)}>
+                        {STATUS_OPTIONS.map((option) => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
+                      </select>
+
+                      <button onClick={clearFilters} className="clearFilterBtn">
+                        <IoCloseCircleSharp size={15} color="#ffffff" style={{ marginTop: '1px' }} />
+                        <span>Clear Filters</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="actionSection auditActionMeta">
+                  <span>{filteredLogs.length} visible log entries</span>
+                </div>
+              </div>
+
+              <div className="tableWrapper">
+                <table className="dataTable auditDesktopTable">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '18%' }}>Module</th>
+                      <th style={{ width: '17%' }}>Event</th>
+                      <th style={{ width: '16%' }}>Actor</th>
+                      <th style={{ width: '14%', textAlign: 'center' }}>Role</th>
+                      <th style={{ width: '15%' }}>Target</th>
+                      <th style={{ width: '13%' }}>Date & Time</th>
+                      <th style={{ width: '7%', textAlign: 'center' }}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedLogs.length > 0 ? (
+                      paginatedLogs.map((log) => {
+                        const formattedDate = new Date(log.dateTime).toLocaleString([], {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit'
+                        });
+
+                        return (
+                          <tr key={log.id}>
+                            <td>
+                              <div className="auditModuleCell">
+                                <div className="auditModuleIcon">
+                                  {log.module === 'Authentication' && <IoShieldCheckmarkOutline size={18} color="#3d67ee" />}
+                                  {log.module === 'Appointments' && <IoCalendarOutline size={18} color="#3d67ee" />}
+                                  {log.module === 'Settings' && <IoSettingsOutline size={18} color="#3d67ee" />}
+                                  {log.module === 'Inventory' && <IoAlbumsOutline size={18} color="#3d67ee" />}
+                                  {log.module !== 'Authentication' && log.module !== 'Appointments' && log.module !== 'Settings' && log.module !== 'Inventory' && (
+                                    <IoPeopleOutline size={18} color="#3d67ee" />
+                                  )}
+                                </div>
+                                <div className="auditCellStack">
+                                  <span className="tableFont">{log.module}</span>
+                                  <small>{log.summary}</small>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="tableFont">{log.event}</td>
+                            <td>
+                              <div className="auditCellStack">
+                                <span className="tableFont">{log.actor}</span>
+                                <small>{log.target}</small>
+                              </div>
+                            </td>
+                            <td style={{ textAlign: 'center' }} className="tableFont">{log.role}</td>
+                            <td className="tableFont">{log.target}</td>
+                            <td>
+                              <div className="auditDateCell">
+                                <IoCalendarOutline size={14} color="#7a7a7a" />
+                                <span>{formattedDate}</span>
+                              </div>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <div className={`statusBadge ${getStatusClassName(log.status)}`}>
+                                <span className={`statusText ${getStatusTextClassName(log.status)}`}>{log.status}</span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="noData">
+                          No audit entries match the current preview filters.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+
+                <div className="auditMobileList">
+                  {paginatedLogs.length > 0 ? (
+                    paginatedLogs.map((log) => {
+                      const formattedDate = new Date(log.dateTime).toLocaleString([], {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit'
+                      });
 
                       return (
-                        <tr key={log.log_id || index}>
-                          <td>
-                            <div className="userCell">
-                              <IoPersonCircleOutline size={30} color="#3d67ee" style={{marginRight: '10px'}} />
-                              <span className="tableFont">{log.username || 'Unknown'}</span>
+                        <article key={`mobile-${log.id}`} className="auditMobileCard">
+                          <div className="auditMobileTopRow">
+                            <div className="auditModuleCell">
+                              <div className="auditModuleIcon">
+                                {log.module === 'Authentication' && <IoShieldCheckmarkOutline size={18} color="#3d67ee" />}
+                                {log.module === 'Appointments' && <IoCalendarOutline size={18} color="#3d67ee" />}
+                                {log.module === 'Settings' && <IoSettingsOutline size={18} color="#3d67ee" />}
+                                {log.module === 'Inventory' && <IoAlbumsOutline size={18} color="#3d67ee" />}
+                                {log.module !== 'Authentication' && log.module !== 'Appointments' && log.module !== 'Settings' && log.module !== 'Inventory' && (
+                                  <IoPeopleOutline size={18} color="#3d67ee" />
+                                )}
+                              </div>
+                              <div className="auditCellStack">
+                                <span className="tableFont">{log.module}</span>
+                                <small>{log.event}</small>
+                              </div>
                             </div>
-                          </td>
-                          <td style={{ textAlign: 'center' }} className="tableFont">{log.role}</td>
-                          <td style={{ textAlign: 'center' }} className="tableFont">{log.action}</td>
-                          <td style={{ textAlign: 'center' }} className="tableFont">{formattedDate}</td>
-                          <td style={{ textAlign: 'center' }} className="tableFont">{log.ip_address || 'N/A'}</td>
-                          <td style={{ textAlign: 'center' }}>
-                            <div className={`statusBadge ${isSuccess ? 'activeBadge' : 'inactiveBadge'}`}>
-                              <span className={`statusText ${isSuccess ? 'activeText' : ''}`}>{log.status}</span>
+                            <div className={`statusBadge ${getStatusClassName(log.status)}`}>
+                              <span className={`statusText ${getStatusTextClassName(log.status)}`}>{log.status}</span>
                             </div>
-                          </td>
-                        </tr>
+                          </div>
+                          <div className="auditMobileInfoGrid">
+                            <div className="auditMobileInfoItem">
+                              <label>Actor</label>
+                              <span>{log.actor}</span>
+                            </div>
+                            <div className="auditMobileInfoItem">
+                              <label>Role</label>
+                              <span>{log.role}</span>
+                            </div>
+                            <div className="auditMobileInfoItem auditMobileInfoItemWide">
+                              <label>Target</label>
+                              <span>{log.target}</span>
+                            </div>
+                            <div className="auditMobileInfoItem auditMobileInfoItemWide">
+                              <label>Summary</label>
+                              <span>{log.summary}</span>
+                            </div>
+                            <div className="auditMobileInfoItem auditMobileInfoItemWide">
+                              <label>Date & Time</label>
+                              <span>{formattedDate}</span>
+                            </div>
+                          </div>
+                        </article>
                       );
                     })
                   ) : (
-                    <tr>
-                      <td colSpan={6} className="noData">
-                        {noMatchFilters ? "Showing all logs (no filters applied)" : "No logs found"}
-                      </td>
-                    </tr>
+                    <div className="noData">No audit entries match the current preview filters.</div>
                   )}
-                </tbody>
-              </table>
-
-              {/* Web Pagination */}
-              {totalPages > 0 && (
-                <div className="pagination">
-                  <button className="paginationBtn" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>Previous</button>
-                  <span className="paginationInfo">Page {page + 1} of {totalPages || 1}</span>
-                  <button className="paginationBtn" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}>Next</button>
                 </div>
-              )}
-            </div>
+
+                <div className="auditLegendRow">
+                  <div className="auditLegendItem"><IoArrowUpCircleOutline size={16} color="#1F7A3F" /><span>Success: completed actions</span></div>
+                  <div className="auditLegendItem"><IoAlertCircleOutline size={16} color="#a86200" /><span>Warning: sensitive or reviewable actions</span></div>
+                  <div className="auditLegendItem"><IoArrowDownCircleOutline size={16} color="#b42318" /><span>Failed: rejected or incomplete actions</span></div>
+                </div>
+
+                {filteredLogs.length > 0 && (
+                  <div className="pagination">
+                    <button className="paginationBtn" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={page === 0}>
+                      Previous
+                    </button>
+                    <div className="auditPaginationNumbers">
+                      {paginationNumbers.map((pageNumber) => (
+                        <button
+                          key={pageNumber}
+                          type="button"
+                          className={`auditPageNumber ${pageNumber === page ? 'auditPageNumberActive' : ''}`}
+                          onClick={() => setPage(pageNumber)}
+                        >
+                          {pageNumber + 1}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="paginationInfo">Page {page + 1} of {totalPages}</span>
+                    <button className="paginationBtn" onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))} disabled={page === totalPages - 1}>
+                      Next
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>
 
-      {/* 4. UNIFIED CUSTOM ALERT MODAL */}
       {modalVisible && (
         <div className="modalOverlay">
           <div className="alertModal">
             <div className="alertIcon">
-              {modalConfig.type === 'success' ? <IoCheckmarkCircleOutline size={55} color="#2e9e0c" /> : 
-               modalConfig.type === 'error' ? <IoCloseCircleOutline size={55} color="#d93025" /> : 
+              {modalConfig.type === 'success' ? <IoCheckmarkCircleOutline size={55} color="#2e9e0c" /> :
+               modalConfig.type === 'error' ? <IoCloseCircleOutline size={55} color="#d93025" /> :
                <IoAlertCircleOutline size={55} color="#3d67ee" />}
             </div>
-            
+
             <h3 className="alertTitle">{modalConfig.title}</h3>
-            
+
             {typeof modalConfig.message === 'string' ? (
               <p className="alertMessage">{modalConfig.message}</p>
             ) : (
               <div style={{ marginBottom: '25px' }}>{modalConfig.message}</div>
             )}
-            
+
             <div className="alertActions">
               {modalConfig.showCancel && (
                 <button className="alertBtn cancelAlertBtn" onClick={() => setModalVisible(false)}>
                   Cancel
                 </button>
               )}
-              
-              <button 
+
+              <button
                 className={`alertBtn ${modalConfig.type === 'error' ? 'errorBtn' : 'confirmAlertBtn'}`}
                 onClick={() => {
                   setModalVisible(false);
                   if (modalConfig.onConfirm) modalConfig.onConfirm();
-                }} 
+                }}
               >
                 {modalConfig.type === 'confirm' ? 'Confirm' : 'OK'}
               </button>
@@ -390,7 +739,6 @@ export default function AdminAuditPage() {
           </div>
         </div>
       )}
-
     </div>
   );
 }

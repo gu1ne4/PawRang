@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import './GlobalStyles.css';
 import gifBG from '../assets/AgsikapBG-Gif.gif';
 import logo from '../assets/AgsikapLogo-Temp.png';
+import { getDefaultRouteForUser } from '../auth/roles';
 
 // Types and Interfaces
 interface User {
@@ -215,15 +216,7 @@ const GlobalLoginPage: React.FC = () => {
               : `Welcome back ${data.user.fullname}!`;
             
             showPopup('Success', message, 'success', () => {
-              const userRole = data.user.role;
-              
-              if (userRole === 'Admin') {
-                window.location.href = '/home';
-              } else if (userRole === 'Veterinarian' || userRole === 'Receptionist') {
-                window.location.href = '/doctor-home';
-              } else {
-                window.location.href = '/accounts';
-              }
+              window.location.href = getDefaultRouteForUser(data.user);
             });
           }
         } else {
@@ -256,17 +249,7 @@ const GlobalLoginPage: React.FC = () => {
               });
             } else {
               showPopup('Success', `Welcome back, ${fallbackData.user.username}!`, 'success', () => {
-                const userRole = fallbackData.user.role;
-                
-                if (userRole === 'Admin') {
-                  window.location.href = '/home';
-                } else if (userRole === 'Veterinarian' || userRole === 'Receptionist') {
-                  window.location.href = '/home';
-                } else if (userRole === 'User') {
-                  window.location.href = '/user-home';
-                } else {
-                  window.location.href = '/login';
-                }
+                window.location.href = getDefaultRouteForUser(fallbackData.user);
               });
             }
           } else {

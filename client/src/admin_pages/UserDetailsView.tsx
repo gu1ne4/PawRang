@@ -97,6 +97,30 @@ type UserDetailsViewProps = {
   billingActionLoading?: boolean;
 };
 
+const AI_BUSY_FALLBACK_MESSAGE = 'Server is busy. Please try again later.';
+
+const getAiFallbackMessage = (error: any, defaultMessage: string) => {
+  const message = String(error?.message || '');
+  const status = Number(error?.status || error?.response?.status || 0);
+  const lowered = message.toLowerCase();
+
+  if (
+    status === 429 ||
+    status === 503 ||
+    lowered.includes('busy') ||
+    lowered.includes('overload') ||
+    lowered.includes('rate limit') ||
+    lowered.includes('resource_exhausted') ||
+    lowered.includes('unavailable') ||
+    lowered.includes('quota') ||
+    lowered.includes('high demand')
+  ) {
+    return AI_BUSY_FALLBACK_MESSAGE;
+  }
+
+  return message || defaultMessage;
+};
+
 export default function UserDetailsView({
   user,
   onBack,
@@ -182,6 +206,18 @@ export default function UserDetailsView({
     return 'Not provided';
   };
 
+  const formatTextAnswer = (value?: string | null) => {
+    const text = String(value || '').trim();
+    return text || 'Not provided';
+  };
+
+  const formatSymptomList = (value?: unknown) => {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map(item => String(item || '').trim())
+      .filter(Boolean);
+  };
+
   const formatPatientResponseType = (value?: string | null) => {
     const normalized = (value || '').trim().toLowerCase();
     switch (normalized) {
@@ -222,6 +258,7 @@ export default function UserDetailsView({
   const assignedBranch = user.branch || user.branchName || 'Not specified';
   const latestRescheduleRequest = user.latestRescheduleRequest || null;
   const medicalInformation = user.medicalInformation || user.medical_information || null;
+  const reportedSymptoms = formatSymptomList(medicalInformation?.reported_symptoms);
   const isDirectPatientRescheduleRequest =
     latestRescheduleRequest?.patient_response_type === 'choose_another_date' &&
     String(latestRescheduleRequest?.proposed_appointment_date || '') === String(latestRescheduleRequest?.current_appointment_date || '') &&
@@ -341,6 +378,25 @@ export default function UserDetailsView({
   const aiFlagCount = aiSummary?.important_flags?.length || 0;
   const aiQuestionCount = aiSummary?.follow_up_questions?.length || 0;
   const aiMissingCount = aiSummary?.missing_information?.length || 0;
+  const aiSymptomSignalCount = reportedSymptoms.length + (medicalInformation?.owner_symptom_notes ? 1 : 0);
+
+  const buildAdminAiPayload = () => ({
+    ...user,
+    name: user.name || userDetails.fullName,
+    patient_email: email,
+    patient_phone: phone,
+    reasonForVisit,
+    reschedule_reason: rescheduleReason,
+    pet_name: petName,
+    pet_type: petType,
+    pet_breed: petBreed,
+    pet_gender: petGender,
+    service: user.service || 'Appointment',
+    branch: assignedBranch,
+    doctor: assignedDoctor,
+    medicalInformation,
+    medical_information: medicalInformation,
+  });
 
   const buildAiClipboardText = () => {
     if (!aiSummary) return '';
@@ -373,12 +429,12 @@ export default function UserDetailsView({
     setCopySuccess(false);
 
     try {
-      const response = await apiService.generateAdminAppointmentSummary(user);
+      const response = await apiService.generateAdminAppointmentSummary(buildAdminAiPayload());
       setAiSummary(response.summary || null);
       setAiCollapsed(false);
     } catch (error: any) {
       setAiSummary(null);
-      setAiError(error?.message || 'Unable to generate the AI summary right now.');
+      setAiError(getAiFallbackMessage(error, 'Unable to generate the AI summary right now.'));
     } finally {
       setAiLoading(false);
     }
@@ -448,6 +504,20 @@ export default function UserDetailsView({
               <IoMedical size={18} />
               <span>{aiLoading ? 'Generating Summary...' : 'Generate AI Summary'}</span>
             </button>
+            <div
+              style={{
+                fontSize: '12px',
+                color: '#6c7894',
+                backgroundColor: '#f6f8ff',
+                border: '1px solid #dde5ff',
+                borderRadius: '999px',
+                padding: '8px 12px',
+              }}
+            >
+              {aiSymptomSignalCount > 0
+                ? `AI will include booking symptom intake (${reportedSymptoms.length} symptom${reportedSymptoms.length === 1 ? '' : 's'} on record).`
+                : 'AI will use the available booking and medical details.'}
+            </div>
             {canAcceptAppointment && (
             <>
               <button
@@ -603,7 +673,7 @@ export default function UserDetailsView({
                       <div className="adminAiGrid">
                         <div className="adminAiSectionCard adminAiSectionCardFlag">
                           <div className="adminAiSectionTitleRow">
-                            <IoWarningOutline size={18} color="#c27a00" />
+                            <IoWarningOutline size={18} color="#dc2626" />
                             <div className="adminAiSectionEyebrow adminAiSectionEyebrowFlag">Important Flags</div>
                           </div>
                           <ul className="adminAiList adminAiListFlag">
@@ -700,6 +770,54 @@ export default function UserDetailsView({
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                   <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Medication Details</div><div style={{ fontSize: '14px', fontWeight: '500', whiteSpace: 'pre-wrap' }}>{medicalInformation?.medication_details || 'Not provided'}</div></div>
                   <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Additional Notes</div><div style={{ fontSize: '14px', fontWeight: '500', whiteSpace: 'pre-wrap' }}>{medicalInformation?.additional_notes || 'Not provided'}</div></div>
+                </div>
+
+                <div style={{ marginTop: '20px', paddingTop: '18px', borderTop: '1px solid #e6ebfb' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: '14px', fontWeight: '700', color: '#2948a8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Symptom Intake
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#6c7894' }}>
+                      Booking-side AI assisted intake
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '16px' }}>
+                    <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>Reported Symptoms</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {reportedSymptoms.length > 0 ? reportedSymptoms.map(symptom => (
+                        <span
+                          key={symptom}
+                          style={{
+                            padding: '8px 12px',
+                            borderRadius: '999px',
+                            backgroundColor: '#eaf0ff',
+                            color: '#2948a8',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {symptom}
+                        </span>
+                      )) : (
+                        <span style={{ fontSize: '14px', color: '#666' }}>No symptoms selected during booking.</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '16px' }}>
+                    <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Symptom Duration</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatTextAnswer(medicalInformation?.symptom_duration)}</div></div>
+                    <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Condition Getting Worse</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatTextAnswer(medicalInformation?.worsening_status)}</div></div>
+                    <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Eating Status</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatTextAnswer(medicalInformation?.eating_status)}</div></div>
+                    <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Drinking Status</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatTextAnswer(medicalInformation?.drinking_status)}</div></div>
+                  </div>
+
+                  <div>
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Owner Symptom Notes</div>
+                      <div style={{ fontSize: '14px', fontWeight: '500', whiteSpace: 'pre-wrap' }}>{formatTextAnswer(medicalInformation?.owner_symptom_notes)}</div>
+                    </div>
+                  </div>
                 </div>
               </>
             ) : (

@@ -257,6 +257,13 @@ export const apiService = {
     });
   },
 
+  generateDoctorEmrBrief(payload: any) {
+    return request('/api/ai/doctor-emr-brief', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   createAdminAppointment(payload: any) {
     return request('/api/appointments', {
       method: 'POST',

@@ -1,8 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
-import '../doctor_pages/DoctorStyles.css'
+import './AdminDashboardLayout.css'
 import userImg from '../assets/userAvatar.jpg';
 import {
   Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -34,15 +34,17 @@ import {
 import Navbar from '../reusable_components/NavBar';
 import NotificationsAllModal from '../reusable_components/NotificationsAllModal';
 import type { Notification, NotificationsModalRef } from '../reusable_components/NotificationsAllModal';
+import { getSessionUser } from '../auth/roles';
 
 // ========== INTERFACES ==========
 
 interface Admin {
-  id: number;
+  id: string | number;
   name: string;
   username: string;
   role: string;
   image?: string;
+  userImage?: string;
 }
 
 interface InventoryMovement {
@@ -169,14 +171,22 @@ const AdminDashboard: React.FC = () => {
   // Refs
   const notificationsModalRef = useRef<NotificationsModalRef>(null);
   
-  // Mock data - replace with actual data from API
-  const currentUser: Admin = {
-    id: 1,
-    name: 'Dr. Margaret Hilario',
-    username: 'margaret.hilario',
-    role: 'Veterinarian',
-    image: userImg
-  };
+  const currentUser: Admin = useMemo(() => {
+    const session = getSessionUser();
+    const fullName =
+      session?.fullName ||
+      session?.fullname ||
+      `${session?.firstName || ''} ${session?.lastName || ''}`.trim();
+
+    return {
+      id: session?.id || session?.pk || 1,
+      name: fullName || session?.username || 'Administrator',
+      username: session?.username || 'admin',
+      role: session?.role || 'Administrator',
+      image: session?.image || session?.userImage || userImg,
+      userImage: session?.userImage || session?.image || userImg,
+    };
+  }, []);
 
   // Inventory Movement Logs - IN and OUT of items
   const inventoryMovements: InventoryMovement[] = [

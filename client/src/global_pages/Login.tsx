@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import API_URL from '../API'
 import './UserAuthStylesheet.css'
 import { Mail, User, Lock } from 'lucide-react'
+import { getDefaultRouteForUser } from '../auth/roles'
 
 type ButtonState = 'default' | 'loading' | 'success' | 'error'
 
@@ -106,19 +107,7 @@ export default function Login() {
             setButtonState('success')
 
             setTimeout(() => {
-                const normalizedRole = (user?.role || '').toLowerCase()
-
-                if (normalizedRole === 'admin') {
-                    nav('/admin/home')
-                } else if (
-                    normalizedRole === 'vet' ||
-                    normalizedRole === 'doctor' ||
-                    normalizedRole === 'veterinarian'
-                ) {
-                    nav('/doctor/home')
-                } else {
-                    nav('/user/home')
-                }
+                nav(getDefaultRouteForUser(user))
             }, 1500)
         } catch (error: any) {
             console.error('Login error:', error)

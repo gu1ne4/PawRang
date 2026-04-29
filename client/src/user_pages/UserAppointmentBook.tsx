@@ -131,6 +131,11 @@ interface BookingReturnState {
   returnFromPetCreate?: boolean;
 }
 
+interface SymptomGroup {
+  title: string;
+  items: string[];
+}
+
 // ─── Static data ──────────────────────────────────────────────────────────────
 
 const groomingOptions: ServiceOption[] = [
@@ -165,6 +170,21 @@ const medicalQuestions = [
   { id:'q3', question:'MY CAT HAS UP-TO-DATE ANTI RABIES+4IN1',                              key:'catVaccinations', hasDetails:false },
   { id:'q4', question:'MY PET IS NOT PREGNANT',                                              key:'notPregnant',    hasDetails:false },
 ];
+
+const symptomGroups: SymptomGroup[] = [
+  { title: 'General', items: ['Lethargy', 'Weakness', 'Loss of appetite', 'Not eating', 'Fever', 'Weight loss', 'Shivering'] },
+  { title: 'Digestive', items: ['Vomiting', 'Diarrhea', 'Bloody stool', 'Constipation', 'Retching', 'Stomach pain / bloating'] },
+  { title: 'Respiratory', items: ['Coughing', 'Sneezing', 'Runny nose', 'Wheezing', 'Difficulty breathing', 'Rapid breathing'] },
+  { title: 'Urinary', items: ['Straining to urinate', 'Frequent urination', 'Blood in urine', 'Crying while urinating'] },
+  { title: 'Skin / Coat', items: ['Itching', 'Scratching', 'Hair loss', 'Skin redness', 'Swelling', 'Rash'] },
+  { title: 'Eyes / Nose / Mouth', items: ['Watery eyes', 'Eye discharge', 'Drooling', 'Bad smell from mouth'] },
+  { title: 'Behavior / Movement', items: ['Limping', 'Hiding', 'Restlessness', 'Collapse', 'Confusion'] },
+];
+
+const commonSymptoms = ['Vomiting', 'Diarrhea', 'Not eating', 'Weakness', 'Coughing', 'Itching', 'Limping', 'Other'];
+const symptomDurationOptions = ['Today', '1-2 days', '3-7 days', 'More than a week'];
+const intakeStatusOptions = ['Normal', 'Less than usual', 'Not at all', 'Not sure'];
+const worseningOptions = ['Yes', 'No', 'Not sure'];
 
 const services: Service[] = [
   { id:1, name:'Pet Grooming',            icon:'cut',     description:['Brushing, Nail','Trimming, Haircut,','Bathing, etc.'],         hasOptions:true,  options:groomingOptions },
@@ -301,6 +321,13 @@ const UserAppointmentBook: React.FC = () => {
   });
   const [medicationDetails, setMedicationDetails] = useState('');
   const [additionalNotes,   setAdditionalNotes]   = useState('');
+  const [selectedSymptoms,  setSelectedSymptoms]  = useState<string[]>([]);
+  const [ownerSymptomNotes, setOwnerSymptomNotes] = useState('');
+  const [symptomDuration,   setSymptomDuration]   = useState('');
+  const [eatingStatus,      setEatingStatus]      = useState('');
+  const [drinkingStatus,    setDrinkingStatus]    = useState('');
+  const [worseningStatus,   setWorseningStatus]   = useState('');
+  const [showMoreSymptomDetails, setShowMoreSymptomDetails] = useState(false);
 
   // ── Carousel ──────────────────────────────────────────────────────────────
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
@@ -326,6 +353,14 @@ const UserAppointmentBook: React.FC = () => {
     if (token) headers.Authorization = `Bearer ${token}`;
 
     return headers;
+  };
+
+  const toggleSymptom = (symptom: string) => {
+    setSelectedSymptoms(prev =>
+      prev.includes(symptom)
+        ? prev.filter(item => item !== symptom)
+        : [...prev, symptom],
+    );
   };
 
   // ── Fetch pets ────────────────────────────────────────────────────────────
@@ -671,17 +706,18 @@ const UserAppointmentBook: React.FC = () => {
   const isGrooming = selectedService?.id === 1 && selectedGroomingOptions.length > 0;
 
   const getProgressSteps = () => isGrooming
-    ? [{n:1,l:'Service'},{n:2,l:'Pet'},{n:3,l:'Grooming Prefs'},{n:4,l:'Branch'},{n:5,l:'Date & Time'},{n:6,l:'Medical Info'},{n:7,l:'Confirm'}]
-    : [{n:1,l:'Service'},{n:2,l:'Pet'},{n:3,l:'Branch'},{n:4,l:'Date & Time'},{n:5,l:'Medical Info'},{n:6,l:'Confirm'}];
+    ? [{n:1,l:'Service'},{n:2,l:'Pet'},{n:3,l:'Grooming Prefs'},{n:4,l:'Branch'},{n:5,l:'Date & Time'},{n:6,l:'Symptoms'},{n:7,l:'Medical Info'},{n:8,l:'Confirm'}]
+    : [{n:1,l:'Service'},{n:2,l:'Pet'},{n:3,l:'Branch'},{n:4,l:'Date & Time'},{n:5,l:'Symptoms'},{n:6,l:'Medical Info'},{n:7,l:'Confirm'}];
 
   const getStepTitle = () => {
     if (step === 1) return 'Book an Appointment';
     if (step === 2) return 'Select Your Pet';
     if (step === 3) return isGrooming ? 'Grooming Preferences' : 'Select Branch';
     if (step === 4) return isGrooming ? 'Select Branch' : 'Select Date & Time';
-    if (step === 5) return isGrooming ? 'Select Date & Time' : 'Medical Information';
-    if (step === 6) return isGrooming ? 'Medical Information' : 'Confirm Booking';
-    if (step === 7) return 'Confirm Booking';
+    if (step === 5) return isGrooming ? 'Select Date & Time' : 'Symptom Intake';
+    if (step === 6) return isGrooming ? 'Symptom Intake' : 'Medical Information';
+    if (step === 7) return isGrooming ? 'Medical Information' : 'Confirm Booking';
+    if (step === 8) return 'Confirm Booking';
     return '';
   };
 
@@ -746,12 +782,50 @@ const UserAppointmentBook: React.FC = () => {
   };
 
   const handleBack = () => {
-    if      (step === 2) { setStep(1); setSelectedPet(null); }
-    else if (step === 3) { setStep(2); setSelectedBranch(null); }
-    else if (step === 4) { setStep(3); setSelectedDate(null); setSelectedTime(null); }
-    else if (step === 5) { setStep(4); }
-    else if (step === 6) { setStep(5); }
-    else if (step === 7) { setStep(6); }
+    if (step === 2) {
+      setStep(1);
+      setSelectedPet(null);
+      return;
+    }
+
+    if (step === 3) {
+      setStep(2);
+      if (!isGrooming) setSelectedBranch(null);
+      return;
+    }
+
+    if (step === 4) {
+      setStep(3);
+      if (isGrooming) setSelectedBranch(null);
+      else {
+        setSelectedDate(null);
+        setSelectedTime(null);
+      }
+      return;
+    }
+
+    if (step === 5) {
+      setStep(4);
+      if (isGrooming) {
+        setSelectedDate(null);
+        setSelectedTime(null);
+      }
+      return;
+    }
+
+    if (step === 6) {
+      setStep(5);
+      return;
+    }
+
+    if (step === 7) {
+      setStep(6);
+      return;
+    }
+
+    if (step === 8) {
+      setStep(7);
+    }
   };
 
   const handleContinue = () => {
@@ -780,21 +854,27 @@ const UserAppointmentBook: React.FC = () => {
         if (!selectedDate || !selectedTime) { showAlert('info','Incomplete','Please select date and time'); return; }
         setStep(6);
       } else {
-        const allAnswered = medicalQuestions.every(q => medicalAnswers[q.key] !== null);
-        if (!allAnswered) { showAlert('info','Incomplete','Please answer all medical questions'); return; }
-        if (medicalAnswers.medications72h && !medicationDetails.trim()) { showAlert('info','Incomplete','Please specify the medications given'); return; }
         setStep(6);
       }
     } else if (step === 6) {
       if (isGrooming) {
+        setStep(7);
+      } else {
         const allAnswered = medicalQuestions.every(q => medicalAnswers[q.key] !== null);
         if (!allAnswered) { showAlert('info','Incomplete','Please answer all medical questions'); return; }
         if (medicalAnswers.medications72h && !medicationDetails.trim()) { showAlert('info','Incomplete','Please specify the medications given'); return; }
         setStep(7);
+      }
+    } else if (step === 7) {
+      if (isGrooming) {
+        const allAnswered = medicalQuestions.every(q => medicalAnswers[q.key] !== null);
+        if (!allAnswered) { showAlert('info','Incomplete','Please answer all medical questions'); return; }
+        if (medicalAnswers.medications72h && !medicationDetails.trim()) { showAlert('info','Incomplete','Please specify the medications given'); return; }
+        setStep(8);
       } else {
         openConfirmModal();
       }
-    } else if (step === 7) {
+    } else if (step === 8) {
       openConfirmModal();
     }
   };
@@ -857,6 +937,12 @@ const UserAppointmentBook: React.FC = () => {
           has_allergies:        false,       // ← fix NOT NULL constraint
           has_skin_condition:   false,       // ← fix NOT NULL constraint
           been_groomed_before:  false,       // ← fix NOT NULL constraint
+          reported_symptoms:    selectedSymptoms,
+          owner_symptom_notes:  ownerSymptomNotes,
+          symptom_duration:     symptomDuration,
+          eating_status:        eatingStatus,
+          drinking_status:      drinkingStatus,
+          worsening_status:     worseningStatus,
         },
         { headers: { Authorization: `Bearer ${getToken()}` } },
       );
@@ -1397,8 +1483,141 @@ const UserAppointmentBook: React.FC = () => {
           </div>
         )}
 
-        {/* ══ Medical Info ══ */}
+        {/* ══ Symptom Intake ══ */}
         {((step === 5 && !isGrooming) || (step === 6 && isGrooming)) && (
+          <div className="step-content">
+            <div className="medical-questionnaire symptom-intake-panel">
+              <div className="required-info-banner symptom-intake-banner">
+                <IoMedicalOutline size={24} color="#3d67ee" />
+                <p><strong>Helpful for the clinic:</strong> Share any symptoms or changes you noticed so the team can prepare before the visit.</p>
+              </div>
+
+              <div className="symptom-section-block">
+                <div className="symptom-section-heading">
+                  <h4>What did you notice?</h4>
+                  <p>Select any that apply. You can add more details below.</p>
+                </div>
+                <div className="symptom-chip-grid common-symptom-grid">
+                  {commonSymptoms.map(symptom => {
+                    const isSelected = selectedSymptoms.includes(symptom);
+                    return (
+                      <button
+                        key={symptom}
+                        type="button"
+                        className={`symptom-chip${isSelected ? ' selected' : ''}`}
+                        onClick={() => toggleSymptom(symptom)}
+                      >
+                        {symptom}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="selected-symptoms-panel">
+                <span className="selected-symptoms-label">Selected Symptoms</span>
+                <div className="selected-symptoms-list">
+                  {selectedSymptoms.length > 0 ? selectedSymptoms.map(symptom => (
+                    <span key={symptom} className="selected-symptom-pill">{symptom}</span>
+                  )) : <span className="selected-symptoms-empty">No symptoms selected yet.</span>}
+                </div>
+              </div>
+
+              <div className="additional-notes">
+                <label>Describe What You Noticed</label>
+                <textarea
+                  className="notes-textarea"
+                  rows={4}
+                  placeholder="Example: My dog vomited twice today and has been weaker than usual."
+                  value={ownerSymptomNotes}
+                  onChange={e => setOwnerSymptomNotes(e.target.value)}
+                />
+              </div>
+
+              <div className="symptom-followups-grid">
+                <div className="symptom-select-field">
+                  <label>How long has this been happening?</label>
+                  <select value={symptomDuration} onChange={e => setSymptomDuration(e.target.value)}>
+                    <option value="">Select duration</option>
+                    {symptomDurationOptions.map(option => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                </div>
+
+                <div className="symptom-select-field">
+                  <label>Is the condition getting worse?</label>
+                  <select value={worseningStatus} onChange={e => setWorseningStatus(e.target.value)}>
+                    <option value="">Select status</option>
+                    {worseningOptions.map(option => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="symptom-more-details">
+                <button
+                  type="button"
+                  className="symptom-more-toggle"
+                  onClick={() => setShowMoreSymptomDetails(prev => !prev)}
+                >
+                  {showMoreSymptomDetails ? 'Hide more details' : 'Add more details'}
+                </button>
+
+                {showMoreSymptomDetails && (
+                  <div className="symptom-advanced-panel">
+                    <div className="symptom-followups-grid">
+                      <div className="symptom-select-field">
+                        <label>Is your pet eating normally?</label>
+                        <select value={eatingStatus} onChange={e => setEatingStatus(e.target.value)}>
+                          <option value="">Select status</option>
+                          {intakeStatusOptions.map(option => <option key={option} value={option}>{option}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="symptom-select-field">
+                        <label>Is your pet drinking normally?</label>
+                        <select value={drinkingStatus} onChange={e => setDrinkingStatus(e.target.value)}>
+                          <option value="">Select status</option>
+                          {intakeStatusOptions.map(option => <option key={option} value={option}>{option}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="symptom-groups">
+                      {symptomGroups.map(group => (
+                        <div key={group.title} className="symptom-group-card">
+                          <div className="symptom-group-header">
+                            <h4>{group.title}</h4>
+                          </div>
+                          <div className="symptom-chip-grid">
+                            {group.items.map(symptom => {
+                              const isSelected = selectedSymptoms.includes(symptom);
+                              return (
+                                <button
+                                  key={symptom}
+                                  type="button"
+                                  className={`symptom-chip${isSelected ? ' selected' : ''}`}
+                                  onClick={() => toggleSymptom(symptom)}
+                                >
+                                  {symptom}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="action-buttons-row">
+              <button className="btn-secondary" onClick={handleBack}>Back</button>
+              <button className="btn-primary" onClick={handleContinue}>Proceed</button>
+            </div>
+          </div>
+        )}
+
+        {/* ══ Medical Info ══ */}
+        {((step === 6 && !isGrooming) || (step === 7 && isGrooming)) && (
           <div className="step-content">
             <div className="medical-questionnaire">
               <div className="required-info-banner">
@@ -1450,7 +1669,7 @@ const UserAppointmentBook: React.FC = () => {
         )}
 
         {/* ══ Confirmation ══ */}
-        {((step === 6 && !isGrooming) || step === 7) && (
+        {((step === 7 && !isGrooming) || step === 8) && (
           <div className="step-content">
             <div className="confirmation-details">
 
@@ -1478,7 +1697,7 @@ const UserAppointmentBook: React.FC = () => {
                 </div>
               )}
 
-              {step === 7 && selectedHaircutStyle && (
+              {step === 8 && selectedHaircutStyle && (
                 <div className="confirmation-card">
                   <div className="card-header"><IoCutOutline size={22} color="#3d67ee" /><h3>Grooming Preferences</h3></div>
                   <div className="card-details">
@@ -1515,6 +1734,21 @@ const UserAppointmentBook: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              <div className="confirmation-card">
+                <div className="card-header"><IoMedicalOutline size={22} color="#3d67ee" /><h3>Symptom Intake</h3></div>
+                <div className="card-details">
+                  <div className="detail-row">
+                    <span className="detail-label">Selected Symptoms</span>
+                    <span className="detail-value">{selectedSymptoms.length > 0 ? selectedSymptoms.join(', ') : 'No symptoms selected'}</span>
+                  </div>
+                  {ownerSymptomNotes && <div className="detail-row"><span className="detail-label">Owner Notes</span><span className="detail-value">{ownerSymptomNotes}</span></div>}
+                  {symptomDuration && <div className="detail-row"><span className="detail-label">Duration</span><span className="detail-value">{symptomDuration}</span></div>}
+                  {eatingStatus && <div className="detail-row"><span className="detail-label">Eating</span><span className="detail-value">{eatingStatus}</span></div>}
+                  {drinkingStatus && <div className="detail-row"><span className="detail-label">Drinking</span><span className="detail-value">{drinkingStatus}</span></div>}
+                  {worseningStatus && <div className="detail-row"><span className="detail-label">Getting Worse</span><span className="detail-value">{worseningStatus}</span></div>}
+                </div>
+              </div>
 
               <div className="confirmation-card">
                 <div className="card-header"><IoMedicalOutline size={22} color="#3d67ee" /><h3>Medical Information</h3></div>

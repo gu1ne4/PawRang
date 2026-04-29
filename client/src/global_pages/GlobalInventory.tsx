@@ -333,8 +333,14 @@ const MOCK_PRODUCTS: Product[] = [
   }
 ];
 
-const GlobalInventory: React.FC = () => {
+interface GlobalInventoryProps {
+  layoutMode?: 'admin' | 'doctor';
+  readOnly?: boolean;
+}
+
+const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin', readOnly = false }) => {
   const navigate = useNavigate();
+  const isDoctorLayout = layoutMode === 'doctor';
   // State
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -1283,7 +1289,7 @@ const GlobalInventory: React.FC = () => {
           <div className="invSubTopContainer" style={{paddingLeft: '30px'}}>
             <div className="invSubTopLeft">
               <CiBoxes  size={23} className="invBlueIcon" />
-              <span className="invBlueText">Item Catalog</span>
+              <span className="invBlueText">{isDoctorLayout ? 'Doctor Inventory / Read Only' : 'Item Catalog'}</span>
             </div>
             
             <div className="invBranchSelector">
@@ -1299,17 +1305,21 @@ const GlobalInventory: React.FC = () => {
               </select>
             </div>
 
-              <ImportButton 
-                onImport={handleImport}
-                onDownloadTemplate={handleDownloadTemplate}
-                buttonClassName="invImportBtn"
-                accept=".xlsx"
-              />
-              <ExportButton 
-                products={products}
-                type="inventory"
-                buttonClassName="invExportBtn"
-              />
+              {!readOnly && (
+                <>
+                  <ImportButton 
+                    onImport={handleImport}
+                    onDownloadTemplate={handleDownloadTemplate}
+                    buttonClassName="invImportBtn"
+                    accept=".xlsx"
+                  />
+                  <ExportButton 
+                    products={products}
+                    type="inventory"
+                    buttonClassName="invExportBtn"
+                  />
+                </>
+              )}
           </div>
           <div className="invSubTopContainer invNotificationContainer" style={{padding: 13}}>
             <Notifications 
@@ -1499,7 +1509,7 @@ const GlobalInventory: React.FC = () => {
                 </div>
 
                 <div className="invActionSection">
-                  {selectedProducts.size > 0 && (
+                  {!readOnly && selectedProducts.size > 0 && (
                     <button className="invArchiveBtn" onClick={handleArchiveSelected}>
                       <IoArchiveOutline /> Archive Selected ({selectedProducts.size})
                     </button>
@@ -1524,12 +1534,14 @@ const GlobalInventory: React.FC = () => {
                     <thead>
                       <tr>
                         <th style={{ width: '40px' }}>
-                          <input
-                            type="checkbox"
-                            checked={selectedProducts.size === paginatedProducts.length && paginatedProducts.length > 0}
-                            onChange={toggleAllProducts}
-                            className="invCheckbox"
-                          />
+                          {!readOnly && (
+                            <input
+                              type="checkbox"
+                              checked={selectedProducts.size === paginatedProducts.length && paginatedProducts.length > 0}
+                              onChange={toggleAllProducts}
+                              className="invCheckbox"
+                            />
+                          )}
                         </th>
                         <th>Code</th>
                         <th>Branch</th>
@@ -1541,7 +1553,7 @@ const GlobalInventory: React.FC = () => {
                         <th>Stock</th>
                         <th>Expiration</th>
                         <th>Status</th>
-                        <th>Actions</th>
+                        <th>{readOnly ? 'Mode' : 'Actions'}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1568,12 +1580,14 @@ const GlobalInventory: React.FC = () => {
                               `}
                             >
                               <td>
-                                <input
-                                  type="checkbox"
-                                  checked={selectedProducts.has(productId)}
-                                  onChange={() => toggleProductSelection(productId)}
-                                  className="invCheckbox"
-                                />
+                                {!readOnly && (
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedProducts.has(productId)}
+                                    onChange={() => toggleProductSelection(productId)}
+                                    className="invCheckbox"
+                                  />
+                                )}
                               </td>
                               <td>{product.code}</td>
                               <td>{getBranchLabel(product.branchId, product.branchName)}</td>
@@ -1609,12 +1623,16 @@ const GlobalInventory: React.FC = () => {
                                 </span>
                               </td>
                               <td>
-                                <button 
-                                  className="invIconButton"
-                                  onClick={() => openEditForm(product)}
-                                >
-                                  <IoPencilSharp size={15} className="invBlueIcon" />
-                                </button>
+                                {readOnly ? (
+                                  <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 700 }}>Read Only</span>
+                                ) : (
+                                  <button 
+                                    className="invIconButton"
+                                    onClick={() => openEditForm(product)}
+                                  >
+                                    <IoPencilSharp size={15} className="invBlueIcon" />
+                                  </button>
+                                )}
                               </td>
                             </tr>
                           );
@@ -1652,7 +1670,7 @@ const GlobalInventory: React.FC = () => {
                 </div>
               )}
             </>
-          ) : (
+          ) : !readOnly ? (
             /* Add/Edit Product Form */
             <div className="invFormContainer">
               <div className="invFormHeader">
@@ -1928,7 +1946,7 @@ const GlobalInventory: React.FC = () => {
                 </div>
               </div>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 
