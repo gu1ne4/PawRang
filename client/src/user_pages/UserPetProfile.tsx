@@ -208,6 +208,152 @@ const getUploadedFileName = (url: string, fallback: string) => {
   }
 };
 
+const getPreviewFileKind = (url: string, fileName = ''): 'image' | 'pdf' | 'download' => {
+  const normalizedUrl = url.trim().toLowerCase();
+  const normalizedName = fileName.trim().toLowerCase();
+  const dataMimeMatch = normalizedUrl.match(/^data:([^;,]+)/);
+  const mimeType = dataMimeMatch?.[1] || '';
+
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType === 'application/pdf') return 'pdf';
+
+  if (/\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(normalizedUrl) || /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(normalizedName)) {
+    return 'image';
+  }
+
+  if (/\.pdf(\?|#|$)/i.test(normalizedUrl) || /\.pdf$/i.test(normalizedName)) {
+    return 'pdf';
+  }
+
+  return 'download';
+};
+
+const openFilePreview = (url: string, fileName = 'Shared file'): boolean => {
+  if (!url) return false;
+
+  const previewWindow = window.open('', '_blank');
+  if (!previewWindow) return false;
+
+  const fileKind = getPreviewFileKind(url, fileName);
+  const doc = previewWindow.document;
+  doc.title = fileName;
+  doc.body.innerHTML = '';
+  doc.body.style.margin = '0';
+  doc.body.style.background = '#f8fafc';
+  doc.body.style.fontFamily = 'Arial, sans-serif';
+
+  const style = doc.createElement('style');
+  style.textContent = `
+    .file-preview-shell {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #f8fafc;
+      color: #1e293b;
+    }
+    .file-preview-header {
+      padding: 14px 18px;
+      background: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .file-preview-body {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+    .file-preview-image {
+      max-width: 100%;
+      max-height: calc(100vh - 90px);
+      object-fit: contain;
+      box-shadow: 0 12px 35px rgba(15, 23, 42, 0.18);
+      background: #ffffff;
+    }
+    .file-preview-frame {
+      width: 100%;
+      height: calc(100vh - 72px);
+      border: none;
+      background: #ffffff;
+    }
+    .file-preview-download {
+      max-width: 460px;
+      padding: 28px;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      background: #ffffff;
+      text-align: center;
+      box-shadow: 0 12px 35px rgba(15, 23, 42, 0.12);
+    }
+    .file-preview-download p {
+      margin: 0 0 16px;
+      color: #64748b;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .file-preview-download a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      padding: 0 16px;
+      border-radius: 8px;
+      background: #3d67ee;
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+  `;
+  doc.head.appendChild(style);
+
+  const shell = doc.createElement('div');
+  shell.className = 'file-preview-shell';
+
+  const header = doc.createElement('div');
+  header.className = 'file-preview-header';
+  header.textContent = fileName;
+
+  const body = doc.createElement('div');
+  body.className = 'file-preview-body';
+
+  if (fileKind === 'image') {
+    const image = doc.createElement('img');
+    image.className = 'file-preview-image';
+    image.src = url;
+    image.alt = fileName;
+    body.appendChild(image);
+  } else if (fileKind === 'pdf') {
+    const frame = doc.createElement('iframe');
+    frame.className = 'file-preview-frame';
+    frame.src = url;
+    frame.title = fileName;
+    body.appendChild(frame);
+  } else {
+    const downloadCard = doc.createElement('div');
+    downloadCard.className = 'file-preview-download';
+
+    const message = doc.createElement('p');
+    message.textContent = 'This file type cannot be previewed in the browser. You can open or download it below.';
+
+    const link = doc.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.textContent = 'Open File';
+
+    downloadCard.appendChild(message);
+    downloadCard.appendChild(link);
+    body.appendChild(downloadCard);
+  }
+
+  shell.appendChild(header);
+  shell.appendChild(body);
+  doc.body.appendChild(shell);
+  return true;
+};
+
 const pickFile = (
   accept: string,
   onResult: (base64: string, mime: string, name: string) => void,
@@ -890,7 +1036,11 @@ const UserPetProfile: React.FC = () => {
                   <button
                     type="button"
                     className="view-doc-btn"
-                    onClick={() => window.open(url, '_blank')}
+                    onClick={() => {
+                      if (!openFilePreview(url, fileName)) {
+                        showAlert('error', 'Unable to Open File', 'Please allow pop-ups and try opening the document again.');
+                      }
+                    }}
                   >
                     <IoEyeOutline size={18} />
                     <span>View Document</span>
@@ -988,7 +1138,12 @@ const UserPetProfile: React.FC = () => {
                         <button
                           type="button"
                           className="view-doc-btn"
-                          onClick={() => window.open(lab.fileUrl, '_blank')}
+                          onClick={() => {
+                            const displayName = lab.fileName || `${lab.testType || 'Lab Result'} file`;
+                            if (!openFilePreview(lab.fileUrl, displayName)) {
+                              showAlert('error', 'Unable to Open File', 'Please allow pop-ups and try opening the lab file again.');
+                            }
+                          }}
                         >
                           <IoEyeOutline size={18} />
                           <span>View Lab File</span>

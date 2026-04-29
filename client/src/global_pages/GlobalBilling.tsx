@@ -163,7 +163,7 @@ interface AppointmentInvoice {
   reason?: string;
   amount: number;
   branchId?: number;
-  sourceRecordType?: 'appointment' | 'visit';
+  sourceRecordType?: 'appointment' | 'visit' | 'walkin';
   sourceRecordId?: string;
   linkedVisitId?: string | null;
   isBilled?: boolean;
@@ -1113,6 +1113,17 @@ const GlobalBilling: React.FC = () => {
     });
   };
 
+  const markManualWalkinInvoice = () => {
+    if (sourceContextLocked || selectedAppointment || selectedWalkin) {
+      return;
+    }
+
+    if (invoiceType !== 'walkin') {
+      setInvoiceType('walkin');
+      clearFormErrors('invoiceType', 'sourceRecord');
+    }
+  };
+
   const loadBillingData = async (): Promise<void> => {
     setLoading(true);
     try {
@@ -1234,7 +1245,7 @@ const GlobalBilling: React.FC = () => {
     setShowWalkinModal(false);
     setWalkinSearchQuery('');
     if (!options?.silent) {
-      showAlert('success', 'Record Loaded', `Loaded walk-in record for ${record.petName} (${record.ownerName})`);
+      showAlert('success', 'Record Loaded', `Loaded walk-in visit for ${record.petName} (${record.ownerName})`);
     }
   };
   
@@ -1530,7 +1541,7 @@ const GlobalBilling: React.FC = () => {
   };
   
   const resetForm = () => {
-    setInvoiceType('');
+    setInvoiceType('walkin');
     setSelectedAppointment(null);
     setSelectedWalkin(null);
     setSourceContextLocked(false);
@@ -1592,10 +1603,6 @@ const GlobalBilling: React.FC = () => {
 
     if (invoiceType === 'appointment' && !selectedAppointment) {
       nextErrors.sourceRecord = 'Select the completed appointment to bill.';
-    }
-
-    if (invoiceType === 'walkin' && !selectedWalkin) {
-      nextErrors.sourceRecord = 'Select the completed walk-in visit to bill.';
     }
 
     if (!trimmedCustomerName) {
@@ -1898,7 +1905,7 @@ const GlobalBilling: React.FC = () => {
             <div class="row">
               <div class="col"><label>INVOICE NUMBER</label><div class="value">${invoice.invoiceNumber}</div></div>
               <div class="col"><label>DATE</label><div class="value">${invoice.date} at ${invoice.time}</div></div>
-              <div class="col"><label>TYPE</label><div class="value">${invoice.invoiceType === 'appointment' ? 'Appointment' : 'Walk-in'}</div></div>
+              <div class="col"><label>TYPE</label><div class="value">${invoice.invoiceType === 'appointment' ? 'Appointment' : 'Walk-in Visit'}</div></div>
             </div>
             <div class="row">
               <div class="col"><label>CUSTOMER NAME</label><div class="value">${invoice.customerName}</div></div>
@@ -2172,7 +2179,7 @@ const GlobalBilling: React.FC = () => {
                   >
                     <option value="">All Types</option>
                     <option value="appointment">Appointment</option>
-                    <option value="walkin">Walk-in</option>
+                    <option value="walkin">Walk-in Visit</option>
                   </select>
                   <button className="billingClearFilterBtn" onClick={clearFilters}>
                     <IoRefreshOutline size={14} /> Clear
@@ -2236,7 +2243,7 @@ const GlobalBilling: React.FC = () => {
                         <td>{invoice.date}</td>
                         <td>
                           <span className={`billingTypeBadge ${invoice.invoiceType === 'appointment' ? 'billingTypeAppointment' : 'billingTypeWalkin'}`}>
-                            {invoice.invoiceType === 'appointment' ? 'Appointment' : 'Walk-in'}
+                            {invoice.invoiceType === 'appointment' ? 'Appointment' : 'Walk-in Visit'}
                           </span>
                         </td>
                         <td>{invoice.customerName}</td>
@@ -2311,7 +2318,7 @@ const GlobalBilling: React.FC = () => {
                         className={`billingToggleBtnFull ${invoiceType === 'walkin' ? 'billingToggleActiveFull' : ''}`}
                         onClick={() => handleInvoiceTypeChange('walkin')}
                       >
-                        <IoTimeSharp size={14} /> Walk-in
+                        <IoTimeSharp size={14} /> Walk-in Visit
                       </button>
                       <button 
                         type="button"
@@ -2323,14 +2330,16 @@ const GlobalBilling: React.FC = () => {
                     </div>
                     {!selectedSourceSummary && !invoiceType && (
                       <div className="billingHelperText">
-                        Choose whether this invoice comes from a completed walk-in visit or a completed appointment.
+                        Choose Appointment for scheduled or clinic-created appointments, or Walk-in Visit for patient-record walk-ins.
                       </div>
                     )}
                     {invoiceType && (
                       <div className={`billingHelperText ${formErrors.sourceRecord ? 'billingHelperTextError' : ''}`}>
                         {selectedSourceSummary
-                          ? `Selected ${invoiceType === 'appointment' ? 'appointment' : 'walk-in'}: ${selectedSourceSummary}`
-                          : `No ${invoiceType === 'appointment' ? 'appointment' : 'walk-in'} selected yet.`}
+                          ? `Selected ${invoiceType === 'appointment' ? 'appointment' : 'walk-in visit'}: ${selectedSourceSummary}`
+                          : invoiceType === 'walkin'
+                            ? 'Manual clinic walk-in invoice. Select a completed walk-in visit only if you want to link an existing patient record.'
+                            : 'No appointment selected yet.'}
                       </div>
                     )}
                     {formErrors.invoiceType && <div className="billingErrorText">{formErrors.invoiceType}</div>}
@@ -2349,6 +2358,7 @@ const GlobalBilling: React.FC = () => {
                       type="text"
                       value={customerName}
                       onChange={(e) => {
+                        markManualWalkinInvoice();
                         setCustomerName(e.target.value);
                         clearFormErrors('customerName');
                       }}
@@ -2364,6 +2374,7 @@ const GlobalBilling: React.FC = () => {
                       type="text"
                       value={petName}
                       onChange={(e) => {
+                        markManualWalkinInvoice();
                         setPetName(e.target.value);
                         clearFormErrors('petName');
                       }}
@@ -2380,7 +2391,10 @@ const GlobalBilling: React.FC = () => {
                     <input 
                       type="email"
                       value={customerEmail}
-                      onChange={(e) => setCustomerEmail(e.target.value)}
+                      onChange={(e) => {
+                        markManualWalkinInvoice();
+                        setCustomerEmail(e.target.value);
+                      }}
                       placeholder="customer@example.com"
                       className="billingFormInput"
                       readOnly={isSourceRecordLocked}
@@ -2391,7 +2405,10 @@ const GlobalBilling: React.FC = () => {
                     <input 
                       type="tel"
                       value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      onChange={(e) => {
+                        markManualWalkinInvoice();
+                        setCustomerPhone(e.target.value);
+                      }}
                       placeholder="Contact number"
                       className="billingFormInput"
                       readOnly={isSourceRecordLocked}
@@ -2774,7 +2791,7 @@ const GlobalBilling: React.FC = () => {
                 </div>
                 <div className="billingDrawerInfoItem">
                   <label>Type</label>
-                  <span>{selectedInvoice.invoiceType === 'appointment' ? 'Appointment' : 'Walk-in'}</span>
+                  <span>{selectedInvoice.invoiceType === 'appointment' ? 'Appointment' : 'Walk-in Visit'}</span>
                 </div>
                 <div className="billingDrawerInfoItem">
                   <label>Customer</label>
@@ -3016,12 +3033,12 @@ const GlobalBilling: React.FC = () => {
         </div>
       )}
       
-      {/* Walk-in Modal - Matches Appointment Modal Style */}
+      {/* Walk-in Visit Modal - Matches Appointment Modal Style */}
       {showWalkinModal && (
         <div className="billingModalOverlay" onClick={() => setShowWalkinModal(false)}>
           <div className="billingSearchModal" onClick={e => e.stopPropagation()}>
             <div className="billingModalHeader">
-              <h4><IoTimeSharp size={16} /> Recent Walk-in Records</h4>
+              <h4><IoTimeSharp size={16} /> Recent Walk-in Visits</h4>
               <button className="billingModalClose" onClick={() => setShowWalkinModal(false)}>×</button>
             </div>
             <div className="billingSearchModalContent">
@@ -3040,7 +3057,7 @@ const GlobalBilling: React.FC = () => {
                 {sourceRecordsLoading ? (
                   <div className="billingSearchNoResults">
                     <div className="billingSpinner"></div>
-                    <p>Loading completed walk-in records...</p>
+                    <p>Loading completed walk-in visits...</p>
                   </div>
                 ) : filteredWalkinRecords.length > 0 ? (
                   filteredWalkinRecords.map(record => (
@@ -3068,7 +3085,7 @@ const GlobalBilling: React.FC = () => {
                   ))
                 ) : (
                   <div className="billingSearchNoResults">
-                    <p>No walk-in records found</p>
+                    <p>No walk-in visits found</p>
                   </div>
                 )}
               </div>

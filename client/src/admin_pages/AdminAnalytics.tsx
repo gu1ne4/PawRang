@@ -8,7 +8,9 @@ import {
 import './AnalyticsStyles.css';
 import Navbar from '../reusable_components/NavBar';
 import userImg from '../assets/userAvatar.jpg';
+import PetShieldLogo from '../assets/PetShieldLogo.jpg';
 import Notifications from '../reusable_components/Notifications';
+import { apiService } from '../apiService';
 
 // Icons
 import { 
@@ -19,7 +21,7 @@ import {
   IoWalletOutline, IoReceiptOutline, IoCalculatorOutline, IoCheckmarkDoneCircleOutline,
   IoDiamondOutline,
   IoDownloadOutline, IoDocumentTextOutline, IoTabletPortraitOutline,
-  IoChevronDownOutline, IoStatsChart} from 'react-icons/io5';
+  IoChevronDownOutline, IoStatsChart, IoCloseOutline} from 'react-icons/io5';
 
 // ==================== TYPES ====================
 interface Admin {
@@ -62,6 +64,8 @@ interface TopProductData {
   quantitySold: number;
   revenue: number;
   daysUntilOut?: number;
+  predictedDemand?: number;
+  demandForecastMode?: string;
 }
 
 interface SalesDistributionData {
@@ -96,6 +100,131 @@ interface Insight {
   action?: string;
 }
 
+interface BranchOption {
+  id: number | string;
+  name: string;
+}
+
+interface ForecastValidationRow {
+  date: string;
+  day: string;
+  actual: number;
+  predicted: number;
+  error: number;
+  errorPercent?: number | null;
+}
+
+interface ForecastValidation {
+  mode?: string;
+  reason?: string | null;
+  accuracy?: number | null;
+  meanAbsoluteError?: number | null;
+  meanAbsolutePercentageError?: number | null;
+  featureSet?: string;
+  rows: ForecastValidationRow[];
+  trainingSamples?: number;
+  positiveSamples?: number;
+  validationStartDate?: string | null;
+  validationEndDate?: string | null;
+}
+
+interface ForecastComponentStatus {
+  mode?: string;
+  reason?: string | null;
+  trainingSamples?: number;
+  positiveSamples?: number;
+  featureSet?: string;
+}
+
+interface ForecastDataRange {
+  trainingStartDate?: string | null;
+  trainingEndDate?: string | null;
+  forecastStartDate?: string | null;
+  forecastEndDate?: string | null;
+}
+
+interface AnalyticsFilters {
+  branchId?: number | string | null;
+  startDate?: string;
+  endDate?: string;
+  previousStartDate?: string;
+  previousEndDate?: string;
+  trainingStartDate?: string;
+  trainingEndDate?: string;
+}
+
+interface AnalyticsOverview {
+  branches: BranchOption[];
+  filters?: AnalyticsFilters;
+  kpis: {
+    totalRevenue: number;
+    totalRevenueChange: number;
+    totalTransactions: number;
+    totalTransactionsChange: number;
+    averageTransaction: number;
+    averageTransactionChange: number;
+    completedAppointments: number;
+    completedAppointmentsChange: number;
+    predictedRevenue: number;
+    predictedRevenueChange: number;
+  };
+  salesTrend: SalesTrendData[];
+  topServices: TopServiceData[];
+  topProducts: TopProductData[];
+  salesDistribution: SalesDistributionData[];
+  peakHours: PeakTimeData[];
+  inventory: InventoryItem[];
+  insights: Insight[];
+  forecast?: {
+    mode?: string;
+    label?: string;
+    description?: string;
+    algorithm?: string;
+    mlComponentsActive?: number;
+    revenue?: ForecastComponentStatus;
+    appointments?: ForecastComponentStatus;
+    validation?: ForecastValidation;
+    dataRange?: ForecastDataRange;
+  };
+}
+
+const emptyAnalyticsOverview: AnalyticsOverview = {
+  branches: [],
+  filters: {},
+  kpis: {
+    totalRevenue: 0,
+    totalRevenueChange: 0,
+    totalTransactions: 0,
+    totalTransactionsChange: 0,
+    averageTransaction: 0,
+    averageTransactionChange: 0,
+    completedAppointments: 0,
+    completedAppointmentsChange: 0,
+    predictedRevenue: 0,
+    predictedRevenueChange: 0,
+  },
+  salesTrend: [],
+  topServices: [],
+  topProducts: [],
+  salesDistribution: [
+    { name: 'Services', value: 0, color: '#3d67ee' },
+    { name: 'Products', value: 0, color: '#10b981' },
+  ],
+  peakHours: [],
+  inventory: [],
+  insights: [],
+  forecast: {
+    mode: 'trend',
+    label: 'Trend Forecast Active',
+    description: 'Based on recent real sales trends',
+    algorithm: 'RandomForestRegressor',
+    mlComponentsActive: 0,
+    validation: {
+      rows: [],
+    },
+  },
+};
+
 const toNumberOrNull = (value: unknown): number | null => {
   if (typeof value === 'number') return value;
   if (typeof value === 'string' && value.trim() !== '') {
@@ -103,6 +232,602 @@ const toNumberOrNull = (value: unknown): number | null => {
     return Number.isNaN(parsed) ? null : parsed;
   }
   return null;
+};
+
+const mergeAnalyticsOverview = (raw?: Partial<AnalyticsOverview> | null): AnalyticsOverview => ({
+  ...emptyAnalyticsOverview,
+  ...(raw || {}),
+  branches: raw?.branches || emptyAnalyticsOverview.branches,
+  filters: raw?.filters || emptyAnalyticsOverview.filters,
+  kpis: {
+    ...emptyAnalyticsOverview.kpis,
+    ...(raw?.kpis || {}),
+  },
+  salesTrend: raw?.salesTrend || emptyAnalyticsOverview.salesTrend,
+  topServices: raw?.topServices || emptyAnalyticsOverview.topServices,
+  topProducts: raw?.topProducts || emptyAnalyticsOverview.topProducts,
+  salesDistribution: raw?.salesDistribution || emptyAnalyticsOverview.salesDistribution,
+  peakHours: raw?.peakHours || emptyAnalyticsOverview.peakHours,
+  inventory: raw?.inventory || emptyAnalyticsOverview.inventory,
+  insights: raw?.insights || emptyAnalyticsOverview.insights,
+  forecast: {
+    ...emptyAnalyticsOverview.forecast,
+    ...(raw?.forecast || {}),
+  },
+});
+
+const formatExpectedChange = (change?: number, label = 'expected next period'): string => {
+  if (change === undefined || Number.isNaN(change) || change === 0) {
+    return 'Based on current trend';
+  }
+  return `${change > 0 ? '+' : '-'}${Math.abs(change)}% ${label}`;
+};
+
+const formatDateShort = (value?: string | null): string => {
+  if (!value) return 'N/A';
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const EmptyChart: React.FC<{ message: string }> = ({ message }) => (
+  <div className="analytics-empty-chart">{message}</div>
+);
+
+type AnalyticsExportFormat = 'pdf' | 'excel';
+type AnalyticsExportPreset = 'this_week' | 'this_month' | 'last_7_days' | 'last_30_days' | 'custom';
+
+const EXPORT_PRESETS: Array<{ key: AnalyticsExportPreset; label: string }> = [
+  { key: 'this_week', label: 'This Week' },
+  { key: 'this_month', label: 'This Month' },
+  { key: 'last_7_days', label: 'Last 7 Days' },
+  { key: 'last_30_days', label: 'Last 30 Days' },
+  { key: 'custom', label: 'Custom Range' },
+];
+
+const EXPORT_SECTIONS = [
+  { key: 'summary', label: 'KPI Summary' },
+  { key: 'salesTrend', label: 'Sales Trend & Forecast' },
+  { key: 'topServices', label: 'Top Services' },
+  { key: 'topProducts', label: 'Top Products' },
+  { key: 'distribution', label: 'Sales Distribution' },
+  { key: 'peakHours', label: 'Peak Hours' },
+  { key: 'inventory', label: 'Inventory Risks' },
+  { key: 'insights', label: 'AI Sales Intelligence' },
+  { key: 'validation', label: 'Forecast Validation' },
+] as const;
+
+type ExportSectionKey = typeof EXPORT_SECTIONS[number]['key'];
+
+interface AnalyticsExportTable {
+  title: string;
+  headers: string[];
+  rows: Array<Array<string | number>>;
+}
+
+interface AnalyticsExportPayload {
+  report: AnalyticsOverview;
+  branchLabel: string;
+  startDate: string;
+  endDate: string;
+  selectedSections: Record<ExportSectionKey, boolean>;
+}
+
+const createDefaultExportSections = (): Record<ExportSectionKey, boolean> =>
+  EXPORT_SECTIONS.reduce((selected, section) => {
+    selected[section.key] = true;
+    return selected;
+  }, {} as Record<ExportSectionKey, boolean>);
+
+const formatInputDate = (date: Date): string => {
+  const normalized = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const timezoneOffset = normalized.getTimezoneOffset() * 60000;
+  return new Date(normalized.getTime() - timezoneOffset).toISOString().slice(0, 10);
+};
+
+const addDays = (date: Date, days: number): Date => {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
+};
+
+const getExportPresetRange = (preset: AnalyticsExportPreset): { startDate: string; endDate: string } => {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  if (preset === 'this_week') {
+    const day = today.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    return {
+      startDate: formatInputDate(addDays(today, mondayOffset)),
+      endDate: formatInputDate(today),
+    };
+  }
+
+  if (preset === 'this_month') {
+    return {
+      startDate: formatInputDate(new Date(today.getFullYear(), today.getMonth(), 1)),
+      endDate: formatInputDate(today),
+    };
+  }
+
+  if (preset === 'last_7_days') {
+    return {
+      startDate: formatInputDate(addDays(today, -6)),
+      endDate: formatInputDate(today),
+    };
+  }
+
+  if (preset === 'last_30_days') {
+    return {
+      startDate: formatInputDate(addDays(today, -29)),
+      endDate: formatInputDate(today),
+    };
+  }
+
+  return {
+    startDate: formatInputDate(today),
+    endDate: formatInputDate(today),
+  };
+};
+
+const getBranchLabel = (branches: BranchOption[], branchId: string): string => {
+  if (!branchId || branchId === 'all') return 'All Branches';
+  const branch = branches.find((item) => String(item.id) === String(branchId));
+  return branch?.name || `Branch ${branchId}`;
+};
+
+const formatReportCurrency = (value?: number | null): string =>
+  `PHP ${Math.round(Number(value || 0)).toLocaleString('en-US')}`;
+
+const formatReportPercent = (value?: number | null): string => {
+  const numericValue = Number(value || 0);
+  if (!Number.isFinite(numericValue)) return '0%';
+  if (numericValue === 0) return '0%';
+  const roundedValue = Math.round(Math.abs(numericValue) * 10) / 10;
+  return `${numericValue > 0 ? '+' : '-'}${roundedValue}%`;
+};
+
+const formatReportNumber = (value?: number | null): string =>
+  Math.round(Number(value || 0)).toLocaleString('en-US');
+
+const formatReportDateRange = (startDate: string, endDate: string): string =>
+  `${formatDateShort(startDate)} - ${formatDateShort(endDate)}`;
+
+const buildEmptyReportRow = (headers: string[]): string[] =>
+  headers.map((_, index) => (index === 0 ? 'No data available' : ''));
+
+const buildAnalyticsExportFilename = (
+  startDate: string,
+  endDate: string,
+  extension: 'pdf' | 'xlsx'
+): string => `PawRang-Analytics-${startDate}-to-${endDate}.${extension}`;
+
+const buildAnalyticsExportTables = (report: AnalyticsOverview): Record<ExportSectionKey, AnalyticsExportTable> => {
+  const kpis = report.kpis;
+  const validationRows = report.forecast?.validation?.rows || [];
+
+  return {
+    summary: {
+      title: 'KPI Summary',
+      headers: ['Metric', 'Value', 'Current Change', 'Forecast'],
+      rows: [
+        ['Total Revenue', formatReportCurrency(kpis.totalRevenue), formatReportPercent(kpis.totalRevenueChange), formatReportPercent(kpis.predictedRevenueChange)],
+        ['Total Transactions', formatReportNumber(kpis.totalTransactions), formatReportPercent(kpis.totalTransactionsChange), ''],
+        ['Average Transaction', formatReportCurrency(kpis.averageTransaction), formatReportPercent(kpis.averageTransactionChange), ''],
+        ['Completed Appointments', formatReportNumber(kpis.completedAppointments), formatReportPercent(kpis.completedAppointmentsChange), ''],
+        ['Predicted Revenue', formatReportCurrency(kpis.predictedRevenue), '', report.forecast?.label || 'Forecast active'],
+      ],
+    },
+    salesTrend: {
+      title: 'Sales Trend & Forecast',
+      headers: ['Day', 'Actual Revenue', 'Predicted Revenue', 'Appointments'],
+      rows: report.salesTrend.map((item) => [
+        item.day,
+        item.actual === null ? 'Forecast only' : formatReportCurrency(item.actual),
+        formatReportCurrency(item.predicted),
+        item.appointments === null ? 'Forecast' : formatReportNumber(item.appointments),
+      ]),
+    },
+    topServices: {
+      title: 'Top Services by Revenue',
+      headers: ['Service', 'Revenue', 'Transactions', 'Trend'],
+      rows: report.topServices.map((item) => [
+        item.service,
+        formatReportCurrency(item.revenue),
+        formatReportNumber(item.count),
+        item.trend === undefined ? 'N/A' : formatReportPercent(item.trend),
+      ]),
+    },
+    topProducts: {
+      title: 'Top Products by Quantity Sold',
+      headers: ['Product', 'Quantity Sold', 'Revenue', 'Predicted Demand', 'Days Until Out'],
+      rows: report.topProducts.map((item) => [
+        item.product,
+        formatReportNumber(item.quantitySold),
+        formatReportCurrency(item.revenue),
+        item.predictedDemand === undefined ? 'N/A' : formatReportNumber(item.predictedDemand),
+        item.daysUntilOut === undefined ? 'N/A' : String(item.daysUntilOut),
+      ]),
+    },
+    distribution: {
+      title: 'Sales Distribution',
+      headers: ['Source', 'Share'],
+      rows: report.salesDistribution.map((item) => [
+        item.name,
+        `${Number(item.value || 0).toFixed(1)}%`,
+      ]),
+    },
+    peakHours: {
+      title: 'Peak Hour Analytics',
+      headers: ['Hour', 'Appointments', 'Sales', 'Predicted Appointments'],
+      rows: report.peakHours.map((item) => [
+        item.hour,
+        formatReportNumber(item.appointments),
+        formatReportCurrency(item.sales),
+        item.predicted === undefined ? 'N/A' : formatReportNumber(item.predicted),
+      ]),
+    },
+    inventory: {
+      title: 'Inventory Risks',
+      headers: ['Item', 'Stock', 'Reorder Point', 'Movement', 'Daily Usage', 'Days Until Out', 'Recommended Reorder'],
+      rows: report.inventory.map((item) => [
+        item.name,
+        formatReportNumber(item.stock),
+        formatReportNumber(item.reorderPoint),
+        item.movementRate,
+        formatReportNumber(item.dailyUsage),
+        String(item.daysUntilOut),
+        formatReportNumber(item.recommendedReorder),
+      ]),
+    },
+    insights: {
+      title: 'AI Sales Intelligence',
+      headers: ['Type', 'Insight', 'Recommended Action'],
+      rows: report.insights.map((item) => [
+        item.type,
+        item.text,
+        item.action || 'Review',
+      ]),
+    },
+    validation: {
+      title: 'Forecast Validation',
+      headers: ['Date', 'Actual Revenue', 'Predicted Revenue', 'Error', 'Error Percent'],
+      rows: validationRows.map((item) => [
+        formatDateShort(item.date),
+        formatReportCurrency(item.actual),
+        formatReportCurrency(item.predicted),
+        formatReportCurrency(item.error),
+        item.errorPercent === null || item.errorPercent === undefined ? 'N/A' : `${item.errorPercent}%`,
+      ]),
+    },
+  };
+};
+
+const downloadBlob = (blob: Blob, filename: string): void => {
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+const imageUrlToArrayBuffer = async (url: string): Promise<ArrayBuffer> => {
+  const response = await fetch(url);
+  return response.arrayBuffer();
+};
+
+const getExcelColumnName = (columnNumber: number): string => {
+  let dividend = columnNumber;
+  let columnName = '';
+
+  while (dividend > 0) {
+    const modulo = (dividend - 1) % 26;
+    columnName = String.fromCharCode(65 + modulo) + columnName;
+    dividend = Math.floor((dividend - modulo) / 26);
+  }
+
+  return columnName;
+};
+
+const exportAnalyticsAsPdf = async ({
+  report,
+  branchLabel,
+  startDate,
+  endDate,
+  selectedSections,
+}: AnalyticsExportPayload): Promise<void> => {
+  const { jsPDF } = await import('jspdf');
+  const autoTableModule = await import('jspdf-autotable');
+  const autoTable = ((autoTableModule as any).default || (autoTableModule as any).autoTable) as (doc: any, options: any) => void;
+  if (!autoTable) {
+    throw new Error('PDF export library is unavailable.');
+  }
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const tables = buildAnalyticsExportTables(report);
+  let currentY = 48;
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('PawRang Analytics Report', 40, currentY);
+
+  currentY += 22;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(`Branch: ${branchLabel}`, 40, currentY);
+  doc.text(`Range: ${formatReportDateRange(startDate, endDate)}`, 260, currentY);
+  doc.text(`Forecast: ${report.forecast?.label || 'Forecast active'}`, 520, currentY);
+  currentY += 26;
+
+  EXPORT_SECTIONS.filter((section) => selectedSections[section.key]).forEach((section) => {
+    const table = tables[section.key];
+    if (currentY > pageHeight - 96) {
+      doc.addPage();
+      currentY = 48;
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text(table.title, 40, currentY);
+
+    autoTable(doc, {
+      startY: currentY + 8,
+      head: [table.headers],
+      body: table.rows.length ? table.rows : [buildEmptyReportRow(table.headers)],
+      theme: 'grid',
+      margin: { left: 40, right: 40 },
+      styles: { fontSize: 8, cellPadding: 5, overflow: 'linebreak' },
+      headStyles: { fillColor: [61, 103, 238], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+    });
+
+    currentY = ((doc as any).lastAutoTable?.finalY || currentY + 50) + 26;
+  });
+
+  const pageCount = (doc as any).internal.getNumberOfPages();
+  for (let page = 1; page <= pageCount; page += 1) {
+    doc.setPage(page);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 40, pageHeight - 24);
+    doc.text(`Page ${page} of ${pageCount}`, pageWidth - 95, pageHeight - 24);
+  }
+
+  doc.save(buildAnalyticsExportFilename(startDate, endDate, 'pdf'));
+};
+
+const sanitizeSheetName = (name: string): string =>
+  name.replace(/[\\/*?:\[\]]/g, '').slice(0, 31) || 'Report';
+
+const exportAnalyticsAsExcel = async ({
+  report,
+  branchLabel,
+  startDate,
+  endDate,
+  selectedSections,
+}: AnalyticsExportPayload): Promise<void> => {
+  const ExcelJSModule = await import('exceljs');
+  const Workbook = (ExcelJSModule as any).Workbook || (ExcelJSModule as any).default?.Workbook;
+  if (!Workbook) {
+    throw new Error('Excel export library is unavailable.');
+  }
+  const workbook = new Workbook();
+  const tables = buildAnalyticsExportTables(report);
+
+  workbook.creator = 'PawRang';
+  workbook.created = new Date();
+
+  let logoImageId: number | null = null;
+  try {
+    const arrayBuffer = await imageUrlToArrayBuffer(PetShieldLogo);
+    logoImageId = workbook.addImage({
+      buffer: arrayBuffer,
+      extension: 'jpeg',
+    });
+  } catch (error) {
+    console.log('Logo not found, continuing without logo', error);
+  }
+
+  EXPORT_SECTIONS.filter((section) => selectedSections[section.key]).forEach((section) => {
+    const table = tables[section.key];
+    const worksheet = workbook.addWorksheet(sanitizeSheetName(section.label));
+    const columnCount = Math.max(table.headers.length, 6);
+    const lastColumn = getExcelColumnName(columnCount);
+
+    worksheet.pageSetup.paperSize = 9;
+    worksheet.pageSetup.orientation = 'landscape';
+    worksheet.pageSetup.margins = {
+      left: 0.5,
+      right: 0.5,
+      top: 0.5,
+      bottom: 0.5,
+      header: 0.3,
+      footer: 0.3,
+    };
+
+    for (let columnIndex = 1; columnIndex <= columnCount; columnIndex += 1) {
+      const header = table.headers[columnIndex - 1] || '';
+      worksheet.getColumn(columnIndex).width = Math.max(16, Math.min(38, header.length + 12));
+    }
+
+    if (logoImageId !== null) {
+      worksheet.addImage(logoImageId, {
+        tl: { col: 0.9, row: 0.5 },
+        ext: { width: 100, height: 100 },
+        editAs: 'absolute',
+      });
+    }
+
+    worksheet.mergeCells(`A1:${lastColumn}1`);
+    const clinicNameCell = worksheet.getCell('A1');
+    clinicNameCell.value = '     PETSHIELD VETERINARY CLINIC AND GROOMING CENTER';
+    clinicNameCell.font = {
+      bold: true,
+      size: 16,
+      color: { argb: 'FF1E3A5F' },
+      name: 'Segoe UI',
+    };
+    clinicNameCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.getRow(1).height = 45;
+
+    worksheet.mergeCells(`A2:${lastColumn}2`);
+    const addressCell = worksheet.getCell('A2');
+    addressCell.value = '     99 General Espino St, cor. Bravo St, Central Signal, Taguig, 1630 Metro Manila';
+    addressCell.font = {
+      size: 10,
+      color: { argb: 'FF2C5F8A' },
+      name: 'Segoe UI',
+    };
+    addressCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.getRow(2).height = 25;
+
+    worksheet.mergeCells(`A3:${lastColumn}3`);
+    const mobileCell = worksheet.getCell('A3');
+    mobileCell.value = '     Mobile No.: +63 905 457 0190';
+    mobileCell.font = {
+      size: 10,
+      color: { argb: 'FF2C5F8A' },
+      name: 'Segoe UI',
+      bold: true,
+    };
+    mobileCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.getRow(3).height = 25;
+
+    worksheet.getRow(4).height = 10;
+
+    worksheet.mergeCells(`A5:${lastColumn}5`);
+    const reportTitleCell = worksheet.getCell('A5');
+    reportTitleCell.value = `ANALYTICS REPORT - ${table.title.toUpperCase()}`;
+    reportTitleCell.font = {
+      bold: true,
+      size: 14,
+      color: { argb: 'FF1E3A5F' },
+      name: 'Segoe UI',
+    };
+    reportTitleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    reportTitleCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE8F0FE' },
+    };
+    worksheet.getRow(5).height = 30;
+
+    worksheet.mergeCells(`A6:${lastColumn}6`);
+    const exportDateCell = worksheet.getCell('A6');
+    exportDateCell.value = `Export Date: ${new Date().toLocaleDateString()} | Export Time: ${new Date().toLocaleTimeString()}`;
+    exportDateCell.font = {
+      italic: true,
+      size: 10,
+      color: { argb: 'FF888888' },
+      name: 'Segoe UI',
+    };
+    exportDateCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    worksheet.getRow(6).height = 20;
+
+    worksheet.mergeCells(`A7:${lastColumn}7`);
+    const reportMetaCell = worksheet.getCell('A7');
+    reportMetaCell.value = `Branch: ${branchLabel} | Range: ${formatReportDateRange(startDate, endDate)} | Forecast: ${report.forecast?.label || 'Forecast active'}`;
+    reportMetaCell.font = {
+      size: 10,
+      color: { argb: 'FF2C5F8A' },
+      name: 'Segoe UI',
+      bold: true,
+    };
+    reportMetaCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    reportMetaCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFFAFAFA' },
+    };
+    worksheet.getRow(7).height = 24;
+
+    worksheet.getRow(8).height = 5;
+
+    const headerRow = worksheet.getRow(9);
+    headerRow.height = 32;
+    table.headers.forEach((header, index) => {
+      const cell = headerRow.getCell(index + 1);
+      cell.value = header.toUpperCase();
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11, name: 'Segoe UI' };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      cell.border = {
+        top: { style: 'medium' },
+        left: { style: 'thin' },
+        bottom: { style: 'medium' },
+        right: { style: 'thin' },
+      };
+    });
+
+    const rows = table.rows.length ? table.rows : [buildEmptyReportRow(table.headers)];
+    rows.forEach((row, rowIndex) => {
+      const rowNumber = 10 + rowIndex;
+      const dataRow = worksheet.getRow(rowNumber);
+      dataRow.values = row;
+      dataRow.height = 24;
+      dataRow.alignment = { vertical: 'middle' };
+
+      dataRow.eachCell((cell: any) => {
+        const cellValue = String(cell.value || '');
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' },
+        };
+        cell.alignment = { vertical: 'middle', wrapText: true };
+
+        if (cellValue.startsWith('PHP ') || cellValue.endsWith('%') || /^\d[\d,]*(\.\d+)?$/.test(cellValue)) {
+          cell.alignment = { horizontal: 'right', vertical: 'middle', wrapText: true };
+        }
+      });
+
+      if (rowIndex % 2 === 1) {
+        dataRow.eachCell((cell: any) => {
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFFAFAFA' },
+          };
+        });
+      }
+    });
+
+    const footerRow = 10 + rows.length + 1;
+    worksheet.mergeCells(`A${footerRow}:${lastColumn}${footerRow}`);
+    const footerCell = worksheet.getCell(`A${footerRow}`);
+    footerCell.value = `Generated by PetShield Veterinary Clinic Analytics System | Last updated: ${new Date().toLocaleDateString()}`;
+    footerCell.font = {
+      size: 9,
+      italic: true,
+      color: { argb: 'FF888888' },
+      name: 'Segoe UI',
+    };
+    footerCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    footerCell.border = {
+      top: { style: 'thin' },
+      left: { style: 'thin' },
+      bottom: { style: 'thin' },
+      right: { style: 'thin' },
+    };
+    footerCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFFAFAFA' },
+    };
+    worksheet.getRow(footerRow).height = 20;
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer as BlobPart], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  downloadBlob(blob, buildAnalyticsExportFilename(startDate, endDate, 'xlsx'));
 };
 
 // ==================== MOCK DATA ====================
@@ -189,7 +914,7 @@ const KpiCard: React.FC<KpiCardProps> = ({
   title, value, change, prefix, suffix, 
   icon, iconBgColor, aiPrediction 
 }) => {
-  const isPositive = change && change > 0;
+  const isPositive = change === undefined || change >= 0;
 
   return (
     <div className="kpi-card-ai">
@@ -223,18 +948,119 @@ const KpiCard: React.FC<KpiCardProps> = ({
 };
 
 // ==================== EXPORT BUTTON COMPONENT ====================
-const ExportButton: React.FC<{ buttonClassName?: string }> = ({ buttonClassName = '' }) => {
+const ExportButton: React.FC<{
+  buttonClassName?: string;
+  branches: BranchOption[];
+  selectedBranch: string;
+}> = ({ buttonClassName = '', branches, selectedBranch }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<AnalyticsExportFormat>('pdf');
+  const [datePreset, setDatePreset] = useState<AnalyticsExportPreset>('this_month');
+  const defaultRange = getExportPresetRange('this_month');
+  const [startDate, setStartDate] = useState(defaultRange.startDate);
+  const [endDate, setEndDate] = useState(defaultRange.endDate);
+  const [branchId, setBranchId] = useState(selectedBranch || 'all');
+  const [selectedSections, setSelectedSections] = useState<Record<ExportSectionKey, boolean>>(createDefaultExportSections);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const selectAllSectionsRef = useRef<HTMLInputElement>(null);
+  const selectedSectionValues = Object.values(selectedSections);
+  const allSectionsSelected = selectedSectionValues.every(Boolean);
+  const partiallySelected = selectedSectionValues.some(Boolean) && !allSectionsSelected;
 
-  const handleExportPDF = () => {
-    console.log('Exporting as PDF...');
+  const openExportModal = (format: AnalyticsExportFormat) => {
+    setExportFormat(format);
+    setBranchId(selectedBranch || 'all');
+    setExportError('');
     setIsOpen(false);
+    setIsModalOpen(true);
   };
 
-  const handleExportExcel = () => {
-    console.log('Exporting as Excel...');
-    setIsOpen(false);
+  const handlePresetChange = (preset: AnalyticsExportPreset) => {
+    setDatePreset(preset);
+    if (preset !== 'custom') {
+      const range = getExportPresetRange(preset);
+      setStartDate(range.startDate);
+      setEndDate(range.endDate);
+    }
+  };
+
+  const handleDateChange = (field: 'start' | 'end', value: string) => {
+    setDatePreset('custom');
+    if (field === 'start') {
+      setStartDate(value);
+    } else {
+      setEndDate(value);
+    }
+  };
+
+  const toggleSection = (sectionKey: ExportSectionKey) => {
+    setSelectedSections((current) => ({
+      ...current,
+      [sectionKey]: !current[sectionKey],
+    }));
+  };
+
+  const toggleAllSections = () => {
+    const shouldSelectAll = !allSectionsSelected;
+    setSelectedSections(
+      EXPORT_SECTIONS.reduce((nextSelection, section) => {
+        nextSelection[section.key] = shouldSelectAll;
+        return nextSelection;
+      }, {} as Record<ExportSectionKey, boolean>)
+    );
+  };
+
+  const handleGenerateExport = async () => {
+    const selectedSectionCount = Object.values(selectedSections).filter(Boolean).length;
+
+    if (!startDate || !endDate) {
+      setExportError('Please select a valid report date range.');
+      return;
+    }
+
+    if (new Date(`${startDate}T00:00:00`) > new Date(`${endDate}T00:00:00`)) {
+      setExportError('Start date must be before the end date.');
+      return;
+    }
+
+    if (selectedSectionCount === 0) {
+      setExportError('Please choose at least one report section.');
+      return;
+    }
+
+    try {
+      setIsExporting(true);
+      setExportError('');
+
+      const response = await apiService.getAdminAnalyticsOverview({
+        branchId,
+        startDate,
+        endDate,
+      });
+      const report = mergeAnalyticsOverview(response as Partial<AnalyticsOverview>);
+      const payload: AnalyticsExportPayload = {
+        report,
+        branchLabel: getBranchLabel(branches.length ? branches : report.branches, branchId),
+        startDate,
+        endDate,
+        selectedSections,
+      };
+
+      if (exportFormat === 'pdf') {
+        await exportAnalyticsAsPdf(payload);
+      } else {
+        await exportAnalyticsAsExcel(payload);
+      }
+
+      setIsModalOpen(false);
+    } catch (error: any) {
+      setExportError(error?.message || 'Unable to generate analytics report.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   useEffect(() => {
@@ -247,34 +1073,200 @@ const ExportButton: React.FC<{ buttonClassName?: string }> = ({ buttonClassName 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  return (
-    <div className="export-dropdown-wrapper" ref={dropdownRef}>
-      <button className={`export-btn ${buttonClassName}`} onClick={() => setIsOpen(!isOpen)}>
-        <IoDownloadOutline size={16} />
-        <span>Export</span>
-        <IoChevronDownOutline size={12} className={isOpen ? 'rotated' : ''} />
-      </button>
+  useEffect(() => {
+    if (!isModalOpen) return;
+    setBranchId(selectedBranch || 'all');
+  }, [isModalOpen, selectedBranch]);
 
-      {isOpen && (
-        <div className="export-dropdown-menu">
-          <button onClick={handleExportPDF}>
-            <IoDocumentTextOutline size={16} />
-            <span>Export as PDF</span>
-          </button>
-          <button onClick={handleExportExcel}>
-            <IoTabletPortraitOutline size={16} />
-            <span>Export as Excel</span>
-          </button>
+  useEffect(() => {
+    if (selectAllSectionsRef.current) {
+      selectAllSectionsRef.current.indeterminate = partiallySelected;
+    }
+  }, [partiallySelected]);
+
+  return (
+    <>
+      <div className="export-dropdown-wrapper" ref={dropdownRef}>
+        <button className={`export-btn ${buttonClassName}`} onClick={() => setIsOpen(!isOpen)}>
+          <IoDownloadOutline size={16} />
+          <span>Export</span>
+          <IoChevronDownOutline size={12} className={isOpen ? 'rotated' : ''} />
+        </button>
+
+        {isOpen && (
+          <div className="export-dropdown-menu">
+            <button onClick={() => openExportModal('pdf')}>
+              <IoDocumentTextOutline size={16} />
+              <span>Export as PDF</span>
+            </button>
+            <button onClick={() => openExportModal('excel')}>
+              <IoTabletPortraitOutline size={16} />
+              <span>Export as Excel</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {isModalOpen && (
+        <div className="analytics-export-modal-overlay" onClick={() => !isExporting && setIsModalOpen(false)}>
+          <div className="analytics-export-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="analytics-export-modal-header">
+              <div>
+                <h2>Export Analytics Report</h2>
+                <span>{formatReportDateRange(startDate, endDate)}</span>
+              </div>
+              <button
+                type="button"
+                className="analytics-export-modal-close"
+                onClick={() => setIsModalOpen(false)}
+                disabled={isExporting}
+                aria-label="Close export modal"
+              >
+                <IoCloseOutline size={22} />
+              </button>
+            </div>
+
+            <div className="analytics-export-modal-body">
+              <div className="analytics-export-field-group">
+                <label>File Type</label>
+                <div className="analytics-export-format-toggle">
+                  <button
+                    type="button"
+                    className={exportFormat === 'pdf' ? 'active' : ''}
+                    onClick={() => setExportFormat('pdf')}
+                  >
+                    <IoDocumentTextOutline size={16} />
+                    PDF Report
+                  </button>
+                  <button
+                    type="button"
+                    className={exportFormat === 'excel' ? 'active' : ''}
+                    onClick={() => setExportFormat('excel')}
+                  >
+                    <IoTabletPortraitOutline size={16} />
+                    Excel Workbook
+                  </button>
+                </div>
+              </div>
+
+              <div className="analytics-export-field-group">
+                <label>Date Range</label>
+                <div className="analytics-export-preset-grid">
+                  {EXPORT_PRESETS.map((preset) => (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      className={datePreset === preset.key ? 'active' : ''}
+                      onClick={() => handlePresetChange(preset.key)}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="analytics-export-date-grid">
+                <div className="analytics-export-field-group">
+                  <label>Start Date</label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(event) => handleDateChange('start', event.target.value)}
+                  />
+                </div>
+                <div className="analytics-export-field-group">
+                  <label>End Date</label>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(event) => handleDateChange('end', event.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="analytics-export-field-group">
+                <label>Branch</label>
+                <select value={branchId} onChange={(event) => setBranchId(event.target.value)}>
+                  <option value="all">All Branches</option>
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={String(branch.id)}>
+                      {branch.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="analytics-export-field-group">
+                <div className="analytics-export-sections-header">
+                  <label>Report Sections</label>
+                  <label className="analytics-export-select-all">
+                    <input
+                      ref={selectAllSectionsRef}
+                      type="checkbox"
+                      checked={allSectionsSelected}
+                      onChange={toggleAllSections}
+                    />
+                    <span>Select All</span>
+                  </label>
+                </div>
+                <div className="analytics-export-section-grid">
+                  {EXPORT_SECTIONS.map((section) => (
+                    <label key={section.key} className="analytics-export-section-option">
+                      <input
+                        type="checkbox"
+                        checked={selectedSections[section.key]}
+                        onChange={() => toggleSection(section.key)}
+                      />
+                      <span>{section.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {exportError && (
+                <div className="analytics-export-error">
+                  <IoAlertCircle size={14} />
+                  <span>{exportError}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="analytics-export-modal-footer">
+              <button
+                type="button"
+                className="analytics-export-secondary"
+                onClick={() => setIsModalOpen(false)}
+                disabled={isExporting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="analytics-export-primary"
+                onClick={handleGenerateExport}
+                disabled={isExporting}
+              >
+                <IoDownloadOutline size={16} />
+                {isExporting ? 'Preparing Report...' : `Generate ${exportFormat === 'pdf' ? 'PDF' : 'Excel'}`}
+              </button>
+            </div>
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 
 // ==================== PAGE HEADER (INVENTORY STYLE) ====================
-const PageHeader: React.FC = () => {
-  const [selectedBranch, setSelectedBranch] = useState('All');
-
+const PageHeader: React.FC<{
+  branches: BranchOption[];
+  selectedBranch: string;
+  onBranchChange: (branchId: string) => void;
+}> = ({
+  branches,
+  selectedBranch,
+  onBranchChange,
+}) => {
   return (
     <div className="analytics-top-container">
       <div className="analytics-sub-top-container" style={{ paddingLeft: '30px' }}>
@@ -287,16 +1279,23 @@ const PageHeader: React.FC = () => {
           <span className="analytics-branch-label">Branch:</span>
           <select 
             value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
+            onChange={(e) => onBranchChange(e.target.value)}
             className="analytics-branch-select"
           >
-            <option value="All">All Branches</option>
-            <option value="Taguig">Taguig</option>
-            <option value="Las Pinas">Las Piñas</option>
+            <option value="all">All Branches</option>
+            {branches.map((branch) => (
+              <option key={branch.id} value={String(branch.id)}>
+                {branch.name}
+              </option>
+            ))}
           </select>
         </div>
 
-        <ExportButton buttonClassName="analytics-export-btn" />
+        <ExportButton
+          buttonClassName="analytics-export-btn"
+          branches={branches}
+          selectedBranch={selectedBranch}
+        />
       </div>
       <div className="analytics-sub-top-container analytics-notification-container" style={{ padding: 9 }}>
         <Notifications 
@@ -317,8 +1316,8 @@ const PageHeader: React.FC = () => {
 };
 
 // ==================== SALES TREND CHART ====================
-const SalesTrendWithForecast: React.FC = () => {
-  const chartData = mockSalesTrend.map(item => ({
+const SalesTrendWithForecast: React.FC<{ data: SalesTrendData[]; forecastLabel?: string }> = ({ data, forecastLabel }) => {
+  const chartData = data.map(item => ({
     day: item.day,
     actual: item.actual,
     predicted: item.predicted,
@@ -329,12 +1328,15 @@ const SalesTrendWithForecast: React.FC = () => {
       <div className="chart-header">
         <div>
           <h3>Sales Trend & Forecast</h3>
-          <span className="chart-subtitle">AI-predicted revenue for next 3 days</span>
+          <span className="chart-subtitle">Real revenue trend with next 3 days forecast</span>
         </div>
         <div className="ai-badge">
-          <IoSparkles size={12} /> AI Forecast Active
+          <IoSparkles size={12} /> {forecastLabel || 'Trend Forecast Active'}
         </div>
       </div>
+      {chartData.length === 0 ? (
+        <EmptyChart message="No revenue trend data yet" />
+      ) : (
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
           <defs>
@@ -363,20 +1365,24 @@ const SalesTrendWithForecast: React.FC = () => {
           <Line type="monotone" dataKey="predicted" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4, fill: '#f59e0b' }} name="Predicted Revenue" />
         </LineChart>
       </ResponsiveContainer>
+      )}
     </div>
   );
 };
 
 // ==================== TOP SERVICES CHART ====================
-const TopServicesChart: React.FC = () => {
+const TopServicesChart: React.FC<{ data: TopServiceData[] }> = ({ data }) => {
   return (
     <div className="chart-card-ai">
       <div className="chart-header">
         <h3>Top Services by Revenue</h3>
-        <span className="chart-subtitle">Most profitable services with trend indicators</span>
+        <span className="chart-subtitle">Most profitable services from billing invoices</span>
       </div>
+      {data.length === 0 ? (
+        <EmptyChart message="No service sales yet" />
+      ) : (
       <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={mockTopServices} layout="vertical" margin={{ top: 5, right: 30, left: 80, bottom: 5 }}>
+        <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 80, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
           <XAxis type="number" tickFormatter={(value) => `₱${value / 1000}k`} />
           <YAxis type="category" dataKey="service" tick={{ fontSize: 11 }} width={80} />
@@ -394,28 +1400,33 @@ const TopServicesChart: React.FC = () => {
           <Bar dataKey="revenue" fill="#8b5cf6" radius={[0, 4, 4, 0]} barSize={30} name="Revenue" />
         </BarChart>
       </ResponsiveContainer>
+      )}
     </div>
   );
 };
 
 // ==================== TOP PRODUCTS CHART ====================
-const TopProductsChart: React.FC = () => {
+const TopProductsChart: React.FC<{ data: TopProductData[] }> = ({ data }) => {
   return (
     <div className="chart-card-ai">
       <div className="chart-header">
         <h3>Top Products by Quantity Sold</h3>
-        <span className="chart-subtitle">Best-selling inventory items with AI predictions</span>
+        <span className="chart-subtitle">Best-selling inventory items from invoices</span>
       </div>
+      {data.length === 0 ? (
+        <EmptyChart message="No product sales yet" />
+      ) : (
       <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={mockTopProducts} layout="vertical" margin={{ top: 5, right: 30, left: 100, bottom: 5 }}>
+        <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 100, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
           <XAxis type="number" />
           <YAxis type="category" dataKey="product" tick={{ fontSize: 10 }} width={100} />
           <Tooltip
             formatter={(value, name, props: any) => {
               const daysOut = props.payload.daysUntilOut;
+              const predictedDemand = props.payload.predictedDemand;
               return [
-                `${value} units sold (Est. ${daysOut} days until out of stock)`,
+                `${value} units sold${predictedDemand !== undefined ? `, ${predictedDemand} predicted next 7 days` : ''} (Est. ${daysOut} days until out of stock)`,
                 'Quantity'
               ];
             }}
@@ -424,12 +1435,16 @@ const TopProductsChart: React.FC = () => {
           <Bar dataKey="quantitySold" fill="#f59e0b" radius={[0, 4, 4, 0]} barSize={30} name="Quantity Sold" />
         </BarChart>
       </ResponsiveContainer>
+      )}
     </div>
   );
 };
 
 // ==================== SALES DISTRIBUTION PIE CHART ====================
-const SalesDistributionChart: React.FC = () => {
+const SalesDistributionChart: React.FC<{ data: SalesDistributionData[] }> = ({ data }) => {
+  const hasDistribution = data.some(item => item.value > 0);
+  const serviceShare = data.find(item => item.name.toLowerCase() === 'services')?.value || 0;
+
   const renderCustomLabel = (props: any) => {
     const { cx, cy, midAngle, innerRadius, outerRadius, percent } = props;
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
@@ -449,10 +1464,11 @@ const SalesDistributionChart: React.FC = () => {
         <h3>Sales Distribution</h3>
         <span className="chart-subtitle">Revenue split between services and products</span>
       </div>
-      <ResponsiveContainer width="100%" height={280}>
+      {hasDistribution ? (
+        <ResponsiveContainer width="100%" height={280}>
         <PieChart>
           <Pie
-            data={mockSalesDistribution}
+            data={data}
             cx="50%"
             cy="50%"
             innerRadius={60}
@@ -462,35 +1478,42 @@ const SalesDistributionChart: React.FC = () => {
             label={renderCustomLabel}
             labelLine={false}
           >
-            {mockSalesDistribution.map((entry, index) => (
+            {data.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={entry.color} />
             ))}
           </Pie>
           <Tooltip formatter={(value) => [`${value}%`, 'Share']} />
           <Legend verticalAlign="bottom" height={36} iconType="circle" />
         </PieChart>
-      </ResponsiveContainer>
+        </ResponsiveContainer>
+      ) : (
+        <EmptyChart message="No service/product split yet" />
+      )}
       <div className="ai-insight-chip">
         <IoSparkles size={12} />
-        <span>Services generate 68.5% of total revenue</span>
+        <span>{hasDistribution ? `Services generate ${serviceShare}% of item revenue` : 'Service and product split will appear after invoices are paid'}</span>
       </div>
     </div>
   );
 };
 
 // ==================== PEAK TIME ANALYTICS ====================
-const PeakTimeAnalytics: React.FC = () => {
-  const highestPredicted = mockPeakHours.reduce((max, item) => 
-    (item.predicted && item.predicted > (max.predicted || 0)) ? item : max, mockPeakHours[0]);
+const PeakTimeAnalytics: React.FC<{ data: PeakTimeData[]; forecastMode?: string }> = ({ data, forecastMode }) => {
+  const highestPredicted = data.reduce<PeakTimeData | null>((max, item) => 
+    (!max || (item.predicted && item.predicted > (max.predicted || 0))) ? item : max, null);
+  const forecastVerb = forecastMode === 'ml' ? 'AI predicts' : 'Trend predicts';
 
   return (
     <div className="chart-card-ai">
       <div className="chart-header">
         <h3>Peak Hour Analytics</h3>
-        <span className="chart-subtitle">Busiest hours for appointments with AI prediction</span>
+        <span className="chart-subtitle">Busiest hours for completed appointments</span>
       </div>
+      {data.length === 0 ? (
+        <EmptyChart message="No completed appointment hours yet" />
+      ) : (
       <ResponsiveContainer width="100%" height={280}>
-        <ComposedChart data={mockPeakHours} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
+        <ComposedChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
           <XAxis dataKey="hour" tick={{ fontSize: 11 }} angle={-45} textAnchor="end" height={50} />
           <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
@@ -501,24 +1524,26 @@ const PeakTimeAnalytics: React.FC = () => {
           <Line yAxisId="right" type="monotone" dataKey="predicted" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 5" name="AI Prediction" dot={{ r: 4 }} />
         </ComposedChart>
       </ResponsiveContainer>
+      )}
       <div className="ai-insight-chip highlight">
         <IoSparkles size={12} />
-        <span>AI predicts {highestPredicted.hour} will be the busiest hour</span>
+        <span>{highestPredicted ? `${forecastVerb} ${highestPredicted.hour} will be the busiest hour` : 'Peak hour prediction appears after completed appointments'}</span>
       </div>
     </div>
   );
 };
 
 // ==================== INVENTORY INTELLIGENCE ====================
-const InventoryIntelligence: React.FC = () => {
-  const lowStockItems = mockInventory.filter(item => item.stock <= item.reorderPoint);
+const InventoryIntelligence: React.FC<{ items: InventoryItem[] }> = ({ items }) => {
+  const lowStockItems = items.filter(item => item.stock <= item.reorderPoint);
   const criticalItems = lowStockItems.filter(item => item.daysUntilOut <= 2);
   
   const movementData = [
-    { name: 'Fast Moving', count: mockInventory.filter(i => i.movementRate === 'fast').length, color: '#10b981' },
-    { name: 'Medium Moving', count: mockInventory.filter(i => i.movementRate === 'medium').length, color: '#f59e0b' },
-    { name: 'Slow Moving', count: mockInventory.filter(i => i.movementRate === 'slow').length, color: '#ef4444' },
+    { name: 'Fast Moving', count: items.filter(i => i.movementRate === 'fast').length, color: '#10b981' },
+    { name: 'Medium Moving', count: items.filter(i => i.movementRate === 'medium').length, color: '#f59e0b' },
+    { name: 'Slow Moving', count: items.filter(i => i.movementRate === 'slow').length, color: '#ef4444' },
   ];
+  const hasInventoryData = items.length > 0;
 
   return (
     <div className="inventory-intelligence">
@@ -547,22 +1572,26 @@ const InventoryIntelligence: React.FC = () => {
       
       <div className="movement-section-ai">
         <h4>Item Movement Classification</h4>
-        <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={movementData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <YAxis />
-            <Tooltip formatter={(value) => [`${value} items`, 'Count']} />
-            <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={40}>
-              {movementData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+        {hasInventoryData ? (
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={movementData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis />
+              <Tooltip formatter={(value) => [`${value} items`, 'Count']} />
+              <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={40}>
+                {movementData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <EmptyChart message="No inventory items yet" />
+        )}
         <div className="ai-insight-chip">
           <IoSparkles size={12} />
-          <span>Fast-moving items: Prioritize auto-reordering</span>
+          <span>{hasInventoryData ? 'Fast-moving items: Prioritize auto-reordering' : 'Inventory movement appears after product sales'}</span>
         </div>
       </div>
     </div>
@@ -570,10 +1599,10 @@ const InventoryIntelligence: React.FC = () => {
 };
 
 // ==================== AI INSIGHTS PANEL ====================
-const AiInsightsPanel: React.FC = () => {
-  const growthInsights = mockInsights.filter(i => i.type === 'growth');
-  const warningInsights = mockInsights.filter(i => i.type === 'warning');
-  const opportunityInsights = mockInsights.filter(i => i.type === 'opportunity');
+const AiInsightsPanel: React.FC<{ insights: Insight[] }> = ({ insights }) => {
+  const growthInsights = insights.filter(i => i.type === 'growth');
+  const warningInsights = insights.filter(i => i.type === 'warning');
+  const opportunityInsights = insights.filter(i => i.type === 'opportunity');
 
   return (
     <div className="insights-panel-ai-white">
@@ -589,6 +1618,7 @@ const AiInsightsPanel: React.FC = () => {
             <IoTrendingUpOutline size={14} />
             <span>Growth Opportunities</span>
           </div>
+          {growthInsights.length === 0 && <div className="insight-empty-white">No growth insight yet</div>}
           {growthInsights.map(insight => (
             <div key={insight.id} className="insight-item-ai-white growth">
               <div className="insight-icon-white">{insight.icon || '📈'}</div>
@@ -606,6 +1636,7 @@ const AiInsightsPanel: React.FC = () => {
             <IoAlertCircle size={14} />
             <span>Warnings & Risks</span>
           </div>
+          {warningInsights.length === 0 && <div className="insight-empty-white">No current warning</div>}
           {warningInsights.map(insight => (
             <div key={insight.id} className="insight-item-ai-white warning">
               <div className="insight-icon-white">{insight.icon || '⚠️'}</div>
@@ -623,6 +1654,7 @@ const AiInsightsPanel: React.FC = () => {
             <IoBulbOutline size={14} />
             <span>Recommendations</span>
           </div>
+          {opportunityInsights.length === 0 && <div className="insight-empty-white">No recommendation yet</div>}
           {opportunityInsights.map(insight => (
             <div key={insight.id} className="insight-item-ai-white opportunity">
               <div className="insight-icon-white">{insight.icon || '💡'}</div>
@@ -638,15 +1670,105 @@ const AiInsightsPanel: React.FC = () => {
   );
 };
 
+// ==================== FORECAST VALIDATION ====================
+const ForecastValidationPanel: React.FC<{ validation?: ForecastValidation }> = ({ validation }) => {
+  const rows = validation?.rows || [];
+  const hasRows = rows.length > 0;
+
+  return (
+    <div className="chart-card-ai">
+      <div className="chart-header">
+        <div>
+          <h3>Actual vs Predicted Revenue</h3>
+          <span className="chart-subtitle">Recent validation split for forecast defense</span>
+        </div>
+        <div className="forecast-accuracy-pill">
+          {validation?.accuracy !== null && validation?.accuracy !== undefined ? `${validation.accuracy}% accuracy` : 'Pending validation'}
+        </div>
+      </div>
+
+      {hasRows ? (
+        <>
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={rows} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+              <YAxis tickFormatter={(value) => `₱${value / 1000}k`} tick={{ fontSize: 11 }} />
+              <Tooltip
+                formatter={(rawValue, name) => {
+                  const value = toNumberOrNull(rawValue) ?? 0;
+                  const label = name === 'actual' ? 'Actual Revenue' : 'Predicted Revenue';
+                  return [`₱${value.toLocaleString()}`, label];
+                }}
+                contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: 'none' }}
+              />
+              <Legend />
+              <Line type="monotone" dataKey="actual" stroke="#3d67ee" strokeWidth={2} dot={{ r: 4, fill: '#3d67ee' }} name="Actual Revenue" />
+              <Line type="monotone" dataKey="predicted" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 5" dot={{ r: 4, fill: '#f59e0b' }} name="Predicted Revenue" />
+            </LineChart>
+          </ResponsiveContainer>
+
+          <div className="validation-summary-grid">
+            <div>
+              <span>Validation Range</span>
+              <strong>{formatDateShort(validation?.validationStartDate)} - {formatDateShort(validation?.validationEndDate)}</strong>
+            </div>
+            <div>
+              <span>Mean Error</span>
+              <strong>₱{Math.round(validation?.meanAbsoluteError || 0).toLocaleString()}</strong>
+            </div>
+            <div>
+              <span>MAPE</span>
+              <strong>{validation?.meanAbsolutePercentageError ?? 0}%</strong>
+            </div>
+          </div>
+        </>
+      ) : (
+        <EmptyChart message={validation?.reason || 'No validation data available yet'} />
+      )}
+    </div>
+  );
+};
+
 // ==================== MAIN DASHBOARD ====================
 const AdminAnalytics: React.FC = () => {
   const navigate = useNavigate();
-  
-  const totalRevenue = 248500;
-  const totalTransactions = 342;
-  const avgTransactionValue = totalRevenue / totalTransactions;
-  const totalAppointments = 98;
-  const predictedRevenue = 287500;
+  const [selectedBranch, setSelectedBranch] = useState('all');
+  const [analytics, setAnalytics] = useState<AnalyticsOverview>(emptyAnalyticsOverview);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(true);
+  const [analyticsError, setAnalyticsError] = useState('');
+
+  const { kpis } = analytics;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAnalytics = async () => {
+      try {
+        setLoadingAnalytics(true);
+        setAnalyticsError('');
+        const response = await apiService.getAdminAnalyticsOverview({
+          branchId: selectedBranch,
+        });
+        if (!cancelled) {
+          setAnalytics(mergeAnalyticsOverview(response as Partial<AnalyticsOverview>));
+        }
+      } catch (error: any) {
+        if (!cancelled) {
+          setAnalyticsError(error?.message || 'Unable to load analytics data right now.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingAnalytics(false);
+        }
+      }
+    };
+
+    loadAnalytics();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedBranch]);
 
   const handleLogout = (): void => {
     navigate('/login');
@@ -659,72 +1781,94 @@ const AdminAnalytics: React.FC = () => {
       <div className="bodyContainer" style={{ paddingRight: '10px' }}>
         <div className="analytics-wrapper">
           {/* Page Header - Inventory Style */}
-          <PageHeader />
+          <PageHeader
+            branches={analytics.branches}
+            selectedBranch={selectedBranch}
+            onBranchChange={setSelectedBranch}
+          />
+
+          {loadingAnalytics && (
+            <div className="analytics-status-banner loading">
+              <IoSparkles size={14} />
+              <span>Loading real-time analytics...</span>
+            </div>
+          )}
+
+          {analyticsError && (
+            <div className="analytics-status-banner error">
+              <IoAlertCircle size={14} />
+              <span>{analyticsError}</span>
+            </div>
+          )}
 
           {/* KPI Cards Row */}
           <div className="kpi-grid-ai">
             <KpiCard 
               title="Total Revenue" 
-              value={totalRevenue} 
+              value={Math.round(kpis.totalRevenue)} 
               prefix="₱" 
-              change={12} 
+              change={kpis.totalRevenueChange} 
               icon={<IoWalletOutline size={20} color="#10b981" />}
               iconBgColor="#10b98113"
-              aiPrediction="+15% expected next month"
+              aiPrediction={formatExpectedChange(kpis.predictedRevenueChange, 'expected next period')}
             />
             <KpiCard 
               title="Total Transactions" 
-              value={totalTransactions} 
-              change={8} 
+              value={kpis.totalTransactions} 
+              change={kpis.totalTransactionsChange} 
               icon={<IoReceiptOutline size={20} color="#3d67ee" />}
               iconBgColor="#3d67ee13"
-              aiPrediction="+10% expected next month"
+              aiPrediction={formatExpectedChange(kpis.totalTransactionsChange, 'transaction trend')}
             />
             <KpiCard 
               title="Average Transaction" 
-              value={Math.round(avgTransactionValue)} 
+              value={Math.round(kpis.averageTransaction)} 
               prefix="₱" 
-              change={5} 
+              change={kpis.averageTransactionChange} 
               icon={<IoCalculatorOutline size={20} color="#8b5cf6" />}
               iconBgColor="#8b5cf613"
-              aiPrediction="Stable growth expected"
+              aiPrediction={kpis.averageTransactionChange === 0 ? 'Stable transaction value' : formatExpectedChange(kpis.averageTransactionChange, 'average value trend')}
             />
             <KpiCard 
               title="Completed Appointments" 
-              value={totalAppointments} 
-              change={15} 
+              value={kpis.completedAppointments} 
+              change={kpis.completedAppointmentsChange} 
               icon={<IoCheckmarkDoneCircleOutline size={20} color="#f59e0b" />}
               iconBgColor="#f59e0b13"
-              aiPrediction="Peak season approaching"
+              aiPrediction={formatExpectedChange(kpis.completedAppointmentsChange, 'appointment trend')}
             />
             <KpiCard 
               title="Predicted Revenue" 
-              value={predictedRevenue} 
+              value={Math.round(kpis.predictedRevenue)} 
               prefix="₱" 
               icon={<IoDiamondOutline size={20} color="#06b6d4" />}
               iconBgColor="#06b6d413"
-              aiPrediction="Based on AI forecasting"
+              aiPrediction={analytics.forecast?.description || 'Based on trend forecasting'}
             />
           </div>
 
           {/* Main Charts Grid */}
           <div className="charts-grid-ai">
-            <SalesTrendWithForecast />
-            <TopServicesChart />
+            <SalesTrendWithForecast data={analytics.salesTrend} forecastLabel={analytics.forecast?.label} />
+            <TopServicesChart data={analytics.topServices} />
           </div>
 
           <div className="charts-grid-ai">
-            <TopProductsChart />
-            <SalesDistributionChart />
+            <TopProductsChart data={analytics.topProducts} />
+            <SalesDistributionChart data={analytics.salesDistribution} />
           </div>
 
           <div className="charts-grid-ai">
-            <PeakTimeAnalytics />
-            <InventoryIntelligence />
+            <PeakTimeAnalytics data={analytics.peakHours} forecastMode={analytics.forecast?.mode} />
+            <InventoryIntelligence items={analytics.inventory} />
+          </div>
+
+          <div className="charts-grid-ai analytics-single-chart">
+            <ForecastValidationPanel validation={analytics.forecast?.validation} />
           </div>
 
           {/* AI Insights Panel */}
-          <AiInsightsPanel />
+          <AiInsightsPanel insights={analytics.insights} />
         </div>
       </div>
     </div>

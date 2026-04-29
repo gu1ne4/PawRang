@@ -435,12 +435,20 @@ export const availabilityService = {
   },
 
   // Save a special date
-  async saveSpecialDate(eventName: string, eventDate: string): Promise<any> {
+  async saveSpecialDate(eventName: string, eventDate: string, eventDescription = '', eventRecurrence: 'once' | 'annual' = 'once'): Promise<any> {
+    const [, eventMonth, eventDay] = eventDate.split('-').map(Number);
     try {
       const response = await fetch(`${API_URL}/api/special-dates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event_name: eventName, event_date: eventDate })
+        body: JSON.stringify({
+          event_name: eventName,
+          event_date: eventRecurrence === 'annual' ? null : eventDate,
+          event_description: eventDescription,
+          event_recurrence: eventRecurrence,
+          event_month: eventMonth,
+          event_day: eventDay
+        })
       });
       
       if (!response.ok) throw new Error('Failed to save special date');
@@ -451,10 +459,50 @@ export const availabilityService = {
     }
   },
 
-  // Delete a special date
-  async deleteSpecialDate(eventDate: string): Promise<any> {
+  // Update a special date
+  async updateSpecialDate(
+    originalEventDate: string,
+    eventName: string,
+    eventDate: string,
+    eventDescription = '',
+    eventRecurrence: 'once' | 'annual' = 'once',
+    originalEventRecurrence: 'once' | 'annual' = 'once',
+    originalEventMonth?: number | null,
+    originalEventDay?: number | null
+  ): Promise<any> {
+    const [, eventMonth, eventDay] = eventDate.split('-').map(Number);
     try {
-      const response = await fetch(`${API_URL}/api/special-dates/${eventDate}`, {
+      const response = await fetch(`${API_URL}/api/special-dates/${originalEventDate}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_name: eventName,
+          event_date: eventRecurrence === 'annual' ? null : eventDate,
+          event_description: eventDescription,
+          event_recurrence: eventRecurrence,
+          event_month: eventMonth,
+          event_day: eventDay,
+          original_event_recurrence: originalEventRecurrence,
+          original_event_month: originalEventMonth,
+          original_event_day: originalEventDay
+        })
+      });
+      
+      if (!response.ok) throw new Error('Failed to update special date');
+      return await response.json();
+    } catch (error) {
+      console.error('Error updating special date:', error);
+      throw error;
+    }
+  },
+
+  // Delete a special date
+  async deleteSpecialDate(eventDate: string, eventRecurrence: 'once' | 'annual' = 'once', eventMonth?: number, eventDay?: number): Promise<any> {
+    try {
+      const query = eventRecurrence === 'annual' && eventMonth && eventDay
+        ? `?event_recurrence=annual&event_month=${eventMonth}&event_day=${eventDay}`
+        : '';
+      const response = await fetch(`${API_URL}/api/special-dates/${eventDate}${query}`, {
         method: 'DELETE'
       });
       

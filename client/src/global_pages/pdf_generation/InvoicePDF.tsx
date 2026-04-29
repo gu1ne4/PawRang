@@ -312,7 +312,7 @@ const formatPaymentStatus = (value: 'paid' | 'pending' | 'partial'): string => {
 };
 
 const formatInvoiceType = (value: 'appointment' | 'walkin'): string =>
-  value === 'appointment' ? 'Appointment' : 'Guest Appointment';
+  value === 'appointment' ? 'Appointment' : 'Walk-in Visit';
 
 const getPaymentStatusStyle = (status: 'paid' | 'pending' | 'partial') => {
   switch (status) {
