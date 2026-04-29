@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 // Web icons equivalent to Ionicons
@@ -7,7 +7,7 @@ import {
   IoPersonOutline, IoMedkitOutline, IoCalendarClearOutline, IoCalendarOutline,
   IoTodayOutline, IoTimeOutline, IoDocumentTextOutline, IoSettingsOutline,
   IoLogOutOutline, IoNotifications, IoCheckmarkCircleOutline, IoCloseCircleOutline,
-  IoAlertCircleOutline, IoChevronUp, IoChevronDown, IoTrashOutline, IoClose,
+  IoAlertCircleOutline, IoChevronUp, IoChevronDown, IoTrashOutline, IoClose, IoCreateOutline,
   IoChevronBack, IoChevronForward // 🟢 Restored Custom Calendar Icons
 } from 'react-icons/io5';
 
@@ -41,15 +41,27 @@ interface ModalConfigType {
 // ==========================================
 //  0. CUSTOM CALENDAR COMPONENT (Restored)
 // ==========================================
-const CustomCalendar = ({ selectedDate, onSelectDate, bookedDates = {}, availableDays = null, disablePastDates = false }: any) => {
-    const [currentMonth, setCurrentMonth] = useState(new Date());
+const getMonthStartFromDateKey = (dateKey?: string) => {
+    if (!dateKey) return null;
+    const [year, month] = dateKey.split('-').map(Number);
+    if (!year || !month) return null;
+    return new Date(year, month - 1, 1);
+};
 
+const CustomCalendar = ({ selectedDate, onSelectDate, bookedDates = {}, availableDays = null, disabledDates = {}, disabledAnnualDates = {}, disablePastDates = false, allowAllMonths = false }: any) => {
     const todayDate = new Date();
+    const [currentMonth, setCurrentMonth] = useState(() => getMonthStartFromDateKey(selectedDate) || new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
+
     const minMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
     const maxMonth = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 1);
 
-    const canGoPrev = currentMonth > minMonth;
-    const canGoNext = currentMonth < maxMonth;
+    useEffect(() => {
+        const selectedMonth = getMonthStartFromDateKey(selectedDate);
+        if (selectedMonth && allowAllMonths) setCurrentMonth(selectedMonth);
+    }, [allowAllMonths, selectedDate]);
+
+    const canGoPrev = allowAllMonths || currentMonth > minMonth;
+    const canGoNext = allowAllMonths || currentMonth < maxMonth;
 
     const nextMonth = () => { if (canGoNext) setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1)); };
     const prevMonth = () => { if (canGoPrev) setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1)); };
@@ -82,10 +94,17 @@ const CustomCalendar = ({ selectedDate, onSelectDate, bookedDates = {}, availabl
             const isSelected = selectedDate === fullDate;
             const isToday = fullDate === todayStr; 
             const hasAppointment = bookedDates[fullDate];
+            const isExactDateDisabled = Array.isArray(disabledDates)
+              ? disabledDates.includes(fullDate)
+              : Boolean(disabledDates[fullDate]);
+            const annualDateKey = `${monthStr}-${dayStr}`;
+            const isAnnualDateDisabled = Array.isArray(disabledAnnualDates)
+              ? disabledAnnualDates.includes(annualDateKey)
+              : Boolean(disabledAnnualDates[annualDateKey]);
 
             const isPast = disablePastDates && fullDate < todayStr;
             const isUnavailableDay = availableDays && availableDays[dayName] === false;
-            const isDisabled = isPast || isUnavailableDay;
+            const isDisabled = isPast || isUnavailableDay || isExactDateDisabled || isAnnualDateDisabled;
 
             let bgColor = 'transparent';
             let textColor = isDisabled ? '#d3d3d3' : '#333';
@@ -260,6 +279,47 @@ const formatToAMPM = (timeStr: string) => {
     return `${h.toString().padStart(2, '0')}:${minutes} ${ampm}`;
 };
 
+const getSpecialEventName = (event: any) => event?.event_name || event?.name || 'Special Event';
+const getSpecialEventDate = (event: any) => event?.event_date || event?.date || '';
+const getSpecialEventDescription = (event: any) => event?.event_description || event?.description || '';
+const getSpecialEventRecurrence = (event: any) => {
+  const rawValue = String(event?.event_recurrence || event?.recurrence_type || 'once').toLowerCase();
+  return rawValue === 'annual' || rawValue === 'yearly' ? 'annual' : 'once';
+};
+const getSpecialEventMonth = (event: any) => {
+  const eventMonth = Number(event?.event_month);
+  if (eventMonth) return eventMonth;
+  const eventDate = getSpecialEventDate(event);
+  return eventDate ? Number(eventDate.split('-')[1]) : 0;
+};
+const getSpecialEventDay = (event: any) => {
+  const eventDay = Number(event?.event_day);
+  if (eventDay) return eventDay;
+  const eventDate = getSpecialEventDate(event);
+  return eventDate ? Number(eventDate.split('-')[2]) : 0;
+};
+const getAnnualDateKey = (month: number, day: number) =>
+  `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+const getAnnualDateKeyFromDate = (dateKey: string) => {
+  const [, month, day] = dateKey.split('-');
+  return month && day ? `${month}-${day}` : '';
+};
+const getSpecialEventDisplayDate = (event: any) => {
+  if (getSpecialEventRecurrence(event) === 'annual') {
+    const month = getSpecialEventMonth(event);
+    const day = getSpecialEventDay(event);
+    if (!month || !day) return 'Annual Event';
+    return new Date(2024, month - 1, day).toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+  }
+  return getSpecialEventDate(event);
+};
+const getSpecialEventIdentifier = (event: any) => {
+  if (getSpecialEventRecurrence(event) === 'annual') {
+    return `annual-${getAnnualDateKey(getSpecialEventMonth(event), getSpecialEventDay(event))}`;
+  }
+  return getSpecialEventDate(event);
+};
+
 // ==========================================
 //  MAIN COMPONENT
 // ==========================================
@@ -303,11 +363,57 @@ export default function AdminAvailSettings() {
   const [specialDates, setSpecialDates] = useState<any[]>([]);
   const [eventName, setEventName] = useState('');
   const [eventDate, setEventDate] = useState('');
+  const [eventDescription, setEventDescription] = useState('');
+  const [eventRecurrence, setEventRecurrence] = useState<'once' | 'annual'>('annual');
+  const [editingSpecialDateOriginalDate, setEditingSpecialDateOriginalDate] = useState<string | null>(null);
+  const [editingSpecialDateOriginalRecurrence, setEditingSpecialDateOriginalRecurrence] = useState<'once' | 'annual'>('once');
+  const [editingSpecialDateOriginalMonth, setEditingSpecialDateOriginalMonth] = useState<number | null>(null);
+  const [editingSpecialDateOriginalDay, setEditingSpecialDateOriginalDay] = useState<number | null>(null);
 
   const [loadingTimeSlots, setLoadingTimeSlots] = useState(false);
 
   const DEFAULT_START_TIME = '8:00 AM';
   const DEFAULT_END_TIME = '9:00 AM';
+
+  const specialDateMap = useMemo(() => {
+    return specialDates.reduce((dates: Record<string, boolean>, event: any) => {
+      const dateKey = getSpecialEventRecurrence(event) === 'once' ? getSpecialEventDate(event) : '';
+      if (dateKey) dates[dateKey] = true;
+      return dates;
+    }, {});
+  }, [specialDates]);
+
+  const annualSpecialDateMap = useMemo(() => {
+    return specialDates.reduce((dates: Record<string, boolean>, event: any) => {
+      if (getSpecialEventRecurrence(event) === 'annual') {
+        const month = getSpecialEventMonth(event);
+        const day = getSpecialEventDay(event);
+        if (month && day) dates[getAnnualDateKey(month, day)] = true;
+      }
+      return dates;
+    }, {});
+  }, [specialDates]);
+
+  const specialDateMapForForm = useMemo(() => {
+    return specialDates.reduce((dates: Record<string, boolean>, event: any) => {
+      const dateKey = getSpecialEventRecurrence(event) === 'once' ? getSpecialEventDate(event) : '';
+      if (dateKey && !(editingSpecialDateOriginalRecurrence === 'once' && dateKey === editingSpecialDateOriginalDate)) dates[dateKey] = true;
+      return dates;
+    }, {});
+  }, [editingSpecialDateOriginalDate, editingSpecialDateOriginalRecurrence, specialDates]);
+
+  const annualSpecialDateMapForForm = useMemo(() => {
+    return specialDates.reduce((dates: Record<string, boolean>, event: any) => {
+      if (getSpecialEventRecurrence(event) === 'annual') {
+        const month = getSpecialEventMonth(event);
+        const day = getSpecialEventDay(event);
+        const annualKey = month && day ? getAnnualDateKey(month, day) : '';
+        const isCurrentEvent = editingSpecialDateOriginalRecurrence === 'annual' && month === editingSpecialDateOriginalMonth && day === editingSpecialDateOriginalDay;
+        if (annualKey && !isCurrentEvent) dates[annualKey] = true;
+      }
+      return dates;
+    }, {});
+  }, [editingSpecialDateOriginalDay, editingSpecialDateOriginalMonth, editingSpecialDateOriginalRecurrence, specialDates]);
 
   const showAlert = (type: 'info' | 'success' | 'error' | 'confirm', title: string, message: string | React.ReactNode, onConfirm: (() => void) | null = null, showCancel = false) => {
     setModalConfig({ type, title, message, onConfirm, showCancel });
@@ -357,6 +463,9 @@ export default function AdminAvailSettings() {
     try {
       const dayData = await availabilityService.getDayAvailability();
       setDayAvailability(dayData);
+
+      const loadedSpecialDates = await availabilityService.getSpecialDates();
+      setSpecialDates(loadedSpecialDates);
       
       const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
       const slotsByDay: any = { ...timeSlotsByDay };
@@ -494,17 +603,136 @@ export default function AdminAvailSettings() {
   };
 
   const addEvent = async () => {
-    if (eventName && eventDate) {
-      try {
-        const newEvent = { name: eventName, date: eventDate };
-        setSpecialDates([...specialDates, newEvent]);
-        setEventName('');
-        setEventDate('');
-        setModalVisible2(false);
-      } catch (error) {
-        console.error('Failed to save special date:', error);
-      }
+    const trimmedEventName = eventName.trim();
+    const trimmedDescription = eventDescription.trim();
+    const isEditing = Boolean(editingSpecialDateOriginalDate);
+
+    if (!trimmedEventName || !eventDate) {
+      window.alert('Please enter an event name and select a date.');
+      return;
     }
+
+    const selectedAnnualKey = getAnnualDateKeyFromDate(eventDate);
+    if (eventRecurrence === 'annual' && annualSpecialDateMapForForm[selectedAnnualKey]) {
+      window.alert('This annual special day already exists.');
+      return;
+    }
+
+    if (eventRecurrence === 'once' && specialDateMapForForm[eventDate]) {
+      window.alert('This date is already marked as a special date.');
+      return;
+    }
+
+    try {
+      const savedEvent = isEditing
+        ? await availabilityService.updateSpecialDate(
+            editingSpecialDateOriginalDate || getSpecialEventIdentifier({
+              event_recurrence: editingSpecialDateOriginalRecurrence,
+              event_month: editingSpecialDateOriginalMonth,
+              event_day: editingSpecialDateOriginalDay
+            }),
+            trimmedEventName,
+            eventDate,
+            trimmedDescription,
+            eventRecurrence,
+            editingSpecialDateOriginalRecurrence,
+            editingSpecialDateOriginalMonth,
+            editingSpecialDateOriginalDay
+          )
+        : await availabilityService.saveSpecialDate(trimmedEventName, eventDate, trimmedDescription, eventRecurrence);
+      const newEvent = savedEvent?.specialDate || {
+        event_name: trimmedEventName,
+        event_date: eventRecurrence === 'annual' ? null : eventDate,
+        event_description: trimmedDescription,
+        event_recurrence: eventRecurrence,
+        event_month: Number(eventDate.split('-')[1]),
+        event_day: Number(eventDate.split('-')[2])
+      };
+
+      setSpecialDates((prev) => {
+        const withoutOldEvent = isEditing
+          ? prev.filter((event) => getSpecialEventIdentifier(event) !== getSpecialEventIdentifier({
+              event_recurrence: editingSpecialDateOriginalRecurrence,
+              event_date: editingSpecialDateOriginalDate,
+              event_month: editingSpecialDateOriginalMonth,
+              event_day: editingSpecialDateOriginalDay
+            }))
+          : prev;
+        return [...withoutOldEvent, newEvent].sort((a, b) => getSpecialEventIdentifier(a).localeCompare(getSpecialEventIdentifier(b)));
+      });
+      setEventName('');
+      setEventDate('');
+      setEventDescription('');
+      setEventRecurrence('annual');
+      setEditingSpecialDateOriginalDate(null);
+      setEditingSpecialDateOriginalRecurrence('once');
+      setEditingSpecialDateOriginalMonth(null);
+      setEditingSpecialDateOriginalDay(null);
+      setModalVisible2(false);
+    } catch (error) {
+      console.error('Failed to save special date:', error);
+      window.alert('Failed to save special date. Please try again.');
+    }
+  };
+
+  const openAddSpecialDateModal = () => {
+    setEventName('');
+    setEventDate('');
+    setEventDescription('');
+    setEventRecurrence('annual');
+    setEditingSpecialDateOriginalDate(null);
+    setEditingSpecialDateOriginalRecurrence('once');
+    setEditingSpecialDateOriginalMonth(null);
+    setEditingSpecialDateOriginalDay(null);
+    setModalVisible2(true);
+  };
+
+  const openEditSpecialDateModal = (event: any) => {
+    const dateKey = getSpecialEventDate(event);
+    const recurrence = getSpecialEventRecurrence(event);
+    const month = getSpecialEventMonth(event);
+    const day = getSpecialEventDay(event);
+    setEventName(getSpecialEventName(event));
+    setEventDate(dateKey || `2026-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+    setEventDescription(getSpecialEventDescription(event));
+    setEventRecurrence(recurrence);
+    setEditingSpecialDateOriginalDate(dateKey);
+    setEditingSpecialDateOriginalRecurrence(recurrence);
+    setEditingSpecialDateOriginalMonth(month || null);
+    setEditingSpecialDateOriginalDay(day || null);
+    setModalVisible2(true);
+  };
+
+  const deleteSpecialDate = async (event: any) => {
+    const dateKey = getSpecialEventDate(event) || getSpecialEventIdentifier(event);
+    const eventTitle = getSpecialEventName(event);
+    if (!dateKey) return;
+    if (!window.confirm(`Delete ${eventTitle} on ${getSpecialEventDisplayDate(event)}?`)) return;
+
+    try {
+      await availabilityService.deleteSpecialDate(
+        dateKey,
+        getSpecialEventRecurrence(event),
+        getSpecialEventMonth(event),
+        getSpecialEventDay(event)
+      );
+      setSpecialDates((prev) => prev.filter((item) => getSpecialEventIdentifier(item) !== getSpecialEventIdentifier(event)));
+    } catch (error) {
+      console.error('Failed to delete special date:', error);
+      window.alert('Failed to delete special date. Please try again.');
+    }
+  };
+
+  const closeSpecialDateModal = () => {
+    setModalVisible2(false);
+    setEventName('');
+    setEventDate('');
+    setEventDescription('');
+    setEventRecurrence('annual');
+    setEditingSpecialDateOriginalDate(null);
+    setEditingSpecialDateOriginalRecurrence('once');
+    setEditingSpecialDateOriginalMonth(null);
+    setEditingSpecialDateOriginalDay(null);
   };
 
   const deleteSlot = (slotId: any) => {
@@ -631,6 +859,8 @@ export default function AdminAvailSettings() {
                     selectedDate={selectedCalendarDate} 
                     onSelectDate={setSelectedCalendarDate} 
                     bookedDates={bookedDates} 
+                    disabledDates={specialDateMap}
+                    disabledAnnualDates={annualSpecialDateMap}
                     availableDays={dayAvailability} /* 🟢 NEW: Grays out toggled-off days! */
                 />
                 <div style={{ marginTop: '15px', fontSize: '12px', color: '#888', fontStyle: 'italic' }}>
@@ -648,25 +878,61 @@ export default function AdminAvailSettings() {
                         <tr>
                             <th style={{ textAlign: 'left', paddingBottom: '10px', borderBottom: '1px solid #eee' }}>Event</th>
                             <th style={{ textAlign: 'right', paddingBottom: '10px', borderBottom: '1px solid #eee' }}>Date</th>
+                            <th style={{ textAlign: 'right', paddingBottom: '10px', borderBottom: '1px solid #eee' }}>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {specialDates.length === 0 ? (
-                            <tr><td colSpan={2} style={{ textAlign: 'center', padding: '20px', color: '#999', fontStyle: 'italic' }}>No special dates added.</td></tr>
+                            <tr><td colSpan={3} style={{ textAlign: 'center', padding: '20px', color: '#999', fontStyle: 'italic' }}>No special dates added.</td></tr>
                         ) : (
-                            specialDates.map((item, index) => (
-                                <tr key={index}>
-                                    <td style={{ padding: '10px 0', fontSize: '13px' }}>{item.name}</td>
-                                    <td style={{ padding: '10px 0', fontSize: '13px', textAlign: 'right' }}>{item.date}</td>
+                            specialDates.map((item, index) => {
+                              const description = getSpecialEventDescription(item);
+                              return (
+                                <tr key={`${getSpecialEventDate(item)}-${index}`}>
+                                    <td style={{ padding: '10px 0', fontSize: '13px' }}>
+                                      <div style={{ fontWeight: 600 }}>{getSpecialEventName(item)}</div>
+                                      {description && (
+                                        <div style={{ color: '#777', fontSize: '12px', marginTop: '4px', lineHeight: 1.35 }}>
+                                          {description}
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td style={{ padding: '10px 0', fontSize: '13px', textAlign: 'right' }}>
+                                      <div>{getSpecialEventDisplayDate(item)}</div>
+                                      <div style={{ color: '#777', fontSize: '11px', marginTop: '4px', textTransform: 'capitalize' }}>
+                                        {getSpecialEventRecurrence(item) === 'annual' ? 'Every year' : 'One-time'}
+                                      </div>
+                                    </td>
+                                    <td style={{ padding: '10px 0', textAlign: 'right' }}>
+                                      <div style={{ display: 'inline-flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                        <button
+                                          type="button"
+                                          onClick={() => openEditSpecialDateModal(item)}
+                                          title="Edit special date"
+                                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+                                        >
+                                          <IoCreateOutline size={18} color="#3d67ee" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => deleteSpecialDate(item)}
+                                          title="Delete special date"
+                                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+                                        >
+                                          <IoTrashOutline size={18} color="#d32f2f" />
+                                        </button>
+                                      </div>
+                                    </td>
                                 </tr>
-                            ))
+                              );
+                            })
                         )}
                     </tbody>
                 </table>
               </div>
 
               <button 
-                onClick={() => setModalVisible2(true)}
+                onClick={openAddSpecialDateModal}
                 className="gradientBtn submitBtn" 
                 style={{ width: '100%', padding: '12px', margin: 0 }}
               >
@@ -798,19 +1064,60 @@ export default function AdminAvailSettings() {
         {/* ADD SPECIAL DATE MODAL */}
         {modalVisible2 && (
           <div className="modalOverlay">
-            <div className="modalContainer" style={{ width: '30%', minWidth: '350px', padding: '30px' }}>
-              <h2 style={{ fontSize: '22px', fontWeight: '700', marginBottom: '20px' }}>Add Special Event</h2>
+            <div className="modalContainer" style={{ width: '430px', maxWidth: '92vw', maxHeight: '90vh', overflowY: 'auto', padding: '30px' }}>
+              <h2 style={{ fontSize: '22px', fontWeight: '700', marginBottom: '20px' }}>
+                {editingSpecialDateOriginalDate ? 'Edit Special Event' : 'Add Special Event'}
+              </h2>
               
               <div className="formGroup">
                 <input type="text" placeholder="Event Name" value={eventName} onChange={(e) => setEventName(e.target.value)} className="formInput" />
               </div>
               <div className="formGroup">
-                <input type="date" placeholder="Event Date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} className="formInput" />
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '8px', color: '#333' }}>
+                  Special Event Type
+                </label>
+                <select
+                  value={eventRecurrence}
+                  onChange={(e) => setEventRecurrence(e.target.value as 'once' | 'annual')}
+                  className="formInput"
+                >
+                  <option value="annual">Annual Event</option>
+                  <option value="once">One-time Date</option>
+                </select>
+              </div>
+              <div className="formGroup">
+                <textarea
+                  placeholder="Event Description"
+                  value={eventDescription}
+                  onChange={(e) => setEventDescription(e.target.value)}
+                  className="formInput"
+                  rows={3}
+                  style={{ resize: 'vertical', minHeight: '76px', paddingTop: '12px' }}
+                />
+              </div>
+              <div className="formGroup">
+                <div style={{ fontSize: '13px', fontWeight: 600, marginBottom: '12px', color: '#333' }}>Event Date</div>
+                <CustomCalendar
+                  selectedDate={eventDate}
+                  onSelectDate={setEventDate}
+                  disabledDates={specialDateMapForForm}
+                  disabledAnnualDates={annualSpecialDateMapForForm}
+                  allowAllMonths={true}
+                />
+                <div style={{ marginTop: '10px', fontSize: '12px', color: eventDate ? '#3d67ee' : '#777', fontWeight: eventDate ? 600 : 400 }}>
+                  {eventDate
+                    ? eventRecurrence === 'annual'
+                      ? `Selected: ${getSpecialEventDisplayDate({ event_recurrence: 'annual', event_month: Number(eventDate.split('-')[1]), event_day: Number(eventDate.split('-')[2]) })} every year`
+                      : `Selected: ${eventDate}`
+                    : 'Select any date to close it for appointments.'}
+                </div>
               </div>
               
               <div style={{ display: 'flex', gap: '10px', marginTop: '25px' }}>
-                <button onClick={() => setModalVisible2(false)} style={{ flex: 1, padding: '10px', backgroundColor: '#f5f5f5', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#d32f2f', fontWeight: '600' }}>Cancel</button>
-                <button onClick={addEvent} style={{ flex: 1, padding: '10px', backgroundColor: '#3d67ee', border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'white', fontWeight: '600' }}>+ Add Event</button>
+                <button onClick={closeSpecialDateModal} style={{ flex: 1, padding: '10px', backgroundColor: '#f5f5f5', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#d32f2f', fontWeight: '600' }}>Cancel</button>
+                <button onClick={addEvent} style={{ flex: 1, padding: '10px', backgroundColor: '#3d67ee', border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'white', fontWeight: '600' }}>
+                  {editingSpecialDateOriginalDate ? 'Save Changes' : '+ Add Event'}
+                </button>
               </div>
             </div>
           </div>

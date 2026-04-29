@@ -60,7 +60,18 @@ interface TimeSlotRecord {
 
 interface SpecialDateRecord {
   event_date?: string;
+  event_recurrence?: string;
+  event_month?: number | string;
+  event_day?: number | string;
 }
+
+const getSpecialDateAnnualKey = (event: SpecialDateRecord) => {
+  const recurrence = String(event?.event_recurrence || 'once').toLowerCase();
+  if (recurrence !== 'annual') return '';
+  const month = Number(event?.event_month) || Number(String(event?.event_date || '').split('-')[1]);
+  const day = Number(event?.event_day) || Number(String(event?.event_date || '').split('-')[2]);
+  return month && day ? `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` : '';
+};
 
 const normalizeBranches = (payload: any): Branch[] => {
   const rawBranches = Array.isArray(payload)
@@ -272,6 +283,7 @@ const UserAppointmentBook: React.FC = () => {
   const [selectedTime,            setSelectedTime]            = useState<string | null>(null);
   const [dayAvailability,         setDayAvailability]         = useState<DayAvailabilityMap>({});
   const [specialDates,            setSpecialDates]            = useState<string[]>([]);
+  const [annualSpecialDates,      setAnnualSpecialDates]      = useState<string[]>([]);
   const [dayTimeSlots,            setDayTimeSlots]            = useState<string[]>([]);
   const [loadingAvailability,     setLoadingAvailability]     = useState(false);
   const [loadingTimeSlots,        setLoadingTimeSlots]        = useState(false);
@@ -417,14 +429,20 @@ const UserAppointmentBook: React.FC = () => {
           if (key) nextAvailability[key] = Boolean(day?.is_available);
         });
 
-        const nextSpecialDates = specialDatesResult.status === 'fulfilled' && Array.isArray(specialDatesResult.value?.specialDates)
+        const loadedSpecialDates = specialDatesResult.status === 'fulfilled' && Array.isArray(specialDatesResult.value?.specialDates)
           ? specialDatesResult.value.specialDates
-              .map((event: SpecialDateRecord) => String(event?.event_date ?? '').trim())
-              .filter(Boolean)
           : [];
+        const nextSpecialDates = loadedSpecialDates
+          .filter((event: SpecialDateRecord) => String(event?.event_recurrence || 'once').toLowerCase() !== 'annual')
+          .map((event: SpecialDateRecord) => String(event?.event_date ?? '').trim())
+          .filter(Boolean);
+        const nextAnnualSpecialDates = loadedSpecialDates
+          .map(getSpecialDateAnnualKey)
+          .filter(Boolean);
 
         setDayAvailability(nextAvailability);
         setSpecialDates(nextSpecialDates);
+        setAnnualSpecialDates(nextAnnualSpecialDates);
       })
       .finally(() => {
         if (!isCancelled) setLoadingAvailability(false);
@@ -1349,7 +1367,7 @@ const UserAppointmentBook: React.FC = () => {
                       const dateKey = toDateKey(date);
                       const isPast = date < new Date(new Date().setHours(0, 0, 0, 0));
                       const isEnabledDay = dayName ? Boolean(dayAvailability[dayName.toLowerCase()]) : false;
-                      const isSpecialDate = specialDates.includes(dateKey);
+                      const isSpecialDate = specialDates.includes(dateKey) || annualSpecialDates.includes(dateKey.slice(5));
 
                       return loadingAvailability || isPast || !isEnabledDay || isSpecialDate;
                     }}

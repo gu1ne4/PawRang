@@ -668,6 +668,12 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
                     </div>
                 )}
 
+                {!isProfileLocked && (
+                    <div style={{ marginBottom: '20px', padding: '10px 12px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b', fontSize: '12px', lineHeight: '18px' }}>
+                        Manual entries will be saved as Clinic-Created Appointments.
+                    </div>
+                )}
+
                 {/* SCROLLABLE BODY */}
                 <div style={{ overflowY: 'auto', paddingRight: '5px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     
@@ -1876,9 +1882,7 @@ export default function Schedule() {
             return;
         }
 
-        const invoiceType = (appointment.recordType || (appointment.is_walk_in ? 'walkin' : 'appointment')) === 'appointment'
-            ? 'appointment'
-            : 'walkin';
+        const invoiceType = 'appointment';
         const sourceRecordType = appointment.billingSourceType || invoiceType;
         const sourceRecordId = appointment.billingSourceId || appointment.dbId || appointment.id;
 

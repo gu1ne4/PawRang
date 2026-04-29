@@ -7,7 +7,8 @@ import {
   IoPersonOutline, IoMedkitOutline, IoCalendarClearOutline, IoCalendarOutline,
   IoTodayOutline, IoTimeOutline, IoDocumentTextOutline, IoSettingsOutline,
   IoLogOutOutline, IoNotifications, IoCheckmarkCircleOutline, IoCloseCircleOutline,
-  IoAlertCircleOutline, IoSearchSharp, IoFilterSharp, IoRefresh, IoEyeOutline, IoReceipt
+  IoAlertCircleOutline, IoSearchSharp, IoFilterSharp, IoRefresh, IoEyeOutline, IoReceipt,
+  IoListOutline
 } from 'react-icons/io5';
 
 // Import your merged CSS file
@@ -21,6 +22,8 @@ import { availabilityService } from './availabilityService';
 import UserDetailsView from './UserDetailsView';
 
 const BILLING_NAVIGATION_DELAY_MS = 450;
+const DEFAULT_HISTORY_ROWS_PER_PAGE = 10;
+const HISTORY_ROWS_PER_PAGE_OPTIONS = [10, 20, 50];
 
 // --- TYPESCRIPT INTERFACES ---
 interface CurrentUser {
@@ -56,10 +59,14 @@ export default function AdminHistory() {
   const [filterVisible, setFilterVisible] = useState(false);
   const [searchHovered, setSearchHovered] = useState(false);
   const [filterHovered, setFilterHovered] = useState(false);
+  const [rowsMenuVisible, setRowsMenuVisible] = useState(false);
+  const [rowsMenuHovered, setRowsMenuHovered] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [serviceFilter, setServiceFilter] = useState('all');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_HISTORY_ROWS_PER_PAGE);
   const [historyAppointments, setHistoryAppointments] = useState<any[]>([]);
   const [selectedHistoryAppointment, setSelectedHistoryAppointment] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -148,14 +155,30 @@ export default function AdminHistory() {
     const normalizedQuery = searchQuery.toLowerCase();
     const patientName = (app.name || app.patient_name || '').toLowerCase();
     const petName = (app.pet_name || app.petName || '').toLowerCase();
+    const normalizedStatus = (app.status || '').toLowerCase();
+    const isReadyForBilling = Boolean(app.canProceedToBilling && !app.hasBillingInvoice);
 
     if (searchQuery && !patientName.includes(normalizedQuery) && !petName.includes(normalizedQuery)) {
       return false;
     }
-    if (statusFilter !== 'all' && app.status !== statusFilter) return false;
+    if (statusFilter === 'ready_for_billing' && !isReadyForBilling) return false;
+    if (statusFilter !== 'all' && statusFilter !== 'ready_for_billing' && normalizedStatus !== statusFilter) return false;
     if (serviceFilter !== 'all' && app.service !== serviceFilter) return false;
     return true;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredAppointments.length / rowsPerPage));
+  const paginatedAppointments = filteredAppointments.slice(
+    page * rowsPerPage,
+    (page + 1) * rowsPerPage
+  );
+  useEffect(() => {
+    setPage(0);
+  }, [searchQuery, statusFilter, serviceFilter, rowsPerPage]);
+
+  useEffect(() => {
+    setPage((currentPage) => Math.min(currentPage, totalPages - 1));
+  }, [totalPages]);
 
   const getAppointmentDate = (appointment: any) => {
     if (appointment.date_display) return appointment.date_display;
@@ -224,9 +247,7 @@ export default function AdminHistory() {
       return;
     }
 
-    const invoiceType = (appointment.recordType || (appointment.is_walk_in ? 'walkin' : 'appointment')) === 'appointment'
-      ? 'appointment'
-      : 'walkin';
+    const invoiceType = 'appointment';
     const sourceRecordType = appointment.billingSourceType || invoiceType;
     const sourceRecordId = appointment.billingSourceId || appointment.dbId || appointment.id;
 
@@ -322,10 +343,57 @@ export default function AdminHistory() {
                   )}
 
                   <div className="toolbarItem" style={{ marginLeft: '15px' }} onMouseEnter={() => setFilterHovered(true)} onMouseLeave={() => setFilterHovered(false)}>
-                    <button className="iconButton" onClick={() => setFilterVisible(!filterVisible)}>
+                    <button
+                      className="iconButton"
+                      onClick={() => {
+                        setFilterVisible(!filterVisible);
+                        setRowsMenuVisible(false);
+                      }}
+                    >
                       <IoFilterSharp size={25} color={filterVisible ? "#afccf8" : "#3d67ee"} />
                     </button>
                     {filterHovered && <div className="tooltip">Filter</div>}
+                  </div>
+
+                  <div
+                    className="toolbarItem"
+                    onMouseEnter={() => setRowsMenuHovered(true)}
+                    onMouseLeave={() => setRowsMenuHovered(false)}
+                    style={{ marginLeft: '4px' }}
+                  >
+                    <button
+                      className="iconButton"
+                      aria-label="Rows per page"
+                      aria-expanded={rowsMenuVisible}
+                      onClick={() => {
+                        setRowsMenuVisible(!rowsMenuVisible);
+                        setFilterVisible(false);
+                      }}
+                    >
+                      <IoListOutline size={24} color={rowsMenuVisible ? "#afccf8" : "#3d67ee"} />
+                    </button>
+                    {rowsMenuHovered && !rowsMenuVisible && <div className="tooltip">Rows per page</div>}
+                    {rowsMenuVisible && (
+                      <div className="historyRowsMenu">
+                        <label className="historyRowsMenuLabel" htmlFor="historyRowsPerPage">
+                          Rows Per Page
+                        </label>
+                        <select
+                          id="historyRowsPerPage"
+                          value={rowsPerPage}
+                          onChange={(e) => {
+                            setRowsPerPage(Number(e.target.value));
+                            setRowsMenuVisible(false);
+                          }}
+                          className="filterSelect historyRowsMenuSelect"
+                          aria-label="Rows per page"
+                        >
+                          {HISTORY_ROWS_PER_PAGE_OPTIONS.map((option) => (
+                            <option key={option} value={option}>{option} per page</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
 
                   {filterVisible && (
@@ -334,9 +402,10 @@ export default function AdminHistory() {
                         value={statusFilter} 
                         onChange={(e) => setStatusFilter(e.target.value)}
                         className="filterSelect"
-                        style={{ width: '130px' }}
+                        style={{ width: '170px' }}
                       >
                         <option value="all" style={{color: '#a8a8a8'}}>All Status</option>
+                        <option value="ready_for_billing">Ready for Billing</option>
                         <option value="completed">Completed</option>
                         <option value="cancelled">Cancelled</option>
                         <option value="no_show">No-show</option>
@@ -395,8 +464,8 @@ export default function AdminHistory() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredAppointments.length > 0 ? (
-                        filteredAppointments.map((appointment) => {
+                      {paginatedAppointments.length > 0 ? (
+                        paginatedAppointments.map((appointment) => {
                           const appointmentKey = getHistoryAppointmentKey(appointment);
                           const isOpeningBilling = billingNavigationKey === appointmentKey;
                           return (
@@ -490,6 +559,27 @@ export default function AdminHistory() {
                   </table>
                 )}
               </div>
+              {!loading && filteredAppointments.length > 0 && (
+                <div className="pagination">
+                  <button
+                    className="paginationBtn"
+                    onClick={() => setPage((currentPage) => Math.max(0, currentPage - 1))}
+                    disabled={page === 0}
+                  >
+                    Previous
+                  </button>
+                  <span className="paginationInfo">
+                    Page {page + 1} of {totalPages}
+                  </span>
+                  <button
+                    className="paginationBtn"
+                    onClick={() => setPage((currentPage) => Math.min(totalPages - 1, currentPage + 1))}
+                    disabled={page >= totalPages - 1}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>

@@ -769,6 +769,31 @@ html, body {
   width: 150px;
 }
 
+.historyRowsMenu {
+  position: absolute;
+  top: 38px;
+  left: 0;
+  width: 176px;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid #d9dce6;
+  border-radius: 10px;
+  box-shadow: 0 8px 22px rgba(28, 40, 68, 0.16);
+  z-index: 50;
+}
+
+.historyRowsMenuLabel {
+  display: block;
+  color: #4b5565;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.historyRowsMenuSelect {
+  width: 100%;
+}
+
 .clearFilterBtn {
   background-color: #3d67ee;
   display: flex;

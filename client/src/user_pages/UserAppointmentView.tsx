@@ -95,12 +95,14 @@ const RescheduleCalendar = ({
   onSelectDate,
   availableDays = null,
   specialDates = [],
+  annualSpecialDates = [],
   disablePastDates = false,
 }: {
   selectedDate: string;
   onSelectDate: (date: string) => void;
   availableDays?: DayAvailability | null;
   specialDates?: string[];
+  annualSpecialDates?: string[];
   disablePastDates?: boolean;
 }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -110,6 +112,7 @@ const RescheduleCalendar = ({
   const canGoPrev = currentMonth > minMonth;
   const canGoNext = currentMonth < maxMonth;
   const specialDateSet = new Set(specialDates);
+  const annualSpecialDateSet = new Set(annualSpecialDates);
   const dayNamesList = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const todayStr = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
@@ -137,7 +140,7 @@ const RescheduleCalendar = ({
       const isToday = fullDate === todayStr;
       const isPast = disablePastDates && fullDate < todayStr;
       const isUnavailableDay = availableDays && availableDays[dayName] === false;
-      const isSpecialDate = specialDateSet.has(fullDate);
+      const isSpecialDate = specialDateSet.has(fullDate) || annualSpecialDateSet.has(`${monthStr}-${dayStr}`);
       const isDisabled = isPast || isUnavailableDay || isSpecialDate;
 
       let bgColor = 'transparent';
@@ -421,6 +424,7 @@ const UserAppointmentView: React.FC = () => {
   const [rescheduleParentModal,         setRescheduleParentModal]         = useState<AppointmentModalLayer | null>(null);
   const [rescheduleAvailableDays,       setRescheduleAvailableDays]       = useState<DayAvailability | null>(null);
   const [rescheduleSpecialDates,        setRescheduleSpecialDates]        = useState<string[]>([]);
+  const [rescheduleAnnualSpecialDates,  setRescheduleAnnualSpecialDates]  = useState<string[]>([]);
   const [rescheduleTimeSlots,           setRescheduleTimeSlots]           = useState<RescheduleTimeSlot[]>([]);
   const [loadingRescheduleSlots,        setLoadingRescheduleSlots]        = useState(false);
 
@@ -544,6 +548,7 @@ const UserAppointmentView: React.FC = () => {
     let isActive = true;
     setRescheduleAvailableDays(null);
     setRescheduleSpecialDates([]);
+    setRescheduleAnnualSpecialDates([]);
     setRescheduleTimeSlots([]);
 
     Promise.all([
@@ -552,9 +557,21 @@ const UserAppointmentView: React.FC = () => {
     ]).then(([dayAvailability, specialDates]) => {
       if (!isActive) return;
       setRescheduleAvailableDays(dayAvailability);
+      const loadedSpecialDates = Array.isArray(specialDates) ? specialDates : [];
       setRescheduleSpecialDates(
-        (Array.isArray(specialDates) ? specialDates : [])
+        loadedSpecialDates
+          .filter((event: any) => String(event?.event_recurrence || 'once').toLowerCase() !== 'annual')
           .map((event: any) => event?.event_date)
+          .filter(Boolean)
+      );
+      setRescheduleAnnualSpecialDates(
+        loadedSpecialDates
+          .map((event: any) => {
+            if (String(event?.event_recurrence || 'once').toLowerCase() !== 'annual') return '';
+            const month = Number(event?.event_month) || Number(String(event?.event_date || '').split('-')[1]);
+            const day = Number(event?.event_day) || Number(String(event?.event_date || '').split('-')[2]);
+            return month && day ? `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` : '';
+          })
           .filter(Boolean)
       );
     });
@@ -578,7 +595,7 @@ const UserAppointmentView: React.FC = () => {
     const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const monthAfterNext = new Date(today.getFullYear(), today.getMonth() + 2, 1);
     const monthAfterNextKey = `${monthAfterNext.getFullYear()}-${String(monthAfterNext.getMonth() + 1).padStart(2, '0')}-${String(monthAfterNext.getDate()).padStart(2, '0')}`;
-    const isBlockedSpecialDate = rescheduleSpecialDates.includes(newDate);
+    const isBlockedSpecialDate = rescheduleSpecialDates.includes(newDate) || rescheduleAnnualSpecialDates.includes(newDate.slice(5));
     const isAllowedDay = rescheduleAvailableDays ? Boolean(rescheduleAvailableDays[selectedDayName]) : true;
     const isWithinWindow = newDate >= todayKey && newDate < monthAfterNextKey;
 
@@ -613,7 +630,7 @@ const UserAppointmentView: React.FC = () => {
     return () => {
       isActive = false;
     };
-  }, [newDate, rescheduleAvailableDays, rescheduleModalVisible, rescheduleSpecialDates]);
+  }, [newDate, rescheduleAnnualSpecialDates, rescheduleAvailableDays, rescheduleModalVisible, rescheduleSpecialDates]);
 
   const handleLogout = () => {
     localStorage.removeItem('userSession');
@@ -1660,6 +1677,7 @@ const UserAppointmentView: React.FC = () => {
                         }}
                         availableDays={rescheduleAvailableDays}
                         specialDates={rescheduleSpecialDates}
+                        annualSpecialDates={rescheduleAnnualSpecialDates}
                         disablePastDates
                       />
                     </div>

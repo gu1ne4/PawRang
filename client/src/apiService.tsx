@@ -35,6 +35,10 @@ function getCacheTtl(path: string): number {
     return 10 * 1000;
   }
 
+  if (path.startsWith('/api/admin/analytics/overview')) {
+    return 30 * 1000;
+  }
+
   return 0;
 }
 
@@ -444,6 +448,21 @@ export const apiService = {
 
   getBranches() {
     return request('/branches');
+  },
+
+  getAdminAnalyticsOverview(params: {
+    branchId?: string | number | null;
+    startDate?: string;
+    endDate?: string;
+  } = {}) {
+    const query = new URLSearchParams();
+    if (params.branchId !== undefined && params.branchId !== null && params.branchId !== '' && params.branchId !== 'all') {
+      query.set('branchId', String(params.branchId));
+    }
+    if (params.startDate) query.set('startDate', params.startDate);
+    if (params.endDate) query.set('endDate', params.endDate);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    return request(`/api/admin/analytics/overview${suffix}`);
   },
 
   getAdminAppointmentSearchData() {
