@@ -6,8 +6,6 @@ import { createClient } from '@supabase/supabase-js';
 
 // Icons
 import './AdminStyles.css'; 
-import { MdNotificationsNone } from "react-icons/md";
-
 import { 
   IoPeopleOutline, 
   IoSearchSharp,
@@ -416,11 +414,9 @@ const AdminHome: React.FC = () => {
               buttonClassName="invIconButton"
               iconClassName="invBlueIcon"
               onViewAll={() => {
-                // Handle view all notifications
                 console.log('View all notifications');
               }}
               onNotificationClick={(notification) => {
-                // Handle individual notification click
                 if (notification.link) {
                   navigate(notification.link);
                 }

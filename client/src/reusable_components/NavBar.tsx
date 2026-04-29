@@ -7,6 +7,7 @@ import { TbLayoutSidebarLeftCollapse, TbLayoutSidebarRightCollapse } from "react
 import { CiBoxes } from "react-icons/ci";
 import { TbArrowsUpDown } from "react-icons/tb";
 import { IoIosArchive } from "react-icons/io";
+import petShieldLogo from '../assets/PetshieldLogo.png';
 
 // Icons
 import { 
@@ -24,10 +25,11 @@ import {
   IoDocumentTextOutline as IoDocumentText, 
   IoLayersOutline,  
   IoFileTrayFullOutline,
-  IoReceipt,
   IoArrowDownOutline,
   IoArrowUpOutline,
-  IoReceiptOutline
+  IoReceiptOutline,
+  IoCloseOutline,
+  IoMenuOutline
 } from 'react-icons/io5';
 
 interface NavbarProps {
@@ -58,6 +60,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isHoveringTitle, setIsHoveringTitle] = useState<boolean>(false);
+  const [isMobile, setIsMobile] = useState<boolean>(() => window.innerWidth <= 900);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   
   const accountDropdownRef = useRef<HTMLDivElement>(null);
   const appointmentsDropdownRef = useRef<HTMLDivElement>(null);
@@ -80,6 +84,19 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
   };
   
   // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth <= 900;
+      setIsMobile(mobile);
+      if (!mobile) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (accountDropdownRef.current && !accountDropdownRef.current.contains(event.target as Node)) {
@@ -114,7 +131,22 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
     }
   }, [location.pathname, isCollapsed]);
 
+  useEffect(() => {
+    if (isMobile) {
+      setIsCollapsed(false);
+    }
+  }, [isMobile]);
+
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
+
   const toggleNavbar = () => {
+    if (isMobile) {
+      setIsMobileMenuOpen((current) => !current);
+      return;
+    }
+
     const newCollapsedState = !isCollapsed;
     setIsCollapsed(newCollapsedState);
     localStorage.setItem('navbarCollapsed', JSON.stringify(newCollapsedState));
@@ -207,7 +239,28 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
 
   return (
     <>
-      <div className={`navbarContainer ${isCollapsed ? 'collapsed' : ''}`}>
+      {isMobile && (
+        <>
+          <button
+            type="button"
+            className="mobileNavToggle"
+            onClick={() => setIsMobileMenuOpen(true)}
+            aria-label="Open navigation menu"
+          >
+            <IoMenuOutline size={24} />
+          </button>
+          {isMobileMenuOpen && (
+            <button
+              type="button"
+              className="mobileNavBackdrop"
+              onClick={() => setIsMobileMenuOpen(false)}
+              aria-label="Close navigation menu"
+            />
+          )}
+        </>
+      )}
+
+      <div className={`navbarContainer ${isCollapsed ? 'collapsed' : ''} ${isMobile ? 'mobile' : ''} ${isMobileMenuOpen ? 'mobileOpen' : ''}`}>
         <div className="navBody navGradient">
           <div 
             className="navTitle"
@@ -215,20 +268,28 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
             onMouseLeave={() => setIsHoveringTitle(false)}
           >
             <div className="navLogoContainer">
-              {isCollapsed && isHoveringTitle ? (
+              {isCollapsed && !isMobile && isHoveringTitle ? (
                 <button className="navLogoCollapseBtn" onClick={toggleNavbar}>
                   <TbLayoutSidebarRightCollapse size={24} />
                 </button>
               ) : (
                 <img 
-                  src="/src/assets/AgsikapLogo-Temp.png"
-                  alt="PawRang Logo"
+                  src={petShieldLogo}
+                  alt="PetShield Logo"
                   className="navLogo"
                 />
               )}
-              {!isCollapsed && <span className="brandFont">PawRang</span>}
+              {(!isCollapsed || isMobile) && <span className="brandFont">PetShield</span>}
             </div>
-            {!isCollapsed && isHoveringTitle && (
+            {isMobile ? (
+              <button
+                className="navMobileCloseBtn"
+                onClick={() => setIsMobileMenuOpen(false)}
+                aria-label="Close navigation menu"
+              >
+                <IoCloseOutline size={22} />
+              </button>
+            ) : !isCollapsed && isHoveringTitle && (
               <button 
                 className="navCollapseBtn" 
                 onClick={toggleNavbar}
@@ -246,7 +307,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
                 alt="User"
                 className="navAvatar"
               />
-              {!isCollapsed && (
+              {(!isCollapsed || isMobile) && (
                 <div style={{lineHeight: '20px'}}>
                   <div className="navUserName">{currentUser ? currentUser.username : "Username Here"}</div>
                   <div className="navUserRole">{currentUser ? currentUser.role : "User Role Here"}</div>
@@ -255,7 +316,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
             </div>
           </div>
 
-          {!isCollapsed && <div className="navOverview">Overview</div>}
+          {(!isCollapsed || isMobile) && <div className="navOverview">Overview</div>}
 
           <div className="navGlassContainer scrollable-nav">
             <div className="navMenu">
@@ -592,10 +653,11 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout }) => {
                 {!isCollapsed && <span>Log Out</span>}
               </button>
             </div>
+            {(!isCollapsed || isMobile) && <div className="navPoweredBy">Powered by PawRang</div>}
           </div>
         </div>
       </div>
-      {renderTooltip()}
+      {!isMobile && renderTooltip()}
     </>
   );
 };

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
@@ -165,6 +165,7 @@ const AdminDashboard: React.FC = () => {
   // State
   const [date, setDate] = useState<Date>(new Date());
   const [showAllEvents, setShowAllEvents] = useState<boolean>(false);
+  const [viewportWidth, setViewportWidth] = useState<number>(() => window.innerWidth);
   
   // Refs
   const notificationsModalRef = useRef<NotificationsModalRef>(null);
@@ -279,8 +280,7 @@ const AdminDashboard: React.FC = () => {
   };
 
   const formatDate = (): string => {
-    const date = new Date();
-    return date.toLocaleDateString('en-US', { 
+    return new Date().toLocaleDateString('en-US', { 
       month: 'short', 
       day: 'numeric', 
       year: 'numeric' 
@@ -288,10 +288,9 @@ const AdminDashboard: React.FC = () => {
   };
 
   const formatTime = (): string => {
-    const date = new Date();
-    return date.toLocaleTimeString('en-US', { 
+    return new Date().toLocaleTimeString('en-US', { 
       hour: '2-digit', 
-      minute: '2-digit' 
+      minute: '2-digit'
     });
   };
 
@@ -310,6 +309,15 @@ const AdminDashboard: React.FC = () => {
   const handleQuickAction = (action: () => void) => {
     action();
   };
+
+  useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const isMobile = viewportWidth <= 900;
+  const isCompact = viewportWidth <= 640;
 
   // Custom tooltip for charts
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -359,6 +367,11 @@ const AdminDashboard: React.FC = () => {
     .sort((a, b) => a.date.localeCompare(b.date));
   
   const displayedEvents = showAllEvents ? upcomingEvents : upcomingEvents.slice(0, 5);
+  const dashboardHighlights = [
+    { label: 'Today Appointments', value: '18', helper: '6 due this afternoon' },
+    { label: 'Walk-In Queue', value: '4', helper: 'Average wait 12 mins' },
+    { label: 'Low Stock Alerts', value: '7', helper: '2 need urgent restocking' }
+  ];
 
   // Calculate totals from recent visits
 
@@ -367,12 +380,12 @@ const AdminDashboard: React.FC = () => {
       <Navbar currentUser={currentUser} onLogout={handleLogout} />
 
       {/* Main Content */}
-      <div className="bodyContainer" style={{paddingRight: '10px'}}>
-        <div className="doctorTableContainer">
+      <div className="bodyContainer" style={{ paddingRight: isMobile ? '0' : '10px' }}>
+        <div className="doctorTableContainer" style={{ flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '16px' : '20px', overflow: 'visible' }}>
           {/* Left Column */}
-          <div className="leftContainer" style={{ paddingRight: '15px' }}>
+          <div className="leftContainer" style={{ paddingRight: isMobile ? '0' : '15px', paddingLeft: isMobile ? '0' : '10px', overflow: 'visible' }}>
             {/* Doctor Profile Card */}
-            <div className="profileCard" style={{ marginBottom: '20px', minHeight: '140px' }}>
+            <div className="profileCard dashboardProfileCard" style={{ marginBottom: '20px', minHeight: '140px', backgroundColor: 'white' }}>
               <div className="profileHeader" style={{ minHeight: '100px', padding: '15px' }}>
                 <div className="profileInfo">
                   <div className="profileNameSection" style={{ marginLeft: '140px' }}>
@@ -393,18 +406,18 @@ const AdminDashboard: React.FC = () => {
                 </div>
               </div>
               <div className="profileAvatar" style={{ bottom: '-15px' }}>
-                <img 
+                <img
                   src={currentUser.image || '../assets/AgsikapLogo-Temp.png'}
                   alt={currentUser.name}
                   className="doctorAvatar"
-                  style={{width: "100px", height: "100px", borderRadius: "50%", objectFit: "cover", border: "4px solid white"}}
+                  style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', border: '4px solid white' }}
                 />
               </div>
             </div>
 
             {/* Monthly Reports - KPI Cards */}
-            <div style={{ marginBottom: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div className="dashboardSectionShell" style={{ marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '10px' : '0', marginBottom: '16px' }}>
                 <div>
                   <h3 className="sectionTitle" style={{ fontSize: '15px', marginTop: '0', marginBottom: '2px' }}>Monthly Reports</h3>
                   <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '0' }}>Overview of this month's clinic activity</p>
@@ -426,7 +439,7 @@ const AdminDashboard: React.FC = () => {
               
               <div style={{ 
                 display: 'grid', 
-                gridTemplateColumns: 'repeat(4, 1fr)', 
+                gridTemplateColumns: isCompact ? '1fr' : isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', 
                 gap: '12px'
               }}>
                 <KpiCard 
@@ -469,54 +482,43 @@ const AdminDashboard: React.FC = () => {
               </div>
             </div>
 
-                        {/* Quick Actions - PRETTIER & RESPONSIVE */}
-            <h3 className="sectionTitle" style={{ fontSize: '15px', marginBottom: '2px' }}>Quick Actions</h3>
-            <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '12px' }}>Frequently used tasks</p>
-            
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', 
-              gap: '10px', 
-              marginBottom: '30px'
-            }}>
-              {quickActions.map((action, index) => (
-                <button 
-                  key={index}
-                  onClick={() => handleQuickAction(action.action)}
-                  style={{ 
-                    padding: '12px 8px', 
-                    gap: '8px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: '14px',
-                    border: `1px solid ${action.borderColor}`,
-                    backgroundColor: action.bgColor,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    minWidth: '85px'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = action.hoverBg;
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = `0 4px 12px ${action.borderColor}30`;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = action.bgColor;
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                >
-                  <action.icon size={22} color={action.iconColor} />
-                  <span style={{ fontSize: '10px', fontWeight: 500, color: action.iconColor, textAlign: 'center' }}>{action.label}</span>
-                </button>
-              ))}
+            <div className="dashboardSectionShell dashboardActionShell">
+              <h3 className="sectionTitle" style={{ fontSize: '15px', marginBottom: '2px', marginTop: '0' }}>Quick Actions</h3>
+              <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '12px' }}>Frequently used tasks</p>
+              
+              <div className="dashboardActionGrid" style={{ 
+                gridTemplateColumns: isCompact ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fit, minmax(100px, 1fr))'
+              }}>
+                {quickActions.map((action, index) => (
+                  <button 
+                    key={index}
+                    onClick={() => handleQuickAction(action.action)}
+                    className="dashboardActionCard"
+                    style={{ 
+                      borderColor: action.borderColor,
+                      backgroundColor: action.bgColor
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = action.hoverBg;
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = `0 4px 12px ${action.borderColor}30`;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = action.bgColor;
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = 'none';
+                    }}
+                  >
+                    <action.icon size={22} color={action.iconColor} />
+                    <span style={{ fontSize: '10px', fontWeight: 500, color: action.iconColor, textAlign: 'center' }}>{action.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Weekly Activity Section */}
-            <div style={{ marginBottom: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div className="dashboardSectionShell" style={{ marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '10px' : '0', marginBottom: '16px' }}>
                 <div>
                   <h3 className="sectionTitle" style={{ fontSize: '15px', marginTop: '0', marginBottom: '2px' }}>Weekly Activity</h3>
                   <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '0' }}>Appointments vs Walk-ins this week</p>
@@ -526,14 +528,8 @@ const AdminDashboard: React.FC = () => {
             
 
               {/* Chart */}
-              <div style={{ 
-                backgroundColor: 'white', 
-                borderRadius: '16px', 
-                padding: '16px',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                border: '1px solid #f0f2f5'
-              }}>
-                <ResponsiveContainer width="100%" height={250}>
+              <div className="dashboardChartCard">
+                <ResponsiveContainer width="100%" height={isCompact ? 220 : 250}>
                   <ComposedChart data={recentVisitsData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="day" tick={{ fontSize: 11 }} />
@@ -549,7 +545,7 @@ const AdminDashboard: React.FC = () => {
             </div>
 
             {/* Inventory Movement Logs */}
-            <div className="appointmentsCard" style={{ padding: '15px', marginBottom: '15px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f0f2f5' }}>
+            <div className="appointmentsCard dashboardSoftCard" style={{ padding: '15px', marginTop: isMobile ? '18px' : '35px', marginBottom: '15px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f0f2f5' }}>
               <div className="cardHeader" style={{ marginBottom: '8px' }}>
                 <h3 className="cardTitle" style={{ fontSize: '14px', margin: 0 }}>Inventory Movement Logs</h3>
                 <button className="viewAllBtn" style={{ fontSize: '11px' }}>View All</button>
@@ -605,9 +601,9 @@ const AdminDashboard: React.FC = () => {
           </div>
 
           {/* Right Column */}
-          <div className="rightContainer" style={{ gap: '12px', flex: '0.7', overflowY: 'auto', paddingLeft: '2px' }}>
+          <div className="rightContainer" style={{ gap: '12px', flex: isMobile ? '1' : '0.7', overflowY: 'visible', paddingLeft: isMobile ? '0' : '2px' }}>
             {/* Notifications Section */}
-            <div className="notificationsCard" style={{ padding: '12px', height: 'auto', maxHeight: '320px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f0f2f5' }}>
+            <div className="notificationsCard dashboardSoftCard" style={{ padding: '12px', height: 'auto', maxHeight: isMobile ? 'none' : '320px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f0f2f5' }}>
               <div className="notificationsHeader" style={{ marginBottom: '10px', gap: '40px' }}>
                 <div className="notificationsTitle" style={{ minWidth: 'auto', gap: '6px' }}>
                   <IoNotificationsOutline size={14} />
@@ -641,7 +637,7 @@ const AdminDashboard: React.FC = () => {
             </div>
 
             {/* Calendar Component */}
-            <div className="calendarCard" style={{ marginTop: '0' }}>
+            <div className="calendarCard dashboardCalendarCard" style={{ marginTop: '0', width: '100%' }}>
               <div className="calendarGradient" style={{ padding: '8px', borderRadius: '16px' }}>
                 <Calendar
                   onChange={handleDateChange}
@@ -659,7 +655,7 @@ const AdminDashboard: React.FC = () => {
             </div>
 
             {/* Upcoming Events */}
-            <div style={{ 
+            <div className="dashboardSoftCard" style={{ 
               backgroundColor: 'white',
               borderRadius: '16px',
               padding: '15px',
@@ -707,7 +703,7 @@ const AdminDashboard: React.FC = () => {
                   {showAllEvents ? 'Show Less' : 'View All'}
                 </button>
               </div>
-              <div className="upcomingEventsList" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+              <div className="upcomingEventsList" style={{ maxHeight: isMobile ? 'none' : '350px', overflowY: 'auto' }}>
                 {displayedEvents.length > 0 ? (
                   displayedEvents.map(event => {
                     const eventDate = new Date(event.date);

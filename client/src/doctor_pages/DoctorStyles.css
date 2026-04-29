@@ -48,6 +48,136 @@
     min-height: 180px;
 }
 
+.dashboardHeroMeta {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 18px;
+    margin: 6px 10px 18px 10px;
+}
+
+.dashboardHeroEyebrow {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #3d67ee;
+    margin-bottom: 8px;
+}
+
+.dashboardHeroTitle {
+    font-size: 28px;
+    line-height: 1.18;
+    color: #16213e;
+    max-width: 760px;
+    margin: 0 0 8px 0;
+}
+
+.dashboardHeroSubtitle {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #64748b;
+    max-width: 760px;
+    margin: 0;
+}
+
+.dashboardHeroPill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #edf3ff;
+    color: #2f56d5;
+    border: 1px solid #cfdbff;
+    border-radius: 999px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.dashboardProfileCard {
+    box-shadow: 0 12px 28px rgba(17, 24, 39, 0.08);
+}
+
+.dashboardHighlightGrid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin: 0 0 22px 0;
+}
+
+.dashboardHighlightCard {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    border: 1px solid #e7eefb;
+    border-radius: 18px;
+    padding: 16px;
+    box-shadow: 0 8px 22px rgba(61, 103, 238, 0.05);
+}
+
+.dashboardHighlightCard span {
+    display: block;
+    font-size: 12px;
+    color: #64748b;
+    margin-bottom: 10px;
+}
+
+.dashboardHighlightCard strong {
+    display: block;
+    font-size: 24px;
+    color: #172554;
+    margin-bottom: 6px;
+}
+
+.dashboardHighlightCard small {
+    color: #64748b;
+    font-size: 11px;
+}
+
+.dashboardSectionShell {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid #edf2fb;
+    border-radius: 22px;
+    padding: 18px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.04);
+}
+
+.dashboardActionShell {
+    margin-bottom: 30px;
+}
+
+.dashboardActionGrid {
+    display: grid;
+    gap: 10px;
+}
+
+.dashboardActionCard {
+    padding: 12px 8px;
+    gap: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+    border-width: 1px;
+    border-style: solid;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 85px;
+}
+
+.dashboardChartCard {
+    background-color: white;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    border: 1px solid #f0f2f5;
+}
+
+.dashboardSoftCard {
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.05) !important;
+}
+
 .profileHeader {
     background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9, #0f3bca,  #3db6ee);
     border-radius: 12px 12px 12px 12px;
@@ -776,14 +906,15 @@
     background: transparent !important;
     color: white !important;
     border-radius: 50% !important;
-    aspect-ratio: 1 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     padding: 0 !important;
     font-size: 13px !important;
     padding: 8px !important;
-    max-width: 36px !important;
+    width: 100% !important;
+    min-height: 38px !important;
+    max-width: none !important;
     margin: 0 auto !important;
 }
 
@@ -836,6 +967,10 @@
 
 /* Responsive */
 @media (max-width: 1200px) {
+    .dashboardHighlightGrid {
+        grid-template-columns: 1fr;
+    }
+
     .profileNameSection {
         margin-left: 140px;
     }
@@ -850,6 +985,10 @@
 }
 
 @media (max-width: 768px) {
+    .dashboardHeroTitle {
+        font-size: 24px;
+    }
+
     .tableContainer {
         flex-direction: column;
     }
@@ -860,6 +999,114 @@
     
     .doctorName {
         font-size: 18px;
+    }
+}
+
+@media (max-width: 900px) {
+    .dashboardHeroMeta {
+        flex-direction: column;
+        margin: 0 0 16px 0;
+    }
+
+    .dashboardHeroTitle {
+        font-size: 24px;
+    }
+
+    .dashboardHighlightGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboardSectionShell {
+        padding: 16px;
+        border-radius: 18px;
+    }
+
+    .doctorTableContainer {
+        flex-direction: column;
+        gap: 16px;
+        height: auto;
+        overflow: visible;
+    }
+
+    .leftContainer,
+    .rightContainer {
+        width: 100%;
+        padding-left: 0;
+        padding-right: 0;
+        overflow: visible;
+    }
+
+    .leftContainer {
+        padding-top: 0;
+    }
+
+    .rightContainer {
+        gap: 16px;
+    }
+
+    .profileHeader {
+        border-radius: 18px;
+    }
+
+    .profileInfo {
+        align-items: center;
+    }
+
+    .profileNameSection {
+        margin-left: 0;
+        align-items: center;
+        text-align: center;
+    }
+
+    .profileDateTime {
+        margin-right: 0;
+        align-items: center;
+    }
+
+    .sectionTitle {
+        margin-top: 18px;
+    }
+
+    .appointmentsCard,
+    .notificationsCard,
+    .calendarCard {
+        margin-top: 0;
+        width: 100%;
+    }
+
+    .calendarCard .react-calendar {
+        width: 100% !important;
+    }
+}
+
+@media (max-width: 640px) {
+    .dashboardHeroTitle {
+        font-size: 22px;
+    }
+
+    .dashboardHeroSubtitle {
+        font-size: 13px;
+    }
+
+    .calendarGradient {
+        padding: 14px;
+    }
+
+    .calendarCard .react-calendar__navigation {
+        margin-bottom: 10px !important;
+    }
+
+    .calendarCard .react-calendar__navigation button {
+        font-size: 13px !important;
+        min-width: 24px !important;
+    }
+
+    .calendarCard .react-calendar__month-view__weekdays {
+        font-size: 9px !important;
+    }
+
+    .calendarCard .react-calendar__tile {
+        font-size: 11px !important;
     }
 }
 

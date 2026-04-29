@@ -45,10 +45,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Default route -> Send user to Login automatically */}
         <Route path="/" element={<Navigate to="/accounts" />} />
 
-        {/* Login Module Screens */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/forgot-password" element={<ForgotPassPage />} />
         <Route path="/change-pass-otp" element={<ChangePassOTP />} />
@@ -56,9 +54,8 @@ function App() {
         <Route path="/update-account" element={<UpdateAccPage />} />
         <Route path="/change-creds" element={<ChangeCreds />} />
 
-        {/* Admin Navigation Screens (These match your NavBar.tsx paths!) */}
         <Route path="/home" element={<AdminDashboard />} /> 
-        <Route path="/accounts" element={<AdminHome />} /> {/* Employees page */}
+        <Route path="/accounts" element={<AdminHome />} />
         <Route path="/useraccounts" element={<AdminUserAccPage />} />
         <Route path="/schedule" element={<AdminSchedule />} />
         <Route path="/availSettings" element={<AdminAvailSettings />} />
@@ -84,17 +81,8 @@ function App() {
         <Route path="/inventory-archive" element={<GlobalInventoryArchive/>} />
         <Route path='/billing' element={<GlobalBilling/>} />
 
-
-
         {/* Doctor Screens */}
         <Route path="/doctor-home" element={<DoctorHome />} />
-
-        {/* NOTE ON MODALS: 
-          I left the Modals out of the routing map. Usually, modals (like AdminRescheduleModal 
-          and AdminCancelAppointmentModal) shouldn't be their own separate web pages. 
-          Instead, you should import them directly into AdminSchedule.tsx and use a useState 
-          to pop them open (just like you did with your "Add Account Modal" in AdminHome.tsx).
-        */}
 
       </Routes>
     </BrowserRouter>

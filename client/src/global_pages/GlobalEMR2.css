@@ -3,6 +3,7 @@
 .emrRichTextEditorWrapper {
   position: relative;
   width: 100%;
+  overflow: visible;
 }
 
 /* Editor Label */
@@ -105,20 +106,22 @@
 .emrColorPickerContainer {
   position: relative;
   display: inline-block;
+  overflow: visible;
 }
 
 .emrColorPicker {
   position: absolute;
-  top: 100%;
-  right: 0; /* Align to the right side */
-  margin-top: 8px;
+  top: calc(100% + 8px);
+  right: 0;
   background-color: white;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
   padding: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
-  min-width: 260px;
+  z-index: 5000;
+  width: min(280px, calc(100vw - 32px));
+  min-width: 240px;
+  max-width: calc(100vw - 32px);
   animation: emrColorPickerFadeIn 0.2s ease;
 }
 
@@ -343,9 +346,9 @@
   }
   
   .emrColorPicker {
-    min-width: 240px;
-    right: auto;
-    left: 0;
+    right: 0;
+    left: auto;
+    min-width: min(240px, calc(100vw - 32px));
   }
   
   .emrColorWheelContainer {
