@@ -3837,6 +3837,266 @@ def normalize_inventory_log(record):
     }
 
 
+INVENTORY_AUDIT_SNAPSHOT_FIELDS = (
+    'inventory_item_id',
+    'branch_id',
+    'item_code',
+    'item_name',
+    'unit',
+    'category',
+    'base_price',
+    'selling_price',
+    'current_stock',
+    'critical_stock_level',
+    'no_expiration',
+    'expiration_date',
+    'use_max_quantity',
+    'max_quantity',
+    'is_archived',
+    'archived_at',
+    'archived_by',
+    'archive_reason',
+)
+
+
+INVENTORY_AUDIT_FIELD_LABELS = {
+    'item_code': 'code',
+    'item_name': 'name',
+    'unit': 'unit',
+    'category': 'category',
+    'base_price': 'base price',
+    'selling_price': 'selling price',
+    'current_stock': 'stock',
+    'critical_stock_level': 'critical stock level',
+    'expiration_date': 'expiration date',
+    'no_expiration': 'expiration setting',
+    'max_quantity': 'max quantity',
+    'use_max_quantity': 'max quantity setting',
+    'is_archived': 'archive state',
+}
+
+
+def get_inventory_audit_actor_payload(data=None, actor_id=None):
+    payload = dict(data) if isinstance(data, dict) else {}
+    if actor_id and not (
+        payload.get('actorId')
+        or payload.get('actor_id')
+        or payload.get('userId')
+        or payload.get('user_id')
+        or payload.get('processedBy')
+        or payload.get('processed_by')
+    ):
+        payload['actorId'] = actor_id
+        payload['userId'] = actor_id
+        payload['processedBy'] = actor_id
+    return payload
+
+
+def get_inventory_audit_snapshot(record):
+    if not record:
+        return {}
+    return {
+        field: serialize_audit_metadata_value(record.get(field))
+        for field in INVENTORY_AUDIT_SNAPSHOT_FIELDS
+        if field in record and record.get(field) not in (None, '')
+    }
+
+
+def get_inventory_audit_target(item=None, fallback_id=None):
+    item = item or {}
+    item_id = item.get('inventory_item_id') or item.get('id') or fallback_id
+    item_name = item.get('item_name') or item.get('item') or 'Inventory Item'
+    item_code = item.get('item_code') or item.get('code') or ''
+
+    if item_code:
+        return trim_audit_text(f"{item_name} ({item_code})", f"Inventory Item #{item_id}", 180)
+    if item_name:
+        return trim_audit_text(str(item_name), f"Inventory Item #{item_id}", 180)
+    return f"Inventory Item #{item_id}"
+
+
+def get_inventory_changed_fields(before_item, after_item):
+    before_item = before_item or {}
+    after_item = after_item or {}
+    changed_fields = []
+
+    for field_name, label in INVENTORY_AUDIT_FIELD_LABELS.items():
+        if before_item.get(field_name) != after_item.get(field_name):
+            changed_fields.append(label)
+
+    return changed_fields
+
+
+def get_inventory_threshold_state(item):
+    if not item:
+        return 'none'
+
+    raw_stock = item.get('current_stock')
+    if raw_stock is None and 'new_stock' in item:
+        raw_stock = item.get('new_stock')
+    if raw_stock is None:
+        return 'none'
+
+    current_stock = int(raw_stock or 0)
+    critical_stock_level = int(item.get('critical_stock_level') or 10)
+    if current_stock <= 0:
+        return 'out_of_stock'
+    if current_stock <= critical_stock_level:
+        return 'critical_stock'
+    if current_stock <= critical_stock_level + 10:
+        return 'low_stock'
+    return 'normal'
+
+
+def record_inventory_audit_event(
+    event,
+    item=None,
+    *,
+    actor_data=None,
+    actor_id=None,
+    old_record=None,
+    new_record=None,
+    summary='',
+    status='Success',
+    metadata=None,
+    target_type='inventory_item',
+    target_id=None,
+):
+    item = item or new_record or old_record or {}
+    resolved_target_id = target_id or item.get('inventory_item_id') or item.get('id')
+    audit_metadata = {
+        'item': get_inventory_audit_snapshot(item),
+    }
+    if old_record:
+        audit_metadata['old_record'] = get_inventory_audit_snapshot(old_record)
+    if new_record:
+        audit_metadata['new_record'] = get_inventory_audit_snapshot(new_record)
+    if metadata:
+        audit_metadata.update(serialize_audit_metadata_value(metadata))
+
+    record_system_audit_log({
+        **get_inventory_audit_actor_payload(actor_data, actor_id=actor_id),
+        'module': 'Inventory',
+        'event': event,
+        'target': get_inventory_audit_target(item, fallback_id=resolved_target_id),
+        'targetType': target_type,
+        'targetId': resolved_target_id,
+        'branchId': item.get('branch_id') or (new_record or {}).get('branch_id') or (old_record or {}).get('branch_id'),
+        'summary': summary,
+        'status': status,
+        'metadata': audit_metadata,
+    })
+
+
+def record_inventory_transaction_audit(result, payload, *, event=None, actor_data=None, metadata=None):
+    transaction = (result or {}).get('transaction') or {}
+    items = (result or {}).get('items') or []
+    transaction_type = (payload or {}).get('transaction_type')
+    reference_number = transaction.get('reference_number') or (payload or {}).get('reference_number')
+    item_count = len(items)
+    item_summary = summarize_inventory_transaction_items(items)
+
+    if not event:
+        event = 'Stock In Recorded' if transaction_type == 'IN' else 'Stock Out Recorded'
+
+    action_label = 'stock in' if transaction_type == 'IN' else 'stock out'
+    summary = f"Recorded {action_label} for {item_count} item(s): {item_summary}. Reference: {reference_number}."
+    if (payload or {}).get('reason'):
+        summary += f" Reason: {(payload or {}).get('reason')}."
+
+    record_system_audit_log({
+        **get_inventory_audit_actor_payload(actor_data or {}, actor_id=(payload or {}).get('processed_by')),
+        'module': 'Inventory',
+        'event': event,
+        'target': f"Inventory Transaction {reference_number}",
+        'targetType': 'inventory_transaction',
+        'targetId': transaction.get('inventory_transaction_id'),
+        'branchId': (payload or {}).get('branch_id'),
+        'summary': summary,
+        'status': 'Success',
+        'metadata': {
+            'reference_number': reference_number,
+            'transaction_type': transaction_type,
+            'transaction_id': transaction.get('inventory_transaction_id'),
+            'reason': (payload or {}).get('reason'),
+            'counterparty_name': (payload or {}).get('counterparty_name'),
+            'notes': (payload or {}).get('notes'),
+            'total_amount': (payload or {}).get('total_amount'),
+            'item_count': item_count,
+            'items': [
+                {
+                    'inventory_item_id': item.get('inventory_item_id'),
+                    'item_code': item.get('item_code'),
+                    'item_name': item.get('item_name'),
+                    'quantity': item.get('quantity'),
+                    'previous_stock': item.get('previous_stock'),
+                    'new_stock': item.get('new_stock'),
+                    'critical_stock_level': item.get('critical_stock_level'),
+                }
+                for item in items
+            ],
+            **(serialize_audit_metadata_value(metadata) if metadata else {}),
+        },
+    })
+
+
+def record_inventory_stock_threshold_audit(before_item, after_item, *, actor_id=None, source_event=None):
+    before_item = before_item or {}
+    after_item = after_item or {}
+    before_state = get_inventory_threshold_state(before_item)
+    after_state = get_inventory_threshold_state(after_item)
+    if after_state in {'none', 'normal'} or before_state == after_state:
+        return
+
+    event_lookup = {
+        'out_of_stock': 'Out Of Stock Reached',
+        'critical_stock': 'Critical Stock Reached',
+        'low_stock': 'Low Stock Reached',
+    }
+    event = event_lookup.get(after_state)
+    if not event:
+        return
+
+    current_stock = int((after_item or {}).get('current_stock') or (after_item or {}).get('new_stock') or 0)
+    critical_stock_level = int((after_item or {}).get('critical_stock_level') or (before_item or {}).get('critical_stock_level') or 10)
+    record_inventory_audit_event(
+        event,
+        after_item,
+        actor_id=actor_id,
+        old_record=before_item,
+        new_record=after_item,
+        summary=f"{get_inventory_audit_target(after_item)} stock changed from {before_item.get('current_stock', before_item.get('new_stock', 'unknown'))} to {current_stock}.",
+        status='Warning',
+        metadata={
+            'source_event': source_event,
+            'previous_state': before_state,
+            'new_state': after_state,
+            'current_stock': current_stock,
+            'critical_stock_level': critical_stock_level,
+        },
+    )
+
+
+def record_inventory_expiry_audit(item, days_until_expiry):
+    expiration_date = parse_iso_date((item or {}).get('expiration_date'))
+    if not expiration_date:
+        return
+
+    day_label = 'today' if days_until_expiry == 0 else f"in {days_until_expiry} day(s)"
+    record_inventory_audit_event(
+        'Expiry Risk Flagged',
+        item,
+        summary=f"{get_inventory_audit_target(item)} will expire {day_label} on {expiration_date.isoformat()}.",
+        status='Warning',
+        metadata={
+            'expiration_date': expiration_date.isoformat(),
+            'days_until_expiry': days_until_expiry,
+            'current_stock': int((item or {}).get('current_stock') or 0),
+            'critical_stock_level': int((item or {}).get('critical_stock_level') or 10),
+        },
+    )
+
+
 def build_employee_display_name(employee_id):
     if not employee_id:
         return "An admin"
@@ -4249,6 +4509,12 @@ def get_inventory_alert_state(item):
 def notify_inventory_stock_state_transition(before_item, after_item, actor_id=None, source_event=None):
     before_state = get_inventory_alert_state(before_item or {})
     after_state = get_inventory_alert_state(after_item or {})
+    record_inventory_stock_threshold_audit(
+        before_item or {},
+        after_item or {},
+        actor_id=actor_id,
+        source_event=source_event,
+    )
 
     if after_state == 'normal' or before_state == after_state:
         return None
@@ -4317,7 +4583,7 @@ def notify_inventory_item_expiring_soon(item, days_until_expiry):
         return None
 
     day_label = 'today' if days_until_expiry == 0 else f"in {days_until_expiry} day(s)"
-    return safe_create_inventory_admin_notification(
+    created_notification = safe_create_inventory_admin_notification(
         branch_id=branch_id,
         event_type='inventory_expiring_soon',
         title='Product expiring soon',
@@ -4337,6 +4603,9 @@ def notify_inventory_item_expiring_soon(item, days_until_expiry):
             'criticalStockLevel': int(item.get('critical_stock_level') or 10),
         },
     )
+    if created_notification:
+        record_inventory_expiry_audit(item, days_until_expiry)
+    return created_notification
 
 
 def reconcile_inventory_expiring_notifications(branch_id=None, expiry_windows=None, today=None):
@@ -7397,6 +7666,19 @@ def create_inventory_item():
         created = response.data[0] if response.data else None
         item_record = created or payload
         notify_inventory_item_created(item_record, actor_id=payload.get('created_by') or payload.get('updated_by'))
+        record_inventory_audit_event(
+            'Inventory Item Created',
+            item_record,
+            actor_data=data,
+            actor_id=payload.get('created_by') or payload.get('updated_by'),
+            new_record=item_record,
+            summary=f"Created inventory item {get_inventory_audit_target(item_record)} with {item_record.get('current_stock', 0)} unit(s).",
+            metadata={
+                'category': item_record.get('category'),
+                'unit': item_record.get('unit'),
+                'initial_stock': item_record.get('current_stock'),
+            },
+        )
         notify_inventory_stock_state_transition(
             {
                 'inventory_item_id': item_record.get('inventory_item_id'),
@@ -7436,6 +7718,19 @@ def update_inventory_item(item_id):
         updated = response.data[0] if response.data else get_single_row('inventory_items', 'inventory_item_id', item_id)
         updated_record = updated or existing
         notify_inventory_item_updated(existing, updated_record, actor_id=payload.get('updated_by'))
+        changed_fields = get_inventory_changed_fields(existing, updated_record)
+        record_inventory_audit_event(
+            'Inventory Item Updated',
+            updated_record,
+            actor_data=data,
+            actor_id=payload.get('updated_by'),
+            old_record=existing,
+            new_record=updated_record,
+            summary=f"Updated {get_inventory_audit_target(updated_record)}: {', '.join(changed_fields) if changed_fields else 'product details'}.",
+            metadata={
+                'changed_fields': changed_fields,
+            },
+        )
         notify_inventory_stock_state_transition(
             existing,
             updated_record,
@@ -7479,6 +7774,20 @@ def archive_inventory_item(item_id):
             actor_id=update_data.get('archived_by'),
             reason=update_data.get('archive_reason'),
         )
+        archived_record = archived or {**item, **update_data}
+        record_inventory_audit_event(
+            'Inventory Item Archived',
+            archived_record,
+            actor_data=data,
+            actor_id=update_data.get('archived_by'),
+            old_record=item,
+            new_record=archived_record,
+            summary=f"Archived {get_inventory_audit_target(archived_record)}." + (f" Reason: {update_data.get('archive_reason')}." if update_data.get('archive_reason') else ""),
+            status='Warning',
+            metadata={
+                'archive_reason': update_data.get('archive_reason'),
+            },
+        )
         return jsonify({'message': 'Inventory item archived successfully', 'item': normalize_inventory_item(archived or item)}), 200
     except Exception as e:
         print("Archive inventory item error:", str(e))
@@ -7517,6 +7826,16 @@ def restore_inventory_item(item_id):
             .execute()
         restored = response.data[0] if response.data else get_single_row('inventory_items', 'inventory_item_id', item_id)
         notify_inventory_item_restored(restored or item, actor_id=data.get('userId') or data.get('processedBy') or data.get('processed_by'))
+        restored_record = restored or {**item, 'is_archived': False, 'archived_at': None, 'archived_by': None, 'archive_reason': None}
+        record_inventory_audit_event(
+            'Inventory Item Restored',
+            restored_record,
+            actor_data=data,
+            actor_id=data.get('userId') or data.get('processedBy') or data.get('processed_by'),
+            old_record=item,
+            new_record=restored_record,
+            summary=f"Restored {get_inventory_audit_target(restored_record)} to active inventory.",
+        )
         return jsonify({'message': 'Inventory item restored successfully', 'item': normalize_inventory_item(restored or item)}), 200
     except Exception as e:
         print("Restore inventory item error:", str(e))
@@ -7530,6 +7849,7 @@ def create_inventory_stock_in():
         payload = build_inventory_transaction_payload(data, 'IN')
         result = persist_inventory_transaction(payload)
         notify_inventory_transaction_created(result, payload)
+        record_inventory_transaction_audit(result, payload, event='Stock In Recorded', actor_data=data)
         for item in (result.get('items') or []):
             notify_inventory_stock_state_transition(
                 {
@@ -7568,6 +7888,9 @@ def create_inventory_stock_out():
         payload = build_inventory_transaction_payload(data, 'OUT')
         result = persist_inventory_transaction(payload)
         notify_inventory_transaction_created(result, payload)
+        stock_out_reason = str(payload.get('reason') or '').strip().lower()
+        stock_out_event = 'Stock Out Recorded' if stock_out_reason == 'sale' else 'Stock Adjustment Recorded'
+        record_inventory_transaction_audit(result, payload, event=stock_out_event, actor_data=data)
         for item in (result.get('items') or []):
             notify_inventory_stock_state_transition(
                 {
@@ -8630,6 +8953,18 @@ def sync_billing_invoice_inventory_stock_out(invoice_record, product_items=None,
     for payload in payloads:
         result = persist_inventory_transaction(payload)
         notify_inventory_transaction_created(result, payload)
+        record_inventory_transaction_audit(
+            result,
+            payload,
+            event="Billing Stock Deducted",
+            actor_data={"processedBy": payload.get("processed_by")},
+            metadata={
+                "source_event": "billing_invoice_stock_out",
+                "billing_invoice_id": (invoice_record or {}).get("billing_invoice_id"),
+                "invoice_number": (invoice_record or {}).get("invoice_number"),
+                "customer_name": (invoice_record or {}).get("customer_name"),
+            },
+        )
         for item in (result.get("items") or []):
             notify_inventory_stock_state_transition(
                 {

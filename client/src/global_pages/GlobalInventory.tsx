@@ -9,6 +9,7 @@ import { downloadInventoryTemplate } from './pdf_generation/InventoryExcel';
 import ImportButton from '../reusable_components/ImportBtn';
 import ExportButton  from '../reusable_components/ExportBtn';
 import { parsePetShieldInventoryTemplate } from './inventoryImport';
+import { recordAuditLog } from '../auditLog';
 import { RiListSettingsLine } from "react-icons/ri";
 
 import { 
@@ -1150,6 +1151,23 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
           await fetchProducts();
 
           if (rowErrors.length > 0) {
+            void recordAuditLog({
+              module: 'Inventory',
+              event: 'Inventory Imported',
+              target: file.name,
+              targetType: 'inventory_import',
+              branchId,
+              summary: `Inventory import completed with issues. Created: ${createdCount}, Updated: ${updatedCount}, Errors: ${rowErrors.length}.`,
+              status: 'Warning',
+              metadata: {
+                file_name: file.name,
+                imported_rows: importedRows.length,
+                created_count: createdCount,
+                updated_count: updatedCount,
+                error_count: rowErrors.length,
+                errors: rowErrors,
+              },
+            });
             showAlert(
               'error',
               'Import Completed With Issues',
@@ -1158,6 +1176,21 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
             return true;
           }
 
+          void recordAuditLog({
+            module: 'Inventory',
+            event: 'Inventory Imported',
+            target: file.name,
+            targetType: 'inventory_import',
+            branchId,
+            summary: `Inventory import completed. Created: ${createdCount}, Updated: ${updatedCount}.`,
+            status: 'Success',
+            metadata: {
+              file_name: file.name,
+              imported_rows: importedRows.length,
+              created_count: createdCount,
+              updated_count: updatedCount,
+            },
+          });
           showAlert(
             'success',
             'Import Successful',
@@ -1188,6 +1221,19 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
       return await processImport();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to import inventory data.';
+      void recordAuditLog({
+        module: 'Inventory',
+        event: 'Import Failed',
+        target: file.name,
+        targetType: 'inventory_import',
+        branchId: BRANCH_ID_BY_NAME[selectedBranch],
+        summary: message,
+        status: 'Failed',
+        metadata: {
+          file_name: file.name,
+          error: message,
+        },
+      });
       showAlert('error', 'Import Failed', message);
       return false;
     }

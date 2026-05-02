@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { IoDownloadOutline, IoChevronDownOutline } from 'react-icons/io5';
+import { recordAuditLog } from '../auditLog';
 
 interface ExportButtonProps {
   products?: any[];
@@ -45,6 +46,18 @@ const ExportButton: React.FC<ExportButtonProps> = ({
     
     const { exportInventoryMovementExcel } = await import('../global_pages/pdf_generation/InventoryMovementExcel');
     await exportInventoryMovementExcel(logs);
+    void recordAuditLog({
+      module: 'Inventory',
+      event: 'Inventory Exported',
+      target: 'Inventory Movement Report',
+      targetType: 'inventory_export',
+      summary: `Exported inventory movement report with ${logs.length} row(s).`,
+      status: 'Success',
+      metadata: {
+        export_type: 'inventory_movement',
+        row_count: logs.length,
+      },
+    });
     setShowExportDropdown(false);
   };
 
@@ -57,6 +70,18 @@ const ExportButton: React.FC<ExportButtonProps> = ({
 
     const { exportInventoryData } = await import('../global_pages/pdf_generation/ExportInventoryExcel');
     await exportInventoryData(products);
+    void recordAuditLog({
+      module: 'Inventory',
+      event: 'Inventory Exported',
+      target: 'Inventory Stock Report',
+      targetType: 'inventory_export',
+      summary: `Exported inventory stock report with ${products.length} item(s).`,
+      status: 'Success',
+      metadata: {
+        export_type: 'inventory_stock',
+        row_count: products.length,
+      },
+    });
     setShowExportDropdown(false);
   };
 
@@ -110,6 +135,20 @@ const generateSalesReport = async () => {
   const { exportSalesReport } = await import('../global_pages/pdf_generation/InventorySalesReportExcel');
   const period = reportType === 'daily' ? selectedDate : selectedMonth;
   await exportSalesReport(formattedSalesData, reportType, period);
+  void recordAuditLog({
+    module: 'Inventory',
+    event: 'Inventory Exported',
+    target: 'Inventory Sales Report',
+    targetType: 'inventory_export',
+    summary: `Exported ${reportType} inventory sales report for ${period} with ${formattedSalesData.length} row(s).`,
+    status: 'Success',
+    metadata: {
+      export_type: 'inventory_sales',
+      report_type: reportType,
+      period,
+      row_count: formattedSalesData.length,
+    },
+  });
   
   setShowSalesReportModal(false);
   setSelectedDate('');
