@@ -1004,6 +1004,9 @@ LOGIN_SECURITY_TABLE = "login_lockouts"
 MAX_LOGIN_ATTEMPTS = 3
 BASE_LOCKOUT_MINUTES = 5
 LOCKOUT_INCREMENT_MINUTES = 20
+AUDIT_LOGS_TABLE = "audit_logs"
+AUDIT_LOGS_SETUP_MESSAGE = "Audit log table is not ready yet. Run backend/sql/audit_logs.sql first."
+AUDIT_LOG_STATUSES = {"Success", "Warning", "Failed"}
 login_security_store = {}
 
 
@@ -2541,6 +2544,212 @@ def parse_uuid_or_none(value):
         return None
 
 
+def trim_audit_text(value, default="", limit=500):
+    text = str(value or "").strip()
+    if not text:
+        text = default
+    return text[:limit]
+
+
+def normalize_audit_status(value):
+    raw_status = str(value or "Success").strip().lower()
+    if raw_status in {"success", "successful", "completed", "ok"}:
+        return "Success"
+    if raw_status in {"warning", "warn", "review", "needs review", "sensitive"}:
+        return "Warning"
+    if raw_status in {"failed", "failure", "error", "rejected", "blocked"}:
+        return "Failed"
+    return "Success"
+
+
+def normalize_audit_role(role):
+    role_value = str(role or "").strip()
+    lowered = role_value.lower()
+    if "admin" in lowered:
+        return "Admin"
+    if "vet" in lowered or "doctor" in lowered:
+        return "Veterinarian"
+    if "reception" in lowered or "front" in lowered:
+        return "Receptionist"
+    if "patient" in lowered or "user" in lowered or "client" in lowered or "owner" in lowered:
+        return "User"
+    return role_value or "System"
+
+
+def normalize_audit_account_type(value):
+    raw_value = str(value or "").strip().lower()
+    if raw_value in {"employee", "staff", "admin", "doctor", "vet", "veterinarian", "receptionist", "employee_accounts"}:
+        return "employee"
+    if raw_value in {"patient", "user", "client", "owner", "patient_account"}:
+        return "patient"
+    if raw_value == "system":
+        return "system"
+    return "unknown" if raw_value else None
+
+
+def get_audit_profile_display_name(profile):
+    if not profile:
+        return ""
+
+    first_name = profile.get("firstName") or profile.get("first_name") or ""
+    last_name = profile.get("lastName") or profile.get("last_name") or ""
+    return (
+        profile.get("username")
+        or f"{first_name} {last_name}".strip()
+        or profile.get("full_name")
+        or profile.get("fullname")
+        or profile.get("email")
+        or ""
+    )
+
+
+def resolve_audit_actor_context(data):
+    current_user = data.get("currentUser") or data.get("current_user") or {}
+    if not isinstance(current_user, dict):
+        current_user = {}
+
+    raw_actor_id = (
+        data.get("actorId")
+        or data.get("actor_id")
+        or data.get("userId")
+        or data.get("user_id")
+        or data.get("processedBy")
+        or data.get("processed_by")
+        or current_user.get("id")
+        or current_user.get("pk")
+    )
+    actor_account_id = parse_uuid_or_none(raw_actor_id)
+
+    actor = (
+        data.get("actor")
+        or data.get("actorName")
+        or data.get("actor_name")
+        or data.get("username")
+        or current_user.get("username")
+        or current_user.get("fullName")
+        or current_user.get("fullname")
+    )
+    raw_role = (
+        data.get("role")
+        or data.get("actorRole")
+        or data.get("actor_role")
+        or current_user.get("role")
+    )
+    actor_account_type = normalize_audit_account_type(
+        data.get("actorAccountType")
+        or data.get("actor_account_type")
+        or data.get("userType")
+        or data.get("user_type")
+        or current_user.get("account_type")
+    )
+
+    if actor_account_id:
+        try:
+            profile, source_table = find_account_by_user_id(actor_account_id)
+            if profile:
+                actor = actor or get_audit_profile_display_name(profile)
+                raw_role = raw_role or profile.get("role")
+                actor_account_type = "employee" if source_table == "employee_accounts" else "patient"
+        except Exception as profile_error:
+            print("Audit actor lookup failed:", str(profile_error))
+
+    return {
+        "actor": trim_audit_text(actor, "system", 160),
+        "actor_account_id": actor_account_id,
+        "actor_account_type": actor_account_type or "system",
+        "actor_role": normalize_audit_role(raw_role),
+    }
+
+
+def get_request_ip_address():
+    try:
+        forwarded_for = request.headers.get("X-Forwarded-For", "")
+        if forwarded_for:
+            return forwarded_for.split(",")[0].strip() or None
+        return request.remote_addr
+    except RuntimeError:
+        return None
+
+
+def get_request_user_agent():
+    try:
+        return request.headers.get("User-Agent")
+    except RuntimeError:
+        return None
+
+
+def normalize_audit_log(row):
+    if not row:
+        return None
+
+    return {
+        "id": row.get("audit_log_id") or row.get("id"),
+        "module": row.get("module") or "System",
+        "event": row.get("event") or "Action Recorded",
+        "actor": row.get("actor") or "system",
+        "role": row.get("actor_role") or row.get("role") or "System",
+        "target": row.get("target") or "System",
+        "summary": row.get("summary") or "",
+        "dateTime": row.get("created_at") or row.get("dateTime") or row.get("date_time"),
+        "status": normalize_audit_status(row.get("status")),
+    }
+
+
+def record_system_audit_log(data, *, raise_on_missing=False, raise_errors=False):
+    data = data or {}
+    if not isinstance(data, dict):
+        data = {}
+    actor_context = resolve_audit_actor_context(data)
+    metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+
+    try:
+        branch_id = coerce_int(
+            data.get("branchId", data.get("branch_id")),
+            "branch_id",
+            minimum=1,
+            allow_none=True,
+        )
+    except ValueError:
+        branch_id = None
+
+    payload = {
+        "module": trim_audit_text(data.get("module"), "System", 80),
+        "event": trim_audit_text(data.get("event"), "Action Recorded", 120),
+        "actor": actor_context["actor"],
+        "actor_account_id": actor_context["actor_account_id"],
+        "actor_account_type": actor_context["actor_account_type"],
+        "actor_role": actor_context["actor_role"],
+        "target": trim_audit_text(data.get("target"), "System", 180),
+        "target_type": trim_audit_text(data.get("targetType") or data.get("target_type"), "", 80) or None,
+        "target_id": trim_audit_text(data.get("targetId") or data.get("target_id"), "", 80) or None,
+        "summary": trim_audit_text(data.get("summary"), "", 700),
+        "status": normalize_audit_status(data.get("status")),
+        "branch_id": branch_id,
+        "metadata": metadata,
+        "ip_address": data.get("ipAddress") or data.get("ip_address") or get_request_ip_address(),
+        "user_agent": data.get("userAgent") or data.get("user_agent") or get_request_user_agent(),
+    }
+
+    try:
+        response = execute_with_retry(
+            lambda: supabase_admin.table(AUDIT_LOGS_TABLE).insert(payload).execute(),
+            context="Create audit log"
+        )
+        rows = response.data or []
+        return normalize_audit_log(rows[0] if rows else payload)
+    except Exception as e:
+        missing_table = (
+            is_missing_relation_error(e, AUDIT_LOGS_TABLE)
+            or is_missing_supabase_resource_error(e)
+        )
+        if missing_table and raise_on_missing:
+            raise RuntimeError(AUDIT_LOGS_SETUP_MESSAGE)
+        if raise_errors:
+            raise
+        print("Audit log insert failed:", str(e))
+        return None
+
+
 def resolve_appointment_target(target_id, record_type=None):
     normalized_type = (record_type or "").strip().lower()
 
@@ -2594,6 +2803,226 @@ def get_reschedule_email_context(table_name, id_column, record_id):
         "pet_name": pet.get("pet_name") or "your pet",
         "service_name": record.get("appointment_type") or "Appointment",
     }
+
+
+APPOINTMENT_AUDIT_SNAPSHOT_FIELDS = (
+    "appointment_id",
+    "walkin_id",
+    "owner_id",
+    "pet_id",
+    "branch_id",
+    "appointment_type",
+    "appointment_date",
+    "appointment_time",
+    "status",
+    "patient_reason",
+    "reschedule_reason",
+    "doctor_id",
+    "assigned_doctor_id",
+    "rescheduled_at",
+    "rescheduled_by",
+)
+
+
+def serialize_audit_metadata_value(value):
+    if isinstance(value, dict):
+        return {
+            str(key): serialize_audit_metadata_value(item)
+            for key, item in value.items()
+            if item not in (None, "")
+        }
+    if isinstance(value, list):
+        return [serialize_audit_metadata_value(item) for item in value]
+    if hasattr(value, "isoformat") and callable(value.isoformat):
+        return value.isoformat()
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def get_appointment_record_type(table_name=None, record_type=None, record=None):
+    normalized_type = str(record_type or "").strip().lower()
+    if normalized_type in {"walkin", "walk-in", "walkin_appointment"}:
+        return "walkin"
+    if normalized_type in {"appointment", "regular"}:
+        return "appointment"
+    if table_name == "walkin_appointments" or (record or {}).get("walkin_id") not in (None, ""):
+        return "walkin"
+    return "appointment"
+
+
+def get_appointment_record_id(record=None, fallback_id=None):
+    record = record or {}
+    return (
+        record.get("appointment_id")
+        or record.get("walkin_id")
+        or record.get("id")
+        or fallback_id
+    )
+
+
+def get_appointment_audit_snapshot(record):
+    if not record:
+        return {}
+    return {
+        field: serialize_audit_metadata_value(record.get(field))
+        for field in APPOINTMENT_AUDIT_SNAPSHOT_FIELDS
+        if field in record and record.get(field) not in (None, "")
+    }
+
+
+def get_appointment_audit_target(record=None, record_type=None, fallback_id=None, email_context=None):
+    record = record or {}
+    email_context = email_context or {}
+    target_id = get_appointment_record_id(record, fallback_id)
+    appointment_kind = "Walk-In Appointment" if get_appointment_record_type(record_type=record_type, record=record) == "walkin" else "Appointment"
+
+    patient_name = (
+        email_context.get("patient_name")
+        or f"{record.get('first_name', '')} {record.get('last_name', '')}".strip()
+    )
+    pet_name = (
+        email_context.get("pet_name")
+        or record.get("pet_name")
+        or record.get("petName")
+    )
+    service_name = (
+        email_context.get("service_name")
+        or record.get("appointment_type")
+        or record.get("service")
+    )
+
+    label_parts = [part for part in (pet_name, service_name) if part and part != "your pet"]
+    if label_parts:
+        return trim_audit_text(" - ".join(label_parts), f"{appointment_kind} #{target_id}", 180)
+    if patient_name and patient_name != "Patient":
+        return trim_audit_text(f"{patient_name} {appointment_kind} #{target_id}", f"{appointment_kind} #{target_id}", 180)
+    return f"{appointment_kind} #{target_id}"
+
+
+def get_appointment_audit_actor_fields(data=None, fallback_actor_id=None):
+    data = data or {}
+    current_user = data.get("currentUser") or data.get("current_user") or {}
+    if not isinstance(current_user, dict):
+        current_user = {}
+
+    actor_id = (
+        data.get("actorId")
+        or data.get("actor_id")
+        or data.get("userId")
+        or data.get("user_id")
+        or data.get("processedBy")
+        or data.get("processed_by")
+        or data.get("requested_by")
+        or data.get("cancelled_by")
+        or data.get("handledByUserId")
+        or data.get("handled_by_user_id")
+        or data.get("createdBy")
+        or data.get("created_by")
+        or current_user.get("id")
+        or current_user.get("pk")
+        or fallback_actor_id
+    )
+
+    actor = (
+        data.get("actor")
+        or data.get("actorName")
+        or data.get("actor_name")
+        or data.get("username")
+        or current_user.get("username")
+        or current_user.get("fullName")
+        or current_user.get("fullname")
+    )
+
+    role = (
+        data.get("role")
+        or data.get("actorRole")
+        or data.get("actor_role")
+        or current_user.get("role")
+    )
+
+    account_type = (
+        data.get("actorAccountType")
+        or data.get("actor_account_type")
+        or data.get("userType")
+        or data.get("user_type")
+        or current_user.get("account_type")
+        or current_user.get("accountType")
+    )
+
+    return {
+        "actorId": actor_id,
+        "actor": actor,
+        "role": role,
+        "actorAccountType": account_type,
+        "currentUser": current_user,
+    }
+
+
+def record_appointment_audit_event(
+    event,
+    record=None,
+    *,
+    table_name=None,
+    record_type=None,
+    fallback_id=None,
+    actor_data=None,
+    old_record=None,
+    new_record=None,
+    summary="",
+    status="Success",
+    metadata=None,
+    email_context=None,
+):
+    record = record or new_record or old_record or {}
+    target_type = get_appointment_record_type(table_name=table_name, record_type=record_type, record=record)
+    target_id = get_appointment_record_id(record, fallback_id)
+    fallback_actor_id = None if target_type == "walkin" else record.get("owner_id")
+
+    audit_metadata = {
+        "record_type": target_type,
+        "record_id": target_id,
+        "record": get_appointment_audit_snapshot(record),
+    }
+    if old_record:
+        audit_metadata["old_record"] = get_appointment_audit_snapshot(old_record)
+    if new_record:
+        audit_metadata["new_record"] = get_appointment_audit_snapshot(new_record)
+    if metadata:
+        audit_metadata.update(serialize_audit_metadata_value(metadata))
+
+    record_system_audit_log({
+        **get_appointment_audit_actor_fields(actor_data, fallback_actor_id=fallback_actor_id),
+        "module": "Appointments",
+        "event": event,
+        "target": get_appointment_audit_target(
+            record,
+            record_type=target_type,
+            fallback_id=target_id,
+            email_context=email_context,
+        ),
+        "targetType": target_type,
+        "targetId": target_id,
+        "branchId": record.get("branch_id") or (new_record or {}).get("branch_id") or (old_record or {}).get("branch_id"),
+        "summary": summary,
+        "status": status,
+        "metadata": audit_metadata,
+    })
+
+
+def get_appointment_status_audit_event(status):
+    normalized_status = str(status or "").strip().lower()
+    if normalized_status == "confirmed":
+        return "Appointment Accepted"
+    if normalized_status == "completed":
+        return "Appointment Completed"
+    if normalized_status == "cancelled":
+        return "Appointment Cancelled"
+    if normalized_status == "no_show":
+        return "Appointment Marked No-Show"
+    if normalized_status == "expired":
+        return "Appointment Expired"
+    return "Appointment Status Changed"
 
 
 def get_assigned_doctor_name_from_record(record):
@@ -4332,8 +4761,15 @@ def signup():
 # -----------------------------------------------
 @app.route('/login', methods=['POST'])
 def login():
-    data       = request.get_json()
-    identifier = (data.get('identifier') or '').strip()
+    data       = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        data = {}
+    identifier = (
+        data.get('identifier')
+        or data.get('username')
+        or data.get('email')
+        or ''
+    ).strip()
     password   = data.get('password')
     profile = None
 
@@ -4343,10 +4779,30 @@ def login():
     try:
         profile, source_table = find_account_by_identifier(identifier)
         if not profile:
+            record_system_audit_log({
+                "module": "Authentication",
+                "event": "Login Failed",
+                "actor": identifier or "unknown",
+                "role": "Unknown",
+                "target": "Login",
+                "summary": "No account matched the submitted email or username.",
+                "status": "Failed",
+            })
             return jsonify({"error": "No account found for that email or username."}), 401
 
         lockout_response = build_lockout_response(read_login_security_state(profile, identifier))
         if lockout_response:
+            record_system_audit_log({
+                "module": "Authentication",
+                "event": "Login Blocked",
+                "actorId": profile.get("id"),
+                "actor": get_audit_profile_display_name(profile),
+                "role": profile.get("role"),
+                "actorAccountType": source_table,
+                "target": "Login",
+                "summary": "Login attempt was blocked because the account is currently locked.",
+                "status": "Failed",
+            })
             return jsonify(lockout_response), 423
 
         email = profile.get('email')
@@ -4355,6 +4811,17 @@ def login():
         user = auth_response.user
         if not user:
             failure_response, status_code = record_failed_login_attempt(profile, identifier)
+            record_system_audit_log({
+                "module": "Authentication",
+                "event": "Login Failed",
+                "actorId": profile.get("id"),
+                "actor": get_audit_profile_display_name(profile),
+                "role": profile.get("role"),
+                "actorAccountType": source_table,
+                "target": "Login",
+                "summary": "Invalid password was submitted for this account.",
+                "status": "Failed",
+            })
             return jsonify(failure_response), status_code
 
         clear_login_security_state(profile, identifier)
@@ -4368,6 +4835,17 @@ def login():
             except Exception as mail_err:
                 print("OTP resend error during login:", str(mail_err))
 
+            record_system_audit_log({
+                "module": "Authentication",
+                "event": "Email Confirmation Required",
+                "actorId": profile.get("id"),
+                "actor": get_audit_profile_display_name(profile),
+                "role": profile.get("role"),
+                "actorAccountType": source_table,
+                "target": "Login",
+                "summary": "Login was paused because the email address is not confirmed.",
+                "status": "Warning",
+            })
             return jsonify({
                 "error": "Please confirm your email before logging in. A new code has been sent to your inbox.",
                 "email": email
@@ -4378,21 +4856,57 @@ def login():
             return jsonify({"error": "Authenticated user profile was not found."}), 404
 
         if fresh_source_table == 'employee_accounts' and fresh_profile.get('is_initial_login'):
+            record_system_audit_log({
+                "module": "Authentication",
+                "event": "Employee Setup Required",
+                "actorId": fresh_profile.get("id"),
+                "actor": get_audit_profile_display_name(fresh_profile),
+                "role": fresh_profile.get("role"),
+                "actorAccountType": fresh_source_table,
+                "target": "Employee Portal",
+                "summary": "Login was rejected until the employee finishes account setup.",
+                "status": "Warning",
+            })
             return jsonify({
                 "error": "Please finish setting up your employee account using the link sent to your email before logging in."
             }), 403
 
+        normalized_user = normalize_profile(fresh_profile, fresh_source_table)
+        record_system_audit_log({
+            "module": "Authentication",
+            "event": "Login Successful",
+            "actorId": normalized_user.get("id"),
+            "actor": normalized_user.get("username") or get_audit_profile_display_name(fresh_profile),
+            "role": normalized_user.get("role"),
+            "actorAccountType": normalized_user.get("account_type"),
+            "target": "Employee Portal" if fresh_source_table == "employee_accounts" else "Owner Portal",
+            "summary": "Authenticated using employee credentials." if fresh_source_table == "employee_accounts" else "Authenticated using owner credentials.",
+            "status": "Success",
+            "metadata": {"source_table": fresh_source_table},
+        })
         return jsonify({
             "message":      "Login successful!",
             "access_token": auth_response.session.access_token,
-            "user": normalize_profile(fresh_profile, fresh_source_table)
+            "user": normalized_user
         }), 200
 
     except Exception as e:
         print("Login error:", str(e))
         lowered = str(e).lower()
+        if is_transient_supabase_error(e) or "winerror 10061" in lowered:
+            return jsonify({"error": "Authentication service is temporarily unavailable. Please restart the backend and try again."}), 503
         if "invalid login credentials" in lowered or "invalid_credentials" in lowered:
             failure_response, status_code = record_failed_login_attempt(profile, identifier)
+            record_system_audit_log({
+                "module": "Authentication",
+                "event": "Login Failed",
+                "actorId": (profile or {}).get("id"),
+                "actor": get_audit_profile_display_name(profile) or identifier or "unknown",
+                "role": (profile or {}).get("role"),
+                "target": "Login",
+                "summary": "Invalid credentials were submitted for this account.",
+                "status": "Failed",
+            })
             return jsonify(failure_response), status_code
         return jsonify({"error": "Invalid credentials. Please try again."}), 401
 
@@ -5002,6 +5516,7 @@ def create_appointment_record(data, allow_walk_in=False):
         created_row = (response.data or [{}])[0]
         created_id = created_row.get('walkin_id') or created_row.get('id')
         email_sent = False
+        email_context = {}
 
         try:
             email_context = get_reschedule_email_context('walkin_appointments', 'walkin_id', created_id)
@@ -5019,6 +5534,22 @@ def create_appointment_record(data, allow_walk_in=False):
             )
         except Exception as email_error:
             print(f"Booking confirmation preparation error (walk-in): {email_error}")
+
+        record_appointment_audit_event(
+            "Walk-In Appointment Scheduled",
+            created_row,
+            table_name="walkin_appointments",
+            record_type="walkin",
+            fallback_id=created_id,
+            actor_data=data,
+            summary=f"Walk-in appointment scheduled for {created_row.get('appointment_date')} at {format_display_time(created_row.get('appointment_time'))}.",
+            metadata={
+                "email_sent": email_sent,
+                "service": created_row.get("appointment_type"),
+                "source": "clinic_created_walk_in",
+            },
+            email_context=email_context,
+        )
 
         return {
             "message": "Clinic-created appointment created!",
@@ -5060,6 +5591,7 @@ def create_appointment_record(data, allow_walk_in=False):
     created_row = (response.data or [{}])[0]
     created_id = created_row.get('appointment_id') or created_row.get('id')
     email_sent = False
+    email_context = {}
 
     try:
         email_context = get_reschedule_email_context('appointments', 'appointment_id', created_id)
@@ -5077,6 +5609,22 @@ def create_appointment_record(data, allow_walk_in=False):
         )
     except Exception as email_error:
         print(f"Booking confirmation preparation error: {email_error}")
+
+    record_appointment_audit_event(
+        "Appointment Scheduled",
+        created_row,
+        table_name="appointments",
+        record_type="appointment",
+        fallback_id=created_id,
+        actor_data=data,
+        summary=f"Appointment scheduled for {created_row.get('appointment_date')} at {format_display_time(created_row.get('appointment_time'))}.",
+        metadata={
+            "email_sent": email_sent,
+            "service": created_row.get("appointment_type"),
+            "source": "owner_booking" if data.get("owner_id") else "clinic_created",
+        },
+        email_context=email_context,
+    )
 
     return {
         "message": "Appointment created!",
@@ -5109,12 +5657,12 @@ def book_appointment():
 # -----------------------------------------------
 @app.route('/appointments/<int:appointment_id>/cancel', methods=['PATCH'])
 def cancel_appointment(appointment_id):
-    data          = request.get_json()
+    data          = request.get_json() or {}
     cancel_reason = data.get('cancel_reason', '')
 
     try:
         check = supabase_admin.table('appointments') \
-            .select('status') \
+            .select('*') \
             .eq('appointment_id', appointment_id) \
             .single() \
             .execute()
@@ -5130,6 +5678,25 @@ def cancel_appointment(appointment_id):
             "patient_reason": cancel_reason,
         }).eq('appointment_id', appointment_id).execute()
 
+        updated_record = {
+            **check.data,
+            "status": "cancelled",
+            "patient_reason": cancel_reason,
+        }
+        record_appointment_audit_event(
+            "Appointment Cancelled",
+            updated_record,
+            table_name="appointments",
+            record_type="appointment",
+            fallback_id=appointment_id,
+            actor_data=data,
+            old_record=check.data,
+            new_record=updated_record,
+            summary="Appointment cancelled." + (f" Reason: {cancel_reason}" if cancel_reason else ""),
+            status="Warning",
+            metadata={"cancel_reason": cancel_reason},
+        )
+
         return jsonify({"message": "Appointment cancelled successfully"}), 200
 
     except Exception as e:
@@ -5142,7 +5709,7 @@ def cancel_appointment(appointment_id):
 # -----------------------------------------------
 @app.route('/appointments/<int:appointment_id>/reschedule', methods=['PATCH'])
 def reschedule_appointment(appointment_id):
-    data              = request.get_json()
+    data              = request.get_json() or {}
     new_date          = data.get('new_date')
     new_time          = data.get('new_time')
     reschedule_reason = data.get('reschedule_reason', '')
@@ -5152,7 +5719,7 @@ def reschedule_appointment(appointment_id):
 
     try:
         check = supabase_admin.table('appointments') \
-            .select('status') \
+            .select('*') \
             .eq('appointment_id', appointment_id) \
             .single() \
             .execute()
@@ -5169,6 +5736,33 @@ def reschedule_appointment(appointment_id):
             "patient_reason":   reschedule_reason,
             "status":           "pending",
         }).eq('appointment_id', appointment_id).execute()
+
+        updated_record = {
+            **check.data,
+            "appointment_date": new_date,
+            "appointment_time": new_time,
+            "patient_reason": reschedule_reason,
+            "status": "pending",
+        }
+        record_appointment_audit_event(
+            "Appointment Rescheduled",
+            updated_record,
+            table_name="appointments",
+            record_type="appointment",
+            fallback_id=appointment_id,
+            actor_data=data,
+            old_record=check.data,
+            new_record=updated_record,
+            summary=f"Appointment rescheduled from {check.data.get('appointment_date')} {format_display_time(check.data.get('appointment_time'))} to {new_date} {format_display_time(new_time)}.",
+            status="Warning",
+            metadata={
+                "reschedule_reason": reschedule_reason,
+                "old_date": check.data.get("appointment_date"),
+                "old_time": check.data.get("appointment_time"),
+                "new_date": new_date,
+                "new_time": normalize_db_time(new_time),
+            },
+        )
 
         return jsonify({"message": "Reschedule request submitted successfully"}), 200
 
@@ -6124,7 +6718,85 @@ def patient_register():
 
 @app.route('/logout', methods=['POST'])
 def logout():
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        data = {}
+    record_system_audit_log({
+        **data,
+        "module": "Authentication",
+        "event": "Logout Successful",
+        "target": "User Session",
+        "summary": "User signed out of the application.",
+        "status": "Success",
+    })
     return jsonify({"message": "Logout acknowledged"}), 200
+
+
+@app.route('/api/audit-logs', methods=['GET'])
+def get_audit_logs():
+    try:
+        limit = coerce_int(request.args.get('limit'), 'limit', minimum=1, maximum=1000, default=300)
+        search = (request.args.get('search') or '').strip()
+        module = (request.args.get('module') or '').strip()
+        role = (request.args.get('role') or '').strip()
+        status = (request.args.get('status') or '').strip()
+
+        query = supabase_admin.table(AUDIT_LOGS_TABLE).select('*')
+        if module and module != 'All Modules':
+            query = query.eq('module', module)
+        if role and role != 'All Roles':
+            query = query.eq('actor_role', role)
+        if status and status != 'All Statuses':
+            query = query.eq('status', normalize_audit_status(status))
+        if search:
+            escaped_search = search.replace(',', '\\,')
+            query = query.or_(
+                f"module.ilike.%{escaped_search}%,"
+                f"event.ilike.%{escaped_search}%,"
+                f"actor.ilike.%{escaped_search}%,"
+                f"actor_role.ilike.%{escaped_search}%,"
+                f"target.ilike.%{escaped_search}%,"
+                f"summary.ilike.%{escaped_search}%"
+            )
+
+        response = execute_with_retry(
+            lambda: query.order('created_at', desc=True).limit(limit).execute(),
+            context='Fetch audit logs'
+        )
+        logs = [
+            normalized
+            for normalized in (normalize_audit_log(row) for row in (response.data or []))
+            if normalized
+        ]
+        return jsonify({"logs": logs}), 200
+    except Exception as e:
+        if (
+            is_missing_relation_error(e, AUDIT_LOGS_TABLE)
+            or is_missing_supabase_resource_error(e)
+        ):
+            return jsonify({"logs": [], "warning": AUDIT_LOGS_SETUP_MESSAGE}), 200
+        print("Fetch audit logs error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/audit-logs', methods=['POST'])
+def create_audit_log():
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        data = {}
+    if not str(data.get('module') or '').strip():
+        return jsonify({"error": "module is required"}), 400
+    if not str(data.get('event') or '').strip():
+        return jsonify({"error": "event is required"}), 400
+
+    try:
+        log = record_system_audit_log(data, raise_on_missing=True, raise_errors=True)
+        return jsonify({"message": "Audit log recorded", "log": log}), 201
+    except RuntimeError as setup_error:
+        return jsonify({"error": str(setup_error)}), 503
+    except Exception as e:
+        print("Create audit log error:", str(e))
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route('/api/billing/services', methods=['GET'])
@@ -6519,6 +7191,29 @@ def create_billing_invoice():
                 payment_history=created_payment_history,
                 payment_handler_lookup=build_billing_payment_handler_lookup(created_payment_history),
             )
+
+        if source_record_type in {"appointment", "walkin"} and source_record_id:
+            try:
+                source_table = "walkin_appointments" if source_record_type == "walkin" else "appointments"
+                source_id_column = "walkin_id" if source_record_type == "walkin" else "appointment_id"
+                source_record = get_single_row(source_table, source_id_column, source_record_id) or {}
+                record_appointment_audit_event(
+                    "Billing Generated From Appointment",
+                    source_record,
+                    table_name=source_table,
+                    fallback_id=source_record_id,
+                    actor_data=data,
+                    summary=f"Billing invoice {created_invoice.get('invoice_number')} was generated for this appointment.",
+                    status="Success",
+                    metadata={
+                        "billing_invoice_id": invoice_id,
+                        "invoice_number": created_invoice.get("invoice_number"),
+                        "total_amount": created_invoice.get("total_amount"),
+                        "payment_status": created_invoice.get("payment_status"),
+                    },
+                )
+            except Exception as audit_error:
+                print(f"Appointment billing audit error: {audit_error}")
 
         return jsonify({
             "message": "Invoice created successfully",
@@ -9672,12 +10367,16 @@ def build_admin_analytics_overview(branch_id=None, start_date=None, end_date=Non
         item for item in inventory_items
         if item["stock"] <= item["reorderPoint"] or item["daysUntilOut"] <= 3
     ]
-    if critical_inventory:
-        critical_item = critical_inventory[0]
+    for critical_item in critical_inventory[:5]:
         days_text = "soon" if critical_item["daysUntilOut"] >= 999 else f"in {critical_item['daysUntilOut']} days"
+        stock_context = (
+            f"stock is at {critical_item['stock']} unit(s), below the critical level of {critical_item['reorderPoint']}"
+            if critical_item["stock"] <= critical_item["reorderPoint"]
+            else f"recent movement projects stockout {days_text}"
+        )
         insights.append({
-            "id": "warning-stock",
-            "text": f"{critical_item['name']} is at risk of stockout {days_text} based on current stock and recent product movement",
+            "id": f"warning-stock-{critical_item['id']}",
+            "text": f"{critical_item['name']} needs inventory review because {stock_context}",
             "type": "warning",
             "icon": "💊",
             "action": "Review reorder quantity and supplier lead time",
@@ -9951,6 +10650,8 @@ def cancel_appointment_with_reason(appointment_id):
             appointment_id,
             data.get("recordType") or data.get("record_type")
         )
+        current_res = supabase_admin.table(table_name).select('*').eq(id_column, resolved_id).single().execute()
+        current_record = current_res.data or {}
         supabase_admin.table(table_name).update({
             "status": "cancelled",
             "patient_reason": cancel_reason,
@@ -9973,6 +10674,28 @@ def cancel_appointment_with_reason(appointment_id):
             )
         except Exception as email_error:
             print(f"Cancellation notification preparation error: {email_error}")
+
+        updated_record = {
+            **current_record,
+            "status": "cancelled",
+            "patient_reason": cancel_reason,
+        }
+        record_appointment_audit_event(
+            "Appointment Cancelled",
+            updated_record,
+            table_name=table_name,
+            fallback_id=resolved_id,
+            actor_data=data,
+            old_record=current_record,
+            new_record=updated_record,
+            summary="Appointment cancelled." + (f" Reason: {cancel_reason}" if cancel_reason else ""),
+            status="Warning",
+            metadata={
+                "cancel_reason": cancel_reason,
+                "email_sent": email_sent,
+            },
+            email_context=email_context if 'email_context' in locals() else None,
+        )
 
         return jsonify({
             "message": "Appointment cancelled successfully",
@@ -10038,6 +10761,26 @@ def create_admin_reschedule_request(appointment_id):
             context="Reschedule request email"
         )
 
+        record_appointment_audit_event(
+            "Reschedule Request Sent",
+            existing_record,
+            table_name=table_name,
+            fallback_id=resolved_id,
+            actor_data=data,
+            summary=f"Clinic requested reschedule from {existing_record.get('appointment_date')} {format_display_time(existing_record.get('appointment_time'))} to {new_date} {format_display_time(new_time)}.",
+            status="Warning",
+            metadata={
+                "request_id": request_row.get("request_id"),
+                "reason": reschedule_reason,
+                "email_sent": email_sent,
+                "old_date": existing_record.get("appointment_date"),
+                "old_time": existing_record.get("appointment_time"),
+                "proposed_date": new_date,
+                "proposed_time": normalize_db_time(new_time),
+            },
+            email_context=email_context,
+        )
+
         return jsonify({
             "message": "Reschedule request emailed to patient" + ("" if email_sent else " (email not sent)"),
             "emailSent": email_sent,
@@ -10100,6 +10843,23 @@ def create_patient_reschedule_request(appointment_id):
 
         request_row = (insert_res.data or [{}])[0]
 
+        record_appointment_audit_event(
+            "Patient Reschedule Requested",
+            existing_record,
+            table_name=table_name,
+            fallback_id=resolved_id,
+            actor_data=data,
+            summary=f"Patient requested preferred schedule {preferred_date} at {format_display_time(preferred_time)}.",
+            status="Warning",
+            metadata={
+                "request_id": request_row.get("request_id"),
+                "patient_note": patient_note,
+                "preferred_date": preferred_date,
+                "preferred_time": normalize_db_time(preferred_time),
+            },
+            email_context=email_context,
+        )
+
         return jsonify({
             "message": "Reschedule request submitted for clinic review",
             "requestId": request_row.get("request_id"),
@@ -10121,12 +10881,36 @@ def confirm_reschedule_request(token):
         return render_html_page("Request Already Processed", f"This reschedule request is already marked as {req.get('status')}.")
 
     try:
-        apply_reschedule_to_target(req, req.get("proposed_appointment_date"), req.get("proposed_appointment_time"))
+        table_name, id_column, resolved_id = apply_reschedule_to_target(req, req.get("proposed_appointment_date"), req.get("proposed_appointment_time"))
         supabase_admin.table('reschedule_requests').update({
             "status": "confirmed",
             "responded_at": datetime.utcnow().isoformat(),
             "patient_response_type": "confirm"
         }).eq('request_id', req.get('request_id')).execute()
+
+        email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+        record_appointment_audit_event(
+            "Reschedule Confirmed By Patient",
+            email_context.get("record") or {},
+            table_name=table_name,
+            fallback_id=resolved_id,
+            actor_data={
+                "actor": "Patient Email Link",
+                "role": "User",
+                "actorAccountType": "patient",
+            },
+            summary=f"Patient confirmed the proposed schedule {req.get('proposed_appointment_date')} at {format_display_time(req.get('proposed_appointment_time'))}.",
+            status="Warning",
+            metadata={
+                "request_id": req.get("request_id"),
+                "patient_response_type": "confirm",
+                "old_date": req.get("current_appointment_date"),
+                "old_time": req.get("current_appointment_time"),
+                "new_date": req.get("proposed_appointment_date"),
+                "new_time": normalize_db_time(req.get("proposed_appointment_time")),
+            },
+            email_context=email_context,
+        )
 
         return render_html_page(
             "Schedule Confirmed",
@@ -10159,6 +10943,26 @@ def cancel_reschedule_request(token):
             "response_note": "Cancelled by patient from email link",
             "patient_response_type": "cancel"
         }).eq('request_id', req.get('request_id')).execute()
+
+        email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+        record_appointment_audit_event(
+            "Appointment Cancelled By Patient",
+            email_context.get("record") or {},
+            table_name=table_name,
+            fallback_id=resolved_id,
+            actor_data={
+                "actor": "Patient Email Link",
+                "role": "User",
+                "actorAccountType": "patient",
+            },
+            summary="Patient cancelled the appointment from the reschedule email link.",
+            status="Warning",
+            metadata={
+                "request_id": req.get("request_id"),
+                "patient_response_type": "cancel",
+            },
+            email_context=email_context,
+        )
 
         return render_html_page(
             "Appointment Cancelled",
@@ -10229,6 +11033,30 @@ def choose_another_date(token):
             "patient_preferred_time": preferred_time or None,
             "patient_response_type": "choose_another_date"
         }).eq('request_id', req.get('request_id')).execute()
+
+        table_name, id_column, resolved_id = resolve_appointment_target(req.get('target_id'), req.get('target_type'))
+        email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+        record_appointment_audit_event(
+            "Patient Preferred Schedule Submitted",
+            email_context.get("record") or {},
+            table_name=table_name,
+            fallback_id=resolved_id,
+            actor_data={
+                "actor": "Patient Email Link",
+                "role": "User",
+                "actorAccountType": "patient",
+            },
+            summary=f"Patient requested another schedule: {preferred_date} at {format_display_time(preferred_time)}.",
+            status="Warning",
+            metadata={
+                "request_id": req.get("request_id"),
+                "patient_response_type": "choose_another_date",
+                "preferred_date": preferred_date,
+                "preferred_time": normalize_db_time(preferred_time),
+                "response_note": response_note,
+            },
+            email_context=email_context,
+        )
 
         return render_html_page(
             "Preference Sent",
@@ -10320,6 +11148,7 @@ def get_reschedule_requests():
 
 @app.route('/api/reschedule-requests/<int:request_id>/confirm', methods=['PUT'])
 def confirm_reschedule_request_from_web(request_id):
+    data = request.get_json(silent=True) or {}
     try:
         req, state = get_pending_reschedule_request_by_id(request_id)
         if state == "not_found":
@@ -10341,6 +11170,26 @@ def confirm_reschedule_request_from_web(request_id):
             "patient_response_type": "confirm"
         }).eq('request_id', request_id).execute()
 
+        email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+        record_appointment_audit_event(
+            "Reschedule Confirmed By Patient",
+            email_context.get("record") or {},
+            table_name=table_name,
+            fallback_id=resolved_id,
+            actor_data=data,
+            summary=f"Patient confirmed the proposed schedule {proposed_date} at {format_display_time(proposed_time)}.",
+            status="Warning",
+            metadata={
+                "request_id": request_id,
+                "patient_response_type": "confirm",
+                "old_date": req.get("current_appointment_date"),
+                "old_time": req.get("current_appointment_time"),
+                "new_date": proposed_date,
+                "new_time": normalize_db_time(proposed_time),
+            },
+            email_context=email_context,
+        )
+
         return jsonify({
             "message": "Appointment schedule confirmed successfully",
             "status": "confirmed",
@@ -10353,6 +11202,7 @@ def confirm_reschedule_request_from_web(request_id):
 
 @app.route('/api/reschedule-requests/<int:request_id>/cancel-appointment', methods=['PUT'])
 def cancel_appointment_from_reschedule_request(request_id):
+    data = request.get_json(silent=True) or {}
     try:
         req, state = get_pending_reschedule_request_by_id(request_id)
         if state == "not_found":
@@ -10377,6 +11227,22 @@ def cancel_appointment_from_reschedule_request(request_id):
             "response_note": combined_note,
             "patient_response_type": "cancel"
         }).eq('request_id', request_id).execute()
+
+        email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+        record_appointment_audit_event(
+            "Appointment Cancelled By Patient",
+            email_context.get("record") or {},
+            table_name=table_name,
+            fallback_id=resolved_id,
+            actor_data=data,
+            summary="Patient cancelled the appointment from the appointment details page.",
+            status="Warning",
+            metadata={
+                "request_id": request_id,
+                "patient_response_type": "cancel",
+            },
+            email_context=email_context,
+        )
 
         return jsonify({
             "message": "Appointment cancelled successfully",
@@ -10436,6 +11302,26 @@ def choose_another_date_from_web(request_id):
             "patient_response_type": "choose_another_date"
         }).eq('request_id', request_id).execute()
 
+        table_name, id_column, resolved_id = resolve_appointment_target(req.get('target_id'), req.get('target_type'))
+        email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+        record_appointment_audit_event(
+            "Patient Preferred Schedule Submitted",
+            email_context.get("record") or {},
+            table_name=table_name,
+            fallback_id=resolved_id,
+            actor_data=data,
+            summary=f"Patient requested another schedule: {preferred_date} at {format_display_time(preferred_time)}.",
+            status="Warning",
+            metadata={
+                "request_id": request_id,
+                "patient_response_type": "choose_another_date",
+                "preferred_date": preferred_date,
+                "preferred_time": normalize_db_time(preferred_time),
+                "response_note": response_note,
+            },
+            email_context=email_context,
+        )
+
         return jsonify({
             "message": "Preferred schedule sent to clinic for review",
             "status": "needs_new_schedule"
@@ -10446,6 +11332,7 @@ def choose_another_date_from_web(request_id):
 
 @app.route('/api/reschedule-requests/<int:request_id>/withdraw', methods=['PUT'])
 def withdraw_reschedule_request(request_id):
+    data = request.get_json(silent=True) or {}
     try:
         req = get_reschedule_request_by_id(request_id)
         if not req:
@@ -10465,6 +11352,23 @@ def withdraw_reschedule_request(request_id):
             "response_note": combined_note,
             "patient_response_type": "withdraw"
         }).eq('request_id', request_id).execute()
+
+        table_name, id_column, resolved_id = resolve_appointment_target(req.get('target_id'), req.get('target_type'))
+        email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+        record_appointment_audit_event(
+            "Reschedule Request Withdrawn",
+            email_context.get("record") or {},
+            table_name=table_name,
+            fallback_id=resolved_id,
+            actor_data=data,
+            summary="Patient withdrew an open reschedule request.",
+            status="Warning",
+            metadata={
+                "request_id": request_id,
+                "patient_response_type": "withdraw",
+            },
+            email_context=email_context,
+        )
 
         return jsonify({
             "message": "Reschedule request withdrawn successfully",
@@ -10506,6 +11410,7 @@ def review_reschedule_request(request_id):
                 "response_note": combined_note,
             }).eq('request_id', request_id).execute()
 
+            email_context = {}
             try:
                 email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
                 email_sent = send_appointment_email_safely(
@@ -10524,6 +11429,26 @@ def review_reschedule_request(request_id):
                 print(f"Reschedule accept email error: {email_error}")
                 email_sent = False
 
+            record_appointment_audit_event(
+                "Patient Preferred Schedule Accepted",
+                email_context.get("record") or {},
+                table_name=table_name,
+                fallback_id=resolved_id,
+                actor_data=data,
+                summary=f"Clinic accepted patient preferred schedule {preferred_date} at {format_display_time(preferred_time)}.",
+                status="Warning",
+                metadata={
+                    "request_id": request_id,
+                    "email_sent": email_sent,
+                    "admin_note": admin_note,
+                    "old_date": req.get("current_appointment_date"),
+                    "old_time": req.get("current_appointment_time"),
+                    "new_date": preferred_date,
+                    "new_time": normalize_db_time(preferred_time),
+                },
+                email_context=email_context,
+            )
+
             return jsonify({
                 "message": "Patient preferred schedule accepted",
                 "emailSent": email_sent
@@ -10535,9 +11460,9 @@ def review_reschedule_request(request_id):
                 "response_note": combined_note,
             }).eq('request_id', request_id).execute()
 
+            table_name, id_column, resolved_id = resolve_appointment_target(req.get('target_id'), req.get('target_type'))
+            email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
             try:
-                table_name, id_column, resolved_id = resolve_appointment_target(req.get('target_id'), req.get('target_type'))
-                email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
                 email_sent = send_appointment_email_safely(
                     send_reschedule_review_email,
                     email_context.get("email"),
@@ -10553,6 +11478,24 @@ def review_reschedule_request(request_id):
             except Exception as email_error:
                 print(f"Reschedule decline email error: {email_error}")
                 email_sent = False
+
+            record_appointment_audit_event(
+                "Patient Preferred Schedule Declined",
+                email_context.get("record") or {},
+                table_name=table_name,
+                fallback_id=resolved_id,
+                actor_data=data,
+                summary=f"Clinic declined patient preferred schedule {req.get('patient_preferred_date')} at {format_display_time(req.get('patient_preferred_time'))}.",
+                status="Warning",
+                metadata={
+                    "request_id": request_id,
+                    "email_sent": email_sent,
+                    "admin_note": admin_note,
+                    "preferred_date": req.get("patient_preferred_date"),
+                    "preferred_time": normalize_db_time(req.get("patient_preferred_time")),
+                },
+                email_context=email_context,
+            )
 
             return jsonify({
                 "message": "Patient preferred schedule declined",
@@ -10573,12 +11516,43 @@ def assign_doctor(appointment_id):
             appointment_id,
             data.get("recordType") or data.get("record_type")
         )
+        current_res = supabase_admin.table(table_name).select('*').eq(id_column, resolved_id).single().execute()
+        current_record = current_res.data or {}
+        old_doctor_id = current_record.get("doctor_id") or current_record.get("assigned_doctor_id")
+        updated_record = {**current_record}
         try:
             supabase_admin.table(table_name).update({"doctor_id": doctor_id}).eq(id_column, resolved_id).execute()
+            updated_record["doctor_id"] = doctor_id
         except Exception as update_error:
             if 'doctor_id' not in str(update_error):
                 raise
             supabase_admin.table(table_name).update({"assigned_doctor_id": doctor_id}).eq(id_column, resolved_id).execute()
+            updated_record["assigned_doctor_id"] = doctor_id
+
+        doctor_name = None
+        if doctor_id not in (None, ""):
+            try:
+                doctor = supabase_admin.table("employee_accounts").select("*").eq("id", doctor_id).single().execute().data or {}
+                doctor_name = get_profile_display_name(doctor)
+            except Exception as doctor_error:
+                print(f"Doctor audit lookup error: {doctor_error}")
+
+        record_appointment_audit_event(
+            "Doctor Changed" if old_doctor_id else "Doctor Assigned",
+            updated_record,
+            table_name=table_name,
+            fallback_id=resolved_id,
+            actor_data=data,
+            old_record=current_record,
+            new_record=updated_record,
+            summary=f"Assigned doctor changed to {doctor_name or doctor_id or 'Unassigned'}.",
+            status="Success",
+            metadata={
+                "old_doctor_id": old_doctor_id,
+                "new_doctor_id": doctor_id,
+                "new_doctor_name": doctor_name,
+            },
+        )
         return jsonify({"message": "Doctor assigned successfully"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -10720,6 +11694,7 @@ def update_admin_appointment_status(appointment_id):
         supabase_admin.table(table_name).update({"status": status}).eq(id_column, resolved_id).execute()
 
         email_sent = None
+        email_context = {}
         if status == 'confirmed':
             try:
                 email_context = get_reschedule_email_context(table_name, id_column, resolved_id)
@@ -10739,6 +11714,29 @@ def update_admin_appointment_status(appointment_id):
             except Exception as email_error:
                 print(f"Appointment confirmation email preparation error: {email_error}")
                 email_sent = False
+
+        updated_record = {
+            **current_record,
+            "status": status,
+        }
+        previous_status = current_record.get("status") or "unknown"
+        record_appointment_audit_event(
+            get_appointment_status_audit_event(status),
+            updated_record,
+            table_name=table_name,
+            fallback_id=resolved_id,
+            actor_data=data,
+            old_record=current_record,
+            new_record=updated_record,
+            summary=f"Appointment status changed from {previous_status} to {status}.",
+            status="Warning" if status in {"cancelled", "no_show", "expired"} else "Success",
+            metadata={
+                "old_status": previous_status,
+                "new_status": status,
+                "email_sent": email_sent,
+            },
+            email_context=email_context,
+        )
 
         return jsonify({
             "message": "Appointment status updated",

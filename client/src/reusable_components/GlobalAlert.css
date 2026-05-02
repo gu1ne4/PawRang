@@ -1,0 +1,138 @@
+.globalAlertOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(2px);
+}
+
+.globalAlertDialog {
+  width: min(440px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid #dbe6ff;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.2);
+}
+
+.globalAlertHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 18px 10px;
+}
+
+.globalAlertTitleGroup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.globalAlertTitleGroup h2 {
+  margin: 0;
+  color: #0b1f4d;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.globalAlertIcon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  color: #2458ff;
+  background: #eef4ff;
+}
+
+.globalAlertDialog--success .globalAlertIcon {
+  color: #047857;
+  background: #dcfce7;
+}
+
+.globalAlertDialog--error .globalAlertIcon {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
+.globalAlertDialog--warning .globalAlertIcon {
+  color: #b45309;
+  background: #fef3c7;
+}
+
+.globalAlertClose {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #dbe6ff;
+  border-radius: 8px;
+  color: #52627a;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.globalAlertClose:hover {
+  color: #0b1f4d;
+  background: #f5f8ff;
+}
+
+.globalAlertMessage {
+  margin: 0;
+  padding: 0 18px 18px 64px;
+  color: #344566;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.globalAlertActions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 18px 18px;
+  border-top: 1px solid #eef2ff;
+}
+
+.globalAlertPrimaryButton {
+  min-width: 88px;
+  height: 38px;
+  border: 1px solid #2458ff;
+  border-radius: 8px;
+  color: #ffffff;
+  background: #2458ff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.globalAlertPrimaryButton:hover {
+  background: #1747e8;
+}
+
+@media (max-width: 520px) {
+  .globalAlertOverlay {
+    align-items: flex-end;
+    padding: 16px;
+  }
+
+  .globalAlertDialog {
+    width: 100%;
+  }
+
+  .globalAlertMessage {
+    padding-left: 18px;
+  }
+}

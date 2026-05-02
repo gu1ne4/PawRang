@@ -132,6 +132,41 @@ async function request<T = any>(
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
+function getCurrentAuditUser(): any | null {
+  try {
+    const session = localStorage.getItem('userSession');
+    return session ? JSON.parse(session) : null;
+  } catch {
+    return null;
+  }
+}
+
+function withAuditActor<T extends Record<string, any>>(payload: T): T & Record<string, any> {
+  const currentUser = getCurrentAuditUser();
+  if (!currentUser) return payload;
+
+  const userId = currentUser.id || currentUser.pk;
+  const role = currentUser.role;
+  const normalizedRole = String(role || '').toLowerCase();
+  const accountType =
+    currentUser.account_type ||
+    currentUser.accountType ||
+    (normalizedRole.includes('patient') || normalizedRole.includes('owner') || normalizedRole.includes('user')
+      ? 'patient'
+      : 'employee');
+
+  return {
+    ...payload,
+    actorId: userId,
+    userId,
+    userType: accountType,
+    actorAccountType: accountType,
+    username: currentUser.username || currentUser.fullName || currentUser.fullname,
+    role,
+    currentUser,
+  };
+}
+
 export const apiService = {
 
   login(payload: { identifier: string; password: string }) {
@@ -218,35 +253,35 @@ export const apiService = {
   updateAppointmentStatus(appointmentId: string | number, status: string, recordType: string) {
     return request(`/api/appointments/${appointmentId}/status`, {
       method: 'PUT',
-      body: JSON.stringify({ status, recordType }),
+      body: JSON.stringify(withAuditActor({ status, recordType })),
     });
   },
 
   assignDoctor(appointmentId: string | number, doctorId: string | number, recordType: string) {
     return request(`/api/appointments/${appointmentId}/assign-doctor`, {
       method: 'PUT',
-      body: JSON.stringify({ doctorId, recordType }),
+      body: JSON.stringify(withAuditActor({ doctorId, recordType })),
     });
   },
 
   cancelAppointmentWithReason(appointmentId: string | number, data: any, recordType: string) {
     return request(`/api/appointments/${appointmentId}/cancel-with-reason`, {
       method: 'PUT',
-      body: JSON.stringify({ ...data, recordType }),
+      body: JSON.stringify(withAuditActor({ ...data, recordType })),
     });
   },
 
   createRescheduleRequest(appointmentId: string | number, data: any, recordType: string) {
     return request(`/api/appointments/${appointmentId}/reschedule`, {
       method: 'POST',
-      body: JSON.stringify({ ...data, recordType }),
+      body: JSON.stringify(withAuditActor({ ...data, recordType })),
     });
   },
 
   reviewRescheduleRequest(requestId: string | number, action: string, note?: string) {
     return request(`/api/reschedule-requests/${requestId}/review`, {
       method: 'PUT',
-      body: JSON.stringify({ action, note }),
+      body: JSON.stringify(withAuditActor({ action, note })),
     });
   },
 
@@ -267,7 +302,7 @@ export const apiService = {
   createAdminAppointment(payload: any) {
     return request('/api/appointments', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
@@ -361,14 +396,14 @@ export const apiService = {
   }) {
     return request('/appointments', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
   cancelAppointment(appointmentId: number, reason: string) {
     return request(`/appointments/${appointmentId}/cancel`, {
       method: 'PATCH',
-      body: JSON.stringify({ cancel_reason: reason }),
+      body: JSON.stringify(withAuditActor({ cancel_reason: reason })),
     });
   },
 
@@ -384,25 +419,28 @@ export const apiService = {
   ) {
     return request(`/api/appointments/${appointmentId}/request-reschedule`, {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
   withdrawRescheduleRequest(requestId: number) {
     return request(`/api/reschedule-requests/${requestId}/withdraw`, {
       method: 'PUT',
+      body: JSON.stringify(withAuditActor({})),
     });
   },
 
   confirmRescheduleRequest(requestId: number) {
     return request(`/api/reschedule-requests/${requestId}/confirm`, {
       method: 'PUT',
+      body: JSON.stringify(withAuditActor({})),
     });
   },
 
   cancelRescheduleAppointment(requestId: number) {
     return request(`/api/reschedule-requests/${requestId}/cancel-appointment`, {
       method: 'PUT',
+      body: JSON.stringify(withAuditActor({})),
     });
   },
 
@@ -416,7 +454,7 @@ export const apiService = {
   ) {
     return request(`/api/reschedule-requests/${requestId}/choose-another-date`, {
       method: 'PUT',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
@@ -583,9 +621,22 @@ export const apiService = {
   },
 
   logout() {
+    let currentUser: any = null;
+    try {
+      const session = localStorage.getItem('userSession');
+      currentUser = session ? JSON.parse(session) : null;
+    } catch {
+      currentUser = null;
+    }
+
     return request('/logout', {
       method: 'POST',
-      body: JSON.stringify({}),
+      body: JSON.stringify({
+        userId: currentUser?.id || currentUser?.pk,
+        userType: currentUser ? 'EMPLOYEE' : undefined,
+        username: currentUser?.username || currentUser?.fullName || currentUser?.fullname,
+        role: currentUser?.role,
+      }),
     });
   },
 

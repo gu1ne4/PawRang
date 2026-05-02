@@ -1673,10 +1673,18 @@ export default function Schedule() {
                     assignedDoctor: doctorId
                 }));
             }
-            window.alert('Success: ' + (result.message || 'Doctor assigned successfully!'));
+            showAlert(
+                'success',
+                'Doctor Assigned',
+                result.message || 'Doctor assigned successfully.'
+            );
             return result;
         } catch (error: any) {
-            window.alert('Error: ' + (error.message || 'Failed to assign doctor'));
+            showAlert(
+                'error',
+                'Assign Doctor Failed',
+                error.message || 'Failed to assign doctor.'
+            );
             throw error;
         }
     };
@@ -1690,7 +1698,7 @@ export default function Schedule() {
     const handleCancelWithReason = async (cancellationData: any) => {
         try {
             setLoading(true);
-            const currentUserId = 1; 
+            const currentUserId = currentUser?.id ?? currentUser?.pk ?? null;
             const fullCancelData = { ...cancellationData, cancelled_by: currentUserId };
             const result = await apiService.cancelAppointmentWithReason(
                 selectedAppointmentForCancel.dbId ?? selectedAppointmentForCancel.id,
@@ -1814,7 +1822,10 @@ export default function Schedule() {
     };
 
     const handleAcceptAppointment = (appointment: any) => {
-        if (!appointment || !appointment.id) { window.alert('Error: Invalid appointment data'); return; }
+        if (!appointment || !appointment.id) {
+            showAlert('error', 'Accept Appointment Failed', 'Invalid appointment data.');
+            return;
+        }
         setSelectedAppointmentForAction(appointment);
         setConfirmationType('accept');
         setConfirmationAction(() => async () => {
@@ -1827,16 +1838,21 @@ export default function Schedule() {
                 );
                 if (result) {
                     await loadAppointments({ silent: true });
-                    window.alert(
+                    const successMessage =
                         result.emailSent === false
                             ? 'Success with note: Appointment accepted and marked as confirmed. Confirmation email could not be sent.'
                             : appointment.assignedDoctor
                                 ? `Success: Appointment accepted and marked as confirmed. Patient notified by email with assigned doctor ${appointment.doctor || 'details'}.`
-                                : 'Success: Appointment accepted and marked as confirmed. Patient notified by email.'
+                                : 'Success: Appointment accepted and marked as confirmed. Patient notified by email.';
+
+                    showAlert(
+                        result.emailSent === false ? 'info' : 'success',
+                        result.emailSent === false ? 'Appointment Accepted' : 'Appointment Accepted',
+                        successMessage
                     );
                 }
             } catch (error: any) {
-                window.alert('Error: ' + (error.message || 'Failed to accept appointment.'));
+                showAlert('error', 'Accept Appointment Failed', error.message || 'Failed to accept appointment.');
             } finally {
                 setLoading(false);
                 setSelectedAppointmentForAction(null);

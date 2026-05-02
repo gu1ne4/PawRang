@@ -19,9 +19,10 @@ import {
 } from 'react-icons/io5';
 
 import './AdminStyles.css';
+import API_URL from '../API';
 import Navbar from '../reusable_components/NavBar';
 import Notifications from '../reusable_components/Notifications';
-import { getStoredAuditLogs, type AuditLogEntry } from './auditLogService';
+import { fetchAuditLogs, getStoredAuditLogs, type AuditLogEntry } from './auditLogService';
 
 interface CurrentUser {
   id?: string | number;
@@ -39,141 +40,6 @@ interface ModalConfigType {
   onConfirm: (() => void) | null;
   showCancel: boolean;
 }
-
-const MOCK_AUDIT_LOGS: AuditLogEntry[] = [
-  {
-    id: 1,
-    module: 'Authentication',
-    event: 'Login Successful',
-    actor: 'maggie.admin',
-    role: 'Admin',
-    target: 'Admin Portal',
-    summary: 'Authenticated using employee credentials.',
-    dateTime: '2026-04-28T08:45:00',
-    status: 'Success'
-  },
-  {
-    id: 2,
-    module: 'Employee Accounts',
-    event: 'Employee Created',
-    actor: 'maggie.admin',
-    role: 'Admin',
-    target: 'Dr. Sofia Reyes',
-    summary: 'Created veterinarian account and sent setup email.',
-    dateTime: '2026-04-28T08:12:00',
-    status: 'Success'
-  },
-  {
-    id: 3,
-    module: 'Patient Accounts',
-    event: 'Account Deactivated',
-    actor: 'frontdesk.anne',
-    role: 'Receptionist',
-    target: 'Luis Dela Cruz',
-    summary: 'Patient account was temporarily disabled.',
-    dateTime: '2026-04-28T07:50:00',
-    status: 'Warning'
-  },
-  {
-    id: 4,
-    module: 'Appointments',
-    event: 'Appointment Rescheduled',
-    actor: 'maggie.admin',
-    role: 'Admin',
-    target: 'Rocky - Vaccination',
-    summary: 'Moved appointment from 9:00 AM to 11:00 AM.',
-    dateTime: '2026-04-28T07:30:00',
-    status: 'Success'
-  },
-  {
-    id: 5,
-    module: 'Availability Settings',
-    event: 'Time Slot Removed',
-    actor: 'dr.sofia',
-    role: 'Veterinarian',
-    target: 'Monday 1:00 PM - 2:00 PM',
-    summary: 'Removed slot due to clinic procedure block.',
-    dateTime: '2026-04-27T18:22:00',
-    status: 'Warning'
-  },
-  {
-    id: 6,
-    module: 'Inventory',
-    event: 'Stock Out Recorded',
-    actor: 'frontdesk.anne',
-    role: 'Receptionist',
-    target: 'Canine Multivitamins',
-    summary: 'Issued 3 units for over-the-counter sale.',
-    dateTime: '2026-04-27T17:40:00',
-    status: 'Success'
-  },
-  {
-    id: 7,
-    module: 'EMR',
-    event: 'Medical Record Updated',
-    actor: 'dr.sofia',
-    role: 'Veterinarian',
-    target: 'Milo - Visit #12',
-    summary: 'Added prescriptions and laboratory findings.',
-    dateTime: '2026-04-27T16:05:00',
-    status: 'Success'
-  },
-  {
-    id: 8,
-    module: 'Billing',
-    event: 'Invoice Deleted',
-    actor: 'frontdesk.anne',
-    role: 'Receptionist',
-    target: 'INV-2026-0418',
-    summary: 'Draft invoice removed before payment posting.',
-    dateTime: '2026-04-27T15:48:00',
-    status: 'Failed'
-  },
-  {
-    id: 9,
-    module: 'Pet Profiles',
-    event: 'Pet Profile Added',
-    actor: 'client.portal',
-    role: 'User',
-    target: 'Coco',
-    summary: 'New cat profile registered by owner.',
-    dateTime: '2026-04-27T14:55:00',
-    status: 'Success'
-  },
-  {
-    id: 10,
-    module: 'Appointments',
-    event: 'Walk-In Created',
-    actor: 'frontdesk.anne',
-    role: 'Receptionist',
-    target: 'Guest - Bruno',
-    summary: 'Created walk-in appointment and auto-generated profile.',
-    dateTime: '2026-04-27T13:20:00',
-    status: 'Success'
-  },
-  {
-    id: 11,
-    module: 'Authentication',
-    event: 'Password Reset Requested',
-    actor: 'julia.owner',
-    role: 'User',
-    target: 'Owner Portal',
-    summary: 'OTP flow started for password recovery.',
-    dateTime: '2026-04-27T12:03:00',
-    status: 'Warning'
-  },
-  {
-    id: 12,
-    module: 'Inventory',
-    event: 'Product Restored',
-    actor: 'maggie.admin',
-    role: 'Admin',
-    target: 'Feline Dewormer',
-    summary: 'Archived item returned to active inventory.',
-    dateTime: '2026-04-27T10:25:00',
-    status: 'Success'
-  }
-];
 
 const MODULE_OPTIONS = [
   'All Modules',
@@ -219,7 +85,9 @@ export default function AdminAuditPage() {
   const [roleFilter, setRoleFilter] = useState('All Roles');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [selectedModule, setSelectedModule] = useState('All Modules');
-  const [settingsAuditLogs, setSettingsAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(true);
+  const [auditStatusMessage, setAuditStatusMessage] = useState('');
 
   const [modalVisible, setModalVisible] = useState(false);
   const [modalConfig, setModalConfig] = useState<ModalConfigType>({
@@ -261,34 +129,69 @@ export default function AdminAuditPage() {
   }, []);
 
   useEffect(() => {
-    setSettingsAuditLogs(getStoredAuditLogs());
+    let isMounted = true;
 
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === 'petshieldSettingsAuditLogs') {
-        setSettingsAuditLogs(getStoredAuditLogs());
+    const loadAuditLogs = async () => {
+      setAuditLoading(true);
+      try {
+        const result = await fetchAuditLogs();
+        if (!isMounted) return;
+        setAuditLogs(result.logs);
+        setAuditStatusMessage(result.warning || '');
+      } catch (error) {
+        if (!isMounted) return;
+        const fallbackLogs = getStoredAuditLogs();
+        setAuditLogs(fallbackLogs);
+        setAuditStatusMessage(
+          fallbackLogs.length > 0
+            ? 'Audit API is unavailable. Showing unsynced local settings logs.'
+            : error instanceof Error ? error.message : 'Unable to load audit logs.'
+        );
+      } finally {
+        if (isMounted) setAuditLoading(false);
       }
     };
 
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    loadAuditLogs();
+    window.addEventListener('focus', loadAuditLogs);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', loadAuditLogs);
+    };
   }, []);
 
   const handleLogoutPress = () => {
     showAlert('confirm', 'Log Out', 'Are you sure you want to log out?', async () => {
+      try {
+        if (currentUser) {
+          await fetch(`${API_URL}/logout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: currentUser.id || currentUser.pk,
+              userType: 'EMPLOYEE',
+              username: currentUser.username || currentUser.fullName,
+              role: currentUser.role
+            })
+          });
+        }
+      } catch (error) {
+        console.error('Logout audit failed:', error);
+      }
       localStorage.removeItem('userSession');
       setCurrentUser(null);
       navigate('/Login');
     }, true);
   };
 
-  const auditLogs = useMemo(() => {
-    return [...settingsAuditLogs, ...MOCK_AUDIT_LOGS].sort(
+  const orderedAuditLogs = useMemo(() => {
+    return [...auditLogs].sort(
       (firstLog, secondLog) => new Date(secondLog.dateTime).getTime() - new Date(firstLog.dateTime).getTime()
     );
-  }, [settingsAuditLogs]);
+  }, [auditLogs]);
 
   const filteredLogs = useMemo(() => {
-    return auditLogs.filter((log) => {
+    return orderedAuditLogs.filter((log) => {
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch =
         searchLower === '' ||
@@ -305,7 +208,7 @@ export default function AdminAuditPage() {
 
       return matchesSearch && matchesModule && matchesRole && matchesStatus;
     });
-  }, [auditLogs, moduleFilter, roleFilter, searchQuery, selectedModule, statusFilter]);
+  }, [orderedAuditLogs, moduleFilter, roleFilter, searchQuery, selectedModule, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredLogs.length / itemsPerPage));
   const paginatedLogs = filteredLogs.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
@@ -316,48 +219,48 @@ export default function AdminAuditPage() {
   );
 
   const summaryStats = useMemo(() => {
-    const total = auditLogs.length;
-    const success = auditLogs.filter((log) => log.status === 'Success').length;
-    const warning = auditLogs.filter((log) => log.status === 'Warning').length;
-    const failed = auditLogs.filter((log) => log.status === 'Failed').length;
+    const total = orderedAuditLogs.length;
+    const success = orderedAuditLogs.filter((log) => log.status === 'Success').length;
+    const warning = orderedAuditLogs.filter((log) => log.status === 'Warning').length;
+    const failed = orderedAuditLogs.filter((log) => log.status === 'Failed').length;
 
     return { total, success, warning, failed };
-  }, [auditLogs]);
+  }, [orderedAuditLogs]);
 
   const moduleCards = useMemo(() => {
     return [
       {
         title: 'Authentication',
-        count: auditLogs.filter((log) => log.module === 'Authentication').length,
+        count: orderedAuditLogs.filter((log) => log.module === 'Authentication').length,
         detail: 'Logins, logouts, and credential flows',
         icon: <IoShieldCheckmarkOutline size={22} />
       },
       {
         title: 'Appointments',
-        count: auditLogs.filter((log) => log.module === 'Appointments').length,
+        count: orderedAuditLogs.filter((log) => log.module === 'Appointments').length,
         detail: 'Scheduling, completion, and rescheduling',
         icon: <IoCalendarOutline size={22} />
       },
       {
         title: 'Settings',
-        count: auditLogs.filter((log) => log.module === 'Settings').length,
+        count: orderedAuditLogs.filter((log) => log.module === 'Settings').length,
         detail: 'Homepage, services, prices, and publishing changes',
         icon: <IoSettingsOutline size={22} />
       },
       {
         title: 'Inventory',
-        count: auditLogs.filter((log) => log.module === 'Inventory').length,
+        count: orderedAuditLogs.filter((log) => log.module === 'Inventory').length,
         detail: 'Stock movements and archive actions',
         icon: <IoAlbumsOutline size={22} />
       },
       {
         title: 'Records & Billing',
-        count: auditLogs.filter((log) => log.module === 'EMR' || log.module === 'Billing').length,
+        count: orderedAuditLogs.filter((log) => log.module === 'EMR' || log.module === 'Billing').length,
         detail: 'Medical records, invoices, and sensitive edits',
         icon: <IoDocumentTextOutline size={22} />
       }
     ];
-  }, [auditLogs]);
+  }, [orderedAuditLogs]);
 
   useEffect(() => {
     setPage(0);
@@ -392,7 +295,7 @@ export default function AdminAuditPage() {
         </div>
 
         <div className="tableContainer auditTableContainer">
-          {loading ? (
+          {loading || auditLoading ? (
             <div className="loadingContainer"><div className="spinner"></div></div>
           ) : (
             <>
@@ -401,7 +304,7 @@ export default function AdminAuditPage() {
                   <div className="auditHeroText">
                     <span className="auditEyebrow">Clinic Oversight</span>
                     <h2>Centralized visibility for every important system action.</h2>
-                    <p>Preview how audit logs can be grouped across authentication, appointments, settings, records, inventory, and billing before backend wiring starts.</p>
+                    <p>Review real audit logs grouped across authentication, appointments, settings, records, inventory, and billing.</p>
                   </div>
 
                   <div className="auditStatRow">
@@ -524,7 +427,7 @@ export default function AdminAuditPage() {
                 </div>
 
                 <div className="actionSection auditActionMeta">
-                  <span>{filteredLogs.length} visible log entries</span>
+                  <span>{auditStatusMessage || `${filteredLogs.length} visible log entries`}</span>
                 </div>
               </div>
 
@@ -597,7 +500,7 @@ export default function AdminAuditPage() {
                     ) : (
                       <tr>
                         <td colSpan={7} className="noData">
-                          No audit entries match the current preview filters.
+                          No audit entries match the current filters.
                         </td>
                       </tr>
                     )}
@@ -663,7 +566,7 @@ export default function AdminAuditPage() {
                       );
                     })
                   ) : (
-                    <div className="noData">No audit entries match the current preview filters.</div>
+                    <div className="noData">No audit entries match the current filters.</div>
                   )}
                 </div>
 

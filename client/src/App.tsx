@@ -32,10 +32,12 @@ import GlobalEMR from './global_pages/GlobalEMR'
 import AdminAnalytics from './admin_pages/AdminAnalytics';
 import GlobalBilling from './global_pages/GlobalBilling';
 import ProtectedRoute from './reusable_components/ProtectedRoute';
+import GlobalAlert from './reusable_components/GlobalAlert';
 
 function App() {
   return (
     <BrowserRouter>
+      <GlobalAlert />
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
 

@@ -707,20 +707,27 @@ export default function AdminAvailSettings() {
     const dateKey = getSpecialEventDate(event) || getSpecialEventIdentifier(event);
     const eventTitle = getSpecialEventName(event);
     if (!dateKey) return;
-    if (!window.confirm(`Delete ${eventTitle} on ${getSpecialEventDisplayDate(event)}?`)) return;
 
-    try {
-      await availabilityService.deleteSpecialDate(
-        dateKey,
-        getSpecialEventRecurrence(event),
-        getSpecialEventMonth(event),
-        getSpecialEventDay(event)
-      );
-      setSpecialDates((prev) => prev.filter((item) => getSpecialEventIdentifier(item) !== getSpecialEventIdentifier(event)));
-    } catch (error) {
-      console.error('Failed to delete special date:', error);
-      window.alert('Failed to delete special date. Please try again.');
-    }
+    showAlert(
+      'confirm',
+      'Delete Special Date',
+      `Delete ${eventTitle} on ${getSpecialEventDisplayDate(event)}?`,
+      async () => {
+        try {
+          await availabilityService.deleteSpecialDate(
+            dateKey,
+            getSpecialEventRecurrence(event),
+            getSpecialEventMonth(event),
+            getSpecialEventDay(event)
+          );
+          setSpecialDates((prev) => prev.filter((item) => getSpecialEventIdentifier(item) !== getSpecialEventIdentifier(event)));
+        } catch (error) {
+          console.error('Failed to delete special date:', error);
+          window.alert('Failed to delete special date. Please try again.');
+        }
+      },
+      true
+    );
   };
 
   const closeSpecialDateModal = () => {

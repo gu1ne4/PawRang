@@ -1349,13 +1349,13 @@ const SalesTrendWithForecast: React.FC<{ data: SalesTrendData[]; forecastLabel?:
           <XAxis dataKey="day" tick={{ fontSize: 11 }} angle={-20} textAnchor="end" height={60} />
           <YAxis tickFormatter={(value) => `₱${value / 1000}k`} tick={{ fontSize: 11 }} />
           <Tooltip
-            formatter={(rawValue, name) => {
+            formatter={(rawValue, name, entry: any) => {
               const numericValue = toNumberOrNull(rawValue);
-              const label = String(name);
+              const dataKey = String(entry?.dataKey ?? name);
+              const label = dataKey === 'actual' || name === 'Actual Revenue' ? 'Actual Revenue' : 'Predicted Revenue';
               const value = numericValue ?? 0;
               if (numericValue === null) return ['No data', label];
-              if (name === 'actual') return [`₱${value.toLocaleString()}`, 'Actual Revenue'];
-              return [`₱${value.toLocaleString()}`, 'Predicted Revenue'];
+              return [`₱${value.toLocaleString()}`, label];
             }}
             contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: 'none' }}
           />
@@ -1535,8 +1535,10 @@ const PeakTimeAnalytics: React.FC<{ data: PeakTimeData[]; forecastMode?: string 
 
 // ==================== INVENTORY INTELLIGENCE ====================
 const InventoryIntelligence: React.FC<{ items: InventoryItem[] }> = ({ items }) => {
-  const lowStockItems = items.filter(item => item.stock <= item.reorderPoint);
-  const criticalItems = lowStockItems.filter(item => item.daysUntilOut <= 2);
+  const criticalItems = items.filter(item => item.stock <= item.reorderPoint || item.daysUntilOut <= 3);
+  const formatDaysUntilOut = (daysUntilOut: number) => (
+    daysUntilOut >= 999 ? 'No recent usage' : `${daysUntilOut} days`
+  );
   
   const movementData = [
     { name: 'Fast Moving', count: items.filter(i => i.movementRate === 'fast').length, color: '#10b981' },
@@ -1561,7 +1563,7 @@ const InventoryIntelligence: React.FC<{ items: InventoryItem[] }> = ({ items }) 
                 <tr key={item.id}>
                   <td><strong>{item.name}</strong></td>
                   <td className="stock-critical">{item.stock} units</td>
-                  <td className="stock-critical">{item.daysUntilOut} days</td>
+                  <td className="stock-critical">{formatDaysUntilOut(item.daysUntilOut)}</td>
                   <td className="ai-suggestion">Reorder {item.recommendedReorder} units immediately</td>
                 </tr>
               ))}
@@ -1695,9 +1697,10 @@ const ForecastValidationPanel: React.FC<{ validation?: ForecastValidation }> = (
               <XAxis dataKey="day" tick={{ fontSize: 11 }} />
               <YAxis tickFormatter={(value) => `₱${value / 1000}k`} tick={{ fontSize: 11 }} />
               <Tooltip
-                formatter={(rawValue, name) => {
+                formatter={(rawValue, name, entry: any) => {
                   const value = toNumberOrNull(rawValue) ?? 0;
-                  const label = name === 'actual' ? 'Actual Revenue' : 'Predicted Revenue';
+                  const dataKey = String(entry?.dataKey ?? name);
+                  const label = dataKey === 'actual' || name === 'Actual Revenue' ? 'Actual Revenue' : 'Predicted Revenue';
                   return [`₱${value.toLocaleString()}`, label];
                 }}
                 contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: 'none' }}
