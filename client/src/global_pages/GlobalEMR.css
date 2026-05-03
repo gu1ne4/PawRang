@@ -376,8 +376,8 @@
 }
 
 .emrFormContent {
-  flex: 1;
-  overflow-y: auto;
+  flex: 0 0 auto;
+  overflow: visible;
   padding-right: 8px;
 }
 
@@ -2074,8 +2074,8 @@ button:disabled {
 }
 
 .emrFormContent {
-  flex: 1;
-  overflow-y: auto;
+  flex: 0 0 auto;
+  overflow: visible;
   padding-right: 8px;
   position: relative;
 }

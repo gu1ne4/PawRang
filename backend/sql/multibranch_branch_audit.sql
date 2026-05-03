@@ -109,7 +109,7 @@ from public.inventory_transactions
 where branch_id is null
 limit 50;
 
-select billing_invoice_id, owner_id, invoice_date, status, branch_id
+select billing_invoice_id, invoice_number, customer_name, invoice_date, status, branch_id
 from public.billing_invoices
 where branch_id is null
 limit 50;

@@ -17,6 +17,7 @@ import './NotifStyles.css';
 export type { Notification };
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
+const NOTIFICATION_SOUND_URL = '/audio/notification-chime.wav';
 const NOTIFICATION_CACHE_TTL_MS = 30 * 1000;
 const NOTIFICATION_REFRESH_MS = 30 * 1000;
 
@@ -172,7 +173,7 @@ const Notifications: React.FC<NotificationsProps> = ({
     navigate(adaptedTarget.startsWith('/') ? adaptedTarget : `/${adaptedTarget}`);
   }, [adaptNotificationTarget, navigate, resolveNotificationLink]);
 
-  const playNotificationSound = useCallback(() => {
+  const playGeneratedNotificationTone = useCallback(() => {
     try {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContextClass) return;
@@ -205,6 +206,18 @@ const Notifications: React.FC<NotificationsProps> = ({
       console.debug('Notification sound skipped:', error);
     }
   }, []);
+
+  const playNotificationSound = useCallback(() => {
+    try {
+      const audio = new Audio(NOTIFICATION_SOUND_URL);
+      audio.volume = 0.55;
+      audio.play().catch(() => {
+        playGeneratedNotificationTone();
+      });
+    } catch {
+      playGeneratedNotificationTone();
+    }
+  }, [playGeneratedNotificationTone]);
 
   const updateKnownNotificationsAndSound = useCallback((nextNotifications: Notification[]) => {
     const previousIds = knownNotificationIdsRef.current;
