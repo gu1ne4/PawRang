@@ -55,7 +55,7 @@ const MODULE_OPTIONS = [
   'Billing'
 ];
 
-const ROLE_OPTIONS = ['All Roles', 'Admin', 'Veterinarian', 'Receptionist', 'User'];
+const ROLE_OPTIONS = ['All Roles', 'Admin', 'Veterinarian', 'Clinic Staff', 'User'];
 const STATUS_OPTIONS = ['All Statuses', 'Success', 'Warning', 'Failed'];
 
 const getStatusClassName = (status: AuditLogEntry['status']) => {

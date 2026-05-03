@@ -1,2 +1,4 @@
 venv/
+.venv/
+.venv_incomplete_backup/
 .env

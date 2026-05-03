@@ -11,7 +11,7 @@ interface User {
   username: string;
   fullname: string;
   userType: 'employee' | 'patient';
-  role?: 'Admin' | 'Veterinarian' | 'Receptionist' | 'User';
+  role?: 'Admin' | 'Veterinarian' | 'Clinic Staff' | 'User';
   isInitialLogin?: boolean;
 }
 

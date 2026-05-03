@@ -8,8 +8,9 @@ import {
   IoTodayOutline, IoTimeOutline, IoDocumentTextOutline, IoSettingsOutline,
   IoLogOutOutline, IoNotifications, IoCheckmarkCircleOutline, IoCloseCircleOutline,
   IoAlertCircleOutline, IoSearchSharp, IoFilterSharp, IoCloseCircleSharp,
-  IoImageOutline, IoCamera, IoEye, IoPersonCircleOutline
+  IoImageOutline, IoCamera, IoEye, IoPersonCircleOutline, IoMailOutline, IoCallOutline
 } from 'react-icons/io5';
+import { RiListSettingsLine } from "react-icons/ri";
 
 // Import your merged CSS file
 import './AdminStyles.css';
@@ -18,6 +19,19 @@ import Navbar from '../reusable_components/NavBar';
 // Using standard imports for Vite images
 import logoImg from '../assets/AgsikapLogo-Temp.png';
 import defaultUserImg from '../assets/userImg.jpg';
+import pawRangLogomarkWhite from '../assets/PawRang Logomark White.png';
+
+type UserSortOption = 'nameAZ' | 'nameZA' | 'emailAZ' | 'statusAZ' | 'newest';
+
+const USER_SORT_OPTIONS: Array<{ value: UserSortOption; label: string }> = [
+  { value: 'nameAZ', label: 'Name A-Z' },
+  { value: 'nameZA', label: 'Name Z-A' },
+  { value: 'emailAZ', label: 'Email A-Z' },
+  { value: 'statusAZ', label: 'Status A-Z' },
+  { value: 'newest', label: 'Newest First' },
+];
+
+const ROWS_PER_PAGE_OPTIONS = [8, 12, 16, 24];
 
 // --- TYPESCRIPT INTERFACES ---
 interface CurrentUser {
@@ -65,6 +79,9 @@ export default function UserAccPage() {
   const [searchHovered, setSearchHovered] = useState(false);
   const [filterHovered, setFilterHovered] = useState(false);
   const [togglingStatus, setTogglingStatus] = useState(false);
+  const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
+  const [sortOption, setSortOption] = useState<UserSortOption>('nameAZ');
+  const [rowsPerPage, setRowsPerPage] = useState(8);
 
   // Modal State
   const [modalVisible, setModalVisible] = useState(false);
@@ -72,7 +89,7 @@ export default function UserAccPage() {
 
   // Pagination
   const [page, setPage] = useState(0);
-  const itemsPerPage = 8;
+  const itemsPerPage = rowsPerPage;
 
   const [showAppointmentsDropdown, setShowAppointmentsDropdown] = useState(false);
 
@@ -391,7 +408,31 @@ export default function UserAccPage() {
     return matchesSearch && matchesStatus;
   });
 
-  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+  const sortedUsers = [...filteredUsers].sort((a, b) => {
+    const nameA = (a.fullName || a.fullname || a.username || '').toLowerCase();
+    const nameB = (b.fullName || b.fullname || b.username || '').toLowerCase();
+    switch (sortOption) {
+      case 'nameZA':
+        return nameB.localeCompare(nameA);
+      case 'emailAZ':
+        return (a.email || '').localeCompare(b.email || '');
+      case 'statusAZ':
+        return (a.status || 'Active').localeCompare(b.status || 'Active');
+      case 'newest':
+        return new Date(b.dateCreated || b.datecreated || 0).getTime() - new Date(a.dateCreated || a.datecreated || 0).getTime();
+      case 'nameAZ':
+      default:
+        return nameA.localeCompare(nameB);
+    }
+  });
+
+  const paginatedUsers = sortedUsers.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
+  const totalPages = Math.ceil(sortedUsers.length / itemsPerPage);
+
+  const handleRowsPerPageChange = (value: number) => {
+    setRowsPerPage(value);
+    setPage(0);
+  };
 
   // ==========================================
   //  RENDER
@@ -401,13 +442,13 @@ export default function UserAccPage() {
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
 
       {/* BODY CONTENT */}
-      <div className="bodyContainer">
-        <div className="topContainer">
-          <div className="subTopContainer">
+      <div className="bodyContainer accountOverviewBodyContainer">
+        <div className="topContainer accountOverviewTopContainer">
+          <div className="subTopContainer accountOverviewSubTopContainer">
             <IoMedkitOutline size={23} color="#3d67ee" style={{ marginTop: '4px' }} />
             <span className="blueText" style={{ marginLeft: '10px' }}>Account Overview / Patients</span>
           </div>
-          <div className="subTopContainer" style={{ justifyContent: 'center', flex: 0.5, marginLeft: '12px' }}>
+          <div className="subTopContainer notificationContainer accountOverviewNotificationContainer">
             <button style={{ background: 'none', border: 'none', cursor: 'pointer' }} onClick={fetchAccounts}>
               <IoNotifications size={21} color="#3d67ee" style={{ marginTop: '3px' }} />
             </button>
@@ -415,7 +456,7 @@ export default function UserAccPage() {
         </div>
 
         {/* TABLE SECTION */}
-        <div className="tableContainer">
+        <div className="tableContainer accountOverviewTableContainer">
           <div className="tableToolbar">
              <div className="searchFilterSection">
                 <div className="toolbarItem" onMouseEnter={() => setSearchHovered(true)} onMouseLeave={() => setSearchHovered(false)}>
@@ -460,9 +501,46 @@ export default function UserAccPage() {
                        </button>
                    </div>
                 )}
-             </div>
-             <div className="actionSection">
-                <button className="blackBtn" onClick={() => setAddAccountVisible(true)}>+ Add Patient</button>
+                <div className="accountSettingsDropdownContainer">
+                  <div className="toolbarItem">
+                    <button
+                      className="iconButton"
+                      onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
+                      aria-label="User table settings"
+                    >
+                      <RiListSettingsLine size={23} className={showSettingsDropdown ? "iconActive" : "iconDefault"} />
+                    </button>
+                  </div>
+                  {showSettingsDropdown && (
+                    <div className="accountSettingsDropdown">
+                      <div className="accountSettingsSection">
+                        <label>Sort By</label>
+                        <select
+                          value={sortOption}
+                          onChange={(e) => { setSortOption(e.target.value as UserSortOption); setPage(0); }}
+                          className="accountSettingsSelect"
+                        >
+                          {USER_SORT_OPTIONS.map(option => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="accountSettingsDivider" />
+                      <div className="accountSettingsSection">
+                        <label>Rows Per Page</label>
+                        <select
+                          value={rowsPerPage}
+                          onChange={(e) => handleRowsPerPageChange(parseInt(e.target.value, 10))}
+                          className="accountSettingsSelect"
+                        >
+                          {ROWS_PER_PAGE_OPTIONS.map(option => (
+                            <option key={option} value={option}>{option} per page</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
              </div>
           </div>
 
@@ -483,7 +561,7 @@ export default function UserAccPage() {
                 </thead>
                 <tbody>
                   {filteredUsers.length > 0 ? (
-                      filteredUsers.slice(page * itemsPerPage, (page + 1) * itemsPerPage).map(u => (
+                      paginatedUsers.map(u => (
                         <tr key={u.pk || u.id || Math.random()}>
                           <td>
                               <div className="userCell">
@@ -499,7 +577,7 @@ export default function UserAccPage() {
                               </div>
                           </td>
                           <td style={{textAlign: 'center'}}>
-                              <button style={{background: 'none', border: 'none', cursor: 'pointer'}} onClick={() => openEditModal(u)}>
+                              <button style={{background: 'none', border: 'none', cursor: 'pointer'}} onClick={() => handleViewDetails(u)}>
                                 <IoEye size={18} color="#3d67ee"/>
                               </button>
                           </td>
@@ -529,9 +607,11 @@ export default function UserAccPage() {
 
               {/* Web Pagination */}
               {totalPages > 0 && (
-                <div className="pagination">
+                <div className="pagination accountPagination">
                   <button className="paginationBtn" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>Previous</button>
-                  <span className="paginationInfo">Page {page + 1} of {totalPages}</span>
+                  <span className="paginationInfo">
+                    Showing {sortedUsers.length === 0 ? 0 : page * itemsPerPage + 1} to {Math.min((page + 1) * itemsPerPage, sortedUsers.length)} of {sortedUsers.length} items
+                  </span>
                   <button className="paginationBtn" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}>Next</button>
                 </div>
               )}
@@ -696,16 +776,44 @@ export default function UserAccPage() {
       {/* VIEW DETAILS MODAL */}
       {viewAccountVisible && (
         <div className="modalOverlay" onClick={() => setViewAccountVisible(false)}>
-          <div className="modalContainer" onClick={(e) => e.stopPropagation()}>
-            <div className="modalHeader"><h2>Patient Details</h2></div>
-            <div className="imageUploadSection">
-              {(selectedAccount.userImage || selectedAccount.userimage) ? (
-                <img src={selectedAccount.userImage || selectedAccount.userimage} className="viewAvatar" alt="Patient Avatar" />
-              ) : (
-                <IoPersonCircleOutline size={100} color="#3d67ee" />
-              )}
+          <div className="modalContainer accountProfileModal accountViewModal" onClick={(e) => e.stopPropagation()}>
+            <div className="modalHeader accountModalHeader">
+              <div>
+                <h2>User Account Details</h2>
+                <p>Review patient profile information and account status.</p>
+              </div>
+              <button className="accountModalClose" onClick={() => setViewAccountVisible(false)} aria-label="Close user details modal">
+                <IoCloseCircleSharp size={22} />
+              </button>
             </div>
-            <div className="modalForm">
+            <div className="imageUploadSection">
+              <div className="accountVisualPanelContent">
+                <div className="accountPoweredBy">
+                  <span>Powered by</span>
+                  <img src={pawRangLogomarkWhite} alt="PawRang" />
+                </div>
+                <div className="accountVisualTitle">PetShield Veterinary Clinic &amp; Grooming Services</div>
+              </div>
+            </div>
+            <div className="modalForm accountDetailGrid">
+              <div className="formGroup accountPhotoGroup">
+                <label>User Photo</label>
+                <div className="accountAvatarField">
+                  <div className="uploadBtn" style={{ cursor: 'default' }}>
+                    {(selectedAccount.userImage || selectedAccount.userimage) ? (
+                      <img src={selectedAccount.userImage || selectedAccount.userimage} className="uploadedImage" alt="Patient Avatar" />
+                    ) : (
+                      <div className="uploadPlaceholder">
+                        <IoPersonCircleOutline size={46} color="#3d67ee" />
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <h3>{selectedAccount.fullName || selectedAccount.fullname || selectedAccount.username || 'User Profile'}</h3>
+                    <p>{selectedAccount.email || 'Patient account'}</p>
+                  </div>
+                </div>
+              </div>
               <div className="formColumn">
                 <div className="detailGroup"><label>Full Name</label><div className="detailValue">{selectedAccount.fullName || selectedAccount.fullname}</div></div>
                 <div className="detailGroup"><label>Contact Number</label><div className="detailValue">{selectedAccount.contactNumber || selectedAccount.contactnumber}</div></div>
@@ -721,7 +829,7 @@ export default function UserAccPage() {
                 </div>
               </div>
             </div>
-            <div className="modalFooter">
+            <div className="modalFooter accountModalFooter">
               <button className="cancelBtn wide" onClick={() => setViewAccountVisible(false)}>Close</button>
             </div>
           </div>

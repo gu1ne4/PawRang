@@ -539,7 +539,7 @@ def load_admin_appointments():
     pets_by_id = {item.get("pet_id"): item for item in pets}
     doctors_by_id = {
         item.get("id"): item for item in doctors
-        if (item.get("role") or "").lower() in ("vet", "doctor", "veterinarian", "receptionist", "admin")
+        if (item.get("role") or "").lower() in ("vet", "doctor", "veterinarian", "receptionist", "clinical staff", "clinic staff", "admin")
     }
 
     return [
@@ -1348,6 +1348,8 @@ def normalize_patient_admin_account(profile):
         "status": status,
         "userImage": user_image,
         "userimage": user_image,
+        "createdAt": profile.get('created_at'),
+        "created_at": profile.get('created_at'),
     }
 
 
@@ -1366,6 +1368,9 @@ def normalize_employee_admin_account(profile):
         "role": role,
         "status": status,
         "employee_image": profile.get('employee_image'),
+        "branch_id": profile.get('branch_id'),
+        "branch_name": profile.get('branch_name') or profile.get('branchName'),
+        "branchName": profile.get('branch_name') or profile.get('branchName'),
         "created_at": profile.get('created_at'),
         "is_initial_login": bool(profile.get('is_initial_login')),
     }
@@ -2569,8 +2574,8 @@ def normalize_audit_role(role):
         return "Admin"
     if "vet" in lowered or "doctor" in lowered:
         return "Veterinarian"
-    if "reception" in lowered or "front" in lowered:
-        return "Receptionist"
+    if "reception" in lowered or "front" in lowered or "clinical" in lowered or "clinic staff" in lowered:
+        return "Clinic Staff"
     if "patient" in lowered or "user" in lowered or "client" in lowered or "owner" in lowered:
         return "User"
     return role_value or "System"
@@ -2578,7 +2583,7 @@ def normalize_audit_role(role):
 
 def normalize_audit_account_type(value):
     raw_value = str(value or "").strip().lower()
-    if raw_value in {"employee", "staff", "admin", "doctor", "vet", "veterinarian", "receptionist", "employee_accounts"}:
+    if raw_value in {"employee", "staff", "clinical staff", "clinic staff", "admin", "doctor", "vet", "veterinarian", "receptionist", "employee_accounts"}:
         return "employee"
     if raw_value in {"patient", "user", "client", "owner", "patient_account"}:
         return "patient"
@@ -6380,9 +6385,16 @@ def create_employee_account():
     role = (data.get('role') or 'Admin').strip()
     status_value = (data.get('status') or 'Active').strip().lower()
     employee_image = data.get('employee_image')
+    branch_id = data.get('branch_id', data.get('branchId'))
+    try:
+        branch_id = int(branch_id) if branch_id not in (None, '', 'null') else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "branch_id must be a valid branch."}), 400
+    if branch_id is not None and branch_id <= 0:
+        return jsonify({"error": "branch_id must match an existing branch."}), 400
 
-    if not all([first_name, last_name, contact_number, email]):
-        return jsonify({"error": "first_name, last_name, contact_number, and email are required"}), 400
+    if not all([first_name, last_name, contact_number, email, branch_id]):
+        return jsonify({"error": "first_name, last_name, contact_number, email, and branch_id are required"}), 400
 
     try:
         existing_email = supabase_admin.table('employee_accounts').select('id').eq('email', email).execute()
@@ -6408,6 +6420,7 @@ def create_employee_account():
             "contact_number": contact_number,
             "email": email,
             "role": role,
+            "branch_id": branch_id,
             "status": 'disabled' if status_value in ('disabled', 'inactive') else 'active',
             "employee_image": employee_image,
             "is_initial_login": True,
@@ -6433,6 +6446,7 @@ def create_employee_account():
                 "contact_number": contact_number,
                 "email": email,
                 "role": role,
+                "branch_id": branch_id,
                 "status": status_value,
                 "employee_image": employee_image,
                 "is_initial_login": True,
@@ -6469,6 +6483,14 @@ def update_employee_account(account_id):
             auth_updates['email'] = data.get('email')
         if 'role' in data:
             update_data['role'] = data.get('role')
+        if 'branch_id' in data or 'branchId' in data:
+            raw_branch_id = data.get('branch_id', data.get('branchId'))
+            try:
+                update_data['branch_id'] = int(raw_branch_id) if raw_branch_id not in (None, '', 'null') else None
+            except (TypeError, ValueError):
+                return jsonify({"error": "branch_id must be a valid branch."}), 400
+            if update_data['branch_id'] is not None and update_data['branch_id'] <= 0:
+                return jsonify({"error": "branch_id must match an existing branch."}), 400
         if 'status' in data:
             raw_status = (data.get('status') or '').strip().lower()
             update_data['status'] = 'disabled' if raw_status in ('disabled', 'inactive') else 'active'

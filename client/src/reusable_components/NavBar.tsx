@@ -8,6 +8,7 @@ import { CiBoxes } from "react-icons/ci";
 import { TbArrowsUpDown } from "react-icons/tb";
 import { IoIosArchive } from "react-icons/io";
 import petShieldLogo from '../assets/PetshieldLogo.png';
+import pawRangLogomarkWhite from '../assets/PawRang Logomark White.png';
 import { isAdminRole, isDoctorRole, normalizeRole } from '../auth/roles';
 
 // Icons
@@ -704,7 +705,12 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                 {!isCollapsed && <span>Log Out</span>}
               </button>
             </div>
-            {(!isCollapsed || isMobile) && <div className="navPoweredBy">Powered by PawRang</div>}
+            {(!isCollapsed || isMobile) && (
+              <div className="navPoweredBy">
+                <span>Powered by</span>
+                <img src={pawRangLogomarkWhite} alt="PawRang" className="navPoweredByLogo" />
+              </div>
+            )}
           </div>
         </div>
       </div>
