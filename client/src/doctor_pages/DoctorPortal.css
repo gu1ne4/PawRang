@@ -219,6 +219,25 @@
     font-weight: 800;
 }
 
+.doctorHeaderActions {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+
+.doctorNotificationButton {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: #ffffff;
+    border: 1px solid rgba(61, 103, 238, 0.16);
+    box-shadow: 0 14px 30px rgba(28, 65, 132, 0.08);
+}
+
+.doctorNotificationIcon {
+    color: #3d67ee;
+}
+
 .doctorGrid {
     display: grid;
     grid-template-columns: repeat(12, minmax(0, 1fr));

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiService } from '../apiService';
 import Navbar from '../reusable_components/NavBar';
+import Notifications from '../reusable_components/Notifications';
 import './DoctorPortal.css';
 
 interface CurrentUser {
@@ -104,9 +105,15 @@ const DoctorHome: React.FC = () => {
               appointments, medical records, and read-only inventory visibility.
             </p>
           </div>
-          <div className="doctorHeaderBadge">
-            <span className="doctorHeaderBadgeLabel">Signed In As</span>
-            <span className="doctorHeaderBadgeValue">{currentUser?.fullName || currentUser?.username || 'Veterinarian'}</span>
+          <div className="doctorHeaderActions">
+            <Notifications
+              buttonClassName="doctorNotificationButton"
+              iconClassName="doctorNotificationIcon"
+            />
+            <div className="doctorHeaderBadge">
+              <span className="doctorHeaderBadgeLabel">Signed In As</span>
+              <span className="doctorHeaderBadgeValue">{currentUser?.fullName || currentUser?.username || 'Veterinarian'}</span>
+            </div>
           </div>
         </div>
 

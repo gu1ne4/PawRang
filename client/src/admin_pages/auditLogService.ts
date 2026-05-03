@@ -13,6 +13,8 @@ export interface AuditLogEntry {
 }
 
 interface CurrentUserLike {
+  id?: string | number;
+  pk?: string | number;
   username?: string;
   fullName?: string;
   role?: string;
@@ -25,6 +27,7 @@ type AuditLogInput = Omit<AuditLogEntry, 'id' | 'actor' | 'role' | 'dateTime'> &
 
 const SETTINGS_AUDIT_STORAGE_KEY = 'petshieldSettingsAuditLogs';
 const MAX_STORED_AUDIT_LOGS = 80;
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 
 const normalizeRole = (role?: string) => {
   const roleValue = role?.trim() || 'Admin';
@@ -78,6 +81,17 @@ export const recordSettingsAuditLog = (input: AuditLogInput, currentUser?: Curre
   } catch (error) {
     console.error('Failed to save settings audit log', error);
   }
+
+  fetch(`${API_URL}/api/audit-notifications`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...nextLog,
+      actorId: currentUser?.id || currentUser?.pk || null,
+    }),
+  }).catch((error) => {
+    console.error('Failed to create audit notification', error);
+  });
 
   return nextLog;
 };

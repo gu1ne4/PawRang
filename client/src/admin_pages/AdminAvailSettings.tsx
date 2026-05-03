@@ -6,7 +6,7 @@ import {
   IoHomeOutline, IoPeopleOutline, IoChevronDownOutline, IoChevronUpOutline,
   IoPersonOutline, IoMedkitOutline, IoCalendarClearOutline, IoCalendarOutline,
   IoTodayOutline, IoTimeOutline, IoDocumentTextOutline, IoSettingsOutline,
-  IoLogOutOutline, IoNotifications, IoCheckmarkCircleOutline, IoCloseCircleOutline,
+  IoLogOutOutline, IoCheckmarkCircleOutline, IoCloseCircleOutline,
   IoAlertCircleOutline, IoChevronUp, IoChevronDown, IoTrashOutline, IoClose, IoCreateOutline,
   IoChevronBack, IoChevronForward // 🟢 Restored Custom Calendar Icons
 } from 'react-icons/io5';
@@ -14,6 +14,7 @@ import {
 // Import your merged CSS file
 import './AdminStyles.css';
 import Navbar from '../reusable_components/NavBar';
+import Notifications from '../reusable_components/Notifications';
 
 // Using standard imports for Vite images
 import logoImg from '../assets/AgsikapLogo-Temp.png';
@@ -839,10 +840,11 @@ export default function AdminAvailSettings() {
             <IoDocumentTextOutline size={20} color="#3d67ee" style={{ marginTop: '2px' }} />
             <span className="blueText" style={{ marginLeft: '10px' }}>Appointments / Availability Settings</span>
           </div>
-          <div className="subTopContainer" style={{ justifyContent: 'center', flex: 0.5, marginLeft: '12px' }}>
-            <button style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-              <IoNotifications size={21} color="#3d67ee" style={{ marginTop: '3px' }} />
-            </button>
+          <div className="invSubTopContainer invNotificationContainer" style={{ padding: 20 }}>
+            <Notifications
+              buttonClassName="invIconButton"
+              iconClassName="invBlueIcon"
+            />
           </div>
         </div>
 

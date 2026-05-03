@@ -8,7 +8,7 @@ create extension if not exists pgcrypto;
 create table if not exists public.admin_notifications (
   notification_id bigserial primary key,
   branch_id bigint not null references public.branches(branch_id),
-  module text not null default 'inventory' check (module in ('inventory')),
+  module text not null default 'inventory' check (module in ('inventory', 'appointments', 'emr', 'billing', 'accounts', 'availability', 'audit', 'system')),
   event_type text not null,
   severity text not null default 'info' check (severity in ('info', 'success', 'warning', 'error')),
   title text not null,
@@ -21,6 +21,23 @@ create table if not exists public.admin_notifications (
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default timezone('utc', now())
 );
+
+do $$
+begin
+  if exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.admin_notifications'::regclass
+      and conname = 'admin_notifications_module_check'
+  ) then
+    alter table public.admin_notifications
+      drop constraint admin_notifications_module_check;
+  end if;
+
+  alter table public.admin_notifications
+    add constraint admin_notifications_module_check
+    check (module in ('inventory', 'appointments', 'emr', 'billing', 'accounts', 'availability', 'audit', 'system'));
+end $$;
 
 create index if not exists idx_admin_notifications_branch_created
   on public.admin_notifications(branch_id, created_at desc);

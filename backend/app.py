@@ -573,6 +573,13 @@ EMAIL_PROVIDER       = (
 EMPLOYEE_SETUP_URL_BASE = os.environ.get('EMPLOYEE_SETUP_URL_BASE', 'http://localhost:5173/employee/setup-account')
 GEMINI_API_KEY       = os.environ.get('GEMINI_API_KEY')
 GEMINI_MODEL         = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
+OPENAI_API_KEY       = (os.environ.get('OPENAI_API_KEY') or '').strip() or None
+OPENAI_MODEL         = (os.environ.get('OPENAI_MODEL') or 'gpt-5-mini').strip()
+OPENAI_MAX_OUTPUT_TOKENS = int(os.environ.get('OPENAI_MAX_OUTPUT_TOKENS') or '800')
+AI_PROVIDER          = (
+    os.environ.get('AI_PROVIDER', '').strip().lower()
+    or ('openai' if OPENAI_API_KEY else 'gemini')
+)
 AI_BUSY_MESSAGE      = "Server is busy. Please try again later."
 
 if not SUPABASE_URL or not SUPABASE_KEY or not SUPABASE_SERVICE_KEY:
@@ -612,6 +619,75 @@ ADMIN_AI_SUMMARY_SCHEMA = {
     ]
 }
 
+DOCTOR_EMR_BRIEF_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "summary": {"type": "STRING"},
+        "important_flags": {
+            "type": "ARRAY",
+            "items": {"type": "STRING"}
+        },
+        "relevant_history": {
+            "type": "ARRAY",
+            "items": {"type": "STRING"}
+        },
+        "exam_focus": {
+            "type": "ARRAY",
+            "items": {"type": "STRING"}
+        },
+        "care_continuity_notes": {
+            "type": "ARRAY",
+            "items": {"type": "STRING"}
+        }
+    },
+    "required": [
+        "summary",
+        "important_flags",
+        "relevant_history",
+        "exam_focus",
+        "care_continuity_notes"
+    ]
+}
+
+CLIENT_CARE_SUMMARY_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "summary": {"type": "STRING"},
+        "visit_summary": {"type": "STRING"},
+        "home_care_instructions": {
+            "type": "ARRAY",
+            "items": {"type": "STRING"}
+        },
+        "medication_notes": {
+            "type": "ARRAY",
+            "items": {"type": "STRING"}
+        },
+        "watch_for": {
+            "type": "ARRAY",
+            "items": {"type": "STRING"}
+        },
+        "follow_up": {
+            "type": "ARRAY",
+            "items": {"type": "STRING"}
+        },
+        "friendly_message": {"type": "STRING"},
+        "missing_information": {
+            "type": "ARRAY",
+            "items": {"type": "STRING"}
+        }
+    },
+    "required": [
+        "summary",
+        "visit_summary",
+        "home_care_instructions",
+        "medication_notes",
+        "watch_for",
+        "follow_up",
+        "friendly_message",
+        "missing_information"
+    ]
+}
+
 USER_SYMPTOM_SUMMARY_SCHEMA = {
     "type": "OBJECT",
     "properties": {
@@ -619,6 +695,123 @@ USER_SYMPTOM_SUMMARY_SCHEMA = {
     },
     "required": ["summary"]
 }
+
+
+def _has_meaningful_value(value):
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, (int, float)):
+        return True
+    if isinstance(value, str):
+        cleaned = value.strip().lower()
+        return cleaned not in {"", "not provided", "unknown", "n/a", "none"}
+    if isinstance(value, list):
+        return any(_has_meaningful_value(item) for item in value)
+    if isinstance(value, dict):
+        return any(_has_meaningful_value(item) for item in value.values())
+    return bool(value)
+
+
+def _generated_at_manila_iso():
+    return get_current_manila_datetime().replace(microsecond=0).isoformat()
+
+
+def build_ai_support_metadata(case_context, missing_information=None, mode="admin"):
+    missing_count = len(missing_information or [])
+    sources = []
+    reasons = []
+    missing_context = list(missing_information or [])
+
+    if mode == "doctor":
+        pet = case_context.get("pet") or {}
+        current_record = case_context.get("current_record") or {}
+        visit_history = case_context.get("visit_history") if isinstance(case_context.get("visit_history"), list) else []
+
+        if _has_meaningful_value(pet):
+            sources.append("pet profile")
+        if _has_meaningful_value(current_record):
+            sources.append("current visit details")
+        if visit_history:
+            sources.append("visit history")
+        if any(_has_meaningful_value((visit or {}).get("medical_information")) for visit in visit_history):
+            sources.append("booking medical intake")
+        if any(_has_meaningful_value(((visit or {}).get("medical_information") or {}).get("reported_symptoms")) for visit in visit_history):
+            sources.append("owner symptom intake")
+        if any(_has_meaningful_value((visit or {}).get("clinical_exam")) for visit in visit_history):
+            sources.append("clinical exam entries")
+        if any(_has_meaningful_value((visit or {}).get("lab_results")) for visit in visit_history):
+            sources.append("lab or diagnostic results")
+        if any(_has_meaningful_value((visit or {}).get("prescriptions")) for visit in visit_history):
+            sources.append("prescription history")
+
+        if not visit_history:
+            missing_context.append("Visit history")
+        if not any(_has_meaningful_value((visit or {}).get("clinical_exam")) for visit in visit_history):
+            missing_context.append("Clinical exam findings")
+        if not any(_has_meaningful_value(((visit or {}).get("medical_information") or {}).get("reported_symptoms")) for visit in visit_history):
+            missing_context.append("Owner symptom intake")
+    else:
+        medical = case_context.get("medical_information") or {}
+        if _has_meaningful_value(case_context.get("patient_name")):
+            sources.append("client details")
+        if _has_meaningful_value(case_context.get("pet_name")) or _has_meaningful_value(case_context.get("pet_type")):
+            sources.append("pet profile")
+        if _has_meaningful_value(case_context.get("reason_for_visit")):
+            sources.append("reason for visit")
+        if _has_meaningful_value(case_context.get("service")) or _has_meaningful_value(case_context.get("date_time")):
+            sources.append("appointment details")
+        if _has_meaningful_value(medical):
+            sources.append("medical intake")
+        if _has_meaningful_value(medical.get("reported_symptoms")) or _has_meaningful_value(medical.get("owner_symptom_notes")):
+            sources.append("owner symptom intake")
+
+        if not _has_meaningful_value(medical):
+            missing_context.append("Medical intake")
+        if not (
+            _has_meaningful_value(medical.get("reported_symptoms"))
+            or _has_meaningful_value(medical.get("owner_symptom_notes"))
+        ):
+            missing_context.append("Owner symptom intake")
+
+    deduped_sources = list(dict.fromkeys(sources))
+    deduped_missing = list(dict.fromkeys(item for item in missing_context if _has_meaningful_value(item)))
+
+    source_count = len(deduped_sources)
+    if source_count >= 6 and len(deduped_missing) <= 2 and missing_count <= 2:
+        reliability = "High"
+        reasons.append("Generated from multiple relevant record sources with few major gaps.")
+    elif source_count >= 3 and len(deduped_missing) <= 5:
+        reliability = "Moderate"
+        reasons.append("Generated from useful case data, but some context still needs review.")
+    else:
+        reliability = "Low"
+        reasons.append("Generated from limited case data or several missing clinical details.")
+
+    if deduped_missing:
+        reasons.append("Missing or incomplete: " + ", ".join(deduped_missing[:4]))
+
+    return {
+        "label": "AI-generated clinical support",
+        "review_required": True,
+        "reliability": reliability,
+        "reasons": reasons,
+        "sources": deduped_sources,
+        "missing_context": deduped_missing,
+        "generated_at": _generated_at_manila_iso(),
+        "disclaimer": "Review and verify before use. This output does not diagnose, prescribe, or replace veterinary judgment.",
+    }
+
+
+def attach_ai_support_metadata(ai_result, case_context, mode="admin"):
+    result = dict(ai_result or {})
+    result["support_metadata"] = build_ai_support_metadata(
+        case_context,
+        result.get("missing_information") if isinstance(result.get("missing_information"), list) else [],
+        mode,
+    )
+    return result
 
 
 def _text_or_default(value, default="Not provided"):
@@ -632,6 +825,55 @@ def _bool_to_phrase(value):
     if value is False:
         return "No"
     return "Not provided"
+
+
+def _normalized_text(value):
+    return str(value or "").strip().lower()
+
+
+def _answer_is_yes(value):
+    return _normalized_text(value) in {"yes", "true", "1", "y"}
+
+
+def _answer_is_no(value):
+    return _normalized_text(value) in {"no", "false", "0", "n"}
+
+
+def _answer_is_unknown(value):
+    return _normalized_text(value) in {"", "not provided", "unknown", "n/a", "none"}
+
+
+def _make_risk_flag(flag_id, severity, title, detail, action, source):
+    return {
+        "id": flag_id,
+        "severity": severity,
+        "title": title,
+        "detail": detail,
+        "suggested_action": action,
+        "source": source,
+    }
+
+
+def _parse_iso_date(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.strptime(raw[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _make_follow_up_reminder(reminder_id, priority, title, detail, suggested_timing, suggested_action, source):
+    return {
+        "id": reminder_id,
+        "priority": priority,
+        "title": title,
+        "detail": detail,
+        "suggested_timing": suggested_timing,
+        "suggested_action": suggested_action,
+        "source": source,
+    }
 
 
 def build_admin_ai_case_context(payload):
@@ -745,10 +987,12 @@ Rules:
 - Do NOT prescribe treatment
 - Do NOT claim certainty beyond the provided data
 - Keep the summary concise and practical
-- Write the summary in 2 to 4 sentences only
-- Return at most 4 important_flags
-- Return at most 5 follow_up_questions
-- Return at most 6 missing_information items
+- Write the summary in 1 to 2 short sentences only
+- Return at most 3 important_flags
+- Return at most 3 follow_up_questions
+- Return at most 4 missing_information items
+- Keep every bullet under 14 words when possible
+- Prefer one useful point over several similar points
 - If data is missing, list it under missing_information
 - Do NOT list AI-generated summary fields as missing; staff-side summaries are generated from the raw symptom intake
 - If reported_symptoms or owner_symptom_notes are present, do NOT treat symptom intake as missing
@@ -757,7 +1001,7 @@ Rules:
 - follow_up_questions should be short and directly usable by clinic staff
 - Avoid repeating the exact same issue in all sections unless absolutely necessary
 - If a field is already clearly identified as missing, prefer one good follow-up question instead of many similar ones
-- Make the wording sound professional and suitable for clinic admin use
+- Make the wording professional, direct, and easy to scan
 
 Service-aware focus:
 {service_focus}
@@ -821,6 +1065,52 @@ def build_doctor_emr_case_context(payload):
     current_record = payload.get("current_record") or {}
     visit_history = payload.get("visit_history") if isinstance(payload.get("visit_history"), list) else []
 
+    recent_visits = visit_history[-4:]
+    symptom_intake = []
+    clinical_exam_entries = []
+    lab_entries = []
+    prescription_entries = []
+    service_entries = []
+
+    for visit in recent_visits:
+        if not isinstance(visit, dict):
+            continue
+        medical_information = visit.get("medical_information") or {}
+        if _has_meaningful_value(medical_information):
+            symptom_intake.append({
+                "date": visit.get("date"),
+                "reason": visit.get("reason"),
+                "reported_symptoms": medical_information.get("reported_symptoms") or [],
+                "owner_symptom_notes": medical_information.get("owner_symptom_notes") or "",
+                "symptom_duration": medical_information.get("symptom_duration") or "",
+                "eating_status": medical_information.get("eating_status") or "",
+                "drinking_status": medical_information.get("drinking_status") or "",
+                "worsening_status": medical_information.get("worsening_status") or "",
+                "allergy_details": medical_information.get("allergy_details") or "",
+                "medication_details": medical_information.get("medication_details") or "",
+            })
+        if _has_meaningful_value(visit.get("clinical_exam")):
+            clinical_exam_entries.append({
+                "date": visit.get("date"),
+                "clinical_exam": visit.get("clinical_exam"),
+                "doctor_remarks": visit.get("doctor_remarks") or "",
+            })
+        if _has_meaningful_value(visit.get("lab_results")):
+            lab_entries.append({
+                "date": visit.get("date"),
+                "lab_results": visit.get("lab_results"),
+            })
+        if _has_meaningful_value(visit.get("prescriptions")):
+            prescription_entries.append({
+                "date": visit.get("date"),
+                "prescriptions": visit.get("prescriptions"),
+            })
+        if _has_meaningful_value(visit.get("services")):
+            service_entries.append({
+                "date": visit.get("date"),
+                "services": visit.get("services"),
+            })
+
     return {
         "pet": {
             "name": _text_or_default(pet.get("name"), "Unknown Pet"),
@@ -841,7 +1131,15 @@ def build_doctor_emr_case_context(payload):
             "reason_for_visit": _text_or_default(current_record.get("reason_for_visit")),
             "assigned_doctor": _text_or_default(current_record.get("assigned_doctor")),
         },
-        "visit_history": visit_history[-6:],
+        "recent_visit_history": recent_visits,
+        "clinical_signals": {
+            "symptom_intake": symptom_intake[-3:],
+            "clinical_exam_entries": clinical_exam_entries[-3:],
+            "lab_entries": lab_entries[-3:],
+            "prescription_entries": prescription_entries[-3:],
+            "service_entries": service_entries[-3:],
+        },
+        "visit_history": recent_visits,
     }
 
 
@@ -850,9 +1148,9 @@ def build_doctor_emr_prompt(case_context):
 You are an AI assistant supporting a licensed veterinarian reviewing an EMR.
 
 Your role:
-- create a concise clinical prep brief from the EMR and booking intake
-- highlight relevant history, symptom intake, preventive-care concerns, and owner-reported changes
-- suggest exam focus areas and clarifying questions the veterinarian may consider
+- create a short clinical prep brief from the EMR and booking intake
+- highlight relevant history, symptom intake, preventive-care concerns, medications, allergies, labs, prescriptions, and owner-reported changes
+- suggest practical exam focus areas and continuity notes the veterinarian may consider
 - help the doctor prepare faster, not replace clinical judgment
 
 Rules:
@@ -862,17 +1160,21 @@ Rules:
 - Do NOT tell the doctor what final decision to make
 - Use cautious language such as "consider checking", "owner reported", and "may be relevant"
 - If symptoms are present, connect them to exam focus areas without naming a definitive disease
-- If information is missing, list only items that could affect the doctor's assessment
-- Return at most 4 important_flags
-- Return at most 5 follow_up_questions
-- Return at most 6 missing_information items
-- Keep the summary in 2 to 4 sentences
+- Do not include owner questions or missing-context sections
+- Return at most 2 important_flags
+- Return at most 3 relevant_history items
+- Return at most 3 exam_focus items
+- Return at most 2 care_continuity_notes
+- Keep the summary in 1 to 2 short sentences
+- Keep every bullet under 14 words when possible
+- Avoid repeating the same point across sections
 
 Interpret the output fields this way:
 - summary: doctor-facing clinical prep overview
 - important_flags: relevant clinical or intake considerations, not diagnoses
-- follow_up_questions: questions the veterinarian may ask the owner
-- missing_information: data gaps that may matter before or during exam
+- relevant_history: past visits, prescriptions, labs, services, symptom patterns, or owner intake details that may be useful during review
+- exam_focus: physical exam areas or measurements the veterinarian may consider checking based on the available data
+- care_continuity_notes: follow-up, preventive-care, monitoring, or record-review reminders based only on the EMR
 
 Use only the data below.
 
@@ -881,7 +1183,499 @@ EMR context:
 """.strip()
 
 
+def build_current_visit_ai_case_context(payload):
+    doctor_context = build_doctor_emr_case_context(payload)
+    current_visit = payload.get("current_visit") or {}
+
+    return {
+        **doctor_context,
+        "current_visit": {
+            "date": _text_or_default(current_visit.get("date")),
+            "time": _text_or_default(current_visit.get("time")),
+            "veterinarian": _text_or_default(current_visit.get("veterinarian")),
+            "reason": _text_or_default(current_visit.get("reason")),
+            "weight": _text_or_default(current_visit.get("weight")),
+            "neutered": _bool_to_phrase(current_visit.get("neutered")),
+            "vaccinated": _bool_to_phrase(current_visit.get("vaccinated")),
+            "clinical_exam": current_visit.get("clinical_exam") or {},
+            "selected_services": current_visit.get("services") or [],
+            "lab_results": current_visit.get("lab_results") or [],
+            "prescriptions": current_visit.get("prescriptions") or [],
+            "vaccination_details": current_visit.get("vaccination_details") or {},
+            "existing_doctor_remarks": _text_or_default(current_visit.get("doctor_remarks"), ""),
+            "appointment_medical_information": current_visit.get("medical_information") or {},
+        }
+    }
+
+
+def build_client_care_summary_prompt(case_context):
+    return f"""
+You are an AI assistant helping a veterinary clinic draft a client-friendly care summary for a pet owner.
+
+Your role:
+- turn the veterinarian-entered visit details into plain, friendly owner-facing language
+- summarize what happened during the visit and what the owner should remember
+- make the text easy to understand without clinical jargon
+- support clinic communication, not replace veterinarian instructions
+
+Rules:
+- Do NOT add a diagnosis that is not explicitly documented
+- Do NOT add new medication names, dosages, treatments, restrictions, or follow-up dates
+- Do NOT make emergency claims unless the source data clearly supports a concern
+- If the record lacks enough information for a section, say it needs clinic review before sharing
+- Medication notes must only summarize prescriptions already entered in the record
+- Follow-up notes must only summarize existing follow-up/reminder data or say the clinic will advise
+- Write for the pet owner using warm, simple wording
+- Keep visit_summary to 1 to 2 short sentences
+- Return at most 3 bullets per list field
+- Keep bullet items short and actionable, under 14 words when possible
+- Keep friendly_message to one short sentence
+- Return at most 3 missing_information items
+
+Interpret the output fields this way:
+- summary: one-sentence internal preview of the owner summary
+- visit_summary: short owner-facing paragraph
+- home_care_instructions: practical home care bullets based only on documented services, notes, or plan
+- medication_notes: owner-facing medication bullets based only on entered prescriptions
+- watch_for: symptoms or changes the owner should monitor, based only on the record
+- follow_up: follow-up/reminder bullets based only on the record
+- friendly_message: short closing message suitable for copy/paste to the owner
+- missing_information: important missing details staff should review before sharing
+
+Use only the data below.
+
+Care summary context:
+{json.dumps(case_context, indent=2)}
+""".strip()
+
+
+def build_clinical_risk_flags(payload):
+    case_context = build_current_visit_ai_case_context(payload)
+    pet = case_context.get("pet") or {}
+    current_visit = case_context.get("current_visit") or {}
+    medical_information = current_visit.get("appointment_medical_information") or {}
+    clinical_exam = current_visit.get("clinical_exam") or {}
+    prescriptions = current_visit.get("prescriptions") if isinstance(current_visit.get("prescriptions"), list) else []
+    recent_visits = case_context.get("recent_visit_history") if isinstance(case_context.get("recent_visit_history"), list) else []
+    flags = []
+    missing_information = []
+
+    has_allergies = medical_information.get("has_allergies")
+    allergy_details = medical_information.get("allergy_details")
+    if _answer_is_yes(has_allergies) or _has_meaningful_value(allergy_details):
+        flags.append(_make_risk_flag(
+            "allergy-review",
+            "high",
+            "Allergy Review Needed",
+            f"Allergy information is present{f': {allergy_details}' if _has_meaningful_value(allergy_details) else ''}.",
+            "Review allergy details before finalizing medications, vaccines, grooming products, or procedures.",
+            "medical intake",
+        ))
+    elif _answer_is_unknown(has_allergies):
+        missing_information.append("Allergy status")
+
+    medications_recent = medical_information.get("medications_in_past_72_hours")
+    medication_details = medical_information.get("medication_details")
+    if _answer_is_yes(medications_recent) or _has_meaningful_value(medication_details):
+        flags.append(_make_risk_flag(
+            "current-medication-review",
+            "medium",
+            "Current Medication Reported",
+            f"Owner intake indicates recent medication use{f': {medication_details}' if _has_meaningful_value(medication_details) else ''}.",
+            "Confirm medication name, dose, timing, and purpose before adding new prescriptions or procedures.",
+            "medical intake",
+        ))
+    elif _answer_is_unknown(medications_recent):
+        missing_information.append("Medication use in past 72 hours")
+
+    eating_status = _normalized_text(medical_information.get("eating_status"))
+    if eating_status and eating_status not in {"normal", "same", "unchanged", "not provided", "yes", "eating"}:
+        flags.append(_make_risk_flag(
+            "appetite-concern",
+            "high",
+            "Appetite Concern",
+            f"Owner reported eating status: {medical_information.get('eating_status')}.",
+            "Clarify appetite change, duration, vomiting, stool changes, and hydration status during exam.",
+            "owner symptom intake",
+        ))
+
+    drinking_status = _normalized_text(medical_information.get("drinking_status"))
+    if drinking_status and drinking_status not in {"normal", "same", "unchanged", "not provided", "yes", "drinking"}:
+        flags.append(_make_risk_flag(
+            "drinking-concern",
+            "medium",
+            "Drinking Pattern Concern",
+            f"Owner reported drinking status: {medical_information.get('drinking_status')}.",
+            "Clarify water intake changes and consider hydration assessment during exam.",
+            "owner symptom intake",
+        ))
+
+    worsening_status = _normalized_text(medical_information.get("worsening_status"))
+    if worsening_status and worsening_status not in {"no", "not worsening", "stable", "same", "unchanged", "not provided"}:
+        flags.append(_make_risk_flag(
+            "worsening-symptoms",
+            "high",
+            "Symptoms May Be Worsening",
+            f"Owner reported condition status: {medical_information.get('worsening_status')}.",
+            "Ask when symptoms changed and prioritize reassessment of vitals and current clinical status.",
+            "owner symptom intake",
+        ))
+
+    vaccinated = medical_information.get("up_to_date_vaccinations") or pet.get("vaccinated")
+    if _answer_is_no(vaccinated):
+        flags.append(_make_risk_flag(
+            "vaccine-gap",
+            "medium",
+            "Vaccination Gap",
+            "Record indicates vaccinations may not be up to date.",
+            "Verify vaccine history before boarding, grooming, confinement, vaccination, or exposure-risk services.",
+            "pet profile or medical intake",
+        ))
+    elif _answer_is_unknown(vaccinated):
+        missing_information.append("Vaccination status")
+
+    pregnant = medical_information.get("pregnant")
+    if _answer_is_yes(pregnant):
+        flags.append(_make_risk_flag(
+            "pregnancy-review",
+            "medium",
+            "Pregnancy Status Relevant",
+            "Owner intake indicates the pet may be pregnant.",
+            "Review pregnancy status before medications, imaging, vaccination, procedures, or grooming stressors.",
+            "medical intake",
+        ))
+    elif _answer_is_unknown(pregnant):
+        missing_information.append("Pregnancy status")
+
+    if prescriptions and (_answer_is_yes(has_allergies) or _has_meaningful_value(allergy_details)):
+        flags.append(_make_risk_flag(
+            "prescription-allergy-check",
+            "high",
+            "Prescription Allergy Check",
+            "This visit includes prescription entries and allergy information is present.",
+            "Confirm prescriptions against allergy history before saving or dispensing.",
+            "prescriptions and medical intake",
+        ))
+
+    if not _has_meaningful_value(clinical_exam.get("temperature")):
+        missing_information.append("Temperature")
+    if not _has_meaningful_value(clinical_exam.get("heartRate")):
+        missing_information.append("Heart rate")
+    if not _has_meaningful_value(clinical_exam.get("breathingRate")):
+        missing_information.append("Breathing rate")
+
+    recent_symptom_entries = [
+        visit for visit in recent_visits
+        if _has_meaningful_value(((visit or {}).get("medical_information") or {}).get("reported_symptoms"))
+        or _has_meaningful_value(((visit or {}).get("medical_information") or {}).get("owner_symptom_notes"))
+    ]
+    if len(recent_symptom_entries) >= 2:
+        flags.append(_make_risk_flag(
+            "recurrent-symptom-review",
+            "medium",
+            "Repeated Symptom Intake Found",
+            "Multiple recent visits include owner symptom intake.",
+            "Review recent symptom pattern and whether this visit relates to an unresolved or recurring concern.",
+            "visit history",
+        ))
+
+    severity_rank = {"high": 3, "medium": 2, "low": 1}
+    flags = sorted(flags, key=lambda item: severity_rank.get(item.get("severity"), 0), reverse=True)[:8]
+    deduped_missing = list(dict.fromkeys(item for item in missing_information if _has_meaningful_value(item)))[:8]
+    high_count = sum(1 for item in flags if item.get("severity") == "high")
+    medium_count = sum(1 for item in flags if item.get("severity") == "medium")
+
+    if not flags:
+        summary = "No major clinical risk flags were identified from the available intake and visit data."
+    elif high_count:
+        summary = f"{high_count} high-attention flag{'s' if high_count != 1 else ''} found. Review before finalizing the visit record."
+    else:
+        summary = f"{medium_count} review flag{'s' if medium_count != 1 else ''} found from the available intake and visit data."
+
+    return {
+        "summary": summary,
+        "flags": flags,
+        "missing_information": deduped_missing,
+        "model": "clinical-risk-rules-v1",
+    }, case_context
+
+
+def build_follow_up_reminders(payload):
+    case_context = build_current_visit_ai_case_context(payload)
+    current_visit = case_context.get("current_visit") or {}
+    medical_information = current_visit.get("appointment_medical_information") or {}
+    recent_visits = case_context.get("recent_visit_history") if isinstance(case_context.get("recent_visit_history"), list) else []
+    reminders = []
+    missing_information = []
+    today = get_current_manila_date()
+
+    def add_reminder(reminder_id, priority, title, detail, suggested_timing, suggested_action, source):
+        reminders.append(_make_follow_up_reminder(
+            reminder_id,
+            priority,
+            title,
+            detail,
+            suggested_timing,
+            suggested_action,
+            source,
+        ))
+
+    vaccine_sources = []
+    current_vaccine = current_visit.get("vaccination_details") or {}
+    if _has_meaningful_value(current_vaccine):
+        vaccine_sources.append(current_vaccine)
+    for visit in recent_visits:
+        if isinstance(visit, dict) and _has_meaningful_value(visit.get("vaccination_details")):
+            vaccine_sources.append(visit.get("vaccination_details") or {})
+
+    for index, vaccine in enumerate(vaccine_sources[:5]):
+        due_date = _parse_iso_date(vaccine.get("next_due_date") or vaccine.get("nextDueDate"))
+        vaccine_name = vaccine.get("vaccine_name") or vaccine.get("vaccineName") or "Vaccination"
+        if due_date:
+            days_until_due = (due_date - today).days
+            if days_until_due < 0:
+                add_reminder(
+                    f"vaccine-overdue-{index}",
+                    "high",
+                    "Vaccine Due Date Passed",
+                    f"{vaccine_name} was due on {due_date.isoformat()}.",
+                    "As soon as clinically appropriate",
+                    "Verify vaccine status and schedule booster/recheck if the veterinarian confirms it is needed.",
+                    "vaccination record",
+                )
+            elif days_until_due <= 30:
+                add_reminder(
+                    f"vaccine-upcoming-{index}",
+                    "medium",
+                    "Upcoming Vaccine Due",
+                    f"{vaccine_name} is due on {due_date.isoformat()}.",
+                    f"Within {days_until_due} day{'s' if days_until_due != 1 else ''}",
+                    "Remind the owner or schedule preventive visit if appropriate.",
+                    "vaccination record",
+                )
+        elif _has_meaningful_value(vaccine_name):
+            missing_information.append(f"Next due date for {vaccine_name}")
+
+    prescriptions = current_visit.get("prescriptions") if isinstance(current_visit.get("prescriptions"), list) else []
+    if prescriptions:
+        add_reminder(
+            "prescription-follow-up",
+            "medium",
+            "Medication Follow-Up Review",
+            "This visit includes prescription entries.",
+            "At medication completion or clinician-selected date",
+            "Confirm response to medication, adverse effects, and whether a recheck is needed.",
+            "current visit prescriptions",
+        )
+
+    lab_results = current_visit.get("lab_results") if isinstance(current_visit.get("lab_results"), list) else []
+    if lab_results:
+        add_reminder(
+            "lab-result-review",
+            "medium",
+            "Lab Result Review",
+            "This visit includes lab or diagnostic entries.",
+            "After results are finalized",
+            "Confirm interpretation, owner communication, and whether repeat testing or recheck is needed.",
+            "current visit labs",
+        )
+
+    services = current_visit.get("selected_services") if isinstance(current_visit.get("selected_services"), list) else []
+    service_text = " ".join(str(service or "").lower() for service in services)
+    if any(keyword in service_text for keyword in ["confinement", "surgery", "dental", "x-ray", "ultrasound", "laboratory", "blood", "urinalysis", "fecal"]):
+        add_reminder(
+            "service-recheck",
+            "medium",
+            "Post-Service Follow-Up",
+            f"Selected services may need follow-up: {', '.join(str(service) for service in services if service)}.",
+            "Clinician-selected date",
+            "Set a recheck or owner update reminder if clinically appropriate.",
+            "selected services",
+        )
+
+    symptom_fields = [
+        medical_information.get("reported_symptoms"),
+        medical_information.get("owner_symptom_notes"),
+        medical_information.get("eating_status"),
+        medical_information.get("drinking_status"),
+        medical_information.get("worsening_status"),
+    ]
+    if any(_has_meaningful_value(item) for item in symptom_fields):
+        add_reminder(
+            "symptom-follow-up",
+            "medium",
+            "Symptom Follow-Up",
+            "Owner symptom intake is present for this case.",
+            "Clinician-selected date",
+            "Consider setting a follow-up to verify whether symptoms improved, worsened, or resolved.",
+            "owner symptom intake",
+        )
+
+    if _answer_is_no(medical_information.get("up_to_date_vaccinations")):
+        add_reminder(
+            "preventive-vaccine-review",
+            "medium",
+            "Preventive Vaccine Review",
+            "Owner intake indicates vaccinations may not be up to date.",
+            "During this visit or next preventive visit",
+            "Review vaccine history and document next recommended preventive schedule.",
+            "medical intake",
+        )
+
+    recent_prescription_visits = [
+        visit for visit in recent_visits
+        if _has_meaningful_value((visit or {}).get("prescriptions"))
+    ]
+    if len(recent_prescription_visits) >= 2:
+        add_reminder(
+            "recurring-medication-review",
+            "low",
+            "Medication History Review",
+            "Multiple recent visits include prescription records.",
+            "During record review",
+            "Check whether this reflects a recurring or unresolved issue that needs continuity planning.",
+            "visit history",
+        )
+
+    if not reminders:
+        add_reminder(
+            "no-specific-reminder",
+            "low",
+            "No Specific Follow-Up Trigger Found",
+            "No vaccine due date, prescriptions, lab results, or symptom follow-up trigger was identified from available data.",
+            "None from available data",
+            "Continue documenting follow-up needs in the visit plan when the veterinarian decides one is needed.",
+            "available EMR context",
+        )
+
+    priority_rank = {"high": 3, "medium": 2, "low": 1}
+    reminders = sorted(reminders, key=lambda item: priority_rank.get(item.get("priority"), 0), reverse=True)[:8]
+    deduped_missing = list(dict.fromkeys(item for item in missing_information if _has_meaningful_value(item)))[:8]
+    high_count = sum(1 for item in reminders if item.get("priority") == "high")
+    medium_count = sum(1 for item in reminders if item.get("priority") == "medium")
+
+    if high_count:
+        summary = f"{high_count} high-priority follow-up reminder{'s' if high_count != 1 else ''} found."
+    elif medium_count:
+        summary = f"{medium_count} follow-up reminder{'s' if medium_count != 1 else ''} found from the available record."
+    else:
+        summary = "No urgent follow-up reminders were identified from the available record."
+
+    return {
+        "summary": summary,
+        "reminders": reminders,
+        "missing_information": deduped_missing,
+        "model": "follow-up-reminder-rules-v1",
+    }, case_context
+
+
 def call_gemini_with_structured_output(prompt, schema):
+    if AI_PROVIDER == "openai" or (OPENAI_API_KEY and not GEMINI_API_KEY):
+        return call_openai_with_structured_output(prompt, schema)
+
+    return call_gemini_api_with_structured_output(prompt, schema)
+
+
+def normalize_schema_for_openai(schema):
+    if not isinstance(schema, dict):
+        return schema
+
+    normalized = {}
+    for key, value in schema.items():
+        if key == "type" and isinstance(value, str):
+            normalized[key] = value.lower()
+        elif key == "properties" and isinstance(value, dict):
+            normalized[key] = {
+                prop_name: normalize_schema_for_openai(prop_schema)
+                for prop_name, prop_schema in value.items()
+            }
+        elif key == "items":
+            normalized[key] = normalize_schema_for_openai(value)
+        else:
+            normalized[key] = normalize_schema_for_openai(value) if isinstance(value, dict) else value
+
+    if normalized.get("type") == "object":
+        normalized["additionalProperties"] = False
+        properties = normalized.get("properties") if isinstance(normalized.get("properties"), dict) else {}
+        normalized["required"] = list(properties.keys())
+
+    return normalized
+
+
+def extract_openai_response_text(parsed):
+    output_text = parsed.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text.strip()
+
+    text_parts = []
+    for output_item in parsed.get("output") or []:
+        for content_item in (output_item or {}).get("content") or []:
+            if not isinstance(content_item, dict):
+                continue
+            text_value = content_item.get("text")
+            if isinstance(text_value, str):
+                text_parts.append(text_value)
+
+    return "".join(text_parts).strip()
+
+
+def call_openai_with_structured_output(prompt, schema):
+    if not OPENAI_API_KEY:
+        raise ValueError("Missing OPENAI_API_KEY in backend environment.")
+
+    response_schema = normalize_schema_for_openai(schema)
+    payload = {
+        "model": OPENAI_MODEL,
+        "input": [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "pawrang_ai_output",
+                "strict": True,
+                "schema": response_schema,
+            }
+        },
+        "max_output_tokens": OPENAI_MAX_OUTPUT_TOKENS,
+    }
+
+    req = urllib_request.Request(
+        "https://api.openai.com/v1/responses",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+        },
+        method="POST"
+    )
+
+    try:
+        with urllib_request.urlopen(req, timeout=60) as response:
+            raw = response.read().decode("utf-8")
+    except urllib_error.HTTPError as e:
+        error_body = e.read().decode("utf-8", errors="replace")
+        raise ValueError(f"OpenAI API error ({e.code}): {error_body}")
+    except urllib_error.URLError as e:
+        raise ValueError(f"OpenAI API connection error: {e}")
+
+    parsed = json.loads(raw)
+    text = extract_openai_response_text(parsed)
+    if not text:
+        raise ValueError("OpenAI returned an empty response.")
+
+    try:
+        result = json.loads(text)
+    except json.JSONDecodeError as parse_error:
+        raise ValueError(f"OpenAI returned invalid JSON: {parse_error}")
+
+    return normalize_ai_structured_result(result, OPENAI_MODEL)
+
+
+def call_gemini_api_with_structured_output(prompt, schema):
     if not GEMINI_API_KEY:
         raise ValueError("Missing GEMINI_API_KEY in backend environment.")
 
@@ -931,13 +1725,30 @@ def call_gemini_with_structured_output(prompt, schema):
         raise ValueError("Gemini returned an empty response.")
 
     result = json.loads(text)
-    return {
+    return normalize_ai_structured_result(result, GEMINI_MODEL)
+
+
+def normalize_ai_structured_result(result, model_name):
+    normalized_result = {
         "summary": _text_or_default(result.get("summary")),
         "important_flags": result.get("important_flags") if isinstance(result.get("important_flags"), list) else [],
         "follow_up_questions": result.get("follow_up_questions") if isinstance(result.get("follow_up_questions"), list) else [],
         "missing_information": result.get("missing_information") if isinstance(result.get("missing_information"), list) else [],
-        "model": GEMINI_MODEL
+        "model": model_name
     }
+    for optional_list_field in ("relevant_history", "exam_focus", "care_continuity_notes"):
+        if isinstance(result.get(optional_list_field), list):
+            normalized_result[optional_list_field] = result.get(optional_list_field)
+    for optional_text_field in ("subjective", "objective", "assessment", "plan", "clinical_note"):
+        if isinstance(result.get(optional_text_field), str):
+            normalized_result[optional_text_field] = result.get(optional_text_field).strip()
+    for optional_text_field in ("visit_summary", "friendly_message"):
+        if isinstance(result.get(optional_text_field), str):
+            normalized_result[optional_text_field] = result.get(optional_text_field).strip()
+    for optional_list_field in ("home_care_instructions", "medication_notes", "watch_for", "follow_up"):
+        if isinstance(result.get(optional_list_field), list):
+            normalized_result[optional_list_field] = result.get(optional_list_field)
+    return normalized_result
 
 
 def build_ai_error_response(error, fallback_message):
@@ -984,7 +1795,16 @@ INVENTORY_CATEGORY_CODES = {
     "Medication": "MED",
 }
 INVENTORY_ITEM_STOP_WORDS = {"and", "for", "of", "the", "with", "to", "a", "an"}
-ADMIN_NOTIFICATION_MODULES = {"inventory"}
+ADMIN_NOTIFICATION_MODULES = {
+    "inventory",
+    "appointments",
+    "emr",
+    "billing",
+    "accounts",
+    "availability",
+    "audit",
+    "system",
+}
 ADMIN_NOTIFICATION_SEVERITIES = {"info", "success", "warning", "error"}
 TRANSIENT_SUPABASE_ERROR_PATTERNS = (
     "winerror 10035",
@@ -3526,6 +4346,373 @@ def safe_create_inventory_admin_notification(**kwargs):
         return None
 
 
+def create_appointment_admin_notification(
+    *,
+    table_name,
+    id_column,
+    record_id,
+    event_type,
+    title,
+    action_text,
+    severity='info',
+    link='/admin/schedule',
+    metadata=None,
+):
+    email_context = get_reschedule_email_context(table_name, id_column, record_id)
+    record = email_context.get("record") or {}
+    branch_id = record.get("branch_id")
+    if not branch_id:
+        raise ValueError("Appointment notification requires branch_id")
+
+    entity_type = 'walkin' if table_name == 'walkin_appointments' else 'appointment'
+    patient_name = email_context.get("patient_name") or "Patient"
+    pet_name = email_context.get("pet_name") or "your pet"
+    service_name = email_context.get("service_name") or "Appointment"
+    appointment_date = record.get("appointment_date") or ""
+    appointment_time = format_display_time(record.get("appointment_time"))
+    schedule_text = " ".join(part for part in [str(appointment_date).strip(), f"at {appointment_time}" if appointment_time else ""] if part).strip()
+    message = f"{patient_name}'s appointment for {pet_name} ({service_name}) {action_text}."
+    if schedule_text:
+        message = f"{message} Schedule: {schedule_text}."
+
+    return create_admin_notification(
+        branch_id=branch_id,
+        event_type=event_type,
+        title=title,
+        message=message,
+        severity=severity,
+        module='appointments',
+        link=link,
+        entity_type=entity_type,
+        entity_id=record_id,
+        metadata={
+            "recordType": entity_type,
+            "patientName": patient_name,
+            "petName": pet_name,
+            "serviceName": service_name,
+            "appointmentDate": appointment_date,
+            "appointmentTime": record.get("appointment_time"),
+            **(metadata or {}),
+        },
+    )
+
+
+def safe_create_appointment_admin_notification(**kwargs):
+    try:
+        return create_appointment_admin_notification(**kwargs)
+    except Exception as notification_error:
+        print("Appointment admin notification error:", str(notification_error))
+        return None
+
+
+def get_default_admin_notification_branch_id():
+    response = execute_with_retry(
+        lambda: supabase_admin.table("branches").select("*").limit(1).execute(),
+        context="Fetch default notification branch"
+    )
+    branch = (response.data or [{}])[0]
+    return branch.get("branch_id") or branch.get("id")
+
+
+def resolve_emr_notification_context(medical_record_id=None, visit_id=None):
+    visit = None
+    if visit_id not in (None, ""):
+        visit = get_single_row("medical_record_visits", "medical_record_visit_id", visit_id)
+        if visit and medical_record_id in (None, ""):
+            medical_record_id = visit.get("medical_record_id")
+
+    record = get_single_row("medical_records", "medical_record_id", medical_record_id) if medical_record_id not in (None, "") else None
+    if not record:
+        raise ValueError("Medical record not found for EMR notification")
+
+    pet = get_single_row("pet_profile", "pet_id", record.get("pet_id")) if record.get("pet_id") not in (None, "") else None
+    owner = get_single_row("patient_account", "id", pet.get("owner_id")) if pet and pet.get("owner_id") else None
+    branch_id = None
+
+    if not visit:
+        visit_res = execute_with_retry(
+            lambda: supabase_admin.table("medical_record_visits")
+            .select("*")
+            .eq("medical_record_id", medical_record_id)
+            .order("visit_date", desc=True)
+            .limit(1)
+            .execute(),
+            context="Fetch EMR latest visit for notification"
+        )
+        visit = (visit_res.data or [None])[0]
+
+    if visit:
+        source_type = str(visit.get("source_type") or "").strip().lower()
+        source_id = visit.get("source_id")
+        if source_type == "appointment" and source_id not in (None, ""):
+            appointment = get_single_row("appointments", "appointment_id", source_id)
+            branch_id = (appointment or {}).get("branch_id")
+        elif source_type == "walkin" and source_id not in (None, ""):
+            walkin = get_single_row("walkin_appointments", "walkin_id", source_id)
+            branch_id = (walkin or {}).get("branch_id")
+
+    if not branch_id:
+        branch_id = get_default_admin_notification_branch_id()
+    if not branch_id:
+        raise ValueError("EMR notification requires a branch_id")
+
+    pet_name = (pet or {}).get("pet_name") or "Unknown pet"
+    owner_name = get_profile_display_name(owner) or "Unknown owner"
+
+    return {
+        "record": record,
+        "visit": visit or {},
+        "pet": pet or {},
+        "owner": owner or {},
+        "branchId": branch_id,
+        "petName": pet_name,
+        "ownerName": owner_name,
+        "medicalRecordId": medical_record_id,
+    }
+
+
+def create_emr_admin_notification(
+    *,
+    medical_record_id=None,
+    visit_id=None,
+    event_type,
+    title,
+    action_text,
+    severity='info',
+    link='/patient-records',
+    entity_type='medical_record',
+    entity_id=None,
+    metadata=None,
+):
+    context = resolve_emr_notification_context(medical_record_id=medical_record_id, visit_id=visit_id)
+    resolved_record_id = context.get("medicalRecordId")
+    resolved_entity_id = entity_id if entity_id not in (None, "") else resolved_record_id
+    message = f"{context.get('petName')} ({context.get('ownerName')}) {action_text}."
+
+    return create_admin_notification(
+        branch_id=context.get("branchId"),
+        event_type=event_type,
+        title=title,
+        message=message,
+        severity=severity,
+        module='emr',
+        link=link,
+        entity_type=entity_type,
+        entity_id=resolved_entity_id,
+        metadata={
+            "medicalRecordId": resolved_record_id,
+            "petId": (context.get("pet") or {}).get("pet_id"),
+            "petName": context.get("petName"),
+            "ownerId": (context.get("owner") or {}).get("id"),
+            "ownerName": context.get("ownerName"),
+            "visitId": (context.get("visit") or {}).get("medical_record_visit_id"),
+            **(metadata or {}),
+        },
+    )
+
+
+def safe_create_emr_admin_notification(**kwargs):
+    try:
+        return create_emr_admin_notification(**kwargs)
+    except Exception as notification_error:
+        print("EMR admin notification error:", str(notification_error))
+        return None
+
+
+def create_billing_admin_notification(
+    *,
+    invoice_record,
+    event_type,
+    title,
+    action_text,
+    severity='info',
+    link='/billing',
+    metadata=None,
+):
+    invoice = invoice_record or {}
+    branch_id = invoice.get("branch_id") or get_default_admin_notification_branch_id()
+    if not branch_id:
+        raise ValueError("Billing notification requires a branch_id")
+
+    invoice_id = invoice.get("billing_invoice_id")
+    invoice_number = invoice.get("invoice_number") or f"Invoice {invoice_id or ''}".strip()
+    customer_name = invoice.get("customer_name") or "Customer"
+    pet_name = invoice.get("pet_name") or "pet"
+    total_amount = round(float(invoice.get("total_amount") or 0), 2)
+    amount_paid = round(float(invoice.get("amount_paid") or 0), 2)
+    payment_status = invoice.get("payment_status") or derive_billing_payment_state(total_amount, amount_paid)["payment_status"]
+    message = (
+        f"{invoice_number} for {customer_name} / {pet_name} {action_text}. "
+        f"Total: PHP {total_amount:,.2f}. Status: {payment_status}."
+    )
+
+    return create_admin_notification(
+        branch_id=branch_id,
+        event_type=event_type,
+        title=title,
+        message=message,
+        severity=severity,
+        module='billing',
+        link=link,
+        entity_type='billing_invoice',
+        entity_id=invoice_id,
+        metadata={
+            "invoiceId": invoice_id,
+            "invoiceNumber": invoice_number,
+            "customerName": customer_name,
+            "petName": pet_name,
+            "totalAmount": total_amount,
+            "amountPaid": amount_paid,
+            "paymentStatus": payment_status,
+            "sourceRecordType": invoice.get("source_record_type"),
+            "sourceRecordId": invoice.get("source_record_id"),
+            **(metadata or {}),
+        },
+    )
+
+
+def safe_create_billing_admin_notification(**kwargs):
+    try:
+        return create_billing_admin_notification(**kwargs)
+    except Exception as notification_error:
+        print("Billing admin notification error:", str(notification_error))
+        return None
+
+
+def create_account_admin_notification(
+    *,
+    account_record,
+    account_type,
+    event_type,
+    title,
+    action_text,
+    severity='info',
+    link=None,
+    actor_id=None,
+    metadata=None,
+):
+    account = account_record or {}
+    branch_id = account.get("branch_id") or get_default_admin_notification_branch_id()
+    if not branch_id:
+        raise ValueError("Account notification requires a branch_id")
+
+    normalized_type = (account_type or "").strip().lower()
+    is_employee = normalized_type == "employee"
+    account_id = account.get("id") or account.get("account_id") or account.get("pk")
+    role = account.get("role") or ("Employee" if is_employee else "Patient")
+    status = account.get("status") or "active"
+    display_name = get_profile_display_name(account) or account.get("fullname") or account.get("fullName") or account.get("email") or "Account"
+    target_link = link or ("/admin/dashboard" if is_employee else "/admin/users")
+
+    message = f"{display_name} ({role}) {action_text}. Status: {status}."
+
+    return create_admin_notification(
+        branch_id=branch_id,
+        event_type=event_type,
+        title=title,
+        message=message,
+        severity=severity,
+        module='accounts',
+        link=target_link,
+        actor_id=actor_id,
+        entity_type='employee_account' if is_employee else 'patient_account',
+        entity_id=None,
+        metadata={
+            "accountId": account_id,
+            "accountType": "employee" if is_employee else "patient",
+            "displayName": display_name,
+            "email": account.get("email"),
+            "role": role,
+            "status": status,
+            **(metadata or {}),
+        },
+    )
+
+
+def safe_create_account_admin_notification(**kwargs):
+    try:
+        return create_account_admin_notification(**kwargs)
+    except Exception as notification_error:
+        print("Account admin notification error:", str(notification_error))
+        return None
+
+
+def create_availability_admin_notification(
+    *,
+    event_type,
+    title,
+    message,
+    severity='info',
+    link='/admin/availability',
+    actor_id=None,
+    entity_type=None,
+    entity_id=None,
+    metadata=None,
+):
+    branch_id = get_default_admin_notification_branch_id()
+    if not branch_id:
+        raise ValueError("Availability notification requires a branch_id")
+
+    return create_admin_notification(
+        branch_id=branch_id,
+        event_type=event_type,
+        title=title,
+        message=message,
+        severity=severity,
+        module='availability',
+        link=link,
+        actor_id=actor_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        metadata=metadata or {},
+    )
+
+
+def safe_create_availability_admin_notification(**kwargs):
+    try:
+        return create_availability_admin_notification(**kwargs)
+    except Exception as notification_error:
+        print("Availability admin notification error:", str(notification_error))
+        return None
+
+
+def create_audit_admin_notification(
+    *,
+    event_type,
+    title,
+    message,
+    severity='info',
+    link='/admin/audit',
+    actor_id=None,
+    metadata=None,
+):
+    branch_id = get_default_admin_notification_branch_id()
+    if not branch_id:
+        raise ValueError("Audit notification requires a branch_id")
+
+    return create_admin_notification(
+        branch_id=branch_id,
+        event_type=event_type,
+        title=title,
+        message=message,
+        severity=severity,
+        module='audit',
+        link=link,
+        actor_id=actor_id,
+        entity_type='audit_log',
+        entity_id=None,
+        metadata=metadata or {},
+    )
+
+
+def safe_create_audit_admin_notification(**kwargs):
+    try:
+        return create_audit_admin_notification(**kwargs)
+    except Exception as notification_error:
+        print("Audit admin notification error:", str(notification_error))
+        return None
+
+
 def admin_notification_event_exists(event_key):
     if not event_key:
         return False
@@ -5020,6 +6207,17 @@ def create_appointment_record(data, allow_walk_in=False):
         except Exception as email_error:
             print(f"Booking confirmation preparation error (walk-in): {email_error}")
 
+        safe_create_appointment_admin_notification(
+            table_name='walkin_appointments',
+            id_column='walkin_id',
+            record_id=created_id,
+            event_type='appointment_created',
+            title='Clinic-created appointment added',
+            action_text='was added by the clinic',
+            severity='info',
+            link='/admin/schedule',
+        )
+
         return {
             "message": "Clinic-created appointment created!",
             "data": response.data,
@@ -5043,6 +6241,8 @@ def create_appointment_record(data, allow_walk_in=False):
         "Branch": branch_id,
     }
     missing = [label for label, value in required_fields.items() if value in (None, "")]
+    if owner_id == 'WALK_IN' or pet_id == 'WALK_IN' or is_walk_in:
+        raise ValueError("Select an existing owner and pet before booking an appointment.")
     if missing:
         raise ValueError(format_missing_required_fields(missing))
 
@@ -5077,6 +6277,17 @@ def create_appointment_record(data, allow_walk_in=False):
         )
     except Exception as email_error:
         print(f"Booking confirmation preparation error: {email_error}")
+
+    safe_create_appointment_admin_notification(
+        table_name='appointments',
+        id_column='appointment_id',
+        record_id=created_id,
+        event_type='appointment_created',
+        title='New appointment booked',
+        action_text='was booked',
+        severity='info',
+        link='/admin/schedule',
+    )
 
     return {
         "message": "Appointment created!",
@@ -5130,6 +6341,18 @@ def cancel_appointment(appointment_id):
             "patient_reason": cancel_reason,
         }).eq('appointment_id', appointment_id).execute()
 
+        safe_create_appointment_admin_notification(
+            table_name='appointments',
+            id_column='appointment_id',
+            record_id=appointment_id,
+            event_type='appointment_cancelled',
+            title='Appointment cancelled',
+            action_text='was cancelled',
+            severity='warning',
+            link='/admin/history',
+            metadata={"reason": cancel_reason},
+        )
+
         return jsonify({"message": "Appointment cancelled successfully"}), 200
 
     except Exception as e:
@@ -5169,6 +6392,18 @@ def reschedule_appointment(appointment_id):
             "patient_reason":   reschedule_reason,
             "status":           "pending",
         }).eq('appointment_id', appointment_id).execute()
+
+        safe_create_appointment_admin_notification(
+            table_name='appointments',
+            id_column='appointment_id',
+            record_id=appointment_id,
+            event_type='appointment_rescheduled',
+            title='Appointment rescheduled',
+            action_text='was rescheduled',
+            severity='info',
+            link='/admin/schedule',
+            metadata={"reason": reschedule_reason},
+        )
 
         return jsonify({"message": "Reschedule request submitted successfully"}), 200
 
@@ -5343,7 +6578,17 @@ def generate_user_symptom_summary():
 
         return jsonify({
             "summary": summary,
-            "model": GEMINI_MODEL,
+            "model": ai_result.get("model"),
+            "support_metadata": {
+                "label": "AI-generated clinical support",
+                "review_required": True,
+                "reliability": "Moderate",
+                "reasons": ["Generated from owner-provided booking symptom intake."],
+                "sources": ["owner symptom intake"],
+                "missing_context": [],
+                "generated_at": _generated_at_manila_iso(),
+                "disclaimer": "Review and verify before use. This output does not diagnose, prescribe, or replace veterinary judgment.",
+            },
         }), 200
     except ValueError as value_error:
         return build_ai_error_response(value_error, "Unable to generate the symptom summary right now.")
@@ -5363,7 +6608,7 @@ def generate_admin_appointment_summary():
         prompt = build_admin_ai_prompt(case_context)
         ai_result = call_gemini_with_structured_output(prompt, ADMIN_AI_SUMMARY_SCHEMA)
         return jsonify({
-            "summary": ai_result,
+            "summary": attach_ai_support_metadata(ai_result, case_context, "admin"),
             "caseContext": case_context
         }), 200
     except ValueError as e:
@@ -5371,6 +6616,69 @@ def generate_admin_appointment_summary():
     except Exception as e:
         print("Admin AI summary error:", str(e))
         return build_ai_error_response(e, "Unable to generate the AI summary right now.")
+
+
+@app.route('/api/ai/admin-appointment-summary/saved', methods=['GET'])
+def get_saved_admin_appointment_summary():
+    record_type = (request.args.get('recordType') or request.args.get('record_type') or 'appointment').strip().lower()
+    target_id = request.args.get('targetId') or request.args.get('target_id')
+
+    if record_type not in {'appointment', 'walkin'}:
+        return jsonify({"error": "recordType must be appointment or walkin"}), 400
+    if target_id in (None, ''):
+        return jsonify({"error": "targetId is required"}), 400
+
+    try:
+        response = (
+            supabase_admin.table('ai_generated_summaries')
+            .select('*')
+            .eq('record_type', record_type)
+            .eq('target_id', int(target_id))
+            .eq('summary_type', 'admin_appointment')
+            .order('updated_at', desc=True)
+            .limit(1)
+            .execute()
+        )
+        row = (response.data or [None])[0]
+        return jsonify({"summary": row.get("summary_payload") if row else None, "savedSummary": row}), 200
+    except Exception as e:
+        print("Saved admin AI summary lookup error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/ai/admin-appointment-summary/saved', methods=['POST'])
+def save_admin_appointment_summary():
+    data = request.get_json() or {}
+    record_type = (data.get('recordType') or data.get('record_type') or 'appointment').strip().lower()
+    target_id = data.get('targetId') or data.get('target_id')
+    summary_payload = data.get('summary') or data.get('summary_payload')
+
+    if record_type not in {'appointment', 'walkin'}:
+        return jsonify({"error": "recordType must be appointment or walkin"}), 400
+    if target_id in (None, ''):
+        return jsonify({"error": "targetId is required"}), 400
+    if not isinstance(summary_payload, dict):
+        return jsonify({"error": "summary is required"}), 400
+
+    try:
+        row_payload = {
+            "record_type": record_type,
+            "target_id": int(target_id),
+            "summary_type": "admin_appointment",
+            "summary_payload": summary_payload,
+            "model": summary_payload.get("model"),
+            "updated_at": get_current_manila_datetime().isoformat(),
+        }
+        response = (
+            supabase_admin.table('ai_generated_summaries')
+            .upsert(row_payload, on_conflict='record_type,target_id,summary_type')
+            .execute()
+        )
+        row = (response.data or [row_payload])[0]
+        return jsonify({"summary": row.get("summary_payload") or summary_payload, "savedSummary": row}), 200
+    except Exception as e:
+        print("Save admin AI summary error:", str(e))
+        return jsonify({"error": str(e)}), 400
 
 
 @app.route('/api/ai/doctor-emr-brief', methods=['POST'])
@@ -5382,9 +6690,9 @@ def generate_doctor_emr_brief():
     try:
         case_context = build_doctor_emr_case_context(payload)
         prompt = build_doctor_emr_prompt(case_context)
-        ai_result = call_gemini_with_structured_output(prompt, ADMIN_AI_SUMMARY_SCHEMA)
+        ai_result = call_gemini_with_structured_output(prompt, DOCTOR_EMR_BRIEF_SCHEMA)
         return jsonify({
-            "summary": ai_result,
+            "summary": attach_ai_support_metadata(ai_result, case_context, "doctor"),
             "caseContext": case_context
         }), 200
     except ValueError as e:
@@ -5392,6 +6700,61 @@ def generate_doctor_emr_brief():
     except Exception as e:
         print("Doctor EMR AI brief error:", str(e))
         return build_ai_error_response(e, "Unable to generate the EMR prep brief right now.")
+
+
+@app.route('/api/ai/clinical-risk-flags', methods=['POST'])
+def generate_clinical_risk_flags():
+    payload = request.get_json() or {}
+    if not payload:
+        return jsonify({"error": "Clinical risk context is required"}), 400
+
+    try:
+        risk_result, case_context = build_clinical_risk_flags(payload)
+        return jsonify({
+            "riskFlags": attach_ai_support_metadata(risk_result, case_context, "doctor"),
+            "caseContext": case_context
+        }), 200
+    except Exception as e:
+        print("Clinical risk flag error:", str(e))
+        return build_ai_error_response(e, "Unable to generate clinical risk flags right now.")
+
+
+@app.route('/api/ai/follow-up-reminders', methods=['POST'])
+def generate_follow_up_reminders():
+    payload = request.get_json() or {}
+    if not payload:
+        return jsonify({"error": "Follow-up reminder context is required"}), 400
+
+    try:
+        reminder_result, case_context = build_follow_up_reminders(payload)
+        return jsonify({
+            "followUpReminders": attach_ai_support_metadata(reminder_result, case_context, "doctor"),
+            "caseContext": case_context
+        }), 200
+    except Exception as e:
+        print("Follow-up reminder error:", str(e))
+        return build_ai_error_response(e, "Unable to generate follow-up reminders right now.")
+
+
+@app.route('/api/ai/client-care-summary', methods=['POST'])
+def generate_client_care_summary():
+    payload = request.get_json() or {}
+    if not payload:
+        return jsonify({"error": "Client care summary context is required"}), 400
+
+    try:
+        case_context = build_current_visit_ai_case_context(payload)
+        prompt = build_client_care_summary_prompt(case_context)
+        ai_result = call_gemini_with_structured_output(prompt, CLIENT_CARE_SUMMARY_SCHEMA)
+        return jsonify({
+            "careSummary": attach_ai_support_metadata(ai_result, case_context, "doctor"),
+            "caseContext": case_context
+        }), 200
+    except ValueError as e:
+        return build_ai_error_response(e, "Unable to generate the client care summary right now.")
+    except Exception as e:
+        print("Client care summary AI error:", str(e))
+        return build_ai_error_response(e, "Unable to generate the client care summary right now.")
 
 
 # -----------------------------------------------
@@ -5416,7 +6779,19 @@ def emr_records_collection():
             return jsonify({"error": str(e)}), 400
 
     try:
-        saved_record = save_emr_record_payload(request.get_json() or {})
+        payload = request.get_json() or {}
+        pet_id = payload.get("petId") or payload.get("pet_id")
+        existing_record = get_single_row("medical_records", "pet_id", int(pet_id)) if pet_id not in (None, "") else None
+        saved_record = save_emr_record_payload(payload)
+        saved_record_id = (saved_record.get("id") or saved_record.get("medicalRecordId")) if saved_record else None
+        safe_create_emr_admin_notification(
+            medical_record_id=saved_record_id,
+            event_type='medical_record_updated' if existing_record else 'medical_record_created',
+            title='Medical record updated' if existing_record else 'Medical record created',
+            action_text='had a medical record updated' if existing_record else 'had a medical record created',
+            severity='info',
+            link='/patient-records',
+        )
         return jsonify({
             "message": "Medical record saved successfully!",
             "record": saved_record,
@@ -5443,6 +6818,14 @@ def emr_record_detail(record_id):
     if request.method == 'PUT':
         try:
             saved_record = save_emr_record_payload(request.get_json() or {}, existing_record_id=record_id)
+            safe_create_emr_admin_notification(
+                medical_record_id=record_id,
+                event_type='medical_record_updated',
+                title='Medical record updated',
+                action_text='had a medical record updated',
+                severity='info',
+                link='/patient-records',
+            )
             return jsonify({
                 "message": "Medical record updated successfully!",
                 "record": saved_record,
@@ -5458,6 +6841,14 @@ def emr_record_detail(record_id):
         if not existing_record:
             return jsonify({"error": "Medical record not found."}), 404
 
+        safe_create_emr_admin_notification(
+            medical_record_id=record_id,
+            event_type='medical_record_deleted',
+            title='Medical record deleted',
+            action_text='had a medical record deleted',
+            severity='warning',
+            link='/patient-records',
+        )
         supabase_admin.table("medical_records").delete().eq("medical_record_id", record_id).execute()
         return jsonify({"message": "Medical record deleted successfully."}), 200
     except Exception as e:
@@ -5494,6 +6885,23 @@ def update_emr_lab_result_owner_visibility(lab_result_id):
             "medical_record_lab_result_id", lab_result_id
         ).execute().data or []
         updated_row = response[0] if response else get_single_row("medical_record_lab_results", "medical_record_lab_result_id", lab_result_id)
+        visit_id = updated_row.get("medical_record_visit_id") or existing_row.get("medical_record_visit_id")
+
+        safe_create_emr_admin_notification(
+            visit_id=visit_id,
+            event_type='lab_result_shared' if visible_to_owner else 'lab_result_hidden',
+            title='Lab result shared' if visible_to_owner else 'Lab result hidden',
+            action_text='had a lab result shared to the owner portal' if visible_to_owner else 'had a lab result hidden from the owner portal',
+            severity='success' if visible_to_owner else 'info',
+            link='/patient-records',
+            entity_type='lab_result',
+            entity_id=lab_result_id,
+            metadata={
+                "labResultId": lab_result_id,
+                "visibleToOwner": visible_to_owner,
+                "testType": updated_row.get("test_type") or existing_row.get("test_type"),
+            },
+        )
 
         return jsonify({
             "message": "Lab result owner visibility updated successfully.",
@@ -5529,6 +6937,23 @@ def update_emr_vaccination_owner_visibility(vaccination_id):
             "medical_record_vaccination_id", vaccination_id
         ).execute().data or []
         updated_row = response[0] if response else get_single_row("medical_record_vaccinations", "medical_record_vaccination_id", vaccination_id)
+        visit_id = updated_row.get("medical_record_visit_id") or existing_row.get("medical_record_visit_id")
+
+        safe_create_emr_admin_notification(
+            visit_id=visit_id,
+            event_type='vaccination_shared' if visible_to_owner else 'vaccination_hidden',
+            title='Vaccination shared' if visible_to_owner else 'Vaccination hidden',
+            action_text='had a vaccination record shared to the owner portal' if visible_to_owner else 'had a vaccination record hidden from the owner portal',
+            severity='success' if visible_to_owner else 'info',
+            link='/patient-records',
+            entity_type='vaccination',
+            entity_id=vaccination_id,
+            metadata={
+                "vaccinationId": vaccination_id,
+                "visibleToOwner": visible_to_owner,
+                "vaccineName": updated_row.get("vaccine_name") or existing_row.get("vaccine_name"),
+            },
+        )
 
         return jsonify({
             "message": "Vaccination owner visibility updated successfully.",
@@ -5829,6 +7254,29 @@ def create_employee_account():
         except Exception as mail_error:
             print("Employee setup email error:", str(mail_error))
 
+        safe_create_account_admin_notification(
+            account_record=created or {
+                "id": user.id,
+                "username": '',
+                "first_name": first_name,
+                "last_name": last_name,
+                "contact_number": contact_number,
+                "email": email,
+                "role": role,
+                "status": status_value,
+                "employee_image": employee_image,
+                "is_initial_login": True,
+            },
+            account_type='employee',
+            event_type='employee_account_created',
+            title='Employee account created',
+            action_text='was created',
+            severity='success',
+            link='/admin/dashboard',
+            actor_id=data.get('created_by') or data.get('userId') or data.get('user_id'),
+            metadata={"setupEmailSent": email_sent},
+        )
+
         return jsonify({
             "message": "Employee account created successfully",
             "account": normalize_employee_admin_account(created or {
@@ -5893,6 +7341,34 @@ def update_employee_account(account_id):
             .execute()
 
         updated = response.data[0] if response.data else get_single_row('employee_accounts', 'id', account_id)
+        previous_status = (existing.get('status') or 'active').strip().lower()
+        next_status = ((updated or {}).get('status') or update_data.get('status') or previous_status).strip().lower()
+        status_changed = 'status' in update_data and previous_status != next_status
+        if status_changed:
+            active = next_status == 'active'
+            safe_create_account_admin_notification(
+                account_record=updated or {**existing, **update_data},
+                account_type='employee',
+                event_type='employee_account_activated' if active else 'employee_account_disabled',
+                title='Employee account activated' if active else 'Employee account disabled',
+                action_text='was activated' if active else 'was disabled',
+                severity='success' if active else 'warning',
+                link='/admin/dashboard',
+                actor_id=data.get('updated_by') or data.get('userId') or data.get('user_id'),
+                metadata={"changedFields": list(update_data.keys())},
+            )
+        else:
+            safe_create_account_admin_notification(
+                account_record=updated or {**existing, **update_data},
+                account_type='employee',
+                event_type='employee_account_updated',
+                title='Employee account updated',
+                action_text='was updated',
+                severity='info',
+                link='/admin/dashboard',
+                actor_id=data.get('updated_by') or data.get('userId') or data.get('user_id'),
+                metadata={"changedFields": list(update_data.keys())},
+            )
         return jsonify({
             "message": "Employee account updated successfully",
             "account": normalize_employee_admin_account(updated or existing)
@@ -5919,6 +7395,18 @@ def resend_employee_setup_link(account_id):
             employee.get('email'),
             f"{employee.get('first_name') or ''} {employee.get('last_name') or ''}".strip(),
             build_employee_setup_link(raw_token)
+        )
+
+        safe_create_account_admin_notification(
+            account_record=employee,
+            account_type='employee',
+            event_type='employee_setup_link_sent',
+            title='Employee setup link sent',
+            action_text='was sent a setup link',
+            severity='info',
+            link='/admin/dashboard',
+            actor_id=data.get('created_by') or data.get('userId') or data.get('user_id'),
+            metadata={"setupTokenId": token_record.get('setup_token_id')},
         )
 
         return jsonify({
@@ -6045,6 +7533,34 @@ def update_patient_account(account_id):
             .execute()
 
         updated = response.data[0] if response.data else get_single_row('patient_account', 'id', account_id)
+        previous_status = (existing.get('status') or 'active').strip().lower()
+        next_status = ((updated or {}).get('status') or update_data.get('status') or previous_status).strip().lower()
+        status_changed = 'status' in update_data and previous_status != next_status
+        if status_changed:
+            active = next_status == 'active'
+            safe_create_account_admin_notification(
+                account_record=updated or {**existing, **update_data},
+                account_type='patient',
+                event_type='patient_account_activated' if active else 'patient_account_disabled',
+                title='Patient account activated' if active else 'Patient account disabled',
+                action_text='was activated' if active else 'was disabled',
+                severity='success' if active else 'warning',
+                link='/admin/users',
+                actor_id=data.get('updated_by') or data.get('userId') or data.get('user_id'),
+                metadata={"changedFields": list(update_data.keys())},
+            )
+        else:
+            safe_create_account_admin_notification(
+                account_record=updated or {**existing, **update_data},
+                account_type='patient',
+                event_type='patient_account_updated',
+                title='Patient account updated',
+                action_text='was updated',
+                severity='info',
+                link='/admin/users',
+                actor_id=data.get('updated_by') or data.get('userId') or data.get('user_id'),
+                metadata={"changedFields": list(update_data.keys())},
+            )
         return jsonify({
             "message": "Patient updated successfully",
             "account": normalize_patient_admin_account(updated or existing)
@@ -6104,6 +7620,26 @@ def patient_register():
         }).execute()
 
         created = insert_response.data[0] if insert_response.data else None
+        safe_create_account_admin_notification(
+            account_record=created or {
+                "id": user.id,
+                "email": email,
+                "username": username,
+                "firstName": first_name,
+                "lastName": last_name,
+                "contact_number": contact_number,
+                "role": "patient",
+                "status": status_value,
+                "userImage": user_image,
+            },
+            account_type='patient',
+            event_type='patient_account_created',
+            title='Patient account created',
+            action_text='was created',
+            severity='success',
+            link='/admin/users',
+            actor_id=data.get('created_by') or data.get('userId') or data.get('user_id'),
+        )
         return jsonify({
             "message": "Patient account created successfully",
             "account": normalize_patient_admin_account(created or {
@@ -6520,6 +8056,21 @@ def create_billing_invoice():
                 payment_handler_lookup=build_billing_payment_handler_lookup(created_payment_history),
             )
 
+        notification_invoice = get_single_row("billing_invoices", "billing_invoice_id", invoice_id) or created_invoice
+        safe_create_billing_admin_notification(
+            invoice_record=notification_invoice,
+            event_type='invoice_created',
+            title='Invoice created',
+            action_text='was created',
+            severity='success' if payment_state["payment_status"] == "paid" else 'info',
+            link='/billing',
+            metadata={
+                "serviceItemCount": len(created_service_items),
+                "productItemCount": len(created_product_items),
+                "initialPaymentAmount": payment_state["amount_paid"],
+            },
+        )
+
         return jsonify({
             "message": "Invoice created successfully",
             "invoice": normalized_invoice,
@@ -6607,6 +8158,23 @@ def record_billing_invoice_payment(invoice_id):
         if not normalized_invoice:
             raise ValueError("Updated invoice could not be loaded")
 
+        notification_invoice = get_single_row("billing_invoices", "billing_invoice_id", invoice_id) or invoice_record
+        safe_create_billing_admin_notification(
+            invoice_record=notification_invoice,
+            event_type='payment_recorded',
+            title='Payment recorded',
+            action_text=f"received a payment of PHP {payment_amount:,.2f}",
+            severity='success' if updated_state["payment_status"] == "paid" else 'info',
+            link='/billing',
+            metadata={
+                "paymentAmount": payment_amount,
+                "paymentMethod": payment_method,
+                "previousAmountPaid": current_amount_paid,
+                "amountPaid": updated_state["amount_paid"],
+                "remainingBalance": updated_state["remaining_balance"],
+            },
+        )
+
         return jsonify({
             "message": "Payment recorded successfully",
             "invoice": normalized_invoice,
@@ -6635,7 +8203,23 @@ def delete_billing_invoices():
             for invoice_id in invoice_ids_raw
         ]
 
+        existing_invoices = execute_with_retry(
+            lambda: supabase_admin.table("billing_invoices").select("*").in_("billing_invoice_id", parsed_ids).execute(),
+            context="Fetch billing invoices before delete"
+        ).data or []
+
         supabase_admin.table("billing_invoices").delete().in_("billing_invoice_id", parsed_ids).execute()
+
+        for invoice in existing_invoices:
+            safe_create_billing_admin_notification(
+                invoice_record=invoice,
+                event_type='invoice_deleted',
+                title='Invoice deleted',
+                action_text='was deleted',
+                severity='warning',
+                link='/billing',
+            )
+
         return jsonify({"message": "Invoices deleted successfully"}), 200
     except Exception as e:
         if is_missing_relation_error(e, "billing_invoices"):
@@ -6944,7 +8528,7 @@ def get_admin_notifications():
     try:
         admin_user_id = (request.args.get('admin_user_id') or request.args.get('adminUserId') or '').strip()
         branch_id_raw = request.args.get('branch_id', request.args.get('branchId'))
-        module = (request.args.get('module') or 'inventory').strip() or 'inventory'
+        module = (request.args.get('module') or '').strip()
         unread_only = parse_bool(request.args.get('unread_only', request.args.get('unreadOnly')), default=False)
         limit_raw = request.args.get('limit')
 
@@ -7023,13 +8607,65 @@ def read_admin_notification(notification_id):
         return jsonify({"error": str(e)}), 400
 
 
+@app.route('/api/admin-notifications/<int:notification_id>', methods=['DELETE'])
+def delete_admin_notification(notification_id):
+    data = request.get_json(silent=True) or {}
+    try:
+        admin_user_id = (data.get('admin_user_id') or data.get('adminUserId') or '').strip()
+        _, employee_error = get_employee_account_or_400(admin_user_id)
+        if employee_error:
+            return jsonify({'error': employee_error}), 400
+
+        notification = get_single_row('admin_notifications', 'notification_id', notification_id)
+        if not notification:
+            return jsonify({'error': 'Notification not found'}), 404
+
+        supabase_admin.table('admin_notification_reads').delete().eq('notification_id', notification_id).execute()
+        supabase_admin.table('admin_notifications').delete().eq('notification_id', notification_id).execute()
+
+        return jsonify({'message': 'Notification deleted', 'deletedCount': 1}), 200
+    except Exception as e:
+        print("Delete admin notification error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/admin-notifications', methods=['DELETE'])
+def delete_admin_notifications():
+    data = request.get_json(silent=True) or {}
+    try:
+        admin_user_id = (data.get('admin_user_id') or data.get('adminUserId') or '').strip()
+        raw_ids = data.get('notificationIds') or data.get('notification_ids') or []
+        _, employee_error = get_employee_account_or_400(admin_user_id)
+        if employee_error:
+            return jsonify({'error': employee_error}), 400
+
+        notification_ids = []
+        for raw_id in raw_ids:
+            try:
+                notification_ids.append(int(raw_id))
+            except (TypeError, ValueError):
+                continue
+        notification_ids = list(dict.fromkeys(notification_ids))
+
+        if not notification_ids:
+            return jsonify({'error': 'notificationIds is required'}), 400
+
+        supabase_admin.table('admin_notification_reads').delete().in_('notification_id', notification_ids).execute()
+        supabase_admin.table('admin_notifications').delete().in_('notification_id', notification_ids).execute()
+
+        return jsonify({'message': 'Notifications deleted', 'deletedCount': len(notification_ids)}), 200
+    except Exception as e:
+        print("Bulk delete admin notifications error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
 @app.route('/api/admin-notifications/read-all', methods=['POST'])
 def read_all_admin_notifications():
     data = request.get_json() or {}
     try:
         admin_user_id = (data.get('admin_user_id') or data.get('adminUserId') or '').strip()
         branch_id_raw = data.get('branch_id', data.get('branchId'))
-        module = (data.get('module') or 'inventory').strip() or 'inventory'
+        module = (data.get('module') or '').strip()
 
         _, employee_error = get_employee_account_or_400(admin_user_id)
         if employee_error:
@@ -7069,6 +8705,60 @@ def read_all_admin_notifications():
         }), 200
     except Exception as e:
         print("Mark all admin notifications read error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/audit-notifications', methods=['POST'])
+def create_audit_notification_from_client():
+    data = request.get_json() or {}
+    try:
+        audit_status = (data.get('status') or 'Success').strip().lower()
+        severity = {
+            'success': 'success',
+            'warning': 'warning',
+            'failed': 'error',
+            'error': 'error',
+        }.get(audit_status, 'info')
+        module_name = (data.get('module') or 'Audit').strip()
+        event_name = (data.get('event') or 'Audit event').strip()
+        target = (data.get('target') or '').strip()
+        summary = (data.get('summary') or '').strip()
+        actor = (data.get('actor') or 'System').strip()
+        role = (data.get('role') or '').strip()
+
+        message_parts = [
+            f"{actor}{f' ({role})' if role else ''} recorded {event_name}",
+            f"for {target}" if target else "",
+            f"in {module_name}.",
+            summary,
+        ]
+        message = " ".join(part for part in message_parts if part).strip()
+
+        notification = safe_create_audit_admin_notification(
+            event_type='audit_log_recorded',
+            title=f"Audit: {event_name}",
+            message=message,
+            severity=severity,
+            actor_id=data.get('actorId') or data.get('actor_id') or data.get('userId') or data.get('user_id'),
+            metadata={
+                "auditId": data.get('id'),
+                "module": module_name,
+                "event": event_name,
+                "actor": actor,
+                "role": role,
+                "target": target,
+                "summary": summary,
+                "status": data.get('status') or 'Success',
+                "dateTime": data.get('dateTime'),
+            },
+        )
+
+        return jsonify({
+            "message": "Audit notification recorded" if notification else "Audit notification skipped",
+            "notification": normalize_admin_notification(notification) if notification else None,
+        }), 200
+    except Exception as e:
+        print("Create audit notification error:", str(e))
         return jsonify({"error": str(e)}), 400
 
 
@@ -9823,6 +11513,14 @@ def create_day_availability():
             "day_of_week": day,
             "is_active": is_available,
         }).execute()
+        safe_create_availability_admin_notification(
+            event_type='working_day_enabled' if is_available else 'working_day_disabled',
+            title='Working day enabled' if is_available else 'Working day disabled',
+            message=f"{title_name(day)} was {'enabled' if is_available else 'disabled'} for appointment scheduling.",
+            severity='success' if is_available else 'warning',
+            entity_type='working_day',
+            metadata={"dayOfWeek": day, "isAvailable": is_available},
+        )
         return jsonify({"message": "Day availability saved", "day_of_week": day, "is_available": is_available}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -9833,10 +11531,19 @@ def update_day_availability(day_name):
     data = request.get_json() or {}
     is_available = bool(data.get('is_available'))
     try:
+        day_key = (day_name or '').lower()
         supabase_admin.table('working_days').upsert({
-            "day_of_week": (day_name or '').lower(),
+            "day_of_week": day_key,
             "is_active": is_available,
         }).execute()
+        safe_create_availability_admin_notification(
+            event_type='working_day_enabled' if is_available else 'working_day_disabled',
+            title='Working day enabled' if is_available else 'Working day disabled',
+            message=f"{title_name(day_key)} was {'enabled' if is_available else 'disabled'} for appointment scheduling.",
+            severity='success' if is_available else 'warning',
+            entity_type='working_day',
+            metadata={"dayOfWeek": day_key, "isAvailable": is_available},
+        )
         return jsonify({"message": f"{day_name} updated successfully"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -9857,6 +11564,7 @@ def handle_time_slots_api(param):
         data = request.get_json() or {}
         slots = data.get('slots', [])
         try:
+            existing_slots = supabase_admin.table('time_slots').select('*').eq('day_of_week', day).execute().data or []
             supabase_admin.table('time_slots').delete().eq('day_of_week', day).execute()
 
             for slot in slots:
@@ -9874,6 +11582,26 @@ def handle_time_slots_api(param):
                 }).execute()
 
             res = supabase_admin.table('time_slots').select('*').eq('day_of_week', day).execute()
+            saved_slots = res.data or []
+            safe_create_availability_admin_notification(
+                event_type='time_slots_updated',
+                title='Time slots updated',
+                message=f"{title_name(day)} time slots were updated from {len(existing_slots)} to {len(saved_slots)} slot(s).",
+                severity='info',
+                entity_type='time_slots',
+                metadata={
+                    "dayOfWeek": day,
+                    "previousSlotCount": len(existing_slots),
+                    "slotCount": len(saved_slots),
+                    "slots": [
+                        {
+                            "startTime": item.get("start_time"),
+                            "endTime": item.get("end_time"),
+                        }
+                        for item in saved_slots
+                    ],
+                },
+            )
             return jsonify({"timeSlots": res.data or []}), 200
         except Exception as e:
             print("Time slot save error:", str(e))
@@ -9884,7 +11612,22 @@ def handle_time_slots_api(param):
         if str(slot_id).startswith('temp-'):
             return jsonify({"message": "Temp slot removed"}), 200
 
+        existing_slot = get_single_row('time_slots', 'id', slot_id)
         supabase_admin.table('time_slots').delete().eq('id', slot_id).execute()
+        if existing_slot:
+            safe_create_availability_admin_notification(
+                event_type='time_slot_deleted',
+                title='Time slot deleted',
+                message=f"{title_name(existing_slot.get('day_of_week'))} slot {format_display_time_range(existing_slot.get('start_time'))} was deleted.",
+                severity='warning',
+                entity_type='time_slot',
+                entity_id=existing_slot.get('id'),
+                metadata={
+                    "dayOfWeek": existing_slot.get('day_of_week'),
+                    "startTime": existing_slot.get('start_time'),
+                    "endTime": existing_slot.get('end_time'),
+                },
+            )
         return jsonify({"message": "Slot deleted successfully"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -9916,7 +11659,7 @@ def get_booked_slots(time_slot_id):
 @app.route('/api/appointments', methods=['POST'])
 def create_admin_appointment():
     try:
-        created = create_appointment_record(request.get_json() or {}, allow_walk_in=True)
+        created = create_appointment_record(request.get_json() or {}, allow_walk_in=False)
         return jsonify(created), 200
     except ValueError as value_error:
         return jsonify({"error": str(value_error)}), 400
@@ -9973,6 +11716,18 @@ def cancel_appointment_with_reason(appointment_id):
             )
         except Exception as email_error:
             print(f"Cancellation notification preparation error: {email_error}")
+
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='appointment_cancelled',
+            title='Appointment cancelled',
+            action_text='was cancelled by the clinic',
+            severity='warning',
+            link='/admin/history',
+            metadata={"reason": cancel_reason},
+        )
 
         return jsonify({
             "message": "Appointment cancelled successfully",
@@ -10038,6 +11793,23 @@ def create_admin_reschedule_request(appointment_id):
             context="Reschedule request email"
         )
 
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='reschedule_requested',
+            title='Reschedule request sent',
+            action_text='was sent a reschedule request',
+            severity='info',
+            link='/admin/schedule',
+            metadata={
+                "requestId": request_row.get("request_id"),
+                "reason": reschedule_reason,
+                "proposedDate": new_date,
+                "proposedTime": new_time,
+            },
+        )
+
         return jsonify({
             "message": "Reschedule request emailed to patient" + ("" if email_sent else " (email not sent)"),
             "emailSent": email_sent,
@@ -10100,6 +11872,23 @@ def create_patient_reschedule_request(appointment_id):
 
         request_row = (insert_res.data or [{}])[0]
 
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='patient_reschedule_requested',
+            title='Patient requested another schedule',
+            action_text='has a patient-requested schedule change',
+            severity='warning',
+            link='/admin/schedule',
+            metadata={
+                "requestId": request_row.get("request_id"),
+                "patientNote": patient_note,
+                "preferredDate": preferred_date,
+                "preferredTime": preferred_time,
+            },
+        )
+
         return jsonify({
             "message": "Reschedule request submitted for clinic review",
             "requestId": request_row.get("request_id"),
@@ -10121,12 +11910,24 @@ def confirm_reschedule_request(token):
         return render_html_page("Request Already Processed", f"This reschedule request is already marked as {req.get('status')}.")
 
     try:
-        apply_reschedule_to_target(req, req.get("proposed_appointment_date"), req.get("proposed_appointment_time"))
+        table_name, id_column, resolved_id = apply_reschedule_to_target(req, req.get("proposed_appointment_date"), req.get("proposed_appointment_time"))
         supabase_admin.table('reschedule_requests').update({
             "status": "confirmed",
             "responded_at": datetime.utcnow().isoformat(),
             "patient_response_type": "confirm"
         }).eq('request_id', req.get('request_id')).execute()
+
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='reschedule_confirmed',
+            title='Reschedule confirmed',
+            action_text='confirmed the proposed reschedule',
+            severity='success',
+            link='/admin/schedule',
+            metadata={"requestId": req.get("request_id")},
+        )
 
         return render_html_page(
             "Schedule Confirmed",
@@ -10159,6 +11960,18 @@ def cancel_reschedule_request(token):
             "response_note": "Cancelled by patient from email link",
             "patient_response_type": "cancel"
         }).eq('request_id', req.get('request_id')).execute()
+
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='appointment_cancelled',
+            title='Appointment cancelled',
+            action_text='was cancelled by the patient',
+            severity='warning',
+            link='/admin/history',
+            metadata={"requestId": req.get("request_id")},
+        )
 
         return render_html_page(
             "Appointment Cancelled",
@@ -10229,6 +12042,23 @@ def choose_another_date(token):
             "patient_preferred_time": preferred_time or None,
             "patient_response_type": "choose_another_date"
         }).eq('request_id', req.get('request_id')).execute()
+
+        table_name, id_column, resolved_id = resolve_appointment_target(req.get('target_id'), req.get('target_type'))
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='patient_reschedule_requested',
+            title='Patient requested another schedule',
+            action_text='has a patient-requested schedule change',
+            severity='warning',
+            link='/admin/schedule',
+            metadata={
+                "requestId": req.get("request_id"),
+                "preferredDate": preferred_date,
+                "preferredTime": preferred_time,
+            },
+        )
 
         return render_html_page(
             "Preference Sent",
@@ -10334,12 +12164,24 @@ def confirm_reschedule_request_from_web(request_id):
         if not proposed_date or not proposed_time:
             return jsonify({"error": "The clinic proposal is missing a date or time."}), 400
 
-        apply_reschedule_to_target(req, proposed_date, proposed_time)
+        table_name, id_column, resolved_id = apply_reschedule_to_target(req, proposed_date, proposed_time)
         supabase_admin.table('reschedule_requests').update({
             "status": "confirmed",
             "responded_at": datetime.utcnow().isoformat(),
             "patient_response_type": "confirm"
         }).eq('request_id', request_id).execute()
+
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='reschedule_confirmed',
+            title='Reschedule confirmed',
+            action_text='confirmed the proposed reschedule',
+            severity='success',
+            link='/admin/schedule',
+            metadata={"requestId": request_id},
+        )
 
         return jsonify({
             "message": "Appointment schedule confirmed successfully",
@@ -10377,6 +12219,18 @@ def cancel_appointment_from_reschedule_request(request_id):
             "response_note": combined_note,
             "patient_response_type": "cancel"
         }).eq('request_id', request_id).execute()
+
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='appointment_cancelled',
+            title='Appointment cancelled',
+            action_text='was cancelled by the patient',
+            severity='warning',
+            link='/admin/history',
+            metadata={"requestId": request_id},
+        )
 
         return jsonify({
             "message": "Appointment cancelled successfully",
@@ -10436,6 +12290,23 @@ def choose_another_date_from_web(request_id):
             "patient_response_type": "choose_another_date"
         }).eq('request_id', request_id).execute()
 
+        table_name, id_column, resolved_id = resolve_appointment_target(req.get('target_id'), req.get('target_type'))
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='patient_reschedule_requested',
+            title='Patient requested another schedule',
+            action_text='has a patient-requested schedule change',
+            severity='warning',
+            link='/admin/schedule',
+            metadata={
+                "requestId": request_id,
+                "preferredDate": preferred_date,
+                "preferredTime": preferred_time,
+            },
+        )
+
         return jsonify({
             "message": "Preferred schedule sent to clinic for review",
             "status": "needs_new_schedule"
@@ -10465,6 +12336,19 @@ def withdraw_reschedule_request(request_id):
             "response_note": combined_note,
             "patient_response_type": "withdraw"
         }).eq('request_id', request_id).execute()
+
+        table_name, id_column, resolved_id = resolve_appointment_target(req.get('target_id'), req.get('target_type'))
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='reschedule_withdrawn',
+            title='Reschedule request withdrawn',
+            action_text='had a reschedule request withdrawn',
+            severity='info',
+            link='/admin/schedule',
+            metadata={"requestId": request_id},
+        )
 
         return jsonify({
             "message": "Reschedule request withdrawn successfully",
@@ -10524,6 +12408,18 @@ def review_reschedule_request(request_id):
                 print(f"Reschedule accept email error: {email_error}")
                 email_sent = False
 
+            safe_create_appointment_admin_notification(
+                table_name=table_name,
+                id_column=id_column,
+                record_id=resolved_id,
+                event_type='reschedule_accepted',
+                title='Preferred schedule accepted',
+                action_text='was moved to the patient preferred schedule',
+                severity='success',
+                link='/admin/schedule',
+                metadata={"requestId": request_id, "note": admin_note or None},
+            )
+
             return jsonify({
                 "message": "Patient preferred schedule accepted",
                 "emailSent": email_sent
@@ -10554,6 +12450,18 @@ def review_reschedule_request(request_id):
                 print(f"Reschedule decline email error: {email_error}")
                 email_sent = False
 
+            safe_create_appointment_admin_notification(
+                table_name=table_name,
+                id_column=id_column,
+                record_id=resolved_id,
+                event_type='reschedule_declined',
+                title='Preferred schedule declined',
+                action_text='had a patient preferred schedule declined',
+                severity='info',
+                link='/admin/schedule',
+                metadata={"requestId": request_id, "note": admin_note or None},
+            )
+
             return jsonify({
                 "message": "Patient preferred schedule declined",
                 "emailSent": email_sent
@@ -10579,6 +12487,26 @@ def assign_doctor(appointment_id):
             if 'doctor_id' not in str(update_error):
                 raise
             supabase_admin.table(table_name).update({"assigned_doctor_id": doctor_id}).eq(id_column, resolved_id).execute()
+
+        doctor_name = None
+        if doctor_id:
+            try:
+                doctor = get_single_row("employee_accounts", "id", doctor_id)
+                doctor_name = get_profile_display_name(doctor)
+            except Exception as doctor_error:
+                print(f"Doctor assignment notification lookup error: {doctor_error}")
+
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='doctor_assigned',
+            title='Doctor assigned',
+            action_text=f"was assigned to {doctor_name}" if doctor_name else "was assigned to a doctor",
+            severity='info',
+            link='/admin/schedule',
+            metadata={"doctorId": doctor_id, "doctorName": doctor_name},
+        )
         return jsonify({"message": "Doctor assigned successfully"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -10620,6 +12548,27 @@ def handle_special_dates():
             insert_res = supabase_admin.table('special_dates').insert(special_date_payload).execute()
 
         created_special_date = (insert_res.data or [special_date_payload])[0]
+        recurrence = normalize_special_date_recurrence(created_special_date.get("event_recurrence"))
+        date_label = (
+            f"{created_special_date.get('event_month')}/{created_special_date.get('event_day')} every year"
+            if recurrence == "annual"
+            else created_special_date.get("event_date")
+        )
+        safe_create_availability_admin_notification(
+            event_type='special_date_created',
+            title='Special date added',
+            message=f"{created_special_date.get('event_name') or 'Special date'} was added for {date_label}.",
+            severity='info',
+            entity_type='special_date',
+            metadata={
+                "eventName": created_special_date.get("event_name"),
+                "eventDate": created_special_date.get("event_date"),
+                "eventDescription": created_special_date.get("event_description"),
+                "eventRecurrence": recurrence,
+                "eventMonth": created_special_date.get("event_month"),
+                "eventDay": created_special_date.get("event_day"),
+            },
+        )
         return jsonify({
             "message": "Special date added successfully",
             "specialDate": created_special_date
@@ -10681,6 +12630,28 @@ def update_special_date(date):
             update_res = supabase_admin.table('special_dates').update(special_date_payload).eq('event_date', date).execute()
 
         updated_special_date = (update_res.data or [special_date_payload])[0]
+        recurrence = normalize_special_date_recurrence(updated_special_date.get("event_recurrence"))
+        date_label = (
+            f"{updated_special_date.get('event_month')}/{updated_special_date.get('event_day')} every year"
+            if recurrence == "annual"
+            else updated_special_date.get("event_date")
+        )
+        safe_create_availability_admin_notification(
+            event_type='special_date_updated',
+            title='Special date updated',
+            message=f"{updated_special_date.get('event_name') or 'Special date'} was updated for {date_label}.",
+            severity='info',
+            entity_type='special_date',
+            metadata={
+                "previous": current_record,
+                "eventName": updated_special_date.get("event_name"),
+                "eventDate": updated_special_date.get("event_date"),
+                "eventDescription": updated_special_date.get("event_description"),
+                "eventRecurrence": recurrence,
+                "eventMonth": updated_special_date.get("event_month"),
+                "eventDay": updated_special_date.get("event_day"),
+            },
+        )
         return jsonify({
             "message": "Special date updated successfully",
             "specialDate": updated_special_date
@@ -10695,12 +12666,40 @@ def delete_special_date(date):
         recurrence = normalize_special_date_recurrence(request.args.get('event_recurrence') or request.args.get('recurrence_type'))
         event_month = request.args.get('event_month')
         event_day = request.args.get('event_day')
+        select_query = supabase_admin.table('special_dates').select('*')
+        if recurrence == "annual" and event_month and event_day:
+            select_query = select_query.eq('event_recurrence', 'annual').eq('event_month', int(event_month)).eq('event_day', int(event_day))
+        else:
+            select_query = select_query.eq('event_date', date)
+        existing_records = select_query.execute().data or []
         delete_query = supabase_admin.table('special_dates').delete()
         if recurrence == "annual" and event_month and event_day:
             delete_query = delete_query.eq('event_recurrence', 'annual').eq('event_month', int(event_month)).eq('event_day', int(event_day))
         else:
             delete_query = delete_query.eq('event_date', date)
         delete_query.execute()
+        for record in existing_records:
+            record_recurrence = normalize_special_date_recurrence(record.get("event_recurrence"))
+            date_label = (
+                f"{record.get('event_month')}/{record.get('event_day')} every year"
+                if record_recurrence == "annual"
+                else record.get("event_date")
+            )
+            safe_create_availability_admin_notification(
+                event_type='special_date_deleted',
+                title='Special date deleted',
+                message=f"{record.get('event_name') or 'Special date'} for {date_label} was deleted.",
+                severity='warning',
+                entity_type='special_date',
+                metadata={
+                    "eventName": record.get("event_name"),
+                    "eventDate": record.get("event_date"),
+                    "eventDescription": record.get("event_description"),
+                    "eventRecurrence": record_recurrence,
+                    "eventMonth": record.get("event_month"),
+                    "eventDay": record.get("event_day"),
+                },
+            )
         return jsonify({"message": "Special date deleted successfully"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
@@ -10739,6 +12738,32 @@ def update_admin_appointment_status(appointment_id):
             except Exception as email_error:
                 print(f"Appointment confirmation email preparation error: {email_error}")
                 email_sent = False
+
+        status_title_map = {
+            "confirmed": ("Appointment confirmed", "was confirmed", "success", "/admin/schedule"),
+            "completed": ("Appointment completed", "was marked as completed", "success", "/admin/history"),
+            "cancelled": ("Appointment cancelled", "was cancelled", "warning", "/admin/history"),
+            "pending": ("Appointment set to pending", "was set back to pending", "info", "/admin/schedule"),
+            "no_show": ("Appointment marked no-show", "was marked as no-show", "warning", "/admin/history"),
+        }
+        title, action_text, severity, link = status_title_map.get(
+            status,
+            ("Appointment status updated", f"was updated to {status or 'unknown'}", "info", "/admin/schedule")
+        )
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='appointment_status_updated',
+            title=title,
+            action_text=action_text,
+            severity=severity,
+            link=link,
+            metadata={
+                "previousStatus": current_record.get("status"),
+                "status": status,
+            },
+        )
 
         return jsonify({
             "message": "Appointment status updated",

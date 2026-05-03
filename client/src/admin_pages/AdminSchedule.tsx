@@ -458,8 +458,6 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
             return;
         }
 
-        const finalPetType = petType === 'Other' ? customPetType : petType;
-        const finalBreed = (petType === 'Other' || breed === 'Others') ? customBreed : breed;
         const finalService = subService ? `${service} - ${subService}` : service;
 
         // Convert "9:00 AM - 10:00 AM" into pure Supabase time "09:00:00"
@@ -479,9 +477,9 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
         }
 
         onSubmit({
-            owner_id: ownerId || 'WALK_IN', 
-            pet_id: petId || 'WALK_IN',   
-            is_walk_in: !ownerId && !petId,
+            owner_id: ownerId,
+            pet_id: petId,
+            is_walk_in: false,
             appointment_type: finalService,
             branch_id: branchId ? Number(branchId) : null,
             appointment_date: date,
@@ -492,18 +490,6 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
             reason: reason,
             reason_for_visit: reason,
             reasonForVisit: reason,
-            
-            walk_in_first_name: firstName,
-            walk_in_last_name: lastName,
-            walk_in_email: email,
-            walk_in_phone: phone,
-            walk_in_pet_name: petName,
-            walk_in_pet_type: finalPetType,
-            walk_in_breed: finalBreed,
-            walk_in_gender: gender,
-            walk_in_dob: dob,
-            walk_in_age: age,
-            walk_in_color: color,
             medical_information: {
                 on_medication: medicalAnswers.medications72h ?? false,
                 medication_details: medicationDetails.trim(),
@@ -612,11 +598,13 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
     const validBranch = branchId !== '';
     const allMedicalAnswered = medicalQuestionConfigs.every(question => medicalAnswers[question.key] !== null);
     const validMedical = allMedicalAnswered && (!medicalAnswers.medications72h || medicationDetails.trim() !== '');
+    const validExistingPatient = ownerId.trim() !== '' && petId.trim() !== '';
 
-    const isFormValid = firstName.trim() !== '' && lastName.trim() !== '' && petName.trim() !== '' && date !== '' && time !== '' && validPetType && validBreed && validGender && validService && validBranch && validMedical;
+    const isFormValid = validExistingPatient && firstName.trim() !== '' && lastName.trim() !== '' && petName.trim() !== '' && date !== '' && time !== '' && validPetType && validBreed && validGender && validService && validBranch && validMedical;
 
     const missingFields: string[] = [];
 
+    if (!validExistingPatient) missingFields.push('Existing pet/owner selection');
     if (!firstName.trim()) missingFields.push('First name');
     if (!lastName.trim()) missingFields.push('Last name');
     if (!petName.trim()) missingFields.push('Pet name');

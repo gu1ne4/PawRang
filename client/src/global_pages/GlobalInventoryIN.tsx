@@ -1340,8 +1340,6 @@ const saveTransaction = async () => {
             <Notifications 
               buttonClassName="invIconButton"
               iconClassName="invBlueIcon"
-              onViewAll={() => {}}
-              onNotificationClick={() => {}}
             />
           </div>
         </div>

@@ -334,8 +334,6 @@ const GlobalInventoryArchive: React.FC = () => {
             <Notifications 
               buttonClassName="invIconButton"
               iconClassName="invBlueIcon"
-              onViewAll={() => {}}
-              onNotificationClick={() => {}}
             />
           </div>
         </div>

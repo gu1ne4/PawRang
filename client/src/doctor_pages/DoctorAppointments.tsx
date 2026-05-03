@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../apiService';
 import Navbar from '../reusable_components/NavBar';
+import Notifications from '../reusable_components/Notifications';
 import './DoctorPortal.css';
 
 interface CurrentUser {
@@ -123,9 +124,15 @@ const DoctorAppointments: React.FC = () => {
               This page is focused on doctor workflow: finding appointments, checking case context, and jumping into medical records.
             </p>
           </div>
-          <div className="doctorHeaderBadge">
-            <span className="doctorHeaderBadgeLabel">Appointments Loaded</span>
-            <span className="doctorHeaderBadgeValue">{appointments.length}</span>
+          <div className="doctorHeaderActions">
+            <Notifications
+              buttonClassName="doctorNotificationButton"
+              iconClassName="doctorNotificationIcon"
+            />
+            <div className="doctorHeaderBadge">
+              <span className="doctorHeaderBadgeLabel">Appointments Loaded</span>
+              <span className="doctorHeaderBadgeValue">{appointments.length}</span>
+            </div>
           </div>
         </div>
 

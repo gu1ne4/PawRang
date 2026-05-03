@@ -3858,6 +3858,70 @@ input:checked + .slider:before {
   font-weight: 700;
 }
 
+.adminAiSupportMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+.adminAiSupportBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.adminAiSupportBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: #eef2ff;
+  border: 1px solid #dbe3ff;
+  color: #3059d8;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.adminAiSupportBadgeReview {
+  background: #fff7ed;
+  border-color: #fed7aa;
+  color: #9a3412;
+}
+
+.adminAiSupportBadgeHigh {
+  background: #ecfdf5;
+  border-color: #bbf7d0;
+  color: #047857;
+}
+
+.adminAiSupportBadgeModerate {
+  background: #fefce8;
+  border-color: #fde68a;
+  color: #a16207;
+}
+
+.adminAiSupportBadgeLow {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #be123c;
+}
+
+.adminAiSupportDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .adminAiStatChipFlag .adminAiStatValue {
   color: #7d5300;
 }

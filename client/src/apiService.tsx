@@ -257,8 +257,40 @@ export const apiService = {
     });
   },
 
+  getSavedAdminAppointmentSummary(recordType: string, targetId: string | number) {
+    return request(`/api/ai/admin-appointment-summary/saved?recordType=${encodeURIComponent(recordType)}&targetId=${encodeURIComponent(String(targetId))}`);
+  },
+
+  saveAdminAppointmentSummary(payload: any) {
+    return request('/api/ai/admin-appointment-summary/saved', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   generateDoctorEmrBrief(payload: any) {
     return request('/api/ai/doctor-emr-brief', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  generateClinicalRiskFlags(payload: any) {
+    return request('/api/ai/clinical-risk-flags', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  generateFollowUpReminders(payload: any) {
+    return request('/api/ai/follow-up-reminders', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  generateClientCareSummary(payload: any) {
+    return request('/api/ai/client-care-summary', {
       method: 'POST',
       body: JSON.stringify(payload),
     });

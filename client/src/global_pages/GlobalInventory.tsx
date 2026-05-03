@@ -96,7 +96,6 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 const CATEGORIES: Category[] = ['Pet Supplies', 'Deworming', 'Vitamins', 'Food', 'Accessories', 'Medication'];
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
 const BRANCH_ID_BY_NAME: Record<string, number> = {
-  All: 1,
   Taguig: 1,
   'Las Pinas': 2,
 };
@@ -398,12 +397,29 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
 
   const [selectedBranch, setSelectedBranch] = useState<string>('All');
 
+  const normalizeBranchName = (value?: string): string =>
+    String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/ñ/g, 'n')
+      .replace(/\s+/g, ' ');
+
+  const getSelectedBranchId = (): number | null => {
+    return selectedBranch === 'All' ? null : BRANCH_ID_BY_NAME[selectedBranch] ?? null;
+  };
+
+  const productMatchesSelectedBranch = (product: Product): boolean => {
+    const selectedBranchId = getSelectedBranchId();
+    if (!selectedBranchId) return true;
+    if (Number(product.branchId) === selectedBranchId) return true;
+    return normalizeBranchName(product.branchName) === normalizeBranchName(selectedBranch);
+  };
+
   const getBranchLabel = (branchId?: number, branchName?: string): string => {
     if (branchName?.trim()) return branchName;
     if (typeof branchId === 'number' && BRANCH_NAME_BY_ID[branchId]) {
       return BRANCH_NAME_BY_ID[branchId];
     }
-    if (selectedBranch !== 'All') return selectedBranch;
     return 'Unknown';
   };
   const [userRole, setUserRole] = useState<string>('');
@@ -1232,6 +1248,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
   // Filter Logic
   const filteredProducts = products.filter(product => {
     if (product.isArchived) return false;
+    if (!productMatchesSelectedBranch(product)) return false;
     
     const searchLower = searchQuery.toLowerCase();
     const matchesSearch = 
@@ -1296,7 +1313,11 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
               <span className="invBranchLabel">Branch:</span>
               <select 
                 value={selectedBranch}
-                onChange={(e) => setSelectedBranch(e.target.value)}
+                onChange={(e) => {
+                  setSelectedBranch(e.target.value);
+                  setPage(0);
+                  setSelectedProducts(new Set());
+                }}
                 className="invBranchSelect"
               >
                 <option value="All">All Branches</option>

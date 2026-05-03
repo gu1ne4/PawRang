@@ -1,8 +1,9 @@
 # PawRang AI Progress Checklist
 
 ## Current Goal
-- Build Phase 1 AI support for PawRang using Gemini API.
+- Build Phase 1 AI support for PawRang using OpenAI API.
 - Use AI to support admin intake review, user symptom collection, and doctor EMR preparation.
+- Switched paid AI generation path to OpenAI Responses API with structured JSON output.
 
 ## Phase 1 Scope
 - Feature: `Admin AI Appointment Summary Assistant`
@@ -56,6 +57,8 @@
 - [x] Included visit history, clinical exam data, prescriptions, labs, services, and symptom intake in the doctor AI context
 - [x] Added guardrails against diagnosis, prescription, and replacing veterinary judgment
 - [x] Added doctor AI loading, error, collapse, and regenerate states
+- [x] Added AI-generated support indicator with review-required reliability metadata
+- [x] Expanded doctor EMR brief sections for relevant history, exam focus, owner questions, missing context, and care continuity
 
 ## In Progress / Immediate Next
 - [ ] Run the Supabase SQL migration for `medical_information_symptom_intake.sql`
@@ -76,6 +79,18 @@
 - [ ] Show symptom intake details on the admin appointment view
 - [x] Show symptom intake details inside EMR-related screens
 - [ ] Decide whether symptom buttons should be filtered by species or service type
+- [x] Improve Doctor EMR Brief content quality with stronger clinical-prep sections
+- [x] Add SOAP note draft feature for doctor-reviewed documentation
+- [ ] Manually test SOAP note draft with complete and incomplete visit details
+- [x] Add clinical risk flags for allergies, medication use, appetite/drinking concerns, worsening symptoms, vaccine gaps, pregnancy status, and missing vitals
+- [ ] Manually test clinical risk flags against complete and incomplete EMR visit data
+- [x] Add follow-up and preventive reminder suggestions for vaccine due dates, prescriptions, labs, services, and symptom follow-up
+- [ ] Manually test follow-up reminders with vaccine due dates and visits with prescriptions/labs
+- [x] Add client-friendly care summary drafts for doctor-reviewed owner communication
+- [ ] Manually test client care summaries before sharing/copying to owners
+- [x] Add OpenAI API provider support for structured AI generation
+- [ ] Add `OPENAI_API_KEY`, `AI_PROVIDER=openai`, and optional `OPENAI_MODEL=gpt-5-mini` to backend `.env`
+- [ ] Restart backend and test all AI generation buttons through OpenAI
 
 ## Quality / Testing Checklist
 - [ ] Test symptom booking with selected buttons only

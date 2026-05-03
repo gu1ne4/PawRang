@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   IoCloseOutline, 
   IoNotificationsOutline, 
@@ -27,6 +28,7 @@ interface NotificationsProps {
   onNotificationClick?: (notification: Notification) => void;
   onMarkAsRead?: (id: string) => void;
   onMarkAllAsRead?: () => void;
+  onDelete?: (ids: string[]) => void;
   onViewAll?: () => void;
   buttonClassName?: string;
   iconClassName?: string;
@@ -36,10 +38,13 @@ const Notifications: React.FC<NotificationsProps> = ({
   onNotificationClick,
   onMarkAsRead,
   onMarkAllAsRead,
+  onDelete,
   onViewAll,
   buttonClassName = '',
   iconClassName = ''
 }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -71,7 +76,98 @@ const Notifications: React.FC<NotificationsProps> = ({
     timestamp: new Date(record.timestamp || Date.now()),
     read: Boolean(record.read),
     link: record.link || undefined,
+    module: record.module || undefined,
+    eventType: record.eventType || undefined,
+    entityType: record.entityType || undefined,
+    entityId: record.entityId ?? undefined,
+    metadata: record.metadata || undefined,
   }), []);
+
+  const resolveNotificationLink = useCallback((notification: Notification): string | null => {
+    const explicitLink = typeof notification.link === 'string' ? notification.link.trim() : '';
+    if (explicitLink) return explicitLink;
+
+    const moduleName = String(notification.module || '').toLowerCase();
+    const eventType = String(notification.eventType || '').toLowerCase();
+
+    if (moduleName === 'inventory') {
+      if (eventType.includes('transaction') || eventType.includes('stock_in') || eventType.includes('stock_out')) {
+        return '/inventory-logs';
+      }
+      if (eventType.includes('archive') || eventType.includes('restore')) {
+        return '/inventory-archive';
+      }
+      return '/inventory';
+    }
+
+    if (moduleName === 'appointments') {
+      if (eventType.includes('cancel') || eventType.includes('complete') || eventType.includes('no_show')) {
+        return '/admin/history';
+      }
+      return '/admin/schedule';
+    }
+
+    if (moduleName === 'emr') {
+      return '/patient-records';
+    }
+
+    if (moduleName === 'billing') {
+      return '/billing';
+    }
+
+    if (moduleName === 'accounts') {
+      if (eventType.includes('employee')) {
+        return '/admin/dashboard';
+      }
+      return '/admin/users';
+    }
+
+    if (moduleName === 'availability') {
+      return '/admin/availability';
+    }
+
+    if (moduleName === 'audit') {
+      return '/admin/audit';
+    }
+
+    return null;
+  }, []);
+
+  const isDoctorWorkspace = useCallback(() => {
+    if (location.pathname.startsWith('/doctor')) return true;
+
+    try {
+      const rawSession = localStorage.getItem('userSession');
+      const session = rawSession ? JSON.parse(rawSession) : null;
+      const role = String(session?.role || '').trim().toLowerCase();
+      return ['doctor', 'vet', 'veterinarian'].includes(role);
+    } catch {
+      return false;
+    }
+  }, [location.pathname]);
+
+  const adaptNotificationTarget = useCallback((target: string) => {
+    if (!isDoctorWorkspace()) return target;
+
+    if (target === '/patient-records') return '/doctor/medical-records';
+    if (target === '/admin/schedule' || target === '/admin/history') return '/doctor/appointments';
+    if (target === '/inventory') return '/doctor/inventory';
+
+    return target;
+  }, [isDoctorWorkspace]);
+
+  const navigateToNotificationSource = useCallback((notification: Notification) => {
+    const target = resolveNotificationLink(notification);
+    if (!target) return;
+
+    if (/^https?:\/\//i.test(target)) {
+      window.location.href = target;
+      return;
+    }
+
+    const adaptedTarget = adaptNotificationTarget(target);
+    navigate(adaptedTarget.startsWith('/') ? adaptedTarget : `/${adaptedTarget}`);
+  }, [adaptNotificationTarget, navigate, resolveNotificationLink]);
 
   const fetchNotifications = useCallback(async (forceRefresh: boolean = false) => {
     const adminUserId = getAdminUserId();
@@ -94,7 +190,7 @@ const Notifications: React.FC<NotificationsProps> = ({
       if (!notificationRequest || forceRefresh) {
         notificationRequest = (async () => {
           const response = await fetch(
-            `${API_URL}/api/admin-notifications?admin_user_id=${encodeURIComponent(adminUserId)}&module=inventory&limit=50`
+            `${API_URL}/api/admin-notifications?admin_user_id=${encodeURIComponent(adminUserId)}&limit=50`
           );
           const result = await response.json().catch(() => ({}));
 
@@ -207,7 +303,7 @@ const Notifications: React.FC<NotificationsProps> = ({
       const response = await fetch(`${API_URL}/api/admin-notifications/read-all`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminUserId, module: 'inventory' }),
+        body: JSON.stringify({ adminUserId }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -220,6 +316,33 @@ const Notifications: React.FC<NotificationsProps> = ({
     }
   }, [fetchNotifications, getAdminUserId, onMarkAllAsRead]);
 
+  const handleDeleteNotifications = useCallback(async (ids: string[]) => {
+    const adminUserId = getAdminUserId();
+    const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+    if (!adminUserId || uniqueIds.length === 0) return;
+
+    const previousNotifications = notifications;
+    setNotifications(prev => prev.filter(notif => !uniqueIds.includes(notif.id)));
+    notificationCache = null;
+
+    try {
+      const response = await fetch(`${API_URL}/api/admin-notifications`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminUserId, notificationIds: uniqueIds }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to delete notifications.');
+      }
+      if (onDelete) onDelete(uniqueIds);
+    } catch (error) {
+      console.error('Delete notifications error:', error);
+      setNotifications(previousNotifications);
+      fetchNotifications();
+    }
+  }, [fetchNotifications, getAdminUserId, notifications, onDelete]);
+
   const handleViewAll = useCallback(() => {
     if (onViewAll) onViewAll();
     setIsOpen(false);
@@ -231,9 +354,13 @@ const Notifications: React.FC<NotificationsProps> = ({
     if (!notification.read) {
       handleMarkAsRead(notification.id);
     }
-    if (onNotificationClick) onNotificationClick(notification);
+    if (onNotificationClick) {
+      onNotificationClick(notification);
+    } else {
+      navigateToNotificationSource(notification);
+    }
     setIsOpen(false);
-  }, [handleMarkAsRead, onNotificationClick]);
+  }, [handleMarkAsRead, navigateToNotificationSource, onNotificationClick]);
 
   const getIcon = useCallback((type: Notification['type']) => {
     switch (type) {
@@ -337,6 +464,7 @@ const Notifications: React.FC<NotificationsProps> = ({
         onNotificationClick={onNotificationClick}
         onMarkAsRead={handleMarkAsRead}
         onMarkAllAsRead={handleMarkAllAsRead}
+        onDelete={handleDeleteNotifications}
       />
     </>
   );

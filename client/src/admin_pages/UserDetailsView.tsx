@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import './AdminStyles.css';
 import {
   IoArrowBack,
@@ -22,6 +22,7 @@ import { apiService } from '../apiService';
 
 // 🟢 FIX: We added all our new variable names to the blueprint so TypeScript stops complaining!
 type AppointmentLike = {
+  id?: string | number;
   name?: string;
   patient_email?: string;
   patientEmail?: string;
@@ -62,6 +63,10 @@ type AppointmentLike = {
   medicalInformation?: any;
   medical_information?: any;
   recordType?: string;
+  dbId?: string | number;
+  target_id?: string | number;
+  appointment_id?: string | number;
+  walkin_id?: string | number;
   linkedVisitId?: string | number | null;
   billingSourceType?: string | null;
   billingSourceId?: string | number | null;
@@ -77,6 +82,16 @@ type AdminAiSummary = {
   follow_up_questions: string[];
   missing_information: string[];
   model?: string;
+  support_metadata?: {
+    label?: string;
+    review_required?: boolean;
+    reliability?: 'High' | 'Moderate' | 'Low' | string;
+    reasons?: string[];
+    sources?: string[];
+    missing_context?: string[];
+    generated_at?: string;
+    disclaimer?: string;
+  };
 };
 
 type UserDetailsViewProps = {
@@ -121,6 +136,39 @@ const getAiFallbackMessage = (error: any, defaultMessage: string) => {
   return message || defaultMessage;
 };
 
+const formatAiGeneratedAt = (value?: string) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+};
+
+const resolveAdminSummaryTarget = (appointment?: AppointmentLike | null) => {
+  if (!appointment) return null;
+  const inferredRecordType = String(
+    appointment.recordType ||
+    (appointment.walkin_id ? 'walkin' : 'appointment')
+  ).trim().toLowerCase();
+  const recordType = inferredRecordType === 'walkin' ? 'walkin' : 'appointment';
+  const rawId =
+    appointment.target_id ??
+    (recordType === 'walkin' ? appointment.walkin_id : appointment.appointment_id) ??
+    appointment.dbId ??
+    appointment.appointment_id ??
+    appointment.walkin_id ??
+    appointment.id;
+  const idMatch = String(rawId || '').match(/(\d+)$/);
+  const targetId = idMatch?.[1];
+  return targetId ? { recordType, targetId } : null;
+};
+
 export default function UserDetailsView({
   user,
   onBack,
@@ -143,6 +191,74 @@ export default function UserDetailsView({
   const [aiError, setAiError] = useState('');
   const [aiCollapsed, setAiCollapsed] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadOrGenerateSummary = async () => {
+      const target = resolveAdminSummaryTarget(user);
+      if (!user || !target) {
+        setAiSummary(null);
+        setAiError('');
+        return;
+      }
+
+      setAiSummary(null);
+      setAiLoading(true);
+      setAiError('');
+      setCopySuccess(false);
+
+      try {
+        let savedResponse: any = null;
+        try {
+          savedResponse = await apiService.getSavedAdminAppointmentSummary(target.recordType, target.targetId);
+        } catch (savedError) {
+          console.warn('Saved AI summary lookup failed; generating a fresh summary.', savedError);
+        }
+        if (cancelled) return;
+
+        if (savedResponse?.summary) {
+          setAiSummary(savedResponse.summary);
+          setAiCollapsed(false);
+          return;
+        }
+
+        const generatedResponse = await apiService.generateAdminAppointmentSummary(user);
+        if (cancelled) return;
+
+        const generatedSummary = generatedResponse.summary || null;
+        setAiSummary(generatedSummary);
+        setAiCollapsed(false);
+
+        if (generatedSummary) {
+          try {
+            await apiService.saveAdminAppointmentSummary({
+              recordType: target.recordType,
+              targetId: target.targetId,
+              summary: generatedSummary,
+            });
+          } catch (saveError) {
+            console.warn('AI summary generated but could not be saved.', saveError);
+          }
+        }
+      } catch (error: any) {
+        if (!cancelled) {
+          setAiSummary(null);
+          setAiError(getAiFallbackMessage(error, 'Unable to generate the AI summary right now.'));
+        }
+      } finally {
+        if (!cancelled) {
+          setAiLoading(false);
+        }
+      }
+    };
+
+    loadOrGenerateSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.dbId, user?.target_id, user?.appointment_id, user?.walkin_id, user?.recordType]);
 
   if (!user) return null;
 
@@ -375,9 +491,13 @@ export default function UserDetailsView({
       ];
   const canAcceptAppointment = status === 'pending';
   const showBottomLifecycleActions = !readOnly && (status === 'confirmed' || status === 'scheduled');
+  const adminSummaryTarget = resolveAdminSummaryTarget(user);
   const aiFlagCount = aiSummary?.important_flags?.length || 0;
   const aiQuestionCount = aiSummary?.follow_up_questions?.length || 0;
   const aiMissingCount = aiSummary?.missing_information?.length || 0;
+  const aiSupportMetadata = aiSummary?.support_metadata;
+  const aiReliability = aiSupportMetadata?.reliability || 'Review';
+  const aiGeneratedAt = formatAiGeneratedAt(aiSupportMetadata?.generated_at);
   const aiSymptomSignalCount = reportedSymptoms.length + (medicalInformation?.owner_symptom_notes ? 1 : 0);
 
   const buildAdminAiPayload = () => ({
@@ -420,6 +540,13 @@ export default function UserDetailsView({
       ...(aiSummary.missing_information?.length
         ? aiSummary.missing_information.map(item => `- ${item}`)
         : ['- No major missing information was identified.']),
+      '',
+      `AI Indicator: ${aiSupportMetadata?.label || 'AI-generated clinical support'}`,
+      `Review Required: ${aiSupportMetadata?.review_required === false ? 'No' : 'Yes'}`,
+      `Reliability: ${aiSupportMetadata?.reliability || 'Not provided'}`,
+      aiGeneratedAt ? `Generated: ${aiGeneratedAt}` : '',
+      `Based on: ${(aiSupportMetadata?.sources || []).join(', ') || 'Available appointment details'}`,
+      `Reliability Notes: ${(aiSupportMetadata?.reasons || []).join(' ') || 'Review the source data before use.'}`,
     ].join('\n');
   };
 
@@ -430,8 +557,20 @@ export default function UserDetailsView({
 
     try {
       const response = await apiService.generateAdminAppointmentSummary(buildAdminAiPayload());
-      setAiSummary(response.summary || null);
+      const generatedSummary = response.summary || null;
+      setAiSummary(generatedSummary);
       setAiCollapsed(false);
+      if (generatedSummary && adminSummaryTarget) {
+        try {
+          await apiService.saveAdminAppointmentSummary({
+            recordType: adminSummaryTarget.recordType,
+            targetId: adminSummaryTarget.targetId,
+            summary: generatedSummary,
+          });
+        } catch (saveError) {
+          console.warn('AI summary generated but could not be saved.', saveError);
+        }
+      }
     } catch (error: any) {
       setAiSummary(null);
       setAiError(getAiFallbackMessage(error, 'Unable to generate the AI summary right now.'));
@@ -485,25 +624,6 @@ export default function UserDetailsView({
         <h2 style={{ fontSize: '25px', fontWeight: '700', margin: 0 }}>Patient Details</h2>
         {!readOnly && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <button
-              onClick={handleGenerateAiSummary}
-              disabled={aiLoading}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '10px 16px',
-                borderRadius: '8px',
-                border: '1px solid #d8dcff',
-                backgroundColor: aiLoading ? '#eef2ff' : '#f4f7ff',
-                color: '#3d67ee',
-                cursor: aiLoading ? 'not-allowed' : 'pointer',
-                fontWeight: '600',
-              }}
-            >
-              <IoMedical size={18} />
-              <span>{aiLoading ? 'Generating Summary...' : 'Generate AI Summary'}</span>
-            </button>
             <div
               style={{
                 fontSize: '12px',
@@ -514,7 +634,11 @@ export default function UserDetailsView({
                 padding: '8px 12px',
               }}
             >
-              {aiSymptomSignalCount > 0
+              {aiLoading
+                ? 'AI summary is preparing automatically.'
+                : aiSummary
+                  ? 'AI summary is saved for this appointment.'
+                  : aiSymptomSignalCount > 0
                 ? `AI will include booking symptom intake (${reportedSymptoms.length} symptom${reportedSymptoms.length === 1 ? '' : 's'} on record).`
                 : 'AI will use the available booking and medical details.'}
             </div>
@@ -584,7 +708,7 @@ export default function UserDetailsView({
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-        {(aiSummary || aiError) && (
+        {(aiSummary || aiError || aiLoading) && (
           <div className="adminAiPanelWrap">
             <div className="adminAiPanelHeadingRow">
               <h3 className="adminAiPanelHeading">AI Appointment Summary</h3>
@@ -622,7 +746,12 @@ export default function UserDetailsView({
             </div>
 
             <div className="adminAiPanelCard">
-              {aiError ? (
+              {aiLoading && !aiSummary && !aiError ? (
+                <div className="adminAiErrorBox">
+                  <IoMedical size={18} className="adminAiErrorIcon" />
+                  <div className="adminAiErrorText">Preparing AI summary for this appointment...</div>
+                </div>
+              ) : aiError ? (
                 <div className="adminAiErrorBox">
                   <IoAlertCircleOutline size={18} className="adminAiErrorIcon" />
                   <div className="adminAiErrorText">{aiError}</div>
@@ -657,6 +786,25 @@ export default function UserDetailsView({
                         <div className="adminAiStatLabel">Missing</div>
                         <div className="adminAiStatValue">{aiMissingCount}</div>
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="adminAiSupportMeta">
+                    <div className="adminAiSupportBadges">
+                      <span className="adminAiSupportBadge">AI Generated</span>
+                      <span className="adminAiSupportBadge adminAiSupportBadgeReview">Review Required</span>
+                      <span className={`adminAiSupportBadge adminAiSupportBadge${aiReliability}`}>
+                        {aiReliability} Reliability
+                      </span>
+                    </div>
+                    <div className="adminAiSupportDetails">
+                      {aiGeneratedAt && <span>Generated {aiGeneratedAt}</span>}
+                      {(aiSupportMetadata?.sources || []).length > 0 && (
+                        <span>Based on: {(aiSupportMetadata?.sources || []).join(', ')}</span>
+                      )}
+                      {(aiSupportMetadata?.reasons || []).length > 0 && (
+                        <span>{aiSupportMetadata?.reasons?.[0]}</span>
+                      )}
                     </div>
                   </div>
 
@@ -716,7 +864,7 @@ export default function UserDetailsView({
                         Generated by: <strong>{aiSummary.model}</strong>
                       </div>
                       <div>
-                        AI-generated admin support summary only. Final review remains with clinic staff and the veterinarian.
+                        {aiSupportMetadata?.disclaimer || 'AI-generated admin support summary only. Final review remains with clinic staff and the veterinarian.'}
                       </div>
                     </div>
                   )}

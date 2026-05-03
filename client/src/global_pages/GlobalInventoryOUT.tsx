@@ -1023,8 +1023,6 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
             <Notifications 
               buttonClassName="invIconButton"
               iconClassName="invBlueIcon"
-              onViewAll={() => {}}
-              onNotificationClick={() => {}}
             />
           </div>
         </div>
