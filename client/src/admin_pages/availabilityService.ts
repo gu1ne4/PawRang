@@ -260,9 +260,10 @@ export const availabilityService = {
   },
 
   // Get all appointments for the schedule table
-  async getAppointmentsForTable(): Promise<any[]> {
+  async getAppointmentsForTable(userId?: string | number | null): Promise<any[]> {
     try {
-      const response = await fetch(`${API_URL}/api/appointments/table`);
+      const query = userId ? `?userId=${encodeURIComponent(String(userId))}` : '';
+      const response = await fetch(`${API_URL}/api/appointments/table${query}`);
       if (!response.ok) throw new Error('Failed to load appointments');
       const data = await response.json();
       return data.appointments || [];
@@ -555,9 +556,10 @@ export const availabilityService = {
   },
 
   // Get completed/cancelled appointments for history
-  async getAppointmentHistory(): Promise<any[]> {
+  async getAppointmentHistory(userId?: string | number | null): Promise<any[]> {
     try {
-      const response = await fetch(`${API_URL}/api/appointments/history`);
+      const query = userId ? `?userId=${encodeURIComponent(String(userId))}` : '';
+      const response = await fetch(`${API_URL}/api/appointments/history${query}`);
       if (!response.ok) throw new Error('Failed to load appointment history');
       const data = await response.json();
       return data.appointments || [];

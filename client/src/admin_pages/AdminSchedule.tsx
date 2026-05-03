@@ -31,7 +31,21 @@ interface CurrentUser {
   fullName?: string;
   role: string;         
   userImage?: string;
+  branch_id?: string | number | null;
+  branch_name?: string;
+  branchName?: string;
 }
+
+const getCurrentUserId = (user?: CurrentUser | null): string | number | null =>
+  user?.id ?? user?.pk ?? null;
+
+const normalizeBranchText = (value?: string | null): string =>
+  (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+
+const isBothBranchesLabel = (value?: string | null): boolean => {
+  const normalized = normalizeBranchText(value);
+  return normalized.includes('both') || normalized.includes('main') || normalized.includes('all branches');
+};
 
 interface ModalConfigType {
   type: 'info' | 'success' | 'error' | 'confirm';
@@ -1903,7 +1917,14 @@ export default function Schedule() {
         if (indicateRefresh) setRefreshingDetails(true);
         
         try {
-            const response = await apiService.getAppointmentsForTable();
+            const currentUserId = getCurrentUserId(currentUser);
+            if (!currentUserId) {
+                setUserData([]);
+                setBookedDates({});
+                return;
+            }
+
+            const response = await apiService.getAppointmentsForTable(currentUserId);
             const formattedData = response.appointments || response || [];
 
             setUserData(formattedData);
@@ -1935,7 +1956,7 @@ export default function Schedule() {
             if (!silent) setLoading(false);
             if (indicateRefresh) setRefreshingDetails(false);
         }
-    }, []);
+    }, [currentUser]);
 
     const handleManualRefresh = async () => {
         await loadAppointments({ silent: true, indicateRefresh: true });
@@ -1943,7 +1964,7 @@ export default function Schedule() {
 
     const loadDoctors = async () => {
         try {
-            const doctorsList = await apiService.getDoctors();
+            const doctorsList = await apiService.getDoctors(getCurrentUserId(currentUser));
             const formattedDoctors = doctorsList
                 .filter((doctor: any) => {
                     const normalizedRole = (doctor.role || '').toString().trim().toLowerCase();
@@ -1967,7 +1988,17 @@ export default function Schedule() {
     const loadBranches = async () => {
         try {
             const branchResponse = await apiService.getBranches();
-            setBranches(branchResponse?.branches || []);
+            const branchRows = branchResponse?.branches || [];
+            const currentBranchId = currentUser?.branch_id !== undefined && currentUser?.branch_id !== null
+                ? String(currentUser.branch_id)
+                : '';
+            const currentBranchName = currentUser?.branch_name || currentUser?.branchName || '';
+            const canAccessAllBranches = isBothBranchesLabel(currentBranchName);
+            setBranches(
+                canAccessAllBranches
+                    ? branchRows.filter((branch: any) => !isBothBranchesLabel(branch.branch_name || branch.name))
+                    : branchRows.filter((branch: any) => String(branch.branch_id || branch.id || '') === currentBranchId)
+            );
         } catch (error) {
             console.error('Failed to load branches:', error);
             setBranches([]);
@@ -1980,6 +2011,7 @@ export default function Schedule() {
             
             const submissionData = {
                 ...appointmentData,
+                userId: getCurrentUserId(currentUser),
                 reason: appointmentData.patient_reason,
                 reason_for_visit: appointmentData.patient_reason,
                 reasonForVisit: appointmentData.patient_reason

@@ -86,6 +86,22 @@ const SORT_OPTIONS = [
 
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
+
+const getStoredInventoryUserId = (): string => {
+  try {
+    const session = localStorage.getItem('userSession');
+    const parsed = session ? JSON.parse(session) : null;
+    return parsed?.id || parsed?.pk || '';
+  } catch {
+    return '';
+  }
+};
+
+const withInventoryUserId = (url: string): string => {
+  const userId = getStoredInventoryUserId();
+  if (!userId) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}userId=${encodeURIComponent(userId)}`;
+};
 const BRANCH_ID_BY_NAME: Record<string, number> = {
   Taguig: 1,
   'Las Pinas': 2,
@@ -277,7 +293,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
       const endpoint = branchId
         ? `${API_URL}/api/inventory/items?branch_id=${branchId}`
         : `${API_URL}/api/inventory/items`;
-      const response = await fetch(endpoint);
+      const response = await fetch(withInventoryUserId(endpoint));
       if (!response.ok) {
         throw new Error(`Failed to fetch inventory data (${response.status})`);
       }
@@ -360,7 +376,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
             );
 
             if (!matchingProduct) {
-              const createResponse = await fetch(`${API_URL}/api/inventory/items`, {
+              const createResponse = await fetch(withInventoryUserId(`${API_URL}/api/inventory/items`), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -406,7 +422,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
             }
 
             if (row.stockCount > 0) {
-              const stockInResponse = await fetch(`${API_URL}/api/inventory/stock-in`, {
+              const stockInResponse = await fetch(withInventoryUserId(`${API_URL}/api/inventory/stock-in`), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -782,7 +798,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
       const itemBranchId = transactionItems[0]?.branchId;
       const branchId = selectedBranchId ?? itemBranchId ?? 1;
 
-      const response = await fetch(`${API_URL}/api/inventory/stock-out`, {
+      const response = await fetch(withInventoryUserId(`${API_URL}/api/inventory/stock-out`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

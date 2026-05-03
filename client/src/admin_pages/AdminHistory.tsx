@@ -36,6 +36,9 @@ interface CurrentUser {
   userImage?: string;
 }
 
+const getCurrentUserId = (user?: CurrentUser | null): string | number | null =>
+  user?.id ?? user?.pk ?? null;
+
 interface ModalConfigType {
   type: 'info' | 'success' | 'error' | 'confirm';
   title: string;
@@ -118,12 +121,18 @@ export default function AdminHistory() {
 
   useEffect(() => {
     loadHistory();
-  }, []);
+  }, [currentUser]);
 
   const loadHistory = async () => {
     setLoading(true);
     try {
-      const appointments = await availabilityService.getAppointmentHistory();
+      const currentUserId = getCurrentUserId(currentUser);
+      if (!currentUserId) {
+        setHistoryAppointments([]);
+        return;
+      }
+
+      const appointments = await availabilityService.getAppointmentHistory(currentUserId);
       setHistoryAppointments(appointments);
       if (selectedHistoryAppointment) {
         const refreshedSelection = appointments.find((appointment: any) =>

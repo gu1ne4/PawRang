@@ -26,6 +26,7 @@ import Notifications from '../reusable_components/Notifications';
 
 interface User {
   id?: string; 
+  pk?: string;
   username: string;
   first_name?: string;
   last_name?: string;
@@ -35,14 +36,28 @@ interface User {
   status: string;
   employee_image?: string; 
   created_at?: string;
+  branch_id?: number | string | null;
+  branch_name?: string;
+  branchName?: string;
 }
 
 interface CurrentUser {
   id?: string;
+  pk?: string;
   username: string;
   fullName?: string;
   role: string;
   userImage?: string;
+  branch_id?: number | string | null;
+  branch_name?: string;
+  branchName?: string;
+}
+
+interface Branch {
+  branch_id?: number | string;
+  id?: number | string;
+  branch_name?: string;
+  name?: string;
 }
 
 interface ModalConfig {
@@ -55,6 +70,8 @@ interface ModalConfig {
 
 type Role = 'Admin' | 'Veterinarian' | 'Receptionist' | 'Moderator';
 type Status = 'Active' | 'Disabled';
+
+const BOTH_BRANCHES_VALUE = 'both';
 
 const AdminHome: React.FC = () => {
   const navigate = useNavigate();
@@ -89,6 +106,8 @@ const AdminHome: React.FC = () => {
   // Filter States
   const [status, setStatus] = useState<string>("defaultStatus");
   const [role, setRole] = useState<string>("defaultRole");
+  const [branchFilter, setBranchFilter] = useState<string>("defaultBranch");
+  const [branches, setBranches] = useState<Branch[]>([]);
 
   // Pagination
   const [page, setPage] = useState<number>(0);
@@ -103,6 +122,7 @@ const AdminHome: React.FC = () => {
   const [newEmail, setNewEmail] = useState<string>('');
   const [newRole, setNewRole] = useState<Role>('Admin');
   const [newStatus, setNewStatus] = useState<Status>('Active');
+  const [newBranchId, setNewBranchId] = useState<string>('');
   const [userImage, setUserImage] = useState<string | null>(null);
   const [userImageBase64, setUserImageBase64] = useState<string | null>(null);
 
@@ -116,6 +136,109 @@ const AdminHome: React.FC = () => {
   ) => {
     setModalConfig({ type, title, message, onConfirm, showCancel });
     setModalVisible(true);
+  };
+
+  const normalizeBranchText = (value?: string | null): string =>
+    (value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+  const getBranchId = (branch?: Branch | null): string =>
+    branch?.branch_id !== undefined && branch?.branch_id !== null
+      ? String(branch.branch_id)
+      : branch?.id !== undefined && branch?.id !== null
+        ? String(branch.id)
+        : '';
+
+  const getBranchName = (branch?: Branch | null): string =>
+    branch?.branch_name || branch?.name || '';
+
+  const getShortBranchLabel = (value?: string | null): string => {
+    const normalized = normalizeBranchText(value);
+    if (normalized.includes('both') || normalized.includes('main') || normalized.includes('all branches')) return 'Both Branches';
+    if (normalized.includes('taguig')) return 'Taguig';
+    if (normalized.includes('las') || normalized.includes('pinas') || normalized.includes('bf resort')) return 'Las Pinas';
+    return value || 'N/A';
+  };
+
+  const isAdminRole = (value?: string | null): boolean =>
+    normalizeBranchText(value) === 'admin';
+
+  const isBothBranchesLabel = (value?: string | null): boolean => {
+    const normalized = normalizeBranchText(value);
+    return normalized === 'both branches' || normalized === 'all branches' || normalized === 'main branch' || normalized.includes('both');
+  };
+
+  const isBothBranchesBranch = (branch?: Branch | null): boolean =>
+    isBothBranchesLabel(getBranchName(branch));
+
+  const getUserBranchId = (user?: Pick<User, 'branch_id'> | CurrentUser | null): string =>
+    user?.branch_id !== undefined && user?.branch_id !== null ? String(user.branch_id) : '';
+
+  const getUserBranchName = (user?: Pick<User, 'branch_name' | 'branchName'> | CurrentUser | null): string =>
+    user?.branch_name || user?.branchName || '';
+
+  const getAccountBranchLabel = (user?: User | null): string => {
+    const directName = getUserBranchName(user);
+    if (directName) return getShortBranchLabel(directName);
+    const match = branches.find(branch => getBranchId(branch) === getUserBranchId(user));
+    return match ? getShortBranchLabel(getBranchName(match)) : 'Not assigned';
+  };
+
+  const getCurrentAdminId = (): string =>
+    currentUser?.id || currentUser?.pk || '';
+
+  const getStoredAdminId = (): string => {
+    try {
+      const session = localStorage.getItem('userSession');
+      const parsed = session ? JSON.parse(session) : null;
+      return parsed?.id || parsed?.pk || '';
+    } catch {
+      return '';
+    }
+  };
+
+  const currentAccount = accounts.find(account => account.id === getCurrentAdminId() || account.pk === getCurrentAdminId());
+  const currentBranchId = getUserBranchId(currentUser) || getUserBranchId(currentAccount);
+  const currentBranch = branches.find(branch => getBranchId(branch) === currentBranchId);
+  const currentBranchName = getBranchName(currentBranch) || getUserBranchName(currentUser) || getUserBranchName(currentAccount);
+  const currentAdminCanManageAllBranches = isAdminRole(currentUser?.role || currentAccount?.role) && isBothBranchesLabel(currentBranchName);
+  const bothBranchesBranch = branches.find(isBothBranchesBranch);
+  const realBranches = branches.filter(branch => !isBothBranchesBranch(branch));
+  const branchOptions = currentAdminCanManageAllBranches
+    ? realBranches
+    : realBranches.filter(branch => getBranchId(branch) === currentBranchId);
+
+  const getPayloadBranchId = (): string => {
+    if (newBranchId === BOTH_BRANCHES_VALUE) {
+      return getBranchId(bothBranchesBranch);
+    }
+    return newBranchId;
+  };
+
+  const getBranchPanelStyle = (branchId?: string | number | null, branchLabel?: string | null): React.CSSProperties => ({
+    background:
+      normalizeBranchText(branchLabel || getBranchName(branches.find(item => getBranchId(item) === String(branchId || '')))).includes('las')
+        ? '#eef6ff'
+        : '#f3f6ff',
+  });
+
+  const ensureValidBranchSelection = (roleValue: Role = newRole): void => {
+    const canUseBoth = currentAdminCanManageAllBranches && isAdminRole(roleValue) && bothBranchesBranch;
+    const validIds = branchOptions.map(getBranchId);
+
+    if (newBranchId === BOTH_BRANCHES_VALUE && canUseBoth) return;
+    if (newBranchId && validIds.includes(newBranchId)) return;
+
+    if (!currentAdminCanManageAllBranches && currentBranchId) {
+      setNewBranchId(currentBranchId);
+      return;
+    }
+
+    if (canUseBoth) {
+      setNewBranchId(BOTH_BRANCHES_VALUE);
+      return;
+    }
+
+    setNewBranchId(validIds[0] || '');
   };
 
   const loadCurrentUser = async (): Promise<void> => {
@@ -140,7 +263,9 @@ const AdminHome: React.FC = () => {
   const fetchAccounts = async (): Promise<void> => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/accounts`);
+      const actorId = getCurrentAdminId() || getStoredAdminId();
+      const query = actorId ? `?userId=${encodeURIComponent(actorId)}` : '';
+      const response = await fetch(`${API_URL}/accounts${query}`);
       const data = await response.json().catch(() => ([]));
 
       if (!response.ok) {
@@ -156,10 +281,32 @@ const AdminHome: React.FC = () => {
     }
   };
 
+  const fetchBranches = async (): Promise<void> => {
+    try {
+      const response = await fetch(`${API_URL}/branches`);
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch branch data.');
+      }
+
+      setBranches(Array.isArray(data.branches) ? data.branches : []);
+    } catch (error) {
+      console.error(error);
+      showAlert('error', 'Error', 'Failed to fetch branch data.');
+    }
+  };
+
   useEffect(() => {
     fetchAccounts();
+    fetchBranches();
     loadCurrentUser();
   }, []);
+
+  useEffect(() => {
+    if (!addAccountVisible && !editAccountVisible) return;
+    ensureValidBranchSelection(newRole);
+  }, [addAccountVisible, editAccountVisible, newRole, branches.length, currentBranchId, currentAdminCanManageAllBranches]);
 
   const resetForm = (): void => {
     setNewUsername('');
@@ -169,6 +316,7 @@ const AdminHome: React.FC = () => {
     setNewEmail('');
     setNewRole('Admin');
     setNewStatus('Active');
+    setNewBranchId('');
     setUserImage(null);
     setUserImageBase64(null);
     setEditingId(null);
@@ -206,7 +354,8 @@ const AdminHome: React.FC = () => {
           newContact !== (originalUser.contact_number || '') ||
           newEmail !== (originalUser.email || '') ||
           newRole !== (originalUser.role || 'Admin') ||
-          newStatus !== (originalUser.status || 'Active');
+          newStatus !== (originalUser.status || 'Active') ||
+          getPayloadBranchId() !== getUserBranchId(originalUser);
       }
     }
 
@@ -263,6 +412,7 @@ const AdminHome: React.FC = () => {
     setNewEmail(user.email || '');
     setNewRole((user.role as Role) || 'Admin');
     setNewStatus((user.status as Status) || 'Active');
+    setNewBranchId(isBothBranchesLabel(getAccountBranchLabel(user)) ? BOTH_BRANCHES_VALUE : getUserBranchId(user));
     
     let img = user.employee_image;
     if (img && !img.startsWith('data:image')) img = `data:image/jpeg;base64,${img}`;
@@ -279,7 +429,8 @@ const AdminHome: React.FC = () => {
   // CREATE ACCOUNT LOGIC (Updated for Dummy Username)
   const handleSavePress = async (): Promise<void> => {
     // Removed newUsername validation
-    if (!newFirstName || !newLastName || !newContact || !newEmail) {
+    const payloadBranchId = getPayloadBranchId();
+    if (!newFirstName || !newLastName || !newContact || !newEmail || !payloadBranchId) {
       showAlert('error', 'Missing Information', 'Please fill in all required fields.');
       return;
     }
@@ -298,6 +449,8 @@ const AdminHome: React.FC = () => {
             email: newEmail,
             role: newRole,
             status: newStatus,
+            branch_id: payloadBranchId,
+            userId: getCurrentAdminId(),
             employee_image: userImageBase64,
           }),
         });
@@ -330,7 +483,8 @@ const AdminHome: React.FC = () => {
 
   // UPDATE ACCOUNT LOGIC
   const handleUpdateAccount = async (): Promise<void> => {
-    if (!newUsername || !newFirstName || !newLastName || !newContact || !newEmail) {
+    const payloadBranchId = getPayloadBranchId();
+    if (!newUsername || !newFirstName || !newLastName || !newContact || !newEmail || !payloadBranchId) {
       showAlert('error', 'Missing Information', 'Please fill in all required fields.');
       return;
     }
@@ -345,6 +499,8 @@ const AdminHome: React.FC = () => {
           email: newEmail,
           role: newRole,
           status: newStatus,
+          branch_id: payloadBranchId,
+          userId: getCurrentAdminId(),
         };
 
         if (userImageBase64) {
@@ -371,7 +527,7 @@ const AdminHome: React.FC = () => {
     }, true);
   };
 
-  const noMatchFilters = status === "defaultStatus" && role === "defaultRole";
+  const noMatchFilters = status === "defaultStatus" && role === "defaultRole" && branchFilter === "defaultBranch";
 
   const filteredUsers = accounts.filter(user => {
     const fullName = `${user.first_name || ''} ${user.last_name || ''}`.toLowerCase();
@@ -379,12 +535,14 @@ const AdminHome: React.FC = () => {
     const uEmail = (user.email || '').toLowerCase();
     const uStatus = user.status || 'Active';
     const uRole = user.role || '';
+    const uBranchId = getUserBranchId(user);
 
     const matchesSearch = uName.includes(searchQuery.toLowerCase()) || uEmail.includes(searchQuery.toLowerCase());
     const matchesStatus = status !== "defaultStatus" ? uStatus === status : true;
     const matchesRole = role !== "defaultRole" ? uRole === role : true;
+    const matchesBranch = branchFilter !== "defaultBranch" ? uBranchId === branchFilter : true;
 
-    return matchesSearch && matchesStatus && matchesRole;
+    return matchesSearch && matchesStatus && matchesRole && matchesBranch;
   });
 
   const paginatedUsers = filteredUsers.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
@@ -478,10 +636,24 @@ const AdminHome: React.FC = () => {
                     <option value="Receptionist">Receptionist</option>
                   </select>
 
+                  <select 
+                    value={branchFilter} 
+                    onChange={(e) => {setBranchFilter(e.target.value); setPage(0);}}
+                    className="filterSelect"
+                  >
+                    <option value="defaultBranch">Branch</option>
+                    {branches.map((branch) => (
+                      <option key={getBranchId(branch)} value={getBranchId(branch)}>
+                        {getShortBranchLabel(getBranchName(branch))}
+                      </option>
+                    ))}
+                  </select>
+
                   <button
                     onClick={() => {
                       setStatus("defaultStatus");
                       setRole("defaultRole");
+                      setBranchFilter("defaultBranch");
                       setSearchQuery("");
                       setPage(0);
                     }}
@@ -512,6 +684,7 @@ const AdminHome: React.FC = () => {
                   <tr>
                     <th style={{flex: 3}}>Name</th>
                     <th style={{flex: 1.1}}>Role</th>
+                    <th style={{flex: 1.4}}>Branch</th>
                     <th style={{flex: 2}}>Contact Number</th>
                     <th style={{flex: 2.5}}>E-Mail</th>
                     <th style={{flex: 1.5}}>Status</th>
@@ -525,6 +698,7 @@ const AdminHome: React.FC = () => {
                       const uStatus = user.status || 'Active';
                       const uName = user.username;
                       const uContact = user.contact_number;
+                      const uBranch = getAccountBranchLabel(user);
                       
                       let uImage = user.employee_image;
                       if (uImage && !uImage.startsWith('data:image')) {
@@ -544,6 +718,7 @@ const AdminHome: React.FC = () => {
                             </div>
                           </td>
                           <td>{user.role}</td>
+                          <td>{uBranch}</td>
                           <td>{uContact}</td>
                           <td>{user.email}</td>
                           <td>
@@ -566,7 +741,7 @@ const AdminHome: React.FC = () => {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={7} className="noData">
+                      <td colSpan={8} className="noData">
                         {noMatchFilters ? "Showing all users (no filters applied)" : "No users found"}
                       </td>
                     </tr>
@@ -603,7 +778,7 @@ const AdminHome: React.FC = () => {
             <div className="modalHeader">
               <h2>Create Account</h2>
             </div>
-            <div className="imageUploadSection">
+            <div className="imageUploadSection" style={getBranchPanelStyle(getPayloadBranchId(), newBranchId === BOTH_BRANCHES_VALUE ? 'Both Branches' : undefined)}>
               <button className="uploadBtn" onClick={pickImage}>
                 {userImage ? (
                   <img src={userImage} alt="User" className="uploadedImage" />
@@ -679,6 +854,25 @@ const AdminHome: React.FC = () => {
                   </select>
                 </div>
                 <div className="formGroup">
+                  <label>Branch</label>
+                  <select
+                    value={newBranchId}
+                    onChange={(e) => setNewBranchId(e.target.value)}
+                    className="formSelect"
+                    disabled={!currentAdminCanManageAllBranches && branchOptions.length <= 1}
+                  >
+                    <option value="">Select Branch</option>
+                    {currentAdminCanManageAllBranches && isAdminRole(newRole) && bothBranchesBranch && (
+                      <option value={BOTH_BRANCHES_VALUE}>Both Branches</option>
+                    )}
+                    {branchOptions.map((branch) => (
+                      <option key={getBranchId(branch)} value={getBranchId(branch)}>
+                        {getShortBranchLabel(getBranchName(branch))}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="formGroup">
                   <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
                     <button className="cancelBtn" onClick={() => handleCancel('create')} style={{ flex: 1 }}>Cancel</button>
                     <button className="submitBtn gradientBtn" onClick={handleSavePress} style={{ flex: 1 }}>Create Account</button>
@@ -698,7 +892,7 @@ const AdminHome: React.FC = () => {
             <div className="modalHeader">
               <h2>Edit Account</h2>
             </div>
-            <div className="imageUploadSection">
+            <div className="imageUploadSection" style={getBranchPanelStyle(getPayloadBranchId(), newBranchId === BOTH_BRANCHES_VALUE ? 'Both Branches' : undefined)}>
               <button className="uploadBtn" onClick={pickImage}>
                 {userImage ? (
                   <img src={userImage} alt="User" className="uploadedImage" />
@@ -780,6 +974,25 @@ const AdminHome: React.FC = () => {
                   </select>
                 </div>
                 <div className="formGroup">
+                  <label>Branch</label>
+                  <select
+                    value={newBranchId}
+                    onChange={(e) => setNewBranchId(e.target.value)}
+                    className="formSelect"
+                    disabled={!currentAdminCanManageAllBranches && branchOptions.length <= 1}
+                  >
+                    <option value="">Select Branch</option>
+                    {currentAdminCanManageAllBranches && isAdminRole(newRole) && bothBranchesBranch && (
+                      <option value={BOTH_BRANCHES_VALUE}>Both Branches</option>
+                    )}
+                    {branchOptions.map((branch) => (
+                      <option key={getBranchId(branch)} value={getBranchId(branch)}>
+                        {getShortBranchLabel(getBranchName(branch))}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="formGroup">
                   <label>Account Status</label>
                   <div className="statusToggle">
                     <label className="switch">
@@ -807,7 +1020,13 @@ const AdminHome: React.FC = () => {
               <h2>Account Details</h2>
             </div>
             
-            <div className="imageUploadSection">
+            <div
+              className="imageUploadSection"
+              style={getBranchPanelStyle(
+                (selectedAccount as User).branch_id,
+                getAccountBranchLabel(selectedAccount as User)
+              )}
+            >
               <div className="uploadBtn" style={{ cursor: 'default', border: 'none', background: 'transparent' }}>
                 {((selectedAccount as User).employee_image) ? (
                   <img 
@@ -876,6 +1095,16 @@ const AdminHome: React.FC = () => {
                     type="text" 
                     className="formInput" 
                     value={(selectedAccount as User).role || ''} 
+                    readOnly 
+                    style={{ cursor: 'text' }} 
+                  />
+                </div>
+                <div className="formGroup">
+                  <label>Branch</label>
+                  <input 
+                    type="text" 
+                    className="formInput" 
+                    value={getAccountBranchLabel(selectedAccount as User)} 
                     readOnly 
                     style={{ cursor: 'text' }} 
                   />

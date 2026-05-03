@@ -55,6 +55,22 @@ export function invalidateApiCache(prefix?: string): void {
   }
 }
 
+function getStoredUserId(): string {
+  try {
+    const session = localStorage.getItem('userSession');
+    const parsed = session ? JSON.parse(session) : null;
+    return parsed?.id || parsed?.pk || '';
+  } catch {
+    return '';
+  }
+}
+
+function withUserIdQuery(path: string, userId?: string | number | null): string {
+  const resolvedUserId = userId || getStoredUserId();
+  if (!resolvedUserId) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}userId=${encodeURIComponent(String(resolvedUserId))}`;
+}
+
 // ─── Generic fetch wrapper ────────────────────────────────────────────────────
 
 async function request<T = any>(
@@ -206,13 +222,15 @@ export const apiService = {
 
 // ─── Admin Schedule & Appointment Endpoints ───────────────────────────────
 
-  getAppointmentsForTable() {
-    return request('/api/appointments/table');
+  getAppointmentsForTable(userId?: string | number | null) {
+    const query = userId ? `?userId=${encodeURIComponent(String(userId))}` : '';
+    return request(`/api/appointments/table${query}`);
   },
 
-  getDoctors() {
+  getDoctors(userId?: string | number | null) {
     // In your app.py, /accounts and /api/doctors both route to get_accounts()
-    return request('/api/doctors');
+    const query = userId ? `?userId=${encodeURIComponent(String(userId))}` : '';
+    return request(`/api/doctors${query}`);
   },
 
   updateAppointmentStatus(appointmentId: string | number, status: string, recordType: string) {
@@ -299,7 +317,10 @@ export const apiService = {
   createAdminAppointment(payload: any) {
     return request('/api/appointments', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        userId: payload?.userId || getStoredUserId(),
+      }),
     });
   },
 
@@ -508,7 +529,7 @@ export const apiService = {
     if (params.startDate) query.set('startDate', params.startDate);
     if (params.endDate) query.set('endDate', params.endDate);
     const suffix = query.toString() ? `?${query.toString()}` : '';
-    return request(`/api/admin/analytics/overview${suffix}`);
+    return request(withUserIdQuery(`/api/admin/analytics/overview${suffix}`));
   },
 
   getAdminAppointmentSearchData() {
@@ -516,39 +537,39 @@ export const apiService = {
   },
 
   getEmrSearchPets() {
-    return request('/api/emr/search-pets');
+    return request(withUserIdQuery('/api/emr/search-pets'));
   },
 
   getEmrRecords() {
-    return request('/api/emr/records');
+    return request(withUserIdQuery('/api/emr/records'));
   },
 
   getEmrRecord(recordId: number | string) {
-    return request(`/api/emr/records/${recordId}`);
+    return request(withUserIdQuery(`/api/emr/records/${recordId}`));
   },
 
   createEmrRecord(payload: any) {
     return request('/api/emr/records', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, userId: payload?.userId || getStoredUserId() }),
     });
   },
 
   updateEmrRecord(recordId: number | string, payload: any) {
     return request(`/api/emr/records/${recordId}`, {
       method: 'PUT',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, userId: payload?.userId || getStoredUserId() }),
     });
   },
 
   deleteEmrRecord(recordId: number | string) {
-    return request(`/api/emr/records/${recordId}`, {
+    return request(withUserIdQuery(`/api/emr/records/${recordId}`), {
       method: 'DELETE',
     });
   },
 
   getEmrPetAppointments(petId: number | string) {
-    return request(`/api/emr/pets/${petId}/appointments`);
+    return request(withUserIdQuery(`/api/emr/pets/${petId}/appointments`));
   },
 
   getBillingServices() {
@@ -557,18 +578,18 @@ export const apiService = {
     );
   },
 
-  getBillingProducts() {
-    return request('/api/billing/products').then(
+  getBillingProducts(userId?: string | number | null) {
+    return request(withUserIdQuery('/api/billing/products', userId)).then(
       (data: any) => data?.products || []
     );
   },
 
-  getBillingSourceRecords() {
-    return request('/api/billing/source-records');
+  getBillingSourceRecords(userId?: string | number | null) {
+    return request(withUserIdQuery('/api/billing/source-records', userId));
   },
 
-  getBillingInvoices() {
-    return request('/api/billing/invoices').then(
+  getBillingInvoices(userId?: string | number | null) {
+    return request(withUserIdQuery('/api/billing/invoices', userId)).then(
       (data: any) => data?.invoices || []
     );
   },
@@ -590,7 +611,7 @@ export const apiService = {
   deleteBillingInvoices(invoiceIds: Array<number | string>) {
     return request('/api/billing/invoices/bulk', {
       method: 'DELETE',
-      body: JSON.stringify({ invoiceIds }),
+      body: JSON.stringify({ invoiceIds, userId: getStoredUserId() }),
     });
   },
 
@@ -600,7 +621,7 @@ export const apiService = {
   }) {
     return request(`/api/emr/lab-results/${labResultId}/owner-visibility`, {
       method: 'PUT',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, userId: getStoredUserId() }),
     });
   },
 
@@ -610,7 +631,7 @@ export const apiService = {
   }) {
     return request(`/api/emr/vaccinations/${vaccinationId}/owner-visibility`, {
       method: 'PUT',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ ...payload, userId: getStoredUserId() }),
     });
   },
 
