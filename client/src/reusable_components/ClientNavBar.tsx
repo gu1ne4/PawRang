@@ -9,11 +9,11 @@ import {
   IoInformationCircleOutline,
   IoLogOutOutline,
   IoMenuOutline,
-  IoNotificationsOutline,
   IoPawOutline,
   IoPersonOutline,
 } from 'react-icons/io5';
 import './ClientNavBar.css';
+import UserNotifications from './UserNotifications';
 
 interface User {
   id?: string | number;
@@ -212,7 +212,7 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
     {
       key: 'book',
       label: 'Book an Appointment',
-      icon: <IoNotificationsOutline size={20} />,
+      icon: <IoCalendarOutline size={20} />,
       action: () => navigate('/user/book-appointment'),
       active: isBookActive,
     },
@@ -359,14 +359,10 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
             <IoCalendarOutline size={21} color="#3d67ee" />
           </button>
 
-          <button
-            type="button"
-            className="icon-button"
-            onClick={() => executeNavigation(() => navigate('/user/book-appointment'))}
-            aria-label="Book an appointment"
-          >
-            <IoNotificationsOutline size={21} color="#3d67ee" />
-          </button>
+          <UserNotifications
+            userId={currentUser?.id || currentUser?.pk}
+            onOpenAppointments={() => executeNavigation(() => navigate('/user/appointments'))}
+          />
         </div>
       </div>
 
