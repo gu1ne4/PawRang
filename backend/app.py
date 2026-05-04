@@ -258,6 +258,198 @@ def format_date_for_email(value):
     return raw
 
 
+def normalize_email_service_key(value):
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def get_service_price_for_email(service_name):
+    raw_service = str(service_name or "").strip()
+    if not raw_service:
+        return None
+
+    services_by_key = {
+        normalize_email_service_key(row.get("service_name")): float(row.get("unit_price") or 0)
+        for row in BILLING_SERVICE_SEED_ROWS
+    }
+    aliases = {
+        "checkup": "Consultation & Check-Up",
+        "check up": "Consultation & Check-Up",
+        "consultation": "Consultation & Check-Up",
+        "consultation check up": "Consultation & Check-Up",
+        "dental cleaning": "Dental Prophylaxis",
+        "laboratory tests": "Complete Blood Count",
+        "lab tests": "Complete Blood Count",
+        "grooming": "Basic Grooming",
+        "pet grooming": "Basic Grooming",
+        "vaccination": "Vaccinations",
+        "xray": "X-Ray",
+        "x ray": "X-Ray",
+    }
+
+    def resolve_price(label):
+        key = normalize_email_service_key(label)
+        if not key:
+            return None
+        if key in services_by_key:
+            return services_by_key[key]
+        alias_target = aliases.get(key)
+        if alias_target:
+            return services_by_key.get(normalize_email_service_key(alias_target))
+        for service_key, price in services_by_key.items():
+            if service_key and service_key in key:
+                return price
+        return None
+
+    option_match = re.search(r"\((.*?)\)", raw_service)
+    if option_match:
+        option_labels = [item.strip() for item in option_match.group(1).split(",") if item.strip()]
+        option_prices = [resolve_price(label) for label in option_labels]
+        option_prices = [price for price in option_prices if price is not None]
+        if option_prices:
+            return sum(option_prices)
+
+    return resolve_price(raw_service)
+
+
+def format_price_for_email(price):
+    if price is None:
+        return "To be confirmed"
+    amount = float(price or 0)
+    if amount <= 0:
+        return "To be confirmed"
+    if amount.is_integer():
+        return f"&#8369;{int(amount):,}"
+    return f"&#8369;{amount:,.2f}"
+
+
+def build_email_detail_rows(rows):
+    html_rows = []
+    for index, row in enumerate(rows or []):
+        if len(row) < 2:
+            continue
+        label, value = row[0], row[1]
+        if value in (None, ""):
+            continue
+        border = " border-top: 1px solid #e8edf7;" if index else ""
+        html_rows.append(f"""
+            <tr>
+                <td style="padding: 14px 16px;{border} color: #64748b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;">
+                    {escape(str(label))}
+                </td>
+                <td style="padding: 14px 16px;{border} color: #1f3fae; font-size: 15px; font-weight: 700; text-align: right;">
+                    {value}
+                </td>
+            </tr>
+        """)
+    return "".join(html_rows)
+
+
+def build_email_button(label, url, background="#6b8cff"):
+    if not url:
+        return ""
+    return f"""
+        <a href="{escape(str(url), quote=True)}" style="display: inline-block; padding: 10px 14px; background: {background}; color: #ffffff; text-decoration: none; border-radius: 999px; margin: 5px 7px 5px 0; font-size: 12px; font-weight: 800;">
+            {escape(str(label))}
+        </a>
+    """
+
+
+def get_email_badge_style(badge):
+    key = str(badge or "").strip().lower()
+    if "cancel" in key or "declin" in key:
+        return {"background": "#fee2e2", "color": "#dc2626"}
+    if "complete" in key or "confirmed" in key or "booked" in key or key == "accepted":
+        return {"background": "#dcfce7", "color": "#16a34a"}
+    if "resched" in key or "review" in key or "pending" in key or "under review" in key or "action" in key or "update" in key:
+        return {"background": "#fef3c7", "color": "#d97706"}
+    return {"background": "#ffffff", "color": "#3d67ee"}
+
+
+def render_pawrang_email(title, badge, greeting_html, body_html, details_title=None, detail_rows=None, note_html=None, accent="#3d67ee"):
+    clinic_name = "PetShield Veterinary Clinic and Grooming Services"
+    safe_title = escape(title or "PawRang Notification")
+    safe_badge = escape(badge or "Notice")
+    badge_style = get_email_badge_style(badge)
+    petshield_logo_url = f"{SUPABASE_URL}/storage/v1/object/public/email-assets/PetshieldLogo.png"
+    pawrang_logo_url = f"{SUPABASE_URL}/storage/v1/object/public/email-assets/PawRang%20Logomark.png"
+    details_html = ""
+    if detail_rows:
+        details_html = f"""
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width: 100%; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; background: #f8fafc;">
+                <tr>
+                    <td colspan="2" style="padding: 16px 18px; background: #eaf0ff; color: #3d67ee; font-size: 14px; font-weight: 800;">
+                        {escape(details_title or "Details")}
+                    </td>
+                </tr>
+                {build_email_detail_rows(detail_rows)}
+            </table>
+        """
+    note_block = f"""
+        <div style="margin: 24px 0 0; padding: 16px 18px; border-left: 4px solid {accent}; background: #f4f7ff; border-radius: 10px;">
+            <div style="margin: 0; color: #274690; font-size: 14px; line-height: 1.6;">
+                {note_html}
+            </div>
+        </div>
+    """ if note_html else ""
+
+    return f"""
+        <div style="margin: 0; padding: 0; background: #f3f6ff; font-family: Arial, Helvetica, sans-serif; color: #1f2937;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width: 100%; background: #f3f6ff;">
+                <tr>
+                    <td align="center" style="padding: 32px 16px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width: 100%; max-width: 620px; background: #ffffff; border-radius: 18px; overflow: hidden; border: 1px solid #dfe7f3; box-shadow: 0 18px 45px rgba(61, 103, 238, 0.12);">
+                            <tr>
+                                <td style="padding: 26px 30px; background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738d9);">
+                                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                                        <tr>
+                                            <td style="vertical-align: top;">
+                                                <img src="{petshield_logo_url}" width="76" alt="PetShield logo" style="display: block; width: 76px; max-width: 76px; height: auto; margin: 0 0 14px;" />
+                                                <h1 style="margin: 10px 0 0; color: #ffffff; font-size: 30px; line-height: 1.2; font-weight: 800;">
+                                                    {safe_title}
+                                                </h1>
+                                            </td>
+                                            <td align="right" style="vertical-align: top;">
+                                                <span style="display: inline-block; padding: 8px 12px; border-radius: 999px; background: {badge_style['background']}; color: {badge_style['color']}; font-size: 12px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase;">
+                                                    {safe_badge}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 30px;">
+                                    <div style="margin: 0 0 14px; color: #334155; font-size: 16px; line-height: 1.65;">
+                                        {greeting_html}
+                                    </div>
+                                    <div style="margin: 0 0 24px; color: #334155; font-size: 16px; line-height: 1.65;">
+                                        {body_html}
+                                    </div>
+                                    {details_html}
+                                    {note_block}
+                                    <p style="margin: 26px 0 0; color: #334155; font-size: 15px; line-height: 1.65;">
+                                        Thank you,<br/>
+                                        <strong style="color: #0f172a;">{clinic_name}</strong>
+                                    </p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 18px 30px; background: #f8fafc; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 12px; line-height: 1.5; text-align: center;">
+                                    <div style="margin-bottom: 10px;">This is an automated notification from {clinic_name}.</div>
+                                    <div style="color: #94a3b8; font-size: 11px; line-height: 1.4;">
+                                        Powered by
+                                        <img src="{pawrang_logo_url}" width="40" alt="PawRang" style="display: inline-block; width: 40px; max-width: 40px; height: auto; vertical-align: middle; margin: 0 7px;" />
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    """
+
+
 def send_html_email(to_email, subject, html):
     if not to_email:
         raise ValueError("Recipient email is required")
@@ -311,36 +503,42 @@ def send_appointment_status_email(notification_type, patient_email, patient_name
     if not patient_email:
         raise ValueError("Patient email is missing")
 
-    safe_patient = patient_name or "Patient"
-    safe_pet = pet_name or "your pet"
-    safe_service = service or "appointment"
-    display_date = format_date_for_email(appointment_date)
-    display_time = format_time_for_email(appointment_time)
-    reason_html = f"<p><strong>Reason:</strong> {reason}</p>" if reason else ""
+    safe_patient = escape(patient_name or "Patient")
+    safe_pet = escape(pet_name or "your pet")
+    safe_service = escape(service or "appointment")
+    display_date = escape(format_date_for_email(appointment_date))
+    display_time = escape(format_time_for_email(appointment_time))
 
     if notification_type == "cancelled":
         subject = "Your PawRang Appointment Has Been Cancelled"
         heading = "Appointment Cancelled"
-        intro = f"Hello {safe_patient}, your appointment for <strong>{safe_pet}</strong> has been cancelled by the clinic."
+        badge = "Cancelled"
+        intro = f"Your appointment for <strong style=\"color: #0f172a;\">{safe_pet}</strong> has been cancelled by the clinic."
     elif notification_type == "rescheduled":
         subject = "Your PawRang Appointment Has Been Rescheduled"
         heading = "Appointment Rescheduled"
-        intro = f"Hello {safe_patient}, your appointment for <strong>{safe_pet}</strong> has been rescheduled by the clinic."
+        badge = "Rescheduled"
+        intro = f"Your appointment for <strong style=\"color: #0f172a;\">{safe_pet}</strong> has been rescheduled by the clinic."
     else:
         raise ValueError(f"Unsupported notification type: {notification_type}")
 
-    html = f"""
-        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-            <h2>{heading}</h2>
-            <p>{intro}</p>
-            <p><strong>Service:</strong> {safe_service}</p>
-            <p><strong>Date:</strong> {display_date}</p>
-            <p><strong>Time:</strong> {display_time}</p>
-            {reason_html}
-            <p>If you have any questions, please contact the clinic.</p>
-            <p>Thank you,<br/>PawRang Veterinary Clinic</p>
-        </div>
-    """
+    details = [
+        ("Service", safe_service),
+        ("Date", display_date),
+        ("Time", display_time),
+    ]
+    if reason:
+        details.append(("Reason", escape(str(reason))))
+
+    html = render_pawrang_email(
+        heading,
+        badge,
+        f"Hello <strong style=\"color: #0f172a;\">{safe_patient}</strong>,",
+        f"<p style=\"margin: 0;\">{intro}</p>",
+        details_title="Appointment Details",
+        detail_rows=details,
+        note_html="If you have any questions, please contact the clinic.",
+    )
 
     send_html_email(patient_email, subject, html)
 
@@ -351,53 +549,186 @@ def send_reschedule_review_email(to_email, patient_name, pet_name, service_name,
 
     normalized_action = (action or 'accepted').strip().lower()
     is_accepted = normalized_action == 'accepted'
-    display_date = format_date_for_email(appointment_date)
-    display_time = appointment_time or "Not provided"
+    safe_patient = escape(patient_name or "Patient")
+    safe_pet = escape(pet_name or "your pet")
+    safe_service = escape(service_name or "Appointment")
+    display_date = escape(format_date_for_email(appointment_date))
+    display_time = escape(appointment_time or "Not provided")
 
     if is_accepted:
         subject = "Preferred Reschedule Confirmed"
         title = "Preferred Schedule Confirmed"
-        intro = f"Hello {patient_name or 'Patient'}, the clinic has accepted your preferred reschedule for <strong>{pet_name or 'your pet'}</strong>."
-        body = "<p>Your appointment has been updated to the confirmed schedule above.</p><p>If you need further changes, please contact the clinic.</p>"
+        badge = "Confirmed"
+        intro = f"The clinic has accepted your preferred reschedule for <strong style=\"color: #0f172a;\">{safe_pet}</strong>."
+        note = "Your appointment has been updated to the confirmed schedule above. If you need further changes, please contact the clinic."
     else:
         subject = "Preferred Reschedule Update"
         title = "Preferred Schedule Declined"
-        intro = f"Hello {patient_name or 'Patient'}, the clinic reviewed your preferred schedule for <strong>{pet_name or 'your pet'}</strong>, but could not approve it at this time."
-        body = "<p>Please wait for another proposed schedule from the clinic, or contact the clinic directly if you would like to discuss other available times.</p>"
+        badge = "Update"
+        intro = f"The clinic reviewed your preferred schedule for <strong style=\"color: #0f172a;\">{safe_pet}</strong>, but could not approve it at this time."
+        note = "Please wait for another proposed schedule from the clinic, or contact the clinic directly if you would like to discuss other available times."
 
-    note_html = f"<p><strong>Clinic Note:</strong> {clinic_note}</p>" if clinic_note else ""
-    html = f"""
-        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-            <h2>{title}</h2>
-            <p>{intro}</p>
-            <p><strong>Service:</strong> {service_name or 'Appointment'}</p>
-            <p><strong>{'Confirmed' if is_accepted else 'Requested'} Date:</strong> {display_date}</p>
-            <p><strong>{'Confirmed' if is_accepted else 'Requested'} Time:</strong> {display_time}</p>
-            {note_html}
-            {body}
-        </div>
-    """
+    details = [
+        ("Service", safe_service),
+        (f"{'Confirmed' if is_accepted else 'Requested'} Date", display_date),
+        (f"{'Confirmed' if is_accepted else 'Requested'} Time", display_time),
+    ]
+    if clinic_note:
+        details.append(("Clinic Note", escape(str(clinic_note))))
+
+    html = render_pawrang_email(
+        title,
+        badge,
+        f"Hello <strong style=\"color: #0f172a;\">{safe_patient}</strong>,",
+        f"<p style=\"margin: 0;\">{intro}</p>",
+        details_title="Reschedule Details",
+        detail_rows=details,
+        note_html=escape(note),
+    )
 
     send_html_email(to_email, subject, html)
     return True
 
 
-def send_appointment_confirmed_email(to_email, patient_name, pet_name, service_name, appointment_date, appointment_time, assigned_doctor=None):
+def send_appointment_confirmed_email(to_email, patient_name, pet_name, service_name, appointment_date, appointment_time, assigned_doctor=None, branch_name=None, service_price=None):
     if not to_email:
         return False
 
-    doctor_html = f"<p><strong>Assigned Doctor:</strong> {assigned_doctor}</p>" if assigned_doctor else ""
+    clinic_name = "PetShield Veterinary Clinic and Grooming Services"
+    safe_patient = escape(patient_name or "Patient")
+    safe_pet = escape(pet_name or "your pet")
+    safe_service = escape(service_name or "Appointment")
+    safe_date = escape(format_date_for_email(appointment_date))
+    safe_time = escape(format_time_for_email(appointment_time))
+    safe_doctor = escape(assigned_doctor or "")
+    safe_branch = escape(branch_name or "Not specified")
+    safe_price = format_price_for_email(service_price if service_price is not None else get_service_price_for_email(service_name))
+    petshield_logo_url = f"{SUPABASE_URL}/storage/v1/object/public/email-assets/PetshieldLogo.png"
+    pawrang_logo_url = f"{SUPABASE_URL}/storage/v1/object/public/email-assets/PawRang%20Logomark.png"
+    doctor_html = (
+        f"""
+            <tr>
+                <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #64748b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;">
+                    Assigned Doctor
+                </td>
+                <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #1f3fae; font-size: 15px; font-weight: 700; text-align: right;">
+                    {safe_doctor}
+                </td>
+            </tr>
+        """
+        if safe_doctor else ""
+    )
     html = f"""
-        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-            <h2>Appointment Confirmed</h2>
-            <p>Hello {patient_name or 'Patient'},</p>
-            <p>Your appointment for <strong>{pet_name or 'your pet'}</strong> has been confirmed by the clinic.</p>
-            <p><strong>Service:</strong> {service_name or 'Appointment'}</p>
-            <p><strong>Date:</strong> {format_date_for_email(appointment_date)}</p>
-            <p><strong>Time:</strong> {appointment_time or 'TBD'}</p>
-            {doctor_html}
-            <p>If you have any questions, please contact the clinic.</p>
-            <p>Thank you,<br/>PawRang Veterinary Clinic</p>
+        <div style="margin: 0; padding: 0; background: #f3f6ff; font-family: Arial, Helvetica, sans-serif; color: #1f2937;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width: 100%; background: #f3f6ff;">
+                <tr>
+                    <td align="center" style="padding: 32px 16px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width: 100%; max-width: 620px; background: #ffffff; border-radius: 18px; overflow: hidden; border: 1px solid #dfe7f3; box-shadow: 0 18px 45px rgba(61, 103, 238, 0.12);">
+                            <tr>
+                                <td style="padding: 26px 30px; background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738d9);">
+                                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                                        <tr>
+                                            <td style="vertical-align: top;">
+                                                <img src="{petshield_logo_url}" width="76" alt="PetShield logo" style="display: block; width: 76px; max-width: 76px; height: auto; margin: 0 0 14px;" />
+                                                <h1 style="margin: 10px 0 0; color: #ffffff; font-size: 30px; line-height: 1.2; font-weight: 800;">
+                                                    Appointment Confirmed
+                                                </h1>
+                                                <div style="margin-top: 10px; color: #e0f2fe; font-size: 14px; line-height: 1.45;">
+                                                    Branch: <strong style="color: #ffffff;">{safe_branch}</strong>
+                                                </div>
+                                            </td>
+                                            <td align="right" style="vertical-align: top;">
+                                                <span style="display: inline-block; padding: 8px 12px; border-radius: 999px; background: #dcfce7; color: #16a34a; font-size: 12px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase;">
+                                                    Confirmed
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 30px;">
+                                    <p style="margin: 0 0 14px; color: #334155; font-size: 16px; line-height: 1.65;">
+                                        Hello <strong style="color: #0f172a;">{safe_patient}</strong>,
+                                    </p>
+                                    <p style="margin: 0 0 24px; color: #334155; font-size: 16px; line-height: 1.65;">
+                                        Good news! The clinic has confirmed the appointment for <strong style="color: #0f172a;">{safe_pet}</strong>. Here are the details for your visit.
+                                    </p>
+
+                                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width: 100%; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; background: #f8fafc;">
+                                        <tr>
+                                            <td colspan="2" style="padding: 16px 18px; background: #eaf0ff; color: #3d67ee; font-size: 14px; font-weight: 800;">
+                                                Appointment Details
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 14px 16px; color: #64748b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;">
+                                                Service
+                                            </td>
+                                            <td style="padding: 14px 16px; color: #1f3fae; font-size: 15px; font-weight: 700; text-align: right;">
+                                                {safe_service}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #64748b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;">
+                                                Branch
+                                            </td>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #1f3fae; font-size: 15px; font-weight: 700; text-align: right;">
+                                                {safe_branch}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #64748b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;">
+                                                Price
+                                            </td>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #ee3d5a; font-size: 16px; font-weight: 800; text-align: right;">
+                                                {safe_price}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #64748b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;">
+                                                Date
+                                            </td>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #1f3fae; font-size: 15px; font-weight: 700; text-align: right;">
+                                                {safe_date}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #64748b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;">
+                                                Time
+                                            </td>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #1f3fae; font-size: 15px; font-weight: 700; text-align: right;">
+                                                {safe_time}
+                                            </td>
+                                        </tr>
+                                        {doctor_html}
+                                    </table>
+
+                                    <div style="margin: 24px 0 0; padding: 16px 18px; border-left: 4px solid #3d67ee; background: #f4f7ff; border-radius: 10px;">
+                                        <p style="margin: 0; color: #274690; font-size: 14px; line-height: 1.6;">
+                                            Please arrive a few minutes before your schedule. If you have questions or need to update any detail, contact the clinic before your appointment date.
+                                        </p>
+                                    </div>
+
+                                    <p style="margin: 26px 0 0; color: #334155; font-size: 15px; line-height: 1.65;">
+                                        Thank you,<br/>
+                                        <strong style="color: #0f172a;">{clinic_name}</strong>
+                                    </p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 18px 30px; background: #f8fafc; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 12px; line-height: 1.5; text-align: center;">
+                                    <div style="margin-bottom: 10px;">This is an automated appointment notification from {clinic_name}.</div>
+                                    <div style="color: #94a3b8; font-size: 11px; line-height: 1.4;">
+                                        Powered by
+                                        <img src="{pawrang_logo_url}" width="40" alt="PawRang" style="display: inline-block; width: 40px; max-width: 40px; height: auto; vertical-align: middle; margin: 0 7px;" />
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
         </div>
     """
 
@@ -409,31 +740,41 @@ def send_reschedule_email(to_email, patient_name, pet_name, service_name, new_da
     if not to_email:
         return False
 
-    reason_html = f"<p><strong>Reason for rescheduling:</strong> {reason}</p>" if reason else ""
+    safe_patient = escape(patient_name or "Patient")
+    safe_pet = escape(pet_name or "your pet")
+    safe_service = escape(service_name or "Appointment")
+    safe_date = escape(format_date_for_email(new_date))
+    safe_time = escape(new_time or "Not provided")
     action_html = ""
     if action_links:
         action_html = f"""
-            <div style="margin: 24px 0;">
-                <a href="{action_links.get('confirm')}" style="display:inline-block;padding:12px 18px;background:#2e7d32;color:#fff;text-decoration:none;border-radius:8px;margin-right:10px;">Confirm New Schedule</a>
-                <a href="{action_links.get('choose_another')}" style="display:inline-block;padding:12px 18px;background:#1565c0;color:#fff;text-decoration:none;border-radius:8px;margin-right:10px;">Choose Another Date</a>
-                <a href="{action_links.get('cancel')}" style="display:inline-block;padding:12px 18px;background:#c62828;color:#fff;text-decoration:none;border-radius:8px;">Cancel Appointment</a>
+            <div style="margin-top: 16px; padding: 14px 16px; border-radius: 14px; background: #f8fafc; border: 1px solid #e2e8f0;">
+                <p style="margin: 0 0 10px; color: #475569; font-size: 13px; line-height: 1.5;">
+                    Please choose one of the options below so the clinic knows how you would like to proceed.
+                </p>
+                {build_email_button("✓ Confirm New Schedule", action_links.get('confirm'), "#4ade80")}
+                {build_email_button("↻ Choose Another Date", action_links.get('choose_another'), "#60a5fa")}
+                {build_email_button("× Cancel Appointment", action_links.get('cancel'), "#f87171")}
             </div>
         """
 
-    html = f"""
-        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-            <h2>Reschedule Request</h2>
-            <p>Hello {patient_name or 'Patient'},</p>
-            <p>The clinic is proposing a new schedule for <strong>{pet_name or 'your pet'}</strong>.</p>
-            <p><strong>Service:</strong> {service_name or 'Appointment'}</p>
-            <p><strong>Proposed Date:</strong> {format_date_for_email(new_date)}</p>
-            <p><strong>Proposed Time:</strong> {new_time or 'Not provided'}</p>
-            {reason_html}
-            {action_html}
-            <p>Your current appointment will stay unchanged until you confirm.</p>
-            <p>If you have questions, please contact the clinic.</p>
-        </div>
-    """
+    details = [
+        ("Service", safe_service),
+        ("Proposed Date", safe_date),
+        ("Proposed Time", safe_time),
+    ]
+    if reason:
+        details.append(("Reason", escape(str(reason))))
+
+    html = render_pawrang_email(
+        "Reschedule Request",
+        "Action Needed",
+        f"Hello <strong style=\"color: #0f172a;\">{safe_patient}</strong>,",
+        f"<p style=\"margin: 0;\">The clinic is proposing a new schedule for <strong style=\"color: #0f172a;\">{safe_pet}</strong>.</p>{action_html}",
+        details_title="Proposed Schedule",
+        detail_rows=details,
+        note_html="Your current appointment will stay unchanged until you confirm. If you have questions, please contact the clinic.",
+    )
 
     send_html_email(to_email, "Appointment reschedule request", html)
     return True
@@ -443,20 +784,25 @@ def send_cancellation_email(to_email, patient_name, pet_name, service_name, appo
     if not to_email:
         return False
 
-    reason_html = f"<p><strong>Reason for cancellation:</strong> {reason}</p>" if reason else ""
-    html = f"""
-        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-            <h2>Appointment Cancelled</h2>
-            <p>Hello {patient_name or 'Patient'},</p>
-            <p>Your appointment for <strong>{pet_name or 'your pet'}</strong> has been cancelled by the clinic.</p>
-            <p><strong>Service:</strong> {service_name or 'Appointment'}</p>
-            <p><strong>Original Date:</strong> {format_date_for_email(appointment_date)}</p>
-            <p><strong>Original Time:</strong> {appointment_time or 'Not provided'}</p>
-            {reason_html}
-            <p>If you would like to book a new appointment, please contact the clinic or use the booking page.</p>
-            <p>We apologize for the inconvenience.</p>
-        </div>
-    """
+    safe_patient = escape(patient_name or "Patient")
+    safe_pet = escape(pet_name or "your pet")
+    details = [
+        ("Service", escape(service_name or "Appointment")),
+        ("Original Date", escape(format_date_for_email(appointment_date))),
+        ("Original Time", escape(appointment_time or "Not provided")),
+    ]
+    if reason:
+        details.append(("Reason", escape(str(reason))))
+
+    html = render_pawrang_email(
+        "Appointment Cancelled",
+        "Cancelled",
+        f"Hello <strong style=\"color: #0f172a;\">{safe_patient}</strong>,",
+        f"<p style=\"margin: 0;\">Your appointment for <strong style=\"color: #0f172a;\">{safe_pet}</strong> has been cancelled by the clinic.</p>",
+        details_title="Cancelled Appointment",
+        detail_rows=details,
+        note_html="If you would like to book a new appointment, please contact the clinic or use the booking page. We apologize for the inconvenience.",
+    )
 
     send_html_email(to_email, "Appointment cancellation notice", html)
     return True
@@ -468,29 +814,28 @@ def send_booking_confirmation_email(to_email, patient_name, pet_name, service_na
 
     normalized_status = (appointment_status or 'pending').strip().lower()
     is_pending = normalized_status == 'pending'
-    status_html = (
-        """
-        <p>Your request has been received and is currently <strong>under review</strong>.</p>
-        <p>We will send you another email once the clinic confirms your schedule.</p>
-        """
+    safe_patient = escape(patient_name or "Patient")
+    safe_pet = escape(pet_name or "your pet")
+    safe_service = escape(service_name or "Appointment")
+    status_text = (
+        "Your request has been received and is currently under review. We will send you another email once the clinic confirms your schedule."
         if is_pending else
-        """
-        <p>Your appointment has been successfully booked.</p>
-        """
+        "Your appointment has been successfully booked."
     )
 
-    html = f"""
-        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-            <h2>Appointment Booking Confirmation</h2>
-            <p>Hello {patient_name or 'Patient'},</p>
-            <p>We have received the appointment request for <strong>{pet_name or 'your pet'}</strong>.</p>
-            <p><strong>Service:</strong> {service_name or 'Appointment'}</p>
-            <p><strong>Date:</strong> {format_date_for_email(appointment_date)}</p>
-            <p><strong>Time:</strong> {appointment_time or 'Not provided'}</p>
-            {status_html}
-            <p>If any detail needs to change, please contact the clinic.</p>
-        </div>
-    """
+    html = render_pawrang_email(
+        "Appointment Booking Confirmation",
+        "Under Review" if is_pending else "Booked",
+        f"Hello <strong style=\"color: #0f172a;\">{safe_patient}</strong>,",
+        f"<p style=\"margin: 0;\">We have received the appointment request for <strong style=\"color: #0f172a;\">{safe_pet}</strong>.</p>",
+        details_title="Appointment Request",
+        detail_rows=[
+            ("Service", safe_service),
+            ("Date", escape(format_date_for_email(appointment_date))),
+            ("Time", escape(appointment_time or "Not provided")),
+        ],
+        note_html=escape(f"{status_text} If any detail needs to change, please contact the clinic."),
+    )
 
     send_html_email(to_email, "Appointment request received" if is_pending else "Appointment booking confirmation", html)
     return True
@@ -2808,6 +3153,23 @@ def resolve_appointment_target(target_id, record_type=None):
 def get_reschedule_email_context(table_name, id_column, record_id):
     record_res = supabase_admin.table(table_name).select("*").eq(id_column, record_id).single().execute()
     record = record_res.data or {}
+    branch = {}
+    branch_id = record.get("branch_id")
+
+    if branch_id not in (None, ""):
+        try:
+            branch_res = supabase_admin.table("branches").select("*").eq("branch_id", branch_id).execute()
+            branch_rows = branch_res.data or []
+            if not branch_rows:
+                branch_res = supabase_admin.table("branches").select("*").eq("id", branch_id).execute()
+                branch_rows = branch_res.data or []
+            branch = branch_rows[0] if branch_rows else {}
+        except Exception as branch_error:
+            print(f"Appointment email branch lookup error: {branch_error}")
+
+    branch_name = branch.get("branch_name") or branch.get("name") or "Not specified"
+    service_name = record.get("appointment_type") or "Appointment"
+    service_price = get_service_price_for_email(service_name)
 
     if table_name == "walkin_appointments":
         return {
@@ -2815,7 +3177,9 @@ def get_reschedule_email_context(table_name, id_column, record_id):
             "email": record.get("email"),
             "patient_name": f"{record.get('first_name', '')} {record.get('last_name', '')}".strip() or "Patient",
             "pet_name": record.get("pet_name") or "your pet",
-            "service_name": record.get("appointment_type") or "Appointment",
+            "service_name": service_name,
+            "service_price": service_price,
+            "branch_name": branch_name,
         }
 
     owner = {}
@@ -2837,7 +3201,9 @@ def get_reschedule_email_context(table_name, id_column, record_id):
         "email": owner.get("email"),
         "patient_name": get_profile_display_name(owner) or "Patient",
         "pet_name": pet.get("pet_name") or "your pet",
-        "service_name": record.get("appointment_type") or "Appointment",
+        "service_name": service_name,
+        "service_price": service_price,
+        "branch_name": branch_name,
     }
 
 
@@ -4651,23 +5017,21 @@ def issue_employee_setup_token(employee_id, email, created_by=None, expires_in_h
 
 
 def send_employee_setup_email(to_email, employee_name, setup_link):
-    safe_name = employee_name or 'there'
-    html = f"""
-        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-            <h2>Set Up Your PawRang Employee Account</h2>
-            <p>Hello {safe_name},</p>
-            <p>Your employee account has been created. Please click the button below to set your username and password.</p>
-            <p style="margin: 24px 0;">
-                <a href="{setup_link}" style="background:#3d67ee;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;">
-                    Set Up My Account
-                </a>
-            </p>
-            <p>If the button does not work, copy and paste this link into your browser:</p>
-            <p style="word-break: break-all;">{setup_link}</p>
-            <p>This link will expire in 24 hours and can only be used once.</p>
-            <p>Thank you,<br/>PawRang Veterinary Clinic</p>
-        </div>
-    """
+    safe_name = escape(employee_name or 'there')
+    safe_link = escape(setup_link or '', quote=True)
+    button_html = build_email_button("Set Up My Account", setup_link)
+    html = render_pawrang_email(
+        "Set Up Your PawRang Employee Account",
+        "Account Setup",
+        f"Hello <strong style=\"color: #0f172a;\">{safe_name}</strong>,",
+        f"""
+            <p style="margin: 0 0 16px;">Your employee account has been created. Please click the button below to set your username and password.</p>
+            <div style="margin: 18px 0;">{button_html}</div>
+            <p style="margin: 16px 0 0; color: #64748b; font-size: 13px;">If the button does not work, copy and paste this link into your browser:</p>
+            <p style="margin: 8px 0 0; word-break: break-all; color: #1f3fae; font-size: 13px;">{safe_link}</p>
+        """,
+        note_html="This link will expire in 24 hours and can only be used once.",
+    )
     return send_html_email(to_email, 'Set Up Your PawRang Employee Account', html)
 
 
@@ -4695,13 +5059,23 @@ def is_username_taken(username, exclude_employee_id=None):
 # HELPER — send OTP email via Gmail SMTP
 # -----------------------------------------------
 def send_otp_email(to_email, otp, subject='Your OTP Code', purpose='verification', expires_minutes=10):
-    html = f"""
-        <h2>OTP Verification</h2>
-        <p>Your OTP for <strong>{purpose}</strong> is:</p>
-        <p><strong style="font-size:32px; letter-spacing:8px">{otp}</strong></p>
-        <p>This OTP expires in {expires_minutes} minutes.</p>
-        <p>If you did not request this, please ignore this email.</p>
-    """
+    safe_purpose = escape(purpose or "verification")
+    safe_otp = escape(str(otp))
+    safe_minutes = escape(str(expires_minutes))
+    html = render_pawrang_email(
+        "OTP Verification",
+        "Security Code",
+        "Hello,",
+        f"""
+            <p style="margin: 0 0 16px;">Your OTP for <strong style="color: #0f172a;">{safe_purpose}</strong> is:</p>
+            <div style="margin: 18px 0; padding: 18px; border-radius: 16px; background: #eaf0ff; color: #1f3fae; font-size: 34px; letter-spacing: 8px; font-weight: 900; text-align: center;">
+                {safe_otp}
+            </div>
+        """,
+        details_title="Code Details",
+        detail_rows=[("Expires In", f"{safe_minutes} minutes")],
+        note_html="If you did not request this, please ignore this email.",
+    )
     return send_html_email(to_email, subject, html)
 
 
@@ -12143,6 +12517,8 @@ def update_admin_appointment_status(appointment_id):
                     existing_record.get("appointment_date"),
                     format_display_time(existing_record.get("appointment_time")),
                     assigned_doctor,
+                    email_context.get("branch_name"),
+                    email_context.get("service_price"),
                     context="Appointment confirmation email preparation"
                 )
             except Exception as email_error:
