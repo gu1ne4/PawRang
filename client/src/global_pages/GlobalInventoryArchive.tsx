@@ -66,6 +66,21 @@ const SORT_OPTIONS = [
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
 const CATEGORIES = ['Pet Supplies', 'Deworming', 'Vitamins', 'Food', 'Accessories', 'Medication'];
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
+const getStoredInventoryUserId = (): string => {
+  try {
+    const session = localStorage.getItem('userSession');
+    const parsed = session ? JSON.parse(session) : null;
+    return parsed?.id || parsed?.pk || '';
+  } catch {
+    return '';
+  }
+};
+
+const withInventoryUserId = (url: string): string => {
+  const userId = getStoredInventoryUserId();
+  if (!userId) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}userId=${encodeURIComponent(userId)}`;
+};
 const BRANCH_ID_BY_NAME: Record<string, number> = {
   Taguig: 1,
   'Las Pinas': 2,
@@ -155,7 +170,7 @@ const GlobalInventoryArchive: React.FC = () => {
       const endpoint = branchId
         ? `${API_URL}/api/inventory/items?archived=true&branch_id=${branchId}`
         : `${API_URL}/api/inventory/items?archived=true`;
-      const response = await fetch(endpoint);
+      const response = await fetch(withInventoryUserId(endpoint));
       if (!response.ok) {
         throw new Error(`Failed to fetch archived products (${response.status})`);
       }
@@ -230,7 +245,7 @@ const GlobalInventoryArchive: React.FC = () => {
       async () => {
         try {
           const actorId = currentUser?.id || currentUser?.pk;
-          const response = await fetch(`${API_URL}/api/inventory/items/${product.id}/restore`, {
+          const response = await fetch(withInventoryUserId(`${API_URL}/api/inventory/items/${product.id}/restore`), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

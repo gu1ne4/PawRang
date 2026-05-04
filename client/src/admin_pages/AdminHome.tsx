@@ -57,10 +57,14 @@ interface Branch {
 
 interface CurrentUser {
   id?: string;
+  pk?: string;
   username: string;
   fullName?: string;
   role: string;
   userImage?: string;
+  branch_id?: number | string | null;
+  branch_name?: string;
+  branchName?: string;
 }
 
 interface ModalConfig {
@@ -222,10 +226,25 @@ const AdminHome: React.FC = () => {
     }
   };
 
+  const getStoredAdminId = (): string => {
+    try {
+      const session = localStorage.getItem('userSession');
+      const parsed = session ? JSON.parse(session) : null;
+      return parsed?.id || parsed?.pk || '';
+    } catch {
+      return '';
+    }
+  };
+
+  const getCurrentAdminId = (): string =>
+    currentUser?.id || currentUser?.pk || getStoredAdminId();
+
   const fetchAccounts = async (): Promise<void> => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/accounts`);
+      const actorId = getCurrentAdminId();
+      const query = actorId ? `?userId=${encodeURIComponent(actorId)}` : '';
+      const response = await fetch(`${API_URL}/accounts${query}`);
       const data = await response.json().catch(() => ([]));
 
       if (!response.ok) {
@@ -484,6 +503,8 @@ const AdminHome: React.FC = () => {
             email: newEmail,
             role: newRole,
             branch_id: getPayloadBranchId(),
+            userId: getCurrentAdminId(),
+            created_by: getCurrentAdminId(),
             status: newStatus,
             employee_image: userImageBase64,
           }),
@@ -531,6 +552,8 @@ const AdminHome: React.FC = () => {
           email: newEmail,
           role: newRole,
           branch_id: getPayloadBranchId(),
+          userId: getCurrentAdminId(),
+          updated_by: getCurrentAdminId(),
           status: newStatus,
         };
 
