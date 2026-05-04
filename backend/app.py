@@ -1820,11 +1820,27 @@ def validate_emr_record_required_fields(data):
         raise ValueError(format_missing_required_fields(missing_fields))
 
 
-def get_emr_search_results():
+def get_emr_search_results(branch_scope=None):
     pets = execute_with_retry(
         lambda: supabase_admin.table("pet_profile").select("*").order("created_at", desc=True).execute(),
         context="Fetch EMR search pets"
     ).data or []
+    if branch_scope and not branch_scope.get("can_access_all"):
+        appointment_pet_ids = execute_with_retry(
+            lambda: supabase_admin.table("appointments").select("pet_id").eq("branch_id", branch_scope.get("branch_id")).execute(),
+            context="Fetch branch-scoped EMR appointment pet ids"
+        ).data or []
+        walkin_pet_names = execute_with_retry(
+            lambda: supabase_admin.table("walkin_appointments").select("pet_name").eq("branch_id", branch_scope.get("branch_id")).execute(),
+            context="Fetch branch-scoped EMR walk-in pet names"
+        ).data or []
+        scoped_pet_ids = {str(item.get("pet_id")) for item in appointment_pet_ids if item.get("pet_id") not in (None, "")}
+        scoped_pet_names = {normalize_branch_text(item.get("pet_name")) for item in walkin_pet_names if item.get("pet_name")}
+        pets = [
+            pet for pet in pets
+            if str(pet.get("pet_id")) in scoped_pet_ids
+            or normalize_branch_text(pet.get("pet_name")) in scoped_pet_names
+        ]
     owners = execute_with_retry(
         lambda: supabase_admin.table("patient_account").select("*").execute(),
         context="Fetch EMR search owners"
@@ -1878,6 +1894,7 @@ def get_emr_records(
     include_lab_results=True,
     include_vaccinations=True,
     include_medical_information=True,
+    branch_scope=None,
 ):
     records_query = supabase_admin.table("medical_records").select("*")
     if record_ids:
@@ -1897,6 +1914,7 @@ def get_emr_records(
     visits_query = supabase_admin.table("medical_record_visits").select("*")
     if medical_record_ids:
         visits_query = visits_query.in_("medical_record_id", medical_record_ids)
+    visits_query = apply_branch_scope_to_query(visits_query, branch_scope)
     visit_rows = execute_with_retry(
         lambda: visits_query.execute(),
         context="Fetch EMR visits"
@@ -2180,7 +2198,7 @@ def get_emr_records(
     return normalized_records
 
 
-def save_emr_record_payload(data, existing_record_id=None):
+def save_emr_record_payload(data, existing_record_id=None, branch_scope=None):
     data = data or {}
     pet_id = data.get("petId") or data.get("pet_id")
     if pet_id in (None, ""):
@@ -2235,9 +2253,19 @@ def save_emr_record_payload(data, existing_record_id=None):
         source_type = (visit.get("sourceType") or ("appointment" if source_id_raw not in (None, "") else "manual")).strip().lower()
         if source_type not in {"manual", "appointment", "walkin"}:
             source_type = "manual"
+        visit_branch_id = resolve_emr_visit_branch_id(
+            source_type=source_type,
+            source_id=source_id_raw,
+            branch_scope=branch_scope,
+            fallback_branch_id=visit.get("branchId") or visit.get("branch_id") or data.get("branchId") or data.get("branch_id"),
+        )
+        _, branch_access_error = validate_branch_scope_access(branch_scope, visit_branch_id)
+        if branch_access_error:
+            raise ValueError(branch_access_error)
 
         visit_payload = {
             "medical_record_id": medical_record_id,
+            "branch_id": visit_branch_id,
             "source_type": source_type,
             "source_id": int(source_id_raw) if source_id_raw not in (None, "") else None,
             "visit_date": normalized_visit_date,
@@ -2386,9 +2414,12 @@ def save_emr_record_payload(data, existing_record_id=None):
     return refreshed_records[0] if refreshed_records else None
 
 
-def get_emr_pet_appointments(pet_id):
+def get_emr_pet_appointments(pet_id, branch_scope=None):
     appointments = execute_with_retry(
-        lambda: supabase_admin.table("appointments").select("*").eq("pet_id", pet_id).order("appointment_date").execute(),
+        lambda: apply_branch_scope_to_query(
+            supabase_admin.table("appointments").select("*").eq("pet_id", pet_id),
+            branch_scope,
+        ).order("appointment_date").execute(),
         context="Fetch EMR pet appointments"
     ).data or []
     doctors = execute_with_retry(
@@ -5469,7 +5500,7 @@ def delete_pet(pet_id):
         return jsonify({"error": str(e)}), 400
 
 
-def create_appointment_record(data, allow_walk_in=False):
+def create_appointment_record(data, allow_walk_in=False, branch_scope=None):
     data = data or {}
     owner_id = data.get('owner_id')
     pet_id = data.get('pet_id')
@@ -5480,6 +5511,11 @@ def create_appointment_record(data, allow_walk_in=False):
         branch_id = int(branch_id) if branch_id not in (None, '', 'null') else None
     except (TypeError, ValueError):
         branch_id = None
+
+    if branch_scope is not None:
+        branch_id, branch_error = validate_branch_scope_access(branch_scope, branch_id)
+        if branch_error:
+            raise ValueError(branch_error)
 
     if allow_walk_in and (owner_id == 'WALK_IN' or pet_id == 'WALK_IN') and is_walk_in:
         guest_required_fields = {
@@ -5999,7 +6035,10 @@ def generate_doctor_emr_brief():
 @app.route('/api/emr/search-pets', methods=['GET'])
 def get_emr_search_pets():
     try:
-        return jsonify({"pets": get_emr_search_results()}), 200
+        branch_scope, branch_error = require_actor_branch_scope()
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        return jsonify({"pets": get_emr_search_results(branch_scope=branch_scope)}), 200
     except Exception as e:
         print("EMR pet search error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -6009,13 +6048,20 @@ def get_emr_search_pets():
 def emr_records_collection():
     if request.method == 'GET':
         try:
-            return jsonify({"records": get_emr_records(include_details=False)}), 200
+            branch_scope, branch_error = require_actor_branch_scope()
+            if branch_error:
+                return jsonify({"error": branch_error}), 400
+            return jsonify({"records": get_emr_records(include_details=False, branch_scope=branch_scope)}), 200
         except Exception as e:
             print("EMR records fetch error:", str(e))
             return jsonify({"error": str(e)}), 400
 
     try:
-        saved_record = save_emr_record_payload(request.get_json() or {})
+        payload = request.get_json() or {}
+        branch_scope, branch_error = require_actor_branch_scope(payload)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        saved_record = save_emr_record_payload(payload, branch_scope=branch_scope)
         return jsonify({
             "message": "Medical record saved successfully!",
             "record": saved_record,
@@ -6031,7 +6077,10 @@ def emr_records_collection():
 def emr_record_detail(record_id):
     if request.method == 'GET':
         try:
-            records = get_emr_records([record_id], include_billing=True)
+            branch_scope, branch_error = require_actor_branch_scope()
+            if branch_error:
+                return jsonify({"error": branch_error}), 400
+            records = get_emr_records([record_id], include_billing=True, branch_scope=branch_scope)
             if not records:
                 return jsonify({"error": "Medical record not found."}), 404
             return jsonify({"record": records[0]}), 200
@@ -6041,7 +6090,11 @@ def emr_record_detail(record_id):
 
     if request.method == 'PUT':
         try:
-            saved_record = save_emr_record_payload(request.get_json() or {}, existing_record_id=record_id)
+            payload = request.get_json() or {}
+            branch_scope, branch_error = require_actor_branch_scope(payload)
+            if branch_error:
+                return jsonify({"error": branch_error}), 400
+            saved_record = save_emr_record_payload(payload, existing_record_id=record_id, branch_scope=branch_scope)
             return jsonify({
                 "message": "Medical record updated successfully!",
                 "record": saved_record,
@@ -6053,8 +6106,10 @@ def emr_record_detail(record_id):
             return jsonify({"error": str(e)}), 400
 
     try:
-        existing_record = get_single_row("medical_records", "medical_record_id", record_id)
-        if not existing_record:
+        branch_scope, branch_error = require_actor_branch_scope()
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        if not get_emr_records([record_id], include_details=False, branch_scope=branch_scope):
             return jsonify({"error": "Medical record not found."}), 404
 
         supabase_admin.table("medical_records").delete().eq("medical_record_id", record_id).execute()
@@ -6067,7 +6122,10 @@ def emr_record_detail(record_id):
 @app.route('/api/emr/pets/<int:pet_id>/appointments', methods=['GET'])
 def get_emr_pet_appointment_history(pet_id):
     try:
-        return jsonify({"appointments": get_emr_pet_appointments(pet_id)}), 200
+        branch_scope, branch_error = require_actor_branch_scope()
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        return jsonify({"appointments": get_emr_pet_appointments(pet_id, branch_scope=branch_scope)}), 200
     except Exception as e:
         print("EMR pet appointments error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -6084,6 +6142,13 @@ def update_emr_lab_result_owner_visibility(lab_result_id):
         existing_row = get_single_row("medical_record_lab_results", "medical_record_lab_result_id", lab_result_id)
         if not existing_row:
             return jsonify({"error": "Lab result not found."}), 404
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        visit_row = get_single_row("medical_record_visits", "medical_record_visit_id", existing_row.get("medical_record_visit_id"))
+        _, branch_access_error = validate_branch_scope_access(branch_scope, (visit_row or {}).get("branch_id"))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
 
         payload = build_owner_visibility_payload(
             {"visibleToOwner": visible_to_owner, **data},
@@ -6119,6 +6184,13 @@ def update_emr_vaccination_owner_visibility(vaccination_id):
         existing_row = get_single_row("medical_record_vaccinations", "medical_record_vaccination_id", vaccination_id)
         if not existing_row:
             return jsonify({"error": "Vaccination record not found."}), 404
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        visit_row = get_single_row("medical_record_visits", "medical_record_visit_id", existing_row.get("medical_record_visit_id"))
+        _, branch_access_error = validate_branch_scope_access(branch_scope, (visit_row or {}).get("branch_id"))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
 
         payload = build_owner_visibility_payload(
             {"visibleToOwner": visible_to_owner, **data},
@@ -6333,15 +6405,190 @@ def get_branches():
 # -----------------------------------------------
 # ADMIN COMPATIBILITY ROUTES
 # -----------------------------------------------
+def normalize_branch_text(value):
+    return re.sub(r'\s+', ' ', str(value or '').strip().lower())
+
+
+def is_both_branches_label(value):
+    normalized = normalize_branch_text(value)
+    return normalized in {'both branches', 'all branches', 'main branch'} or 'both' in normalized
+
+
+def parse_branch_id(value):
+    if value in (None, ''):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def get_branch_by_id(branch_id):
+    normalized_branch_id = parse_branch_id(branch_id)
+    if normalized_branch_id is None:
+        return None
+    try:
+        return supabase_admin.table('branches').select('*').eq('branch_id', normalized_branch_id).single().execute().data
+    except Exception:
+        return None
+
+
+def get_account_branch_context(account_id):
+    if not account_id:
+        return None, "userId is required to validate branch permissions"
+
+    actor = get_single_row('employee_accounts', 'id', account_id)
+    if not actor:
+        return None, "Current admin account was not found"
+
+    branch = get_branch_by_id(actor.get('branch_id'))
+    branch_name = (branch or {}).get('branch_name') or (branch or {}).get('name') or actor.get('branch_name')
+    return {
+        "account": actor,
+        "branch_id": parse_branch_id(actor.get('branch_id')),
+        "branch_name": branch_name,
+        "is_both_branches": is_both_branches_label(branch_name),
+    }, None
+
+
+def validate_employee_branch_assignment(actor_id, target_branch_id, target_role):
+    branch_id = parse_branch_id(target_branch_id)
+    if branch_id is None:
+        return None, "Branch is required"
+
+    target_branch = get_branch_by_id(branch_id)
+    if not target_branch:
+        return None, "Selected branch was not found"
+
+    actor_context, actor_error = get_account_branch_context(actor_id)
+    if actor_error:
+        return None, actor_error
+
+    target_branch_name = target_branch.get('branch_name') or target_branch.get('name') or ''
+    target_is_both = is_both_branches_label(target_branch_name)
+    actor_can_manage_all = actor_context.get('is_both_branches')
+
+    if target_is_both and not actor_can_manage_all:
+        return None, "Only a Both Branches admin can assign Both Branches accounts"
+
+    if not actor_can_manage_all and actor_context.get('branch_id') != branch_id:
+        return None, "You can only assign employees to your own branch"
+
+    if target_is_both and normalize_branch_text(target_role) != 'admin':
+        return None, "Both Branches can only be assigned to Admin accounts"
+
+    return {
+        "branch_id": branch_id,
+        "branch_name": target_branch_name,
+    }, None
+
+
+def get_actor_branch_scope(actor_id):
+    actor_context, actor_error = get_account_branch_context(actor_id)
+    if actor_error:
+        return None, actor_error
+    if actor_context.get("is_both_branches"):
+        return {"can_access_all": True, "branch_id": None}, None
+    branch_id = actor_context.get("branch_id")
+    if branch_id is None:
+        return None, "Current admin account does not have a branch assigned"
+    return {"can_access_all": False, "branch_id": branch_id}, None
+
+
+def apply_branch_scope_to_query(query, scope, column="branch_id"):
+    if not scope or scope.get("can_access_all"):
+        return query
+    return query.eq(column, scope.get("branch_id"))
+
+
+def get_actor_id_from_request(data=None):
+    data = data or {}
+    return (
+        request.args.get("userId")
+        or request.args.get("user_id")
+        or request.args.get("adminUserId")
+        or data.get("userId")
+        or data.get("user_id")
+        or data.get("adminUserId")
+        or data.get("processedBy")
+        or data.get("processed_by")
+        or data.get("created_by")
+        or data.get("updated_by")
+        or data.get("createdBy")
+        or data.get("updatedBy")
+        or data.get("handledByUserId")
+        or data.get("handled_by_user_id")
+    )
+
+
+def require_actor_branch_scope(data=None):
+    actor_id = get_actor_id_from_request(data)
+    if not actor_id:
+        return None, "userId is required to validate branch access"
+    return get_actor_branch_scope(actor_id)
+
+
+def validate_branch_scope_access(scope, branch_id):
+    normalized_branch_id = parse_branch_id(branch_id)
+    if normalized_branch_id is None:
+        return None, "Branch is required"
+    if scope and not scope.get("can_access_all") and scope.get("branch_id") != normalized_branch_id:
+        return None, "You can only access records from your assigned branch"
+    return normalized_branch_id, None
+
+
+def resolve_emr_visit_branch_id(source_type=None, source_id=None, branch_scope=None, fallback_branch_id=None):
+    normalized_source_type = str(source_type or "").strip().lower()
+    if normalized_source_type == "appointment" and source_id not in (None, ""):
+        appointment = get_single_row("appointments", "appointment_id", source_id)
+        if appointment and appointment.get("branch_id") not in (None, ""):
+            return parse_branch_id(appointment.get("branch_id"))
+    if normalized_source_type == "walkin" and source_id not in (None, ""):
+        walkin = get_single_row("walkin_appointments", "walkin_id", source_id)
+        if walkin and walkin.get("branch_id") not in (None, ""):
+            return parse_branch_id(walkin.get("branch_id"))
+
+    fallback = parse_branch_id(fallback_branch_id)
+    if fallback is not None:
+        return fallback
+    if branch_scope and not branch_scope.get("can_access_all"):
+        return parse_branch_id(branch_scope.get("branch_id"))
+    return None
+
+
 @app.route('/accounts', methods=['GET'])
 @app.route('/api/doctors', methods=['GET'])
 def get_accounts():
     try:
+        actor_id = request.args.get("userId") or request.args.get("user_id") or request.args.get("adminUserId")
+        branch_scope = None
+        if actor_id:
+            branch_scope, branch_error = get_actor_branch_scope(actor_id)
+            if branch_error:
+                return jsonify({"error": branch_error}), 400
+
+        branches = execute_with_retry(
+            lambda: supabase_admin.table('branches').select('*').execute(),
+            context='Fetch employee account branches'
+        ).data or []
+        branch_names_by_id = {
+            str(branch.get('branch_id') or branch.get('id')): branch.get('branch_name') or branch.get('name') or ''
+            for branch in branches
+        }
         res = execute_with_retry(
-            lambda: supabase_admin.table('employee_accounts').select('*').execute(),
+            lambda: apply_branch_scope_to_query(
+                supabase_admin.table('employee_accounts').select('*'),
+                branch_scope,
+            ).execute(),
             context='Fetch employee accounts'
         )
-        accounts = [normalize_employee_admin_account(item) for item in (res.data or [])]
+        accounts = [
+            normalize_employee_admin_account({
+                **item,
+                "branch_name": branch_names_by_id.get(str(item.get('branch_id') or '')),
+            })
+            for item in (res.data or [])
+        ]
         if request.path == '/api/doctors':
             veterinarian_roles = {'veterinarian', 'vet'}
             accounts = [
@@ -6385,16 +6632,13 @@ def create_employee_account():
     role = (data.get('role') or 'Admin').strip()
     status_value = (data.get('status') or 'Active').strip().lower()
     employee_image = data.get('employee_image')
-    branch_id = data.get('branch_id', data.get('branchId'))
-    try:
-        branch_id = int(branch_id) if branch_id not in (None, '', 'null') else None
-    except (TypeError, ValueError):
-        return jsonify({"error": "branch_id must be a valid branch."}), 400
-    if branch_id is not None and branch_id <= 0:
-        return jsonify({"error": "branch_id must match an existing branch."}), 400
+    actor_id = data.get('created_by') or data.get('userId') or data.get('user_id')
+    branch_assignment, branch_error = validate_employee_branch_assignment(actor_id, data.get('branch_id', data.get('branchId')), role)
+    if branch_error:
+        return jsonify({"error": branch_error}), 400
 
-    if not all([first_name, last_name, contact_number, email, branch_id]):
-        return jsonify({"error": "first_name, last_name, contact_number, email, and branch_id are required"}), 400
+    if not all([first_name, last_name, contact_number, email]):
+        return jsonify({"error": "first_name, last_name, contact_number, and email are required"}), 400
 
     try:
         existing_email = supabase_admin.table('employee_accounts').select('id').eq('email', email).execute()
@@ -6420,7 +6664,7 @@ def create_employee_account():
             "contact_number": contact_number,
             "email": email,
             "role": role,
-            "branch_id": branch_id,
+            "branch_id": branch_assignment.get('branch_id'),
             "status": 'disabled' if status_value in ('disabled', 'inactive') else 'active',
             "employee_image": employee_image,
             "is_initial_login": True,
@@ -6428,7 +6672,7 @@ def create_employee_account():
 
         created = insert_response.data[0] if insert_response.data else None
         employee_name = f"{first_name} {last_name}".strip()
-        setup_token, _ = issue_employee_setup_token(user.id, email, created_by=data.get('created_by') or data.get('userId'))
+        setup_token, _ = issue_employee_setup_token(user.id, email, created_by=actor_id)
         email_sent = False
         try:
             send_employee_setup_email(email, employee_name, build_employee_setup_link(setup_token))
@@ -6446,7 +6690,8 @@ def create_employee_account():
                 "contact_number": contact_number,
                 "email": email,
                 "role": role,
-                "branch_id": branch_id,
+                "branch_id": branch_assignment.get('branch_id'),
+                "branch_name": branch_assignment.get('branch_name'),
                 "status": status_value,
                 "employee_image": employee_image,
                 "is_initial_login": True,
@@ -6469,6 +6714,7 @@ def update_employee_account(account_id):
 
         update_data = {}
         auth_updates = {}
+        actor_id = data.get('updated_by') or data.get('userId') or data.get('user_id')
 
         if 'username' in data:
             update_data['username'] = data.get('username')
@@ -6483,19 +6729,19 @@ def update_employee_account(account_id):
             auth_updates['email'] = data.get('email')
         if 'role' in data:
             update_data['role'] = data.get('role')
-        if 'branch_id' in data or 'branchId' in data:
-            raw_branch_id = data.get('branch_id', data.get('branchId'))
-            try:
-                update_data['branch_id'] = int(raw_branch_id) if raw_branch_id not in (None, '', 'null') else None
-            except (TypeError, ValueError):
-                return jsonify({"error": "branch_id must be a valid branch."}), 400
-            if update_data['branch_id'] is not None and update_data['branch_id'] <= 0:
-                return jsonify({"error": "branch_id must match an existing branch."}), 400
         if 'status' in data:
             raw_status = (data.get('status') or '').strip().lower()
             update_data['status'] = 'disabled' if raw_status in ('disabled', 'inactive') else 'active'
         if 'employee_image' in data:
             update_data['employee_image'] = data.get('employee_image')
+        if 'branch_id' in data or 'branchId' in data or 'role' in data:
+            target_role = update_data.get('role') or existing.get('role') or 'Admin'
+            target_branch_id = data.get('branch_id', data.get('branchId')) if ('branch_id' in data or 'branchId' in data) else existing.get('branch_id')
+            branch_assignment, branch_error = validate_employee_branch_assignment(actor_id, target_branch_id, target_role)
+            if branch_error:
+                return jsonify({"error": branch_error}), 400
+            if 'branch_id' in data or 'branchId' in data:
+                update_data['branch_id'] = branch_assignment.get('branch_id')
 
         if not update_data:
             return jsonify({"error": "No valid fields to update"}), 400
@@ -6833,7 +7079,10 @@ def get_billing_services():
 @app.route('/api/billing/products', methods=['GET'])
 def get_billing_products():
     try:
-        return jsonify({"products": build_billing_product_catalog()}), 200
+        branch_scope, branch_error = require_actor_branch_scope()
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        return jsonify({"products": build_billing_product_catalog(branch_scope=branch_scope)}), 200
     except Exception as e:
         print("Fetch billing products error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -6842,7 +7091,10 @@ def get_billing_products():
 @app.route('/api/billing/source-records', methods=['GET'])
 def get_billing_source_records():
     try:
-        return jsonify(build_billing_source_records()), 200
+        actor_id = request.args.get("userId") or request.args.get("user_id") or request.args.get("adminUserId")
+        if not actor_id:
+            return jsonify({"error": "userId is required to load branch-scoped billing records"}), 400
+        return jsonify(build_billing_source_records(actor_id=actor_id)), 200
     except Exception as e:
         print("Fetch billing source records error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -6851,8 +7103,14 @@ def get_billing_source_records():
 @app.route('/api/billing/invoices', methods=['GET'])
 def get_billing_invoices():
     try:
+        branch_scope, branch_error = require_actor_branch_scope()
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
         invoice_response = execute_with_retry(
-            lambda: supabase_admin.table("billing_invoices").select("*").order("invoice_date", desc=True).order("invoice_time", desc=True).execute(),
+            lambda: apply_branch_scope_to_query(
+                supabase_admin.table("billing_invoices").select("*"),
+                branch_scope,
+            ).order("invoice_date", desc=True).order("invoice_time", desc=True).execute(),
             context="Fetch billing invoices"
         )
         invoices = invoice_response.data or []
@@ -6920,6 +7178,10 @@ def create_billing_invoice():
     data = request.get_json() or {}
 
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         invoice_type = str(data.get("invoiceType") or data.get("invoice_type") or "").strip().lower()
         if invoice_type not in {"appointment", "walkin"}:
             raise ValueError("invoiceType is invalid")
@@ -6990,6 +7252,11 @@ def create_billing_invoice():
             minimum=1,
             allow_none=True,
         )
+        if branch_id is None and branch_scope and not branch_scope.get("can_access_all"):
+            branch_id = branch_scope.get("branch_id")
+        branch_id, branch_access_error = validate_branch_scope_access(branch_scope, branch_id)
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
 
         existing_invoice = get_active_billing_invoice_for_source(source_record_type, source_record_id)
         if existing_invoice:
@@ -7000,7 +7267,7 @@ def create_billing_invoice():
             }), 409
 
         service_lookups = build_billing_service_lookups()
-        product_lookup = build_billing_product_lookup()
+        product_lookup = build_billing_product_lookup(branch_scope=branch_scope)
 
         raw_service_items = data.get("items", data.get("services")) or []
         raw_product_items = data.get("products") or []
@@ -7258,9 +7525,16 @@ def record_billing_invoice_payment(invoice_id):
     data = request.get_json() or {}
 
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         invoice_record = get_single_row("billing_invoices", "billing_invoice_id", invoice_id)
         if not invoice_record:
             return jsonify({"error": "Invoice not found"}), 404
+        _, branch_access_error = validate_branch_scope_access(branch_scope, invoice_record.get("branch_id"))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
 
         total_amount = round(float(invoice_record.get("total_amount") or 0), 2)
         current_amount_paid = round(float(invoice_record.get("amount_paid") or 0), 2)
@@ -7343,6 +7617,10 @@ def delete_billing_invoices():
     data = request.get_json(silent=True) or {}
 
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         invoice_ids_raw = data.get("invoiceIds", data.get("invoice_ids")) or []
         if not isinstance(invoice_ids_raw, list) or not invoice_ids_raw:
             raise ValueError("invoiceIds is required")
@@ -7351,6 +7629,12 @@ def delete_billing_invoices():
             coerce_int(invoice_id, "invoiceId", minimum=1)
             for invoice_id in invoice_ids_raw
         ]
+
+        invoices = supabase_admin.table("billing_invoices").select("billing_invoice_id, branch_id").in_("billing_invoice_id", parsed_ids).execute().data or []
+        for invoice in invoices:
+            _, branch_access_error = validate_branch_scope_access(branch_scope, invoice.get("branch_id"))
+            if branch_access_error:
+                return jsonify({"error": branch_access_error}), 403
 
         supabase_admin.table("billing_invoices").delete().in_("billing_invoice_id", parsed_ids).execute()
         return jsonify({"message": "Invoices deleted successfully"}), 200
@@ -7364,6 +7648,10 @@ def delete_billing_invoices():
 @app.route('/api/inventory/items', methods=['GET'])
 def get_inventory_items():
     try:
+        branch_scope, branch_error = require_actor_branch_scope()
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         branch_id = request.args.get('branch_id', request.args.get('branchId'))
         archived_raw = request.args.get('archived')
         category = (request.args.get('category') or '').strip()
@@ -7372,7 +7660,12 @@ def get_inventory_items():
 
         query = supabase_admin.table('inventory_items').select('*')
         if branch_id:
-            query = query.eq('branch_id', coerce_int(branch_id, 'branch_id', minimum=1))
+            requested_branch_id, branch_access_error = validate_branch_scope_access(branch_scope, branch_id)
+            if branch_access_error:
+                return jsonify({"error": branch_access_error}), 403
+            query = query.eq('branch_id', requested_branch_id)
+        else:
+            query = apply_branch_scope_to_query(query, branch_scope)
         if category:
             query = query.eq('category', category)
         if search:
@@ -7400,9 +7693,16 @@ def get_inventory_items():
 @app.route('/api/inventory/items/<int:item_id>', methods=['GET'])
 def get_inventory_item(item_id):
     try:
+        branch_scope, branch_error = require_actor_branch_scope()
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         item, error_response = get_inventory_item_or_404(item_id)
         if error_response:
             return error_response
+        _, branch_access_error = validate_branch_scope_access(branch_scope, item.get('branch_id'))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
         return jsonify({'item': normalize_inventory_item(item)}), 200
     except Exception as e:
         print("Fetch inventory item error:", str(e))
@@ -7413,7 +7713,15 @@ def get_inventory_item(item_id):
 def create_inventory_item():
     data = request.get_json() or {}
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         payload = build_inventory_item_payload(data)
+        _, branch_access_error = validate_branch_scope_access(branch_scope, payload.get('branch_id'))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
+
         ensure_inventory_item_is_unique(payload)
         response = supabase_admin.table('inventory_items').insert(payload).execute()
         created = response.data[0] if response.data else None
@@ -7445,11 +7753,22 @@ def create_inventory_item():
 def update_inventory_item(item_id):
     data = request.get_json() or {}
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         existing, error_response = get_inventory_item_or_404(item_id)
         if error_response:
             return error_response
+        _, existing_access_error = validate_branch_scope_access(branch_scope, existing.get('branch_id'))
+        if existing_access_error:
+            return jsonify({"error": existing_access_error}), 403
 
         payload = build_inventory_item_payload(data, existing=existing)
+        _, payload_access_error = validate_branch_scope_access(branch_scope, payload.get('branch_id'))
+        if payload_access_error:
+            return jsonify({"error": payload_access_error}), 403
+
         ensure_inventory_item_is_unique(payload, exclude_item_id=item_id)
         response = supabase_admin.table('inventory_items') \
             .update(payload) \
@@ -7477,9 +7796,16 @@ def update_inventory_item(item_id):
 def archive_inventory_item(item_id):
     data = request.get_json() or {}
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         item, error_response = get_inventory_item_or_404(item_id)
         if error_response:
             return error_response
+        _, branch_access_error = validate_branch_scope_access(branch_scope, item.get('branch_id'))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
 
         if item.get('is_archived'):
             return jsonify({'message': 'Inventory item is already archived', 'item': normalize_inventory_item(item)}), 200
@@ -7511,9 +7837,16 @@ def archive_inventory_item(item_id):
 def restore_inventory_item(item_id):
     data = request.get_json() or {}
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         item, error_response = get_inventory_item_or_404(item_id)
         if error_response:
             return error_response
+        _, branch_access_error = validate_branch_scope_access(branch_scope, item.get('branch_id'))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
 
         duplicate_payload = {
             'branch_id': item.get('branch_id'),
@@ -7549,7 +7882,15 @@ def restore_inventory_item(item_id):
 def create_inventory_stock_in():
     data = request.get_json() or {}
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         payload = build_inventory_transaction_payload(data, 'IN')
+        _, branch_access_error = validate_branch_scope_access(branch_scope, payload.get('branch_id'))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
+
         result = persist_inventory_transaction(payload)
         notify_inventory_transaction_created(result, payload)
         for item in (result.get('items') or []):
@@ -7587,7 +7928,15 @@ def create_inventory_stock_in():
 def create_inventory_stock_out():
     data = request.get_json() or {}
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         payload = build_inventory_transaction_payload(data, 'OUT')
+        _, branch_access_error = validate_branch_scope_access(branch_scope, payload.get('branch_id'))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
+
         result = persist_inventory_transaction(payload)
         notify_inventory_transaction_created(result, payload)
         for item in (result.get('items') or []):
@@ -7624,6 +7973,10 @@ def create_inventory_stock_out():
 @app.route('/api/inventory/logs', methods=['GET'])
 def get_inventory_logs():
     try:
+        branch_scope, branch_error = require_actor_branch_scope()
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         branch_id = request.args.get('branch_id', request.args.get('branchId'))
         log_type = (request.args.get('type') or '').strip()
         product_name = (request.args.get('product') or request.args.get('productName') or '').strip()
@@ -7633,7 +7986,12 @@ def get_inventory_logs():
 
         query = supabase_admin.table('inventory_logs_view').select('*')
         if branch_id:
-            query = query.eq('branch_id', coerce_int(branch_id, 'branch_id', minimum=1))
+            requested_branch_id, branch_access_error = validate_branch_scope_access(branch_scope, branch_id)
+            if branch_access_error:
+                return jsonify({"error": branch_access_error}), 403
+            query = query.eq('branch_id', requested_branch_id)
+        else:
+            query = apply_branch_scope_to_query(query, branch_scope)
         if log_type:
             query = query.eq('type', log_type)
         if product_name:
@@ -7668,10 +8026,18 @@ def get_admin_notifications():
         _, employee_error = get_employee_account_or_400(admin_user_id)
         if employee_error:
             return jsonify({'error': employee_error}), 400
+        branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
 
         query = supabase_admin.table('admin_notifications').select('*')
-        if branch_id_raw:
-            query = query.eq('branch_id', coerce_int(branch_id_raw, 'branch_id', minimum=1))
+        if branch_id_raw not in (None, '', 'all', 'All'):
+            branch_id, branch_error = validate_branch_scope_access(branch_scope, branch_id_raw)
+            if branch_error:
+                return jsonify({"error": branch_error}), 403
+            query = query.eq('branch_id', branch_id)
+        else:
+            query = apply_branch_scope_to_query(query, branch_scope)
         if module:
             query = query.eq('module', module)
 
@@ -7726,6 +8092,12 @@ def read_admin_notification(notification_id):
         notification = get_single_row('admin_notifications', 'notification_id', notification_id)
         if not notification:
             return jsonify({'error': 'Notification not found'}), 404
+        branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        _, branch_access_error = validate_branch_scope_access(branch_scope, notification.get('branch_id'))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
 
         mark_admin_notification_read(notification_id, admin_user_id)
 
@@ -7751,10 +8123,18 @@ def read_all_admin_notifications():
         _, employee_error = get_employee_account_or_400(admin_user_id)
         if employee_error:
             return jsonify({'error': employee_error}), 400
+        branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
 
         query = supabase_admin.table('admin_notifications').select('notification_id')
-        if branch_id_raw not in (None, ''):
-            query = query.eq('branch_id', coerce_int(branch_id_raw, 'branch_id', minimum=1))
+        if branch_id_raw not in (None, '', 'all', 'All'):
+            branch_id, branch_error = validate_branch_scope_access(branch_scope, branch_id_raw)
+            if branch_error:
+                return jsonify({"error": branch_error}), 403
+            query = query.eq('branch_id', branch_id)
+        else:
+            query = apply_branch_scope_to_query(query, branch_scope)
         if module:
             query = query.eq('module', module)
 
@@ -7813,13 +8193,25 @@ def reconcile_inventory_expiring_soon_notifications():
         return jsonify({"error": str(e)}), 400
 
 
-def build_admin_appointment_rows(include_history=False):
+def build_admin_appointment_rows(include_history=False, actor_id=None):
+    branch_scope = None
+    if actor_id:
+        branch_scope, branch_error = get_actor_branch_scope(actor_id)
+        if branch_error:
+            raise ValueError(branch_error)
+
     appointments = execute_with_retry(
-        lambda: supabase_admin.table("appointments").select("*").execute(),
+        lambda: apply_branch_scope_to_query(
+            supabase_admin.table("appointments").select("*"),
+            branch_scope,
+        ).execute(),
         context="Fetch appointments for admin schedule"
     ).data or []
     walkins = execute_with_retry(
-        lambda: supabase_admin.table("walkin_appointments").select("*").execute(),
+        lambda: apply_branch_scope_to_query(
+            supabase_admin.table("walkin_appointments").select("*"),
+            branch_scope,
+        ).execute(),
         context="Fetch walk-in appointments for admin schedule"
     ).data or []
     patients = execute_with_retry(
@@ -8433,10 +8825,13 @@ def build_resolved_billing_service_items_from_label(label, *, lookups=None):
     return resolved_items
 
 
-def build_billing_product_catalog():
+def build_billing_product_catalog(branch_scope=None):
     try:
         response = execute_with_retry(
-            lambda: supabase_admin.table("inventory_items").select("*").order("item_name").execute(),
+            lambda: apply_branch_scope_to_query(
+                supabase_admin.table("inventory_items").select("*"),
+                branch_scope,
+            ).order("item_name").execute(),
             context="Fetch billing product catalog"
         )
         records = response.data or []
@@ -8479,10 +8874,10 @@ def build_billing_product_catalog():
     return products
 
 
-def build_billing_product_lookup():
+def build_billing_product_lookup(branch_scope=None):
     return {
         product.get("id"): product
-        for product in build_billing_product_catalog()
+        for product in build_billing_product_catalog(branch_scope=branch_scope)
         if product.get("id")
     }
 
@@ -8867,17 +9262,24 @@ def fetch_walkin_service_labels_by_ids(walkin_source_ids):
     }
 
 
-def build_billing_source_records():
-    completed_history_rows = build_admin_appointment_rows(include_history=True)
+def build_billing_source_records(actor_id=None):
+    branch_scope = None
+    if actor_id:
+        branch_scope, branch_error = get_actor_branch_scope(actor_id)
+        if branch_error:
+            raise ValueError(branch_error)
+
+    completed_history_rows = build_admin_appointment_rows(include_history=True, actor_id=actor_id)
     appointments = []
     walkins = []
     service_lookups = build_billing_service_lookups()
-    product_catalog = build_billing_product_catalog()
+    product_catalog = build_billing_product_catalog(branch_scope=branch_scope)
     emr_records = get_emr_records(
         include_billing=True,
         include_lab_results=False,
         include_vaccinations=False,
         include_medical_information=False,
+        branch_scope=branch_scope,
     )
     latest_visit_by_appointment_source = {}
     latest_visit_by_walkin_source = {}
@@ -10637,7 +11039,11 @@ def get_booked_slots(time_slot_id):
 @app.route('/api/appointments', methods=['POST'])
 def create_admin_appointment():
     try:
-        created = create_appointment_record(request.get_json() or {}, allow_walk_in=True)
+        data = request.get_json() or {}
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        created = create_appointment_record(data, allow_walk_in=True, branch_scope=branch_scope)
         return jsonify(created), 200
     except ValueError as value_error:
         return jsonify({"error": str(value_error)}), 400
@@ -10648,7 +11054,10 @@ def create_admin_appointment():
 @app.route('/api/appointments/table', methods=['GET'])
 def get_appointments_table():
     try:
-        return jsonify({"appointments": build_admin_appointment_rows(include_history=False)}), 200
+        actor_id = request.args.get("userId") or request.args.get("user_id") or request.args.get("adminUserId")
+        if not actor_id:
+            return jsonify({"error": "userId is required to load branch-scoped appointments"}), 400
+        return jsonify({"appointments": build_admin_appointment_rows(include_history=False, actor_id=actor_id)}), 200
     except Exception as e:
         print("Appointments table error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -10657,7 +11066,10 @@ def get_appointments_table():
 @app.route('/api/appointments/history', methods=['GET'])
 def get_appointments_history():
     try:
-        return jsonify({"appointments": build_admin_appointment_rows(include_history=True)}), 200
+        actor_id = request.args.get("userId") or request.args.get("user_id") or request.args.get("adminUserId")
+        if not actor_id:
+            return jsonify({"error": "userId is required to load branch-scoped appointment history"}), 400
+        return jsonify({"appointments": build_admin_appointment_rows(include_history=True, actor_id=actor_id)}), 200
     except Exception as e:
         print("Appointments history error:", str(e))
         return jsonify({"error": str(e)}), 400
