@@ -24,6 +24,8 @@ export default function ResetPasswordPage2() {
             setPasswordError('Password is required.')
         } else if (value.length < 8) {
             setPasswordError('Password must be at least 8 characters.')
+        } else if (!/[A-Z]/.test(value) || !/[a-z]/.test(value) || !/\d/.test(value)) {
+            setPasswordError('Password requires uppercase letter, lowercase letter, and number.')
         } else {
             setPasswordError('')
         }
@@ -53,6 +55,9 @@ export default function ResetPasswordPage2() {
         return (
             getPassword.trim() !== '' &&
             getPassword.length >= 8 &&
+            /[A-Z]/.test(getPassword) &&
+            /[a-z]/.test(getPassword) &&
+            /\d/.test(getPassword) &&
             getPasswordConfirm === getPassword
         )
     }
@@ -104,7 +109,7 @@ export default function ResetPasswordPage2() {
             <div className='resetCard'>
                 <div className='resetHeader'>
                     <div className='resetIconWrapper'>
-                        <Lock size={28} color='#2619e2' />
+                        <Lock size={28} color='#3d67ee' />
                     </div>
                     <h2>Change Password</h2>
                     <p>Please create a new and secure password for your account.</p>
@@ -161,7 +166,7 @@ export default function ResetPasswordPage2() {
                 </button>
 
                 <button className='resetPageNavigator' onClick={() => nav('/login')}>
-                    Back to <strong style={{ color: '#2619e2' }}>Login</strong>
+                    Back to <strong style={{ color: '#3d67ee' }}>Login</strong>
                 </button>
             </div>
         </div>

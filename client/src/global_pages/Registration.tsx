@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import API_URL from '../API'
 import './UserAuthStylesheet.css'
 import { Mail, User, Phone, Lock } from 'lucide-react'
+import UserAuthVisual, { UserAuthPoweredBy } from './UserAuthVisual'
+import petShieldLogo from '../assets/PetshieldLogo.png'
 
 type ButtonState = 'default' | 'loading' | 'success' | 'error'
 
@@ -25,6 +27,42 @@ export default function Registration() {
     const [contactError, setContactError] = useState('')
     const [passwordError, setPasswordError] = useState('')
     const [confirmPasswordError, setConfirmPasswordError] = useState('')
+
+    function formatPhilippineContact(value: string) {
+        let digits = value.replace(/\D/g, '')
+
+        if (digits.startsWith('63')) {
+            digits = digits.slice(2)
+        }
+
+        if (digits.startsWith('0')) {
+            digits = digits.slice(1)
+        }
+
+        digits = digits.slice(0, 10)
+
+        if (!digits) return '+63 '
+
+        const first = digits.slice(0, 3)
+        const second = digits.slice(3, 6)
+        const third = digits.slice(6, 10)
+
+        return ['+63', first, second, third].filter(Boolean).join(' ')
+    }
+
+    function normalizePhilippineContact(value: string) {
+        let digits = value.replace(/\D/g, '')
+
+        if (digits.startsWith('63')) {
+            digits = digits.slice(2)
+        }
+
+        if (digits.startsWith('0')) {
+            digits = digits.slice(1)
+        }
+
+        return `+63${digits.slice(0, 10)}`
+    }
 
     function handleEmailChange(value: string) {
         setEmail(value)
@@ -51,9 +89,12 @@ export default function Registration() {
     }
 
     function handleContactChange(value: string) {
-        setContactNumber(value)
-        if (value.trim() === '') setContactError('Contact number is required.')
-        else if (!/^\d{10,15}$/.test(value)) setContactError('Please enter a valid contact number (10-15 digits).')
+        const formattedContact = formatPhilippineContact(value)
+        const normalizedContact = normalizePhilippineContact(formattedContact)
+
+        setContactNumber(formattedContact)
+        if (normalizedContact === '+63') setContactError('Contact number is required.')
+        else if (!/^\+63\d{10}$/.test(normalizedContact)) setContactError('Please enter a valid Philippine contact number.')
         else setContactError('')
     }
 
@@ -61,6 +102,9 @@ export default function Registration() {
         setPassword(value)
         if (value.trim() === '') setPasswordError('Password is required.')
         else if (value.length < 8) setPasswordError('Password must be at least 8 characters.')
+        else if (!/[A-Z]/.test(value) || !/[a-z]/.test(value) || !/\d/.test(value)) {
+            setPasswordError('Password requires uppercase letter, lowercase letter, and number.')
+        }
         else setPasswordError('')
 
         if (getPasswordConfirm !== '' && value !== getPasswordConfirm) setConfirmPasswordError('Passwords do not match.')
@@ -90,8 +134,11 @@ export default function Registration() {
             getUsername.length >= 3 &&
             getFirstName.trim() !== '' &&
             getLastName.trim() !== '' &&
-            /^\d{10,15}$/.test(getContactNumber) &&
+            /^\+63\d{10}$/.test(normalizePhilippineContact(getContactNumber)) &&
             getPassword.length >= 8 &&
+            /[A-Z]/.test(getPassword) &&
+            /[a-z]/.test(getPassword) &&
+            /\d/.test(getPassword) &&
             getPasswordConfirm === getPassword
         )
     }
@@ -118,7 +165,7 @@ export default function Registration() {
                     firstName: getFirstName,
                     lastName: getLastName,
                     username: getUsername,
-                    contactNumber: getContactNumber,
+                    contactNumber: normalizePhilippineContact(getContactNumber),
                 }),
             })
 
@@ -164,32 +211,32 @@ export default function Registration() {
 
     return (
         <div className="main">
-            <div className='divisionContainers' id='divisionContainer1'>
-                <div className='imageBackground'>
-                    <div className='placeholders'>
-                        <h2>Welcome to PawRang!</h2>
-                        <p>Lorem, ipsum dolor sit amet consectetur adipisicing elit. Porro aliquid nulla dolorem ad dignissimos, totam recusandae aperiam accusantium voluptatem libero, unde quos maxime illum qui aspernatur laborum magnam optio minima.</p>
-                    </div>
+            <div className="authContainer">
+                <div className='divisionContainers' id='divisionContainer1'>
+                    <UserAuthVisual />
                 </div>
-            </div>
 
-            <div className='divisionContainers'>
-                <div className="inputBox">
-                    <div className='headerContent'>
-                        <h2>Create an account</h2>
-                        <p>Please fill the fields below to create an account.</p>
-                    </div>
+                <div className='divisionContainers'>
+                    <div className="inputBox registerInputBox">
+                        <div className="authFormBrand">
+                            <img src={petShieldLogo} alt="PetShield" />
+                        </div>
+                        <div className='headerContent'>
+                            <h2>Create an account</h2>
+                            <p>Please fill the fields below to create an account.</p>
+                        </div>
 
-                    {serverError && <div className='serverErrorMessage'><p>{serverError}</p></div>}
+                        {serverError && <div className='serverErrorMessage'><p>{serverError}</p></div>}
+                        {serverSuccess && <div className='serverSuccessMessage'><p>{serverSuccess}</p></div>}
 
-                    <div className='form'>
+                        <div className='form'>
                         <div className="inputContainer">
                             <p className={emailError ? 'inputLabel errorLabel' : 'inputLabel'}>
                                 Email {emailError && <span className='errorAsterisk'>*</span>}
                             </p>
                             <div className='inputFieldContainer'>
                                 <Mail className='inputIcons'/>
-                                <input className={emailError ? 'inputFields errorField' : 'inputFields'} type="text" onChange={(e) => handleEmailChange(e.target.value)} />
+                                <input className={emailError ? 'inputFields errorField' : 'inputFields'} type="text" placeholder="Enter your email address" onChange={(e) => handleEmailChange(e.target.value)} />
                             </div>
                             {emailError && <p className='errorMessage'>{emailError}</p>}
                         </div>
@@ -200,7 +247,7 @@ export default function Registration() {
                             </p>
                             <div className='inputFieldContainer'>
                                 <User className='inputIcons'/>
-                                <input className={usernameError ? 'inputFields errorField' : 'inputFields'} type="text" onChange={(e) => handleUsernameChange(e.target.value)} />
+                                <input className={usernameError ? 'inputFields errorField' : 'inputFields'} type="text" placeholder="Choose a username" onChange={(e) => handleUsernameChange(e.target.value)} />
                             </div>
                             {usernameError && <p className='errorMessage'>{usernameError}</p>}
                         </div>
@@ -212,7 +259,7 @@ export default function Registration() {
                                 </p>
                                 <div className='inputFieldContainer'>
                                     <User className='inputIcons'/>
-                                    <input className={firstNameError ? 'inputFields errorField' : 'inputFields'} type="text" onChange={(e) => handleFirstNameChange(e.target.value)} />
+                                    <input className={firstNameError ? 'inputFields errorField' : 'inputFields'} type="text" placeholder="First name" onChange={(e) => handleFirstNameChange(e.target.value)} />
                                 </div>
                                 {firstNameError && <p className='errorMessage'>{firstNameError}</p>}
                             </div>
@@ -222,7 +269,7 @@ export default function Registration() {
                                 </p>
                                 <div className='inputFieldContainer'>
                                     <User className='inputIcons'/>
-                                    <input className={lastNameError ? 'inputFields errorField' : 'inputFields'} type="text" onChange={(e) => handleLastNameChange(e.target.value)} />
+                                    <input className={lastNameError ? 'inputFields errorField' : 'inputFields'} type="text" placeholder="Last name" onChange={(e) => handleLastNameChange(e.target.value)} />
                                 </div>
                                 {lastNameError && <p className='errorMessage'>{lastNameError}</p>}
                             </div>
@@ -234,7 +281,14 @@ export default function Registration() {
                             </p>
                             <div className='inputFieldContainer'>
                                 <Phone className='inputIcons'/>
-                                <input className={contactError ? 'inputFields errorField' : 'inputFields'} type="text" onChange={(e) => handleContactChange(e.target.value)} />
+                                <input
+                                    className={contactError ? 'inputFields errorField' : 'inputFields'}
+                                    type="tel"
+                                    inputMode="numeric"
+                                    value={getContactNumber}
+                                    placeholder="+63 9XX XXX XXXX"
+                                    onChange={(e) => handleContactChange(e.target.value)}
+                                />
                             </div>
                             {contactError && <p className='errorMessage'>{contactError}</p>}
                         </div>
@@ -245,7 +299,7 @@ export default function Registration() {
                             </p>
                             <div className='inputFieldContainer'>
                                 <Lock className='inputIcons'/>
-                                <input className={passwordError ? 'inputFields errorField' : 'inputFields'} type="password" onChange={(e) => handlePasswordChange(e.target.value)} />
+                                <input className={passwordError ? 'inputFields errorField' : 'inputFields'} type="password" placeholder="Create a password" onChange={(e) => handlePasswordChange(e.target.value)} />
                             </div>
                             {passwordError && <p className='errorMessage'>{passwordError}</p>}
                         </div>
@@ -256,7 +310,7 @@ export default function Registration() {
                             </p>
                             <div className='inputFieldContainer'>
                                 <Lock className='inputIcons'/>
-                                <input className={confirmPasswordError ? 'inputFields errorField' : 'inputFields'} type="password" onChange={(e) => handleConfirmPasswordChange(e.target.value)} />
+                                <input className={confirmPasswordError ? 'inputFields errorField' : 'inputFields'} type="password" placeholder="Confirm your password" onChange={(e) => handleConfirmPasswordChange(e.target.value)} />
                             </div>
                             {confirmPasswordError && <p className='errorMessage'>{confirmPasswordError}</p>}
                         </div>
@@ -265,12 +319,16 @@ export default function Registration() {
                             {renderButtonContent()}
                         </button>
 
-                        <button className='pageNavigator' onClick={() => nav("/login")}>
-                            <p>Already have an account? <strong style={{ color: '#2619e2' }}>Login</strong></p>
-                        </button>
+                        <div className="authNavigatorGroup">
+                            <button className='pageNavigator' onClick={() => nav("/login")}>
+                                <p>Already have an account? <strong style={{ color: '#3d67ee' }}>Login</strong></p>
+                            </button>
+                        </div>
+                        </div>
                     </div>
                 </div>
             </div>
+            <UserAuthPoweredBy />
         </div>
     )
 }
