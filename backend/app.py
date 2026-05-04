@@ -957,6 +957,50 @@ ADMIN_AI_SUMMARY_SCHEMA = {
     ]
 }
 
+DOCTOR_EMR_BRIEF_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "summary": {"type": "STRING"},
+        "important_flags": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "relevant_history": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "exam_focus": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "care_continuity_notes": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "missing_information": {"type": "ARRAY", "items": {"type": "STRING"}},
+    },
+    "required": [
+        "summary",
+        "important_flags",
+        "relevant_history",
+        "exam_focus",
+        "care_continuity_notes",
+        "missing_information",
+    ]
+}
+
+CLIENT_CARE_SUMMARY_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "summary": {"type": "STRING"},
+        "visit_summary": {"type": "STRING"},
+        "home_care_instructions": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "medication_notes": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "watch_for": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "follow_up": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "friendly_message": {"type": "STRING"},
+        "missing_information": {"type": "ARRAY", "items": {"type": "STRING"}},
+    },
+    "required": [
+        "summary",
+        "visit_summary",
+        "home_care_instructions",
+        "medication_notes",
+        "watch_for",
+        "follow_up",
+        "friendly_message",
+        "missing_information",
+    ]
+}
+
 USER_SYMPTOM_SUMMARY_SCHEMA = {
     "type": "OBJECT",
     "properties": {
@@ -977,6 +1021,131 @@ def _bool_to_phrase(value):
     if value is False:
         return "No"
     return "Not provided"
+
+
+def _has_meaningful_value(value):
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, (int, float)):
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() not in {"", "not provided", "unknown", "n/a", "none"}
+    if isinstance(value, list):
+        return any(_has_meaningful_value(item) for item in value)
+    if isinstance(value, dict):
+        return any(_has_meaningful_value(item) for item in value.values())
+    return bool(value)
+
+
+def _generated_at_manila_iso():
+    return get_current_manila_datetime().replace(microsecond=0).isoformat()
+
+
+def build_ai_support_metadata(case_context, missing_information=None, mode="admin"):
+    sources = []
+    missing_context = list(missing_information or [])
+
+    pet = case_context.get("pet") or {}
+    current_record = case_context.get("current_record") or {}
+    current_visit = case_context.get("current_visit") or {}
+    visit_history = case_context.get("visit_history") if isinstance(case_context.get("visit_history"), list) else []
+
+    if _has_meaningful_value(pet):
+        sources.append("pet profile")
+    if _has_meaningful_value(current_record):
+        sources.append("current record")
+    if _has_meaningful_value(current_visit):
+        sources.append("current visit")
+    if visit_history:
+        sources.append("visit history")
+    if any(_has_meaningful_value((visit or {}).get("medical_information")) for visit in visit_history):
+        sources.append("medical intake")
+    if any(_has_meaningful_value((visit or {}).get("clinical_exam")) for visit in visit_history):
+        sources.append("clinical exam entries")
+    if any(_has_meaningful_value((visit or {}).get("lab_results")) for visit in visit_history):
+        sources.append("lab results")
+    if any(_has_meaningful_value((visit or {}).get("prescriptions")) for visit in visit_history):
+        sources.append("prescriptions")
+
+    if mode == "doctor" and not visit_history:
+        missing_context.append("Visit history")
+    if mode == "doctor" and not any(_has_meaningful_value((visit or {}).get("clinical_exam")) for visit in visit_history):
+        missing_context.append("Clinical exam findings")
+
+    deduped_sources = list(dict.fromkeys(sources))
+    deduped_missing = list(dict.fromkeys(item for item in missing_context if _has_meaningful_value(item)))
+
+    if len(deduped_sources) >= 5 and len(deduped_missing) <= 2:
+        reliability = "High"
+        reason = "Generated from multiple relevant record sources with few major gaps."
+    elif len(deduped_sources) >= 3 and len(deduped_missing) <= 5:
+        reliability = "Moderate"
+        reason = "Generated from useful case data, but some context still needs review."
+    else:
+        reliability = "Low"
+        reason = "Generated from limited case data or several missing clinical details."
+
+    reasons = [reason]
+    if deduped_missing:
+        reasons.append("Missing or incomplete: " + ", ".join(deduped_missing[:4]))
+
+    return {
+        "label": "AI-generated clinical support",
+        "review_required": True,
+        "reliability": reliability,
+        "reasons": reasons,
+        "sources": deduped_sources,
+        "missing_context": deduped_missing,
+        "generated_at": _generated_at_manila_iso(),
+        "disclaimer": "Review and verify before use. This output does not diagnose, prescribe, or replace veterinary judgment.",
+    }
+
+
+def attach_ai_support_metadata(ai_result, case_context, mode="admin"):
+    result = dict(ai_result or {})
+    result["support_metadata"] = build_ai_support_metadata(
+        case_context,
+        result.get("missing_information") if isinstance(result.get("missing_information"), list) else [],
+        mode,
+    )
+    return result
+
+
+def _normalized_text(value):
+    return str(value or "").strip().lower()
+
+
+def _answer_is_yes(value):
+    return _normalized_text(value) in {"yes", "true", "1", "y"}
+
+
+def _answer_is_no(value):
+    return _normalized_text(value) in {"no", "false", "0", "n"}
+
+
+def _make_risk_flag(flag_id, severity, title, detail, action, source):
+    return {
+        "id": flag_id,
+        "severity": severity,
+        "title": title,
+        "detail": detail,
+        "suggested_action": action,
+        "source": source,
+    }
+
+
+def _make_follow_up_reminder(reminder_id, priority, title, detail, timing, action, source):
+    return {
+        "id": reminder_id,
+        "priority": priority,
+        "title": title,
+        "detail": detail,
+        "suggested_timing": timing,
+        "suggested_action": action,
+        "source": source,
+    }
 
 
 def build_admin_ai_case_context(payload):
@@ -1164,6 +1333,7 @@ def build_doctor_emr_case_context(payload):
     pet = payload.get("pet") or {}
     owner = payload.get("owner") or {}
     current_record = payload.get("current_record") or {}
+    current_visit = payload.get("current_visit") or {}
     visit_history = payload.get("visit_history") if isinstance(payload.get("visit_history"), list) else []
 
     return {
@@ -1186,6 +1356,7 @@ def build_doctor_emr_case_context(payload):
             "reason_for_visit": _text_or_default(current_record.get("reason_for_visit")),
             "assigned_doctor": _text_or_default(current_record.get("assigned_doctor")),
         },
+        "current_visit": current_visit,
         "visit_history": visit_history[-6:],
     }
 
@@ -1209,14 +1380,18 @@ Rules:
 - If symptoms are present, connect them to exam focus areas without naming a definitive disease
 - If information is missing, list only items that could affect the doctor's assessment
 - Return at most 4 important_flags
-- Return at most 5 follow_up_questions
+- Return at most 4 relevant_history items
+- Return at most 4 exam_focus items
+- Return at most 4 care_continuity_notes items
 - Return at most 6 missing_information items
 - Keep the summary in 2 to 4 sentences
 
 Interpret the output fields this way:
 - summary: doctor-facing clinical prep overview
 - important_flags: relevant clinical or intake considerations, not diagnoses
-- follow_up_questions: questions the veterinarian may ask the owner
+- relevant_history: important previous visits, intake patterns, or findings
+- exam_focus: exam areas the veterinarian may consider checking
+- care_continuity_notes: continuity reminders for follow-up, meds, vaccines, labs, or owner education
 - missing_information: data gaps that may matter before or during exam
 
 Use only the data below.
@@ -1282,6 +1457,217 @@ def call_gemini_with_structured_output(prompt, schema):
         "follow_up_questions": result.get("follow_up_questions") if isinstance(result.get("follow_up_questions"), list) else [],
         "missing_information": result.get("missing_information") if isinstance(result.get("missing_information"), list) else [],
         "model": GEMINI_MODEL
+    }
+
+
+def call_gemini_with_raw_structured_output(prompt, schema):
+    if not GEMINI_API_KEY:
+        raise ValueError("Missing GEMINI_API_KEY in backend environment.")
+
+    endpoint = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+    )
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.2,
+            "responseMimeType": "application/json",
+            "responseSchema": schema
+        }
+    }
+    req = urllib_request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+
+    try:
+        with urllib_request.urlopen(req, timeout=45) as response:
+            raw = response.read().decode("utf-8")
+    except urllib_error.HTTPError as e:
+        error_body = e.read().decode("utf-8", errors="replace")
+        raise ValueError(f"Gemini API error ({e.code}): {error_body}")
+    except urllib_error.URLError as e:
+        raise ValueError(f"Gemini API connection error: {e}")
+
+    parsed = json.loads(raw)
+    candidates = parsed.get("candidates") or []
+    if not candidates:
+        raise ValueError("Gemini returned no candidates.")
+
+    parts = (((candidates[0] or {}).get("content") or {}).get("parts") or [])
+    text = "".join(part.get("text", "") for part in parts if isinstance(part, dict)).strip()
+    if not text:
+        raise ValueError("Gemini returned an empty response.")
+
+    result = json.loads(text)
+    result["model"] = GEMINI_MODEL
+    return result
+
+
+def build_client_care_summary_prompt(case_context):
+    return f"""
+You are helping veterinary clinic staff draft a client-friendly care summary.
+
+Rules:
+- Use plain language for pet owners.
+- Do not diagnose, prescribe, or replace veterinarian judgment.
+- Base the summary only on the provided record.
+- Keep bullets short and practical.
+- Mention that clinic staff should review before sharing when details are incomplete.
+
+Return JSON matching the schema.
+
+Case context:
+{json.dumps(case_context, indent=2)}
+""".strip()
+
+
+def build_clinical_risk_flags(case_context):
+    flags = []
+    current_visit = case_context.get("current_visit") or {}
+    medical = current_visit.get("medical_information") or {}
+    history = case_context.get("visit_history") if isinstance(case_context.get("visit_history"), list) else []
+
+    if _answer_is_yes(medical.get("on_medication")) or _has_meaningful_value(medical.get("medication_details")):
+        flags.append(_make_risk_flag(
+            "current-medication",
+            "medium",
+            "Recent medication reported",
+            "Owner intake indicates recent or current medication use.",
+            "Confirm medication name, dose, timing, and reason before treatment decisions.",
+            "current visit intake",
+        ))
+    if _answer_is_no(medical.get("flea_tick_prevention")):
+        flags.append(_make_risk_flag(
+            "parasite-prevention-gap",
+            "low",
+            "Parasite prevention may be incomplete",
+            "Flea/tick prevention was not confirmed in the intake.",
+            "Verify prevention status, especially before grooming or boarding.",
+            "current visit intake",
+        ))
+    if _answer_is_no(medical.get("up_to_date_vaccinations")) or _answer_is_no(medical.get("is_vaccinated")):
+        flags.append(_make_risk_flag(
+            "vaccine-status-gap",
+            "medium",
+            "Vaccination status needs review",
+            "Vaccination status is missing or not up to date.",
+            "Check vaccine history and clinic requirements before proceeding.",
+            "current visit intake",
+        ))
+    if _answer_is_yes(medical.get("pregnant")) or _answer_is_yes(medical.get("is_pregnant")):
+        flags.append(_make_risk_flag(
+            "pregnancy-reported",
+            "high",
+            "Pregnancy reported",
+            "Owner intake indicates the pet may be pregnant.",
+            "Use pregnancy-aware handling and confirm with the veterinarian.",
+            "current visit intake",
+        ))
+    if _has_meaningful_value(medical.get("reported_symptoms")) or _has_meaningful_value(medical.get("owner_symptom_notes")):
+        flags.append(_make_risk_flag(
+            "owner-symptoms",
+            "medium",
+            "Owner symptoms require review",
+            "Owner submitted symptom details that may affect the exam plan.",
+            "Review duration, appetite, drinking, and worsening status with the owner.",
+            "current visit intake",
+        ))
+    if any(_has_meaningful_value((visit or {}).get("lab_results")) for visit in history):
+        flags.append(_make_risk_flag(
+            "previous-labs",
+            "low",
+            "Previous labs available",
+            "Visit history contains lab or diagnostic results.",
+            "Review prior interpretations before finalizing today's assessment.",
+            "visit history",
+        ))
+
+    missing = []
+    if not _has_meaningful_value(current_visit.get("clinical_exam")):
+        missing.append("Current clinical exam findings")
+    if not _has_meaningful_value(medical):
+        missing.append("Current medical intake")
+
+    return {
+        "summary": "Clinical support flags were prepared from the current visit and recent EMR history.",
+        "flags": flags[:6],
+        "missing_information": missing,
+        "model": "rules",
+        "support_metadata": build_ai_support_metadata(case_context, missing, mode="doctor"),
+    }
+
+
+def build_follow_up_reminders(case_context):
+    reminders = []
+    current_visit = case_context.get("current_visit") or {}
+    medical = current_visit.get("medical_information") or {}
+    history = case_context.get("visit_history") if isinstance(case_context.get("visit_history"), list) else []
+
+    if _has_meaningful_value(current_visit.get("prescriptions")):
+        reminders.append(_make_follow_up_reminder(
+            "prescription-check",
+            "high",
+            "Medication follow-up",
+            "Current visit includes prescription details.",
+            "Within the medication course or as directed by the veterinarian.",
+            "Confirm owner understands dosage, duration, and warning signs.",
+            "current visit",
+        ))
+    if _has_meaningful_value(current_visit.get("vaccination_details")):
+        reminders.append(_make_follow_up_reminder(
+            "vaccine-next-due",
+            "medium",
+            "Vaccine continuity",
+            "Vaccination details were recorded for this visit.",
+            "Use the next due date in the vaccination record.",
+            "Schedule or remind owner about the next vaccine due date.",
+            "current visit",
+        ))
+    if _has_meaningful_value(current_visit.get("lab_results")):
+        reminders.append(_make_follow_up_reminder(
+            "lab-review",
+            "high",
+            "Lab result review",
+            "Current visit includes lab results or interpretations.",
+            "As soon as results are finalized.",
+            "Review results with the veterinarian and communicate owner instructions.",
+            "current visit",
+        ))
+    if _has_meaningful_value(medical.get("reported_symptoms")) or _has_meaningful_value(medical.get("owner_symptom_notes")):
+        reminders.append(_make_follow_up_reminder(
+            "symptom-recheck",
+            "medium",
+            "Symptom recheck",
+            "Owner reported symptoms during intake.",
+            "Follow clinic guidance after today's exam.",
+            "Document whether symptoms improve, persist, or worsen.",
+            "current visit intake",
+        ))
+    if not reminders and history:
+        reminders.append(_make_follow_up_reminder(
+            "routine-continuity",
+            "low",
+            "Routine care continuity",
+            "No urgent follow-up trigger was detected from the provided data.",
+            "At the next routine wellness or service interval.",
+            "Confirm preventive care, vaccines, and owner concerns.",
+            "visit history",
+        ))
+
+    missing = []
+    if not _has_meaningful_value(current_visit):
+        missing.append("Current visit details")
+
+    return {
+        "summary": "Follow-up reminders were prepared from the current visit details and EMR history.",
+        "reminders": reminders[:6],
+        "missing_information": missing,
+        "model": "rules",
+        "support_metadata": build_ai_support_metadata(case_context, missing, mode="doctor"),
     }
 
 
@@ -6391,7 +6777,8 @@ def generate_doctor_emr_brief():
     try:
         case_context = build_doctor_emr_case_context(payload)
         prompt = build_doctor_emr_prompt(case_context)
-        ai_result = call_gemini_with_structured_output(prompt, ADMIN_AI_SUMMARY_SCHEMA)
+        ai_result = call_gemini_with_raw_structured_output(prompt, DOCTOR_EMR_BRIEF_SCHEMA)
+        ai_result = attach_ai_support_metadata(ai_result, case_context, mode="doctor")
         return jsonify({
             "summary": ai_result,
             "caseContext": case_context
@@ -6401,6 +6788,64 @@ def generate_doctor_emr_brief():
     except Exception as e:
         print("Doctor EMR AI brief error:", str(e))
         return build_ai_error_response(e, "Unable to generate the EMR prep brief right now.")
+
+
+@app.route('/api/ai/clinical-risk-flags', methods=['POST'])
+def generate_clinical_risk_flags():
+    payload = request.get_json() or {}
+    if not payload:
+        return jsonify({"error": "EMR context is required"}), 400
+
+    try:
+        case_context = build_doctor_emr_case_context(payload)
+        risk_flags = build_clinical_risk_flags(case_context)
+        return jsonify({
+            "riskFlags": risk_flags,
+            "caseContext": case_context,
+        }), 200
+    except Exception as e:
+        print("Clinical risk flags error:", str(e))
+        return build_ai_error_response(e, "Unable to generate clinical risk flags right now.")
+
+
+@app.route('/api/ai/follow-up-reminders', methods=['POST'])
+def generate_follow_up_reminders():
+    payload = request.get_json() or {}
+    if not payload:
+        return jsonify({"error": "EMR context is required"}), 400
+
+    try:
+        case_context = build_doctor_emr_case_context(payload)
+        follow_up_reminders = build_follow_up_reminders(case_context)
+        return jsonify({
+            "followUpReminders": follow_up_reminders,
+            "caseContext": case_context,
+        }), 200
+    except Exception as e:
+        print("Follow-up reminders error:", str(e))
+        return build_ai_error_response(e, "Unable to generate follow-up reminders right now.")
+
+
+@app.route('/api/ai/client-care-summary', methods=['POST'])
+def generate_client_care_summary():
+    payload = request.get_json() or {}
+    if not payload:
+        return jsonify({"error": "EMR context is required"}), 400
+
+    try:
+        case_context = build_doctor_emr_case_context(payload)
+        prompt = build_client_care_summary_prompt(case_context)
+        ai_result = call_gemini_with_raw_structured_output(prompt, CLIENT_CARE_SUMMARY_SCHEMA)
+        ai_result = attach_ai_support_metadata(ai_result, case_context, mode="doctor")
+        return jsonify({
+            "clientCareSummary": ai_result,
+            "caseContext": case_context,
+        }), 200
+    except ValueError as e:
+        return build_ai_error_response(e, "Unable to generate the client care summary right now.")
+    except Exception as e:
+        print("Client care summary error:", str(e))
+        return build_ai_error_response(e, "Unable to generate the client care summary right now.")
 
 
 # -----------------------------------------------

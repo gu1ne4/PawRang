@@ -134,9 +134,68 @@ interface MedicalInformation {
 interface DoctorAiSummary {
   summary: string;
   important_flags: string[];
-  follow_up_questions: string[];
-  missing_information: string[];
+  relevant_history?: string[];
+  exam_focus?: string[];
+  care_continuity_notes?: string[];
   model?: string;
+  support_metadata?: {
+    label?: string;
+    review_required?: boolean;
+    reliability?: 'High' | 'Moderate' | 'Low' | string;
+    reasons?: string[];
+    sources?: string[];
+    missing_context?: string[];
+    generated_at?: string;
+    disclaimer?: string;
+  };
+}
+
+interface ClinicalRiskFlag {
+  id: string;
+  severity: 'high' | 'medium' | 'low' | string;
+  title: string;
+  detail: string;
+  suggested_action: string;
+  source: string;
+}
+
+interface ClinicalRiskFlagsResult {
+  summary: string;
+  flags: ClinicalRiskFlag[];
+  missing_information?: string[];
+  model?: string;
+  support_metadata?: DoctorAiSummary['support_metadata'];
+}
+
+interface FollowUpReminder {
+  id: string;
+  priority: 'high' | 'medium' | 'low' | string;
+  title: string;
+  detail: string;
+  suggested_timing: string;
+  suggested_action: string;
+  source: string;
+}
+
+interface FollowUpRemindersResult {
+  summary: string;
+  reminders: FollowUpReminder[];
+  missing_information?: string[];
+  model?: string;
+  support_metadata?: DoctorAiSummary['support_metadata'];
+}
+
+interface ClientCareSummary {
+  summary: string;
+  visit_summary?: string;
+  home_care_instructions?: string[];
+  medication_notes?: string[];
+  watch_for?: string[];
+  follow_up?: string[];
+  friendly_message?: string;
+  missing_information?: string[];
+  model?: string;
+  support_metadata?: DoctorAiSummary['support_metadata'];
 }
 
 const AI_BUSY_FALLBACK_MESSAGE = 'Server is busy. Please try again later.';
@@ -161,6 +220,20 @@ const getAiFallbackMessage = (error: any, defaultMessage: string) => {
   }
 
   return message || defaultMessage;
+};
+
+const formatAiGeneratedAt = (value?: string) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  return date.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 };
 
 interface VisitHistory {
@@ -1170,11 +1243,35 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
   const [doctorAiSummary, setDoctorAiSummary] = useState<DoctorAiSummary | null>(null);
   const [doctorAiLoading, setDoctorAiLoading] = useState<boolean>(false);
   const [doctorAiError, setDoctorAiError] = useState<string>('');
-  const [doctorAiCollapsed, setDoctorAiCollapsed] = useState<boolean>(false);
+  const [doctorAiCollapsed, setDoctorAiCollapsed] = useState<boolean>(true);
+  const [clinicalRiskFlags, setClinicalRiskFlags] = useState<ClinicalRiskFlagsResult | null>(null);
+  const [clinicalRiskLoading, setClinicalRiskLoading] = useState<boolean>(false);
+  const [clinicalRiskError, setClinicalRiskError] = useState<string>('');
+  const [followUpReminders, setFollowUpReminders] = useState<FollowUpRemindersResult | null>(null);
+  const [followUpLoading, setFollowUpLoading] = useState<boolean>(false);
+  const [followUpError, setFollowUpError] = useState<string>('');
+  const [clientCareSummary, setClientCareSummary] = useState<ClientCareSummary | null>(null);
+  const [clientCareLoading, setClientCareLoading] = useState<boolean>(false);
+  const [clientCareError, setClientCareError] = useState<string>('');
+  const [clientCareCopySuccess, setClientCareCopySuccess] = useState<boolean>(false);
   const canEditPetProfileFields = editModeEnabled && !deceased;
   const canEditDeceasedStatus = editModeEnabled;
   const selectedPrimaryService =
     AVAILABLE_SERVICES.find((service) => service.id === selectedPrimaryServiceId) || null;
+  const doctorAiSupportMetadata = doctorAiSummary?.support_metadata;
+  const doctorAiReliability = doctorAiSupportMetadata?.reliability || 'Review';
+  const doctorAiGeneratedAt = formatAiGeneratedAt(doctorAiSupportMetadata?.generated_at);
+  const clinicalRiskMetadata = clinicalRiskFlags?.support_metadata;
+  const clinicalRiskReliability = clinicalRiskMetadata?.reliability || 'Review';
+  const clinicalRiskGeneratedAt = formatAiGeneratedAt(clinicalRiskMetadata?.generated_at);
+  const highRiskCount = (clinicalRiskFlags?.flags || []).filter((flag) => flag.severity === 'high').length;
+  const followUpMetadata = followUpReminders?.support_metadata;
+  const followUpReliability = followUpMetadata?.reliability || 'Review';
+  const followUpGeneratedAt = formatAiGeneratedAt(followUpMetadata?.generated_at);
+  const highFollowUpCount = (followUpReminders?.reminders || []).filter((reminder) => reminder.priority === 'high').length;
+  const clientCareMetadata = clientCareSummary?.support_metadata;
+  const clientCareReliability = clientCareMetadata?.reliability || 'Review';
+  const clientCareGeneratedAt = formatAiGeneratedAt(clientCareMetadata?.generated_at);
 
   // Helper functions
   const buildPatientDisplayId = (petId: number | string): string => {
@@ -3175,9 +3272,58 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
         duration: prescription.duration,
         instructions: prescription.instructions || '',
       })),
+      vaccination_details: visit.vaccinationDetails
+        ? {
+          vaccine_name: visit.vaccinationDetails.vaccineName,
+          date_administered: visit.vaccinationDetails.dateAdministered,
+          next_due_date: visit.vaccinationDetails.nextDueDate,
+          manufacturer: visit.vaccinationDetails.manufacturer,
+        }
+        : null,
       medical_information: formatMedicalInformationForAi(visit.medicalInformation),
       doctor_remarks: visit.doctorRemarks?.replace(/<[^>]*>/g, ' ') || '',
     })),
+  });
+
+  const buildCurrentVisitAiPayload = () => ({
+    ...buildDoctorAiPayload(),
+    current_visit: {
+      date: newVisit.date,
+      time: newVisit.time,
+      veterinarian: newVisit.veterinarian || doctorAssigned,
+      reason: selectedVisitReasonValue || newVisit.reason || reasonForVisit,
+      weight: newVisit.sameAsLastWeight && getLastWeight()
+        ? `${getLastWeight()?.value} ${getLastWeight()?.unit}`
+        : newVisit.weight > 0
+          ? `${newVisit.weight} ${newVisit.weightUnit}`
+          : '',
+      neutered: newVisit.neutered,
+      vaccinated: newVisit.vaccinated,
+      clinical_exam: newVisit.clinicalExam || null,
+      services: (newVisit.selectedServices || []).map((service) => service.name).filter(Boolean),
+      lab_results: (newVisit.labResults || []).map((lab) => ({
+        test_type: lab.testType,
+        interpretation: lab.interpretation,
+      })),
+      prescriptions: (newVisit.prescriptions || []).map((prescription) => ({
+        medication_name: prescription.medicationName,
+        dosage: prescription.dosage,
+        route: prescription.route || '',
+        frequency: prescription.frequency,
+        duration: prescription.duration,
+        instructions: prescription.instructions || '',
+      })),
+      vaccination_details: isVaccinationSelected() && showVaccinationDetails
+        ? {
+          vaccine_name: vaccinationDetails.vaccineName,
+          date_administered: vaccinationDetails.dateAdministered,
+          next_due_date: vaccinationDetails.nextDueDate,
+          manufacturer: vaccinationDetails.manufacturer,
+        }
+        : null,
+      medical_information: formatMedicalInformationForAi(selectedAppointmentMedicalInformation),
+      doctor_remarks: newVisit.doctorRemarks?.replace(/<[^>]*>/g, ' ') || '',
+    },
   });
 
   const handleGenerateDoctorAiBrief = async () => {
@@ -3193,6 +3339,97 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
       setDoctorAiError(getAiFallbackMessage(error, 'Unable to generate the EMR prep brief right now.'));
     } finally {
       setDoctorAiLoading(false);
+    }
+  };
+
+  const handleGenerateClinicalRiskFlags = async () => {
+    setClinicalRiskLoading(true);
+    setClinicalRiskError('');
+
+    try {
+      const response = await apiService.generateClinicalRiskFlags(buildCurrentVisitAiPayload());
+      setClinicalRiskFlags(response.riskFlags || null);
+    } catch (error: any) {
+      setClinicalRiskFlags(null);
+      setClinicalRiskError(getAiFallbackMessage(error, 'Unable to generate clinical risk flags right now.'));
+    } finally {
+      setClinicalRiskLoading(false);
+    }
+  };
+
+  const handleGenerateFollowUpReminders = async () => {
+    setFollowUpLoading(true);
+    setFollowUpError('');
+
+    try {
+      const response = await apiService.generateFollowUpReminders(buildCurrentVisitAiPayload());
+      setFollowUpReminders(response.followUpReminders || null);
+    } catch (error: any) {
+      setFollowUpReminders(null);
+      setFollowUpError(getAiFallbackMessage(error, 'Unable to generate follow-up reminders right now.'));
+    } finally {
+      setFollowUpLoading(false);
+    }
+  };
+
+  const buildClientCareSummaryText = () => {
+    if (!clientCareSummary) return '';
+    const lines = [
+      `Care Summary for ${petName || 'your pet'}`,
+      '',
+      clientCareSummary.visit_summary || clientCareSummary.summary || '',
+      '',
+      'Home Care:',
+      ...((clientCareSummary.home_care_instructions || []).length
+        ? (clientCareSummary.home_care_instructions || []).map((item) => `- ${item}`)
+        : ['- Please follow the veterinarian-approved instructions from the clinic.']),
+      '',
+      'Medication Notes:',
+      ...((clientCareSummary.medication_notes || []).length
+        ? (clientCareSummary.medication_notes || []).map((item) => `- ${item}`)
+        : ['- No medication notes were generated from the available record.']),
+      '',
+      'Watch For:',
+      ...((clientCareSummary.watch_for || []).length
+        ? (clientCareSummary.watch_for || []).map((item) => `- ${item}`)
+        : ['- Contact the clinic if you notice concerning changes.']),
+      '',
+      'Follow-Up:',
+      ...((clientCareSummary.follow_up || []).length
+        ? (clientCareSummary.follow_up || []).map((item) => `- ${item}`)
+        : ['- The clinic will advise if a follow-up is needed.']),
+      '',
+      clientCareSummary.friendly_message || '',
+    ];
+    return lines.filter((line, index) => line !== '' || lines[index - 1] !== '').join('\n');
+  };
+
+  const handleGenerateClientCareSummary = async () => {
+    setClientCareLoading(true);
+    setClientCareError('');
+    setClientCareCopySuccess(false);
+
+    try {
+      const response = await apiService.generateClientCareSummary(buildCurrentVisitAiPayload());
+      setClientCareSummary(response.careSummary || null);
+    } catch (error: any) {
+      setClientCareSummary(null);
+      setClientCareError(getAiFallbackMessage(error, 'Unable to generate the client care summary right now.'));
+    } finally {
+      setClientCareLoading(false);
+    }
+  };
+
+  const handleCopyClientCareSummary = async () => {
+    const text = buildClientCareSummaryText();
+    if (!text) return;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setClientCareCopySuccess(true);
+      window.setTimeout(() => setClientCareCopySuccess(false), 1800);
+    } catch {
+      setClientCareError('Unable to copy the client care summary right now.');
     }
   };
 
@@ -3889,48 +4126,199 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
               </div>
 
               {viewMode === 'edit' && (
-                <div className="emrDoctorAiPanel">
+                <div className={`emrDoctorAiPanel ${doctorAiCollapsed ? 'emrDoctorAiPanelCollapsed' : ''}`}>
                   <div className="emrDoctorAiHeader">
                     <div>
                       <div className="emrDoctorAiEyebrow">{doctorMode ? 'Doctor AI Support' : 'Admin EMR AI Support'}</div>
                       <h4>Clinical Prep Brief</h4>
-                      <p>
-                        Summarizes EMR history and owner symptom intake for faster review by clinic staff and veterinarians. It does not diagnose or prescribe.
-                      </p>
+                      {doctorAiCollapsed ? (
+                        <p>
+                          {doctorAiSummary
+                            ? 'Clinical brief ready. Expand to review or regenerate.'
+                            : 'AI clinical support is available when needed.'}
+                        </p>
+                      ) : (
+                        <p>
+                          Summarizes EMR history and owner symptom intake for faster review by clinic staff and veterinarians. It does not diagnose or prescribe.
+                        </p>
+                      )}
                     </div>
                     <div className="emrDoctorAiActions">
-                      {(doctorAiSummary || doctorAiError) && (
-                        <button
-                          type="button"
-                          className="emrDoctorAiSecondaryBtn"
-                          onClick={() => setDoctorAiCollapsed(prev => !prev)}
-                        >
-                          {doctorAiCollapsed ? 'Expand' : 'Collapse'}
-                        </button>
-                      )}
                       <button
                         type="button"
-                        className="emrDoctorAiPrimaryBtn"
-                        onClick={handleGenerateDoctorAiBrief}
-                        disabled={doctorAiLoading || visitHistory.length === 0}
+                        className="emrDoctorAiSecondaryBtn"
+                        onClick={() => setDoctorAiCollapsed(prev => !prev)}
                       >
-                        {doctorAiLoading ? 'Generating...' : doctorAiSummary ? 'Regenerate Brief' : 'Generate Brief'}
+                        {doctorAiCollapsed ? 'Show AI Tools' : 'Hide AI Tools'}
                       </button>
+                      {!doctorAiCollapsed && (
+                        <>
+                          <button
+                            type="button"
+                            className="emrDoctorAiPrimaryBtn"
+                            onClick={handleGenerateDoctorAiBrief}
+                            disabled={doctorAiLoading || visitHistory.length === 0}
+                          >
+                            {doctorAiLoading ? 'Generating...' : doctorAiSummary ? 'Regenerate Brief' : 'Generate Brief'}
+                          </button>
+                          <button
+                            type="button"
+                            className="emrDoctorAiSecondaryBtn"
+                            onClick={handleGenerateClinicalRiskFlags}
+                            disabled={clinicalRiskLoading}
+                          >
+                            {clinicalRiskLoading ? 'Checking...' : clinicalRiskFlags ? 'Recheck Risk Flags' : 'Check Risk Flags'}
+                          </button>
+                          <button
+                            type="button"
+                            className="emrDoctorAiSecondaryBtn"
+                            onClick={handleGenerateFollowUpReminders}
+                            disabled={followUpLoading}
+                          >
+                            {followUpLoading ? 'Checking...' : followUpReminders ? 'Recheck Reminders' : 'Check Reminders'}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  {visitHistory.length === 0 && (
-                    <div className="emrDoctorAiHint">
-                      Add or load at least one visit record before generating an EMR prep brief.
+                  {!doctorAiCollapsed && (
+                    <>
+                      {visitHistory.length === 0 && (
+                        <div className="emrDoctorAiHint">
+                          Add or load at least one visit record before generating an EMR prep brief.
+                        </div>
+                      )}
+
+                      {doctorAiError && (
+                        <div className="emrDoctorAiError">{doctorAiError}</div>
+                      )}
+
+                      {clinicalRiskError && (
+                        <div className="emrDoctorAiError">{clinicalRiskError}</div>
+                      )}
+
+                      {followUpError && (
+                        <div className="emrDoctorAiError">{followUpError}</div>
+                      )}
+
+                      {clinicalRiskFlags && (
+                    <div className="emrRiskFlagPanel">
+                      <div className="emrRiskFlagHeader">
+                        <div>
+                          <div className="emrDoctorAiEyebrow">Clinical Risk Flags</div>
+                          <h5>{clinicalRiskFlags.summary}</h5>
+                        </div>
+                        <span className={`emrRiskFlagCount ${highRiskCount > 0 ? 'hasHighRisk' : ''}`}>
+                          {clinicalRiskFlags.flags.length} flag{clinicalRiskFlags.flags.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                      <div className="emrDoctorAiSupportMeta emrRiskFlagMeta">
+                        <div className="emrDoctorAiSupportBadges">
+                          <span className="emrDoctorAiSupportBadge">Clinical Support</span>
+                          <span className="emrDoctorAiSupportBadge emrDoctorAiSupportBadgeReview">Review Required</span>
+                          <span className={`emrDoctorAiSupportBadge emrDoctorAiSupportBadge${clinicalRiskReliability}`}>
+                            {clinicalRiskReliability} Reliability
+                          </span>
+                        </div>
+                        <div className="emrDoctorAiSupportDetails">
+                          {clinicalRiskGeneratedAt && <span>Checked {clinicalRiskGeneratedAt}</span>}
+                          {(clinicalRiskMetadata?.sources || []).length > 0 && (
+                            <span>Based on: {(clinicalRiskMetadata?.sources || []).join(', ')}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="emrRiskFlagList">
+                        {(clinicalRiskFlags.flags || []).length > 0
+                          ? clinicalRiskFlags.flags.map((flag) => (
+                            <div key={flag.id} className={`emrRiskFlagItem emrRiskFlagItem${flag.severity}`}>
+                              <div className="emrRiskFlagItemHeader">
+                                <span>{flag.title}</span>
+                                <strong>{flag.severity}</strong>
+                              </div>
+                              <p>{flag.detail}</p>
+                              <small>{flag.suggested_action}</small>
+                              <em>Source: {flag.source}</em>
+                            </div>
+                          ))
+                          : <div className="emrRiskFlagEmpty">No major risk flags were identified from the available data.</div>}
+                      </div>
+                      {(clinicalRiskFlags.missing_information || []).length > 0 && (
+                        <div className="emrRiskFlagMissing">
+                          <strong>Missing review data:</strong> {(clinicalRiskFlags.missing_information || []).join(', ')}
+                        </div>
+                      )}
                     </div>
-                  )}
+                      )}
 
-                  {doctorAiError && (
-                    <div className="emrDoctorAiError">{doctorAiError}</div>
-                  )}
+                      {followUpReminders && (
+                    <div className="emrFollowUpPanel">
+                      <div className="emrRiskFlagHeader">
+                        <div>
+                          <div className="emrDoctorAiEyebrow">Follow-Up Reminders</div>
+                          <h5>{followUpReminders.summary}</h5>
+                        </div>
+                        <span className={`emrRiskFlagCount ${highFollowUpCount > 0 ? 'hasHighRisk' : ''}`}>
+                          {followUpReminders.reminders.length} reminder{followUpReminders.reminders.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                      <div className="emrDoctorAiSupportMeta emrRiskFlagMeta">
+                        <div className="emrDoctorAiSupportBadges">
+                          <span className="emrDoctorAiSupportBadge">Clinical Support</span>
+                          <span className="emrDoctorAiSupportBadge emrDoctorAiSupportBadgeReview">Review Required</span>
+                          <span className={`emrDoctorAiSupportBadge emrDoctorAiSupportBadge${followUpReliability}`}>
+                            {followUpReliability} Reliability
+                          </span>
+                        </div>
+                        <div className="emrDoctorAiSupportDetails">
+                          {followUpGeneratedAt && <span>Checked {followUpGeneratedAt}</span>}
+                          {(followUpMetadata?.sources || []).length > 0 && (
+                            <span>Based on: {(followUpMetadata?.sources || []).join(', ')}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="emrRiskFlagList">
+                        {(followUpReminders.reminders || []).map((reminder) => (
+                          <div key={reminder.id} className={`emrFollowUpItem emrFollowUpItem${reminder.priority}`}>
+                            <div className="emrRiskFlagItemHeader">
+                              <span>{reminder.title}</span>
+                              <strong>{reminder.priority}</strong>
+                            </div>
+                            <p>{reminder.detail}</p>
+                            <small><strong>Timing:</strong> {reminder.suggested_timing}</small>
+                            <small>{reminder.suggested_action}</small>
+                            <em>Source: {reminder.source}</em>
+                          </div>
+                        ))}
+                      </div>
+                      {(followUpReminders.missing_information || []).length > 0 && (
+                        <div className="emrRiskFlagMissing">
+                          <strong>Missing reminder data:</strong> {(followUpReminders.missing_information || []).join(', ')}
+                        </div>
+                      )}
+                    </div>
+                      )}
 
-                  {doctorAiSummary && !doctorAiCollapsed && (
-                    <div className="emrDoctorAiBody">
+                      {doctorAiSummary && (
+                        <div className="emrDoctorAiBody">
+                      <div className="emrDoctorAiSupportMeta">
+                        <div className="emrDoctorAiSupportBadges">
+                          <span className="emrDoctorAiSupportBadge">AI Generated</span>
+                          <span className="emrDoctorAiSupportBadge emrDoctorAiSupportBadgeReview">Review Required</span>
+                          <span className={`emrDoctorAiSupportBadge emrDoctorAiSupportBadge${doctorAiReliability}`}>
+                            {doctorAiReliability} Reliability
+                          </span>
+                        </div>
+                        <div className="emrDoctorAiSupportDetails">
+                          {doctorAiGeneratedAt && <span>Generated {doctorAiGeneratedAt}</span>}
+                          {(doctorAiSupportMetadata?.sources || []).length > 0 && (
+                            <span>Based on: {(doctorAiSupportMetadata?.sources || []).join(', ')}</span>
+                          )}
+                          {(doctorAiSupportMetadata?.reasons || []).length > 0 && (
+                            <span>{doctorAiSupportMetadata?.reasons?.[0]}</span>
+                          )}
+                        </div>
+                      </div>
                       <div className="emrDoctorAiSummary">
                         <span>Case Overview</span>
                         <p>{doctorAiSummary.summary}</p>
@@ -3945,28 +4333,38 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           </ul>
                         </div>
                         <div className="emrDoctorAiColumn">
-                          <h5>Owner Questions</h5>
+                          <h5>Relevant History</h5>
                           <ul>
-                            {(doctorAiSummary.follow_up_questions || []).length > 0
-                              ? doctorAiSummary.follow_up_questions.map((item, index) => <li key={`question-${index}`}>{item}</li>)
-                              : <li>No follow-up questions were suggested.</li>}
+                            {(doctorAiSummary.relevant_history || []).length > 0
+                              ? doctorAiSummary.relevant_history?.map((item, index) => <li key={`history-${index}`}>{item}</li>)
+                              : <li>No specific historical pattern was highlighted from the available visits.</li>}
                           </ul>
                         </div>
                         <div className="emrDoctorAiColumn">
-                          <h5>Missing Context</h5>
+                          <h5>Exam Focus</h5>
                           <ul>
-                            {(doctorAiSummary.missing_information || []).length > 0
-                              ? doctorAiSummary.missing_information.map((item, index) => <li key={`missing-${index}`}>{item}</li>)
-                              : <li>No major missing context was identified.</li>}
+                            {(doctorAiSummary.exam_focus || []).length > 0
+                              ? doctorAiSummary.exam_focus?.map((item, index) => <li key={`exam-${index}`}>{item}</li>)
+                              : <li>No additional exam focus areas were suggested from the available data.</li>}
+                          </ul>
+                        </div>
+                        <div className="emrDoctorAiColumn">
+                          <h5>Care Continuity</h5>
+                          <ul>
+                            {(doctorAiSummary.care_continuity_notes || []).length > 0
+                              ? doctorAiSummary.care_continuity_notes?.map((item, index) => <li key={`continuity-${index}`}>{item}</li>)
+                              : <li>No continuity reminders were identified from the current EMR context.</li>}
                           </ul>
                         </div>
                       </div>
                       {doctorAiSummary.model && (
                         <div className="emrDoctorAiFooter">
-                          Generated by {doctorAiSummary.model}. Vet review remains required.
+                          Generated by {doctorAiSummary.model}. {doctorAiSupportMetadata?.disclaimer || 'Vet review remains required.'}
                         </div>
                       )}
-                    </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -5623,6 +6021,109 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                 {/* Doctor's Remarks */}
                 <div className="emrFormRow" style={{ marginTop: '30px' }}>
                   <div className="emrFormGroup">
+                    <div className="emrClientCarePanel">
+                      <div className="emrAiSupportPanelHeader">
+                        <div>
+                          <div className="emrAiSupportPanelEyebrow">Owner Communication Support</div>
+                          <h5>Client-Friendly Care Summary</h5>
+                          <p>Creates a plain-language owner summary from the current visit. Review before sharing with the client.</p>
+                        </div>
+                        <div className="emrClientCareActions">
+                          {clientCareSummary && (
+                            <button
+                              type="button"
+                              className="emrAiSupportPanelSecondaryBtn"
+                              onClick={handleCopyClientCareSummary}
+                            >
+                              {clientCareCopySuccess ? 'Copied' : 'Copy Summary'}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="emrAiSupportPanelPrimaryBtn"
+                            onClick={handleGenerateClientCareSummary}
+                            disabled={clientCareLoading}
+                          >
+                            {clientCareLoading ? 'Generating...' : clientCareSummary ? 'Regenerate Care Summary' : 'Generate Care Summary'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {clientCareError && (
+                        <div className="emrAiSupportPanelError">{clientCareError}</div>
+                      )}
+
+                      {clientCareSummary && (
+                        <div className="emrClientCareBody">
+                          <div className="emrAiSupportPanelMeta">
+                            <div className="emrDoctorAiSupportBadges">
+                              <span className="emrDoctorAiSupportBadge">AI Generated</span>
+                              <span className="emrDoctorAiSupportBadge emrDoctorAiSupportBadgeReview">Review Required</span>
+                              <span className={`emrDoctorAiSupportBadge emrDoctorAiSupportBadge${clientCareReliability}`}>
+                                {clientCareReliability} Reliability
+                              </span>
+                            </div>
+                            <div className="emrDoctorAiSupportDetails">
+                              {clientCareGeneratedAt && <span>Generated {clientCareGeneratedAt}</span>}
+                              {(clientCareMetadata?.sources || []).length > 0 && (
+                                <span>Based on: {(clientCareMetadata?.sources || []).join(', ')}</span>
+                              )}
+                              <span>{clientCareMetadata?.disclaimer || 'Review and verify before sharing.'}</span>
+                            </div>
+                          </div>
+
+                          <div className="emrClientCareSummaryText">
+                            <h6>Visit Summary</h6>
+                            <p>{clientCareSummary.visit_summary || clientCareSummary.summary}</p>
+                          </div>
+
+                          <div className="emrClientCareGrid">
+                            <div>
+                              <h6>Home Care</h6>
+                              <ul>
+                                {(clientCareSummary.home_care_instructions || []).length > 0
+                                  ? clientCareSummary.home_care_instructions?.map((item, index) => <li key={`home-care-${index}`}>{item}</li>)
+                                  : <li>Review the visit record before sharing home care instructions.</li>}
+                              </ul>
+                            </div>
+                            <div>
+                              <h6>Medication Notes</h6>
+                              <ul>
+                                {(clientCareSummary.medication_notes || []).length > 0
+                                  ? clientCareSummary.medication_notes?.map((item, index) => <li key={`med-note-${index}`}>{item}</li>)
+                                  : <li>No medication notes were generated from the available record.</li>}
+                              </ul>
+                            </div>
+                            <div>
+                              <h6>Watch For</h6>
+                              <ul>
+                                {(clientCareSummary.watch_for || []).length > 0
+                                  ? clientCareSummary.watch_for?.map((item, index) => <li key={`watch-${index}`}>{item}</li>)
+                                  : <li>Contact the clinic if concerning changes are observed.</li>}
+                              </ul>
+                            </div>
+                            <div>
+                              <h6>Follow-Up</h6>
+                              <ul>
+                                {(clientCareSummary.follow_up || []).length > 0
+                                  ? clientCareSummary.follow_up?.map((item, index) => <li key={`care-follow-${index}`}>{item}</li>)
+                                  : <li>The clinic will advise if a follow-up is needed.</li>}
+                              </ul>
+                            </div>
+                          </div>
+
+                          {clientCareSummary.friendly_message && (
+                            <div className="emrClientCareMessage">{clientCareSummary.friendly_message}</div>
+                          )}
+
+                          {(clientCareSummary.missing_information || []).length > 0 && (
+                            <div className="emrRiskFlagMissing">
+                              <strong>Review before sharing:</strong> {(clientCareSummary.missing_information || []).join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     <RichTextEditor
                       value={newVisit.doctorRemarks}
                       onChange={(value) => setNewVisit({...newVisit, doctorRemarks: value})}
