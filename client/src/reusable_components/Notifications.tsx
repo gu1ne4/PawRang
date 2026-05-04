@@ -16,7 +16,9 @@ import './NotifStyles.css';
 export type { Notification };
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
+const NOTIFICATION_SOUND_URL = '/audio/notification-chime.wav';
 const NOTIFICATION_CACHE_TTL_MS = 30 * 1000;
+const NOTIFICATION_REFRESH_MS = 30 * 1000;
 
 let notificationCache:
   | { adminUserId: string; expiresAt: number; notifications: Notification[] }
@@ -46,6 +48,8 @@ const Notifications: React.FC<NotificationsProps> = ({
 
   // Ref for the modal component
   const modalRef = useRef<NotificationsModalRef>(null);
+  const knownNotificationIdsRef = useRef<Set<string>>(new Set());
+  const hasLoadedNotificationsRef = useRef(false);
 
   const popupRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: 0, right: 0 });
@@ -73,6 +77,69 @@ const Notifications: React.FC<NotificationsProps> = ({
     link: record.link || undefined,
   }), []);
 
+  const playGeneratedNotificationTone = useCallback(() => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+
+      const audioContext = new AudioContextClass();
+      const gain = audioContext.createGain();
+      gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.08, audioContext.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.45);
+      gain.connect(audioContext.destination);
+
+      const firstTone = audioContext.createOscillator();
+      firstTone.type = 'sine';
+      firstTone.frequency.setValueAtTime(740, audioContext.currentTime);
+      firstTone.connect(gain);
+      firstTone.start(audioContext.currentTime);
+      firstTone.stop(audioContext.currentTime + 0.16);
+
+      const secondTone = audioContext.createOscillator();
+      secondTone.type = 'sine';
+      secondTone.frequency.setValueAtTime(980, audioContext.currentTime + 0.13);
+      secondTone.connect(gain);
+      secondTone.start(audioContext.currentTime + 0.13);
+      secondTone.stop(audioContext.currentTime + 0.42);
+
+      window.setTimeout(() => {
+        audioContext.close().catch(() => undefined);
+      }, 700);
+    } catch (error) {
+      console.debug('Notification sound skipped:', error);
+    }
+  }, []);
+
+  const playNotificationSound = useCallback(() => {
+    try {
+      const audio = new Audio(NOTIFICATION_SOUND_URL);
+      audio.volume = 0.55;
+      audio.play().catch(() => {
+        playGeneratedNotificationTone();
+      });
+    } catch {
+      playGeneratedNotificationTone();
+    }
+  }, [playGeneratedNotificationTone]);
+
+  const updateKnownNotificationsAndSound = useCallback((nextNotifications: Notification[]) => {
+    const previousIds = knownNotificationIdsRef.current;
+    const hasLoaded = hasLoadedNotificationsRef.current;
+    const hasNewUnread = nextNotifications.some(notification =>
+      notification.id &&
+      !notification.read &&
+      !previousIds.has(notification.id)
+    );
+
+    knownNotificationIdsRef.current = new Set(nextNotifications.map(notification => notification.id).filter(Boolean));
+    hasLoadedNotificationsRef.current = true;
+
+    if (hasLoaded && hasNewUnread) {
+      playNotificationSound();
+    }
+  }, [playNotificationSound]);
+
   const fetchNotifications = useCallback(async (forceRefresh: boolean = false) => {
     const adminUserId = getAdminUserId();
     if (!adminUserId) {
@@ -86,6 +153,7 @@ const Notifications: React.FC<NotificationsProps> = ({
       notificationCache.adminUserId === adminUserId &&
       notificationCache.expiresAt > Date.now()
     ) {
+      updateKnownNotificationsAndSound(notificationCache.notifications);
       setNotifications(notificationCache.notifications);
       return;
     }
@@ -116,12 +184,13 @@ const Notifications: React.FC<NotificationsProps> = ({
         expiresAt: Date.now() + NOTIFICATION_CACHE_TTL_MS,
         notifications: normalized,
       };
+      updateKnownNotificationsAndSound(normalized);
       setNotifications(normalized);
     } catch (error) {
       console.error('Fetch notifications error:', error);
       setNotifications([]);
     }
-  }, [getAdminUserId, normalizeFetchedNotification]);
+  }, [getAdminUserId, normalizeFetchedNotification, updateKnownNotificationsAndSound]);
 
   useEffect(() => {
     if (isOpen && anchorEl) {
@@ -154,6 +223,16 @@ const Notifications: React.FC<NotificationsProps> = ({
 
   useEffect(() => {
     fetchNotifications();
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      fetchNotifications(true);
+    }, NOTIFICATION_REFRESH_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
   }, [fetchNotifications]);
 
   const handleButtonClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
