@@ -16,8 +16,7 @@ html, body {
 
 .upf-user-container {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background-image: url('../assets/WebBG.svg'); 
-  background-size: cover;
+  background: #f8fbff;
   height: 100vh;
   width: 100%;
   overflow-y: auto;

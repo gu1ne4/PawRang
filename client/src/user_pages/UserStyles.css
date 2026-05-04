@@ -674,7 +674,7 @@
 /* Appointment Container */
 .user-appointment-container {
     width: 100%;
-    background-color: #ffffff;
+    background-color: #f8fbff;
     height: 100vh;
     overflow-y: auto;
     overflow-x: hidden;
@@ -989,6 +989,58 @@
 
 .carousel-arrow:disabled {
     cursor: not-allowed;
+}
+
+.boarding-days-panel {
+    width: min(100%, 640px);
+    margin: 8px auto 24px;
+    padding: 20px;
+    border: 1px solid #dce6ff;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 16px 36px rgba(61, 103, 238, 0.12);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 180px;
+    gap: 18px;
+    align-items: center;
+}
+
+.boarding-days-copy h3 {
+    margin: 0 0 6px;
+    color: #1f3fae;
+    font-size: 18px;
+}
+
+.boarding-days-copy p {
+    margin: 0;
+    color: #64748b;
+    line-height: 1.45;
+}
+
+.boarding-days-field {
+    display: grid;
+    gap: 7px;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.boarding-days-field input {
+    width: 100%;
+    height: 46px;
+    padding: 0 14px;
+    border: 1px solid #bfd0ff;
+    border-radius: 14px;
+    background: #f8fbff;
+    color: #1f2937;
+    font-size: 15px;
+    font-weight: 700;
+    outline: none;
+}
+
+.boarding-days-field input:focus {
+    border-color: #3d67ee;
+    box-shadow: 0 0 0 4px rgba(61, 103, 238, 0.12);
 }
 
 .service-options-panel {
@@ -2752,9 +2804,13 @@
 
 /* Grooming Preferences */
 .grooming-preferences-container {
-    max-width: 900px;
+    width: min(100%, 820px);
     margin: 0 auto;
-    padding: 0 20px;
+    padding: 24px;
+    border: 1px solid #dce6ff;
+    border-radius: 20px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    box-shadow: 0 16px 36px rgba(61, 103, 238, 0.1);
 }
 
 .grooming-section {
@@ -2764,43 +2820,44 @@
 
 .haircut-styles-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(200px, 180px));
-    justify-content: center;
-    gap: 20px;
-    margin: 0 auto 20px;
-    max-width: 600px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin: 0 auto;
+    max-width: 100%;
 }
 
 .haircut-style-card {
-    width: 200px;
-    border: none;
-    background: none;
-    padding: 0;
+    width: 100%;
+    border: 1px solid #dce6ff;
+    background: #ffffff;
+    padding: 8px;
     cursor: pointer;
-    border-radius: 10px;
+    border-radius: 18px;
     overflow: hidden;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 10px 24px rgba(61, 103, 238, 0.08);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .haircut-style-card:hover {
     transform: translateY(-3px);
-    box-shadow: 0 0px 15px #3d66ee77;
+    box-shadow: 0 14px 28px rgba(61, 103, 238, 0.16);
 }
 
 .haircut-style-card.selected {
-    transform: scale(1.02);
-    box-shadow: 0 0 0 2px #3d67ee, 0 6px 15px rgba(61, 103, 238, 0.25);
+    transform: translateY(-2px);
+    border-color: #3d67ee;
+    box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.16), 0 14px 28px rgba(61, 103, 238, 0.18);
 }
 
 .haircut-style-card.selected .haircut-gradient-overlay {
-    background: linear-gradient(135deg, transparent 0%, rgba(0,0,0,0.3) 20%, rgba(16, 61, 185, 1.6) 100%);
+    background: linear-gradient(135deg, rgba(61, 103, 238, 0.08) 0%, rgba(20, 53, 150, 0.34) 35%, rgba(16, 61, 185, 0.92) 100%);
 }
 
 .haircut-image-wrapper {
     position: relative;
     width: 100%;
     aspect-ratio: 1;
-    border-radius: 10px;
+    border-radius: 14px;
     overflow: hidden;
 }
 
@@ -2812,26 +2869,23 @@
 }
 
 .haircut-style-card:hover .haircut-image {
-    transform: scale(1.1);
+    transform: scale(1.08);
 }
 
 .haircut-gradient-overlay {
     position: absolute;
-    bottom: 0;
-    right: 0;
-    left: 0;
-    top: 0;
-    background: linear-gradient(135deg, transparent 0%, rgba(0,0,0,0.3) 70%, rgba(0,0,0,0.3) 100%);
+    inset: 0;
+    background: linear-gradient(135deg, transparent 0%, rgba(0, 0, 0, 0.22) 55%, rgba(0, 0, 0, 0.5) 100%);
     display: flex;
     align-items: flex-end;
     justify-content: flex-end;
-    padding: 8px;
+    padding: 12px;
 }
 
 .haircut-name-overlay {
     color: white;
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 800;
     text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.6);
     text-align: right;
     max-width: 90%;
@@ -2841,35 +2895,34 @@
 
 .custom-style-input {
     width: 100%;
-    max-width: 600px;
+    max-width: none;
     margin: 0 auto;
-    border: 2px solid #3d67ee;
-    border-radius: 8px;
-    padding: 10px;
+    border: 1px solid #bfd0ff;
+    border-radius: 14px;
+    padding: 12px 14px;
     font-size: 14px;
-    min-height: 80px;
+    min-height: 96px;
     display: block;
     font-family: inherit;
     resize: vertical;
+    background: #ffffff;
+    outline: none;
 }
 
 .custom-style-input:focus {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.2);
+    border-color: #3d67ee;
+    box-shadow: 0 0 0 4px rgba(61, 103, 238, 0.12);
 }
 
 .grooming-label {
     display: block;
     font-size: 14px;
-    font-weight: 500;
-    color: #333;
-    margin-bottom: 8px;
+    font-weight: 700;
+    color: #334155;
+    margin: 20px 0 8px;
     text-align: left;
-    max-width: 600px;
-    margin-left: auto;
-    margin-right: auto;
+    max-width: none;
 }
-
 .grooming-info-note {
     display: none;
 }
@@ -3685,6 +3738,12 @@
         box-shadow: 0 6px 16px rgba(61, 103, 238, 0.12);
     }
 
+    .boarding-days-panel {
+        width: 100%;
+        grid-template-columns: 1fr;
+        padding: 18px;
+    }
+
     .selected-services {
         max-width: 100%;
     }
@@ -3994,5 +4053,723 @@
     .home-highlight-card {
         padding: 16px;
         border-radius: 18px;
+    }
+}
+
+/* Final booking UI overrides */
+.progress-container {
+    max-width: min(100%, 980px);
+    margin: 18px auto 12px;
+    padding: 10px 14px 14px;
+    border: 1px solid rgba(61, 103, 238, 0.1);
+    border-radius: 18px;
+    background: #fbfcff;
+}
+
+.progress-steps {
+    min-width: auto;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.progress-container.no-symptom-step .progress-steps {
+    justify-content: center;
+}
+
+.progress-step-segment {
+    flex-basis: 92px;
+}
+
+.step-item {
+    width: 92px;
+    gap: 7px;
+}
+
+.step-circle-shell {
+    width: 42px;
+    height: 42px;
+}
+
+.step-circle {
+    width: 36px;
+    height: 36px;
+    border-radius: 18px;
+}
+
+.step-circle span {
+    font-size: 14px;
+}
+
+.step-line {
+    width: 42px;
+    margin: 20px 4px 0;
+}
+
+.step-label {
+    max-width: 90px;
+    font-size: 11px;
+    line-height: 1.25;
+    white-space: normal;
+}
+
+.step-title {
+    margin-top: 24px;
+    font-size: 34px;
+}
+
+.service-card {
+    position: relative;
+    min-height: 300px;
+    border: 1px solid #dce6ff;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    box-shadow: 0 14px 34px rgba(61, 103, 238, 0.1);
+}
+
+.service-card.selected {
+    background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738d9);
+    border-color: #3d67ee;
+}
+
+.service-selected-mark {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #ffffff;
+    color: #3d67ee;
+}
+
+.service-icon {
+    width: 62px;
+    height: 62px;
+    margin: 0 auto;
+    border-radius: 20px;
+    background: #eef4ff;
+    align-items: center;
+}
+
+.service-price {
+    width: fit-content;
+    margin: 18px auto 0;
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: #eef4ff;
+    font-size: 14px;
+}
+
+.options-panel.service-options-panel {
+    width: min(100%, 760px);
+    padding: 18px;
+    border: 1px solid #dce6ff;
+    border-radius: 18px;
+    background: #fbfcff;
+    box-shadow: 0 16px 36px rgba(61, 103, 238, 0.1);
+}
+
+.options-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.option-item {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 14px;
+    border: 1px solid #dce6ff;
+    border-radius: 14px;
+}
+
+.option-check {
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    border: 1px solid #bfd0ff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.option-copy {
+    min-width: 0;
+}
+
+.branch-card {
+    width: 330px;
+    height: auto;
+    min-height: 340px;
+    padding: 0;
+    overflow: hidden;
+    justify-content: flex-start;
+    border: 1px solid #e0e8ff;
+    border-radius: 18px;
+    text-align: left;
+    box-shadow: 0 14px 30px rgba(61, 103, 238, 0.1);
+}
+
+.branch-card-body {
+    padding: 16px;
+}
+
+.branch-image {
+    height: 170px;
+    margin-bottom: 0;
+    border-radius: 0;
+}
+
+.branch-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-bottom: 10px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: #eef4ff;
+    color: #3d67ee;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.confirmation-hero {
+    max-width: 960px;
+    margin: 24px auto 22px;
+    padding: 22px;
+    border: 1px solid #dce6ff;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #ffffff 0%, #f5f8ff 100%);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 16px;
+    align-items: center;
+    box-shadow: 0 14px 34px rgba(61, 103, 238, 0.1);
+}
+
+.confirmation-hero-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #3d67ee;
+    color: #ffffff;
+}
+
+.confirmation-kicker {
+    color: #3d67ee;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.confirmation-hero h2 {
+    margin: 3px 0 4px;
+    color: #1f2937;
+    font-size: 24px;
+}
+
+.confirmation-hero p {
+    margin: 0;
+    color: #64748b;
+    line-height: 1.5;
+}
+
+.confirmation-total-chip {
+    min-width: 150px;
+    padding: 12px 16px;
+    border-radius: 16px;
+    background: #ffffff;
+    border: 1px solid #dce6ff;
+    color: #3d67ee;
+    display: grid;
+    gap: 3px;
+    justify-items: end;
+}
+
+.confirmation-total-chip span {
+    font-size: 12px;
+    color: #64748b;
+    font-weight: 700;
+}
+
+.confirmation-total-chip strong {
+    color: #ee3d5a;
+    font-size: 24px;
+}
+
+.confirmation-details {
+    max-width: 960px;
+    padding: 0;
+    margin-top: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.confirmation-card {
+    border: 1px solid #dce6ff;
+    border-radius: 16px;
+    box-shadow: 0 10px 26px rgba(61, 103, 238, 0.08);
+}
+
+.confirmation-card-primary {
+    grid-row: span 2;
+}
+
+.detail-label {
+    width: 118px;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.service-list {
+    flex: 1;
+    gap: 8px;
+}
+
+.service-subitem {
+    margin-left: 0;
+    justify-content: space-between;
+    padding: 7px 10px;
+    border-radius: 10px;
+    background: #f4f7ff;
+}
+
+@media (max-width: 768px) {
+    .progress-step-segment,
+    .step-item {
+        flex-basis: 86px;
+        width: 86px;
+    }
+
+    .step-line {
+        width: 28px;
+    }
+
+    .options-list {
+        grid-template-columns: 1fr;
+    }
+
+    .branch-card {
+        min-height: 0;
+    }
+
+    .confirmation-hero,
+    .confirmation-details {
+        grid-template-columns: 1fr;
+    }
+
+    .confirmation-total-chip {
+        width: 100%;
+        justify-items: start;
+    }
+
+    .confirmation-card-primary {
+        grid-row: auto;
+    }
+}
+
+/* Confirm booking compact refinements */
+.selected-services {
+    display: none !important;
+}
+
+.service-card {
+    width: 232px;
+    min-height: 252px;
+    padding: 20px 18px;
+    border-radius: 14px;
+    border-width: 1px;
+}
+
+.service-card-wrapper {
+    flex-basis: 260px;
+}
+
+.service-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 15px;
+}
+
+.service-icon svg {
+    width: 31px;
+    height: 31px;
+}
+
+.service-name {
+    font-size: 16px;
+    margin: 11px 0 7px;
+}
+
+.service-description p {
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.service-price {
+    margin-top: 12px;
+    color: #3d67ee;
+}
+
+.service-card.selected .service-price {
+    background: #ffffff !important;
+    color: #3d67ee !important;
+    box-shadow: 0 8px 18px rgba(21, 56, 160, 0.16);
+}
+
+.service-card.selected .service-selected-mark svg {
+    color: #3d67ee !important;
+}
+
+.confirmation-hero {
+    margin-bottom: 14px;
+}
+
+.confirmation-details {
+    display: block;
+    column-count: 2;
+    column-gap: 14px;
+    margin-bottom: 24px;
+}
+
+.confirmation-card {
+    display: inline-block;
+    width: 100%;
+    margin: 0 0 14px;
+    padding: 18px;
+    break-inside: avoid;
+}
+
+.confirmation-card-primary {
+    grid-row: auto;
+}
+
+.card-header {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+}
+
+.card-header h3 {
+    font-size: 18px;
+}
+
+.card-details {
+    gap: 10px;
+}
+
+.service-subitem {
+    color: #344054;
+}
+
+.service-subitem::before {
+    content: none;
+}
+
+.service-subitem span {
+    color: #ee3d5a;
+    font-weight: 800;
+}
+
+.medical-info-card {
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.medical-info-card .card-details {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.medical-info-card .detail-row {
+    min-height: 46px;
+    padding: 10px 12px;
+    border: 1px solid #e4ebff;
+    border-radius: 12px;
+    background: #ffffff;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.medical-info-card .detail-label {
+    width: auto;
+    font-size: 10px;
+    line-height: 1.25;
+}
+
+.medical-info-card .detail-value {
+    flex: 0 0 auto;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: #eef4ff;
+    color: #1f3fae;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+@media (max-width: 768px) {
+    .service-card {
+        width: 260px;
+        min-height: 250px;
+    }
+
+    .confirmation-details {
+        column-count: 1;
+    }
+
+    .medical-info-card .card-details {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Shared booking step hero and final layout polish */
+.legacy-confirmation-hero-hidden {
+    display: none !important;
+}
+
+.step-title {
+    display: none;
+}
+
+.step-hero {
+    width: min(100%, 820px);
+    margin: 20px auto 18px;
+    padding: 22px;
+    border: 1px solid #dce6ff;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #ffffff 0%, #f5f8ff 100%);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 16px;
+    align-items: center;
+    box-shadow: 0 14px 34px rgba(61, 103, 238, 0.1);
+}
+
+.step-hero-confirm {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.step-hero-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #3d67ee;
+    color: #ffffff;
+}
+
+.step-hero-kicker {
+    color: #3d67ee;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.step-hero h2 {
+    margin: 3px 0 4px;
+    color: #1f2937;
+    font-size: 24px;
+    line-height: 1.2;
+}
+
+.step-hero p {
+    margin: 0;
+    color: #64748b;
+    line-height: 1.5;
+}
+
+.service-card {
+    width: 260px;
+    min-height: 320px;
+    padding: 28px 24px;
+    border-radius: 22px;
+}
+
+.service-card-wrapper {
+    flex-basis: 288px;
+}
+
+.service-icon {
+    width: 58px;
+    height: 58px;
+    border-radius: 18px;
+    color: #3d67ee;
+}
+
+.service-icon svg {
+    width: 35px;
+    height: 35px;
+}
+
+.service-card.selected .service-icon,
+.service-card.selected .service-price,
+.service-card.selected .service-selected-mark {
+    background: #ffffff !important;
+    color: #3d67ee !important;
+}
+
+.service-card.selected .service-icon svg,
+.service-card.selected .service-price,
+.service-card.selected .service-selected-mark svg {
+    color: #3d67ee !important;
+}
+
+.service-card.selected .service-name,
+.service-card.selected .service-description p {
+    color: #ffffff;
+}
+
+.medical-info-step-panel {
+    width: min(100%, 820px);
+    margin: 0 auto;
+    padding: 24px;
+    border: 1px solid #dce6ff;
+    border-radius: 20px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    box-shadow: 0 16px 36px rgba(61, 103, 238, 0.1);
+}
+
+.medical-info-step-panel .required-info-banner {
+    margin-bottom: 18px;
+    padding: 14px 16px;
+    border: 1px solid #ffd7df;
+    border-radius: 16px;
+    background: #fff6f8;
+}
+
+.medical-info-step-panel .questions-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.medical-info-step-panel .question-item {
+    margin: 0;
+    padding: 16px;
+    border: 1px solid #e4ebff;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 8px 20px rgba(61, 103, 238, 0.06);
+}
+
+.medical-info-step-panel .question-header h4 {
+    color: #1f2937;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.medical-info-step-panel .question-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.medical-info-step-panel .radio-label {
+    min-height: 42px;
+    margin: 0;
+    padding: 10px 12px;
+    border: 1px solid #dce6ff;
+    border-radius: 12px;
+    background: #f8fbff;
+    justify-content: center;
+}
+
+.medical-info-step-panel .radio-label:has(input:checked) {
+    border-color: #3d67ee;
+    background: #eef4ff;
+    color: #1f3fae;
+}
+
+.medical-info-step-panel input[type="radio"] {
+    accent-color: #3d67ee;
+}
+
+.medical-info-step-panel .additional-notes {
+    margin-top: 16px;
+}
+
+.confirmation-details {
+    width: min(100%, 820px);
+    margin-left: auto;
+    margin-right: auto;
+    column-gap: 12px;
+}
+
+.confirmation-card {
+    margin-bottom: 12px;
+}
+
+@media (max-width: 768px) {
+    .step-hero,
+    .step-hero-confirm {
+        grid-template-columns: 1fr;
+        width: min(100%, 92vw);
+        padding: 18px;
+    }
+
+    .step-hero-icon {
+        width: 50px;
+        height: 50px;
+    }
+
+    .step-hero h2 {
+        font-size: 21px;
+    }
+
+    .service-card {
+        width: 260px;
+        min-height: 320px;
+    }
+
+    .medical-info-step-panel {
+        width: min(100%, 92vw);
+        padding: 18px;
+    }
+
+    .medical-info-step-panel .questions-list {
+        grid-template-columns: 1fr;
+    }
+
+    .confirmation-details {
+        width: min(100%, 92vw);
+        column-count: 1;
+    }
+}
+
+/* Booking refinements requested after the final layout pass */
+.grooming-preferences-container .haircut-styles-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.grooming-preferences-container .haircut-style-card {
+    width: 100%;
+}
+
+@media (max-width: 768px) {
+    .grooming-preferences-container {
+        width: min(100%, 92vw);
+        padding: 18px;
+    }
+
+    .grooming-preferences-container .haircut-styles-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 460px) {
+    .grooming-preferences-container .haircut-styles-grid {
+        grid-template-columns: 1fr;
     }
 }

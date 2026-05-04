@@ -5,13 +5,16 @@ import 'react-calendar/dist/Calendar.css';
 import './UserStyles.css';
 import API_URL from '../API';
 import { formatPetAge } from '../utils/formatPetAge';
+import branchLP from '../assets/branchLP.jpg';
+import branchTaguig from '../assets/branchTaguig.jpg';
 
 import {
   IoPawOutline, IoCalendarOutline, IoChevronBackCircle, IoChevronForwardCircle,
   IoClose, IoHourglassOutline, IoCheckmark, IoInformationCircleOutline,
   IoCloudUploadOutline, IoCutOutline, IoMedicalOutline, IoHomeOutline,
-  IoBedOutline, IoScanOutline, IoRadioOutline, IoFlaskOutline, IoAdd,
-  IoCloseCircle, IoPersonCircleOutline,
+  IoScanOutline, IoRadioOutline, IoFlaskOutline, IoAdd,
+  IoCloseCircle, IoPersonCircleOutline, IoLocationOutline, IoReceiptOutline,
+  IoShieldCheckmarkOutline,
 } from 'react-icons/io5';
 import ClientNavBar from '../reusable_components/ClientNavBar';
 
@@ -86,7 +89,11 @@ const normalizeBranches = (payload: any): Branch[] => {
       branch_name: String(branch?.branch_name ?? branch?.name ?? '').trim(),
       address: String(branch?.address ?? '').trim(),
     }))
-    .filter((branch: Branch) => branch.branch_id > 0 && branch.branch_name !== '');
+    .filter((branch: Branch) => (
+      branch.branch_id > 0 &&
+      branch.branch_name !== '' &&
+      branch.branch_name.toLowerCase() !== 'both branches'
+    ));
 };
 
 interface Service {
@@ -122,6 +129,7 @@ interface BookingDraft {
   selectedServiceId: number | null;
   selectedGroomingOptionIds: string[];
   selectedLabOptionIds: string[];
+  boardingDays: string;
   currentCardIndex: number;
   expandedService: number | null;
 }
@@ -167,7 +175,7 @@ const haircutStyles = [
 const medicalQuestions = [
   { id:'q1', question:'WERE THERE ANY MEDICATIONS GIVEN TO YOUR PET IN THE PAST 72 HOURS?', key:'medications72h', hasDetails:true  },
   { id:'q2', question:'MY PET HAS RECEIVED UP-TO-DATE FLEA AND TICK PREVENTION',             key:'fleaPrevention', hasDetails:false },
-  { id:'q3', question:'MY CAT HAS UP-TO-DATE ANTI RABIES+4IN1',                              key:'catVaccinations', hasDetails:false },
+  { id:'q3', question:'MY PET HAS AN UP-TO-DATE ANTI-RABIES VACCINATION',                    key:'catVaccinations', hasDetails:false },
   { id:'q4', question:'MY PET IS NOT PREGNANT',                                              key:'notPregnant',    hasDetails:false },
 ];
 
@@ -189,14 +197,14 @@ const worseningOptions = ['Yes', 'No', 'Not sure'];
 const services: Service[] = [
   { id:1, name:'Pet Grooming',            icon:'cut',     description:['Brushing, Nail','Trimming, Haircut,','Bathing, etc.'],         hasOptions:true,  options:groomingOptions },
   { id:2, name:'Consultation & Check-Up', icon:'medical', description:['Preventative service','to assess your',"pet's overall health"], basePrice:'₱500',         hasOptions:false },
-  { id:3, name:'Dental Prophylaxis',      icon:'medical', description:['Teeth cleaning,','plaque removal,','oral health check'],       basePrice:'₱800',         hasOptions:false },
+  { id:3, name:'Dental Prophylaxis',      icon:'shield',  description:['Teeth cleaning,','plaque removal,','oral health check'],       basePrice:'₱800',         hasOptions:false },
   { id:4, name:'Pet Boarding',            icon:'home',    description:['Overnight stay,','feeding,','supervision'],                    basePrice:'₱1,200/night', hasOptions:false },
-  { id:5, name:'Confinement',             icon:'bed',     description:['Medical care,','monitoring, IV','fluids, medication'],         basePrice:'₱2,500/day',   hasOptions:false },
   { id:6, name:'X-Ray',                  icon:'scan',    description:['Radiography for','bone, chest,','abdominal imaging'],          basePrice:'₱1,500',       hasOptions:false },
   { id:7, name:'Ultrasound',             icon:'radio',   description:['Soft tissue,','abdominal, cardiac,','pregnancy check'],        basePrice:'₱2,000',       hasOptions:false },
   { id:8, name:'Laboratory Tests',       icon:'flask',   description:['Blood work,','urinalysis, fecal,','chemistry panel'],          hasOptions:true,  options:laboratoryOptions },
-  { id:9, name:'Vaccinations',           icon:'flask',   description:['Core vaccines,','boosters,','rabies shot'],                    basePrice:'₱1,200',       hasOptions:false },
+  { id:9, name:'Vaccinations',           icon:'shield',  description:['Core vaccines,','boosters,','rabies shot'],                    basePrice:'₱1,200',       hasOptions:false },
 ];
+const DEFAULT_SERVICE_CARD_INDEX = Math.max(0, services.findIndex(service => service.id === 2));
 
 const DEFAULT_PET_IMG = 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=400';
 const getToken = () => localStorage.getItem('access_token') ?? '';
@@ -205,6 +213,12 @@ const isMobileViewport = () =>
 const BOOKING_DRAFT_KEY = 'userAppointmentBookingDraft';
 const DEFAULT_SUBMITTED_BOOKING_MESSAGE =
   'Your appointment is under review. You will receive an email once it is confirmed.';
+
+const getBranchImage = (branch: Branch) => {
+  const label = `${branch.branch_name} ${branch.address}`.toLowerCase();
+  if (label.includes('taguig')) return branchTaguig;
+  return branchLP;
+};
 
 const parseResponseBody = async (response: Response): Promise<any> => {
   const text = await response.text();
@@ -321,6 +335,7 @@ const UserAppointmentBook: React.FC = () => {
   });
   const [medicationDetails, setMedicationDetails] = useState('');
   const [additionalNotes,   setAdditionalNotes]   = useState('');
+  const [boardingDays,      setBoardingDays]      = useState('');
   const [selectedSymptoms,  setSelectedSymptoms]  = useState<string[]>([]);
   const [ownerSymptomNotes, setOwnerSymptomNotes] = useState('');
   const [symptomDuration,   setSymptomDuration]   = useState('');
@@ -330,7 +345,7 @@ const UserAppointmentBook: React.FC = () => {
   const [showMoreSymptomDetails, setShowMoreSymptomDetails] = useState(false);
 
   // ── Carousel ──────────────────────────────────────────────────────────────
-  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [currentCardIndex, setCurrentCardIndex] = useState(DEFAULT_SERVICE_CARD_INDEX);
   const [expandedService,  setExpandedService]  = useState<number | null>(null);
   const touchStartX = useRef<number | null>(null);
   const touchCurrentX = useRef<number | null>(null);
@@ -409,6 +424,7 @@ const UserAppointmentBook: React.FC = () => {
       setSelectedService(restoredService);
       setSelectedGroomingOptions(restoredGroomingOptions);
       setSelectedLabOptions(restoredLabOptions);
+      setBoardingDays(draft.boardingDays ?? '');
       setCurrentCardIndex(draft.currentCardIndex ?? 0);
       setExpandedService(draft.expandedService ?? null);
       setStep(draft.step ?? 2);
@@ -597,6 +613,7 @@ const UserAppointmentBook: React.FC = () => {
     if (!selectedService) missingFields.push('Service');
     if (selectedService?.id === 1 && selectedGroomingOptions.length === 0) missingFields.push('Grooming option');
     if (selectedService?.id === 8 && selectedLabOptions.length === 0) missingFields.push('Laboratory test');
+    if (selectedService?.id === 4 && (!boardingDays || Number(boardingDays) < 1)) missingFields.push('Boarding stay duration');
     if (!selectedPet) missingFields.push('Pet');
     if (isGrooming && !selectedHaircutStyle) missingFields.push('Haircut style');
     if (isGrooming && selectedHaircutStyle === 'h6' && !customHaircutDescription.trim()) missingFields.push('Custom haircut description');
@@ -638,6 +655,7 @@ const UserAppointmentBook: React.FC = () => {
       selectedServiceId: selectedService?.id ?? null,
       selectedGroomingOptionIds: selectedGroomingOptions.map(option => option.id),
       selectedLabOptionIds: selectedLabOptions.map(option => option.id),
+      boardingDays,
       currentCardIndex,
       expandedService,
     };
@@ -684,10 +702,13 @@ const UserAppointmentBook: React.FC = () => {
 
   const getTotalPrice = () => {
     let total = 0;
-    selectedGroomingOptions.forEach(o => { total += parseFloat(o.price.replace(/[₱,]/g,'')); });
-    selectedLabOptions.forEach(o =>      { total += parseFloat(o.price.replace(/[₱,]/g,'')); });
-    if (selectedService && !selectedService.hasOptions && selectedService.basePrice)
-      total += parseFloat(selectedService.basePrice.replace(/[₱,]/g,'').split('/')[0]);
+    const parsePrice = (price: string) => parseFloat(price.replace(/[^\d.]/g, '')) || 0;
+    selectedGroomingOptions.forEach(o => { total += parsePrice(o.price); });
+    selectedLabOptions.forEach(o =>      { total += parsePrice(o.price); });
+    if (selectedService && !selectedService.hasOptions && selectedService.basePrice) {
+      const basePrice = parsePrice(selectedService.basePrice.split('/')[0]);
+      total += selectedService.id === 4 ? basePrice * Math.max(1, Number(boardingDays) || 1) : basePrice;
+    }
     return total;
   };
 
@@ -695,30 +716,74 @@ const UserAppointmentBook: React.FC = () => {
     switch (icon) {
       case 'cut':   return <IoCutOutline   size={40} />;
       case 'home':  return <IoHomeOutline  size={40} />;
-      case 'bed':   return <IoBedOutline   size={40} />;
       case 'scan':  return <IoScanOutline  size={40} />;
       case 'radio': return <IoRadioOutline size={40} />;
       case 'flask': return <IoFlaskOutline size={40} />;
+      case 'shield': return <IoShieldCheckmarkOutline size={40} />;
       default:      return <IoMedicalOutline size={40} />;
     }
   };
 
   const isGrooming = selectedService?.id === 1 && selectedGroomingOptions.length > 0;
+  const isPetBoarding = selectedService?.id === 4;
+  const skipsSymptomStep = selectedService ? [1, 3, 4].includes(selectedService.id) : false;
+  const hasSymptomStep = !skipsSymptomStep;
+  const groomingPrefsStep = isGrooming ? 3 : null;
+  const branchStep = isGrooming ? 4 : 3;
+  const dateTimeStep = isGrooming ? 5 : 4;
+  const symptomStep = hasSymptomStep ? (isGrooming ? 6 : 5) : null;
+  const medicalInfoStep = hasSymptomStep ? (isGrooming ? 7 : 6) : (isGrooming ? 6 : 5);
+  const confirmStep = medicalInfoStep + 1;
 
-  const getProgressSteps = () => isGrooming
-    ? [{n:1,l:'Service'},{n:2,l:'Pet'},{n:3,l:'Grooming Prefs'},{n:4,l:'Branch'},{n:5,l:'Date & Time'},{n:6,l:'Symptoms'},{n:7,l:'Medical Info'},{n:8,l:'Confirm'}]
-    : [{n:1,l:'Service'},{n:2,l:'Pet'},{n:3,l:'Branch'},{n:4,l:'Date & Time'},{n:5,l:'Symptoms'},{n:6,l:'Medical Info'},{n:7,l:'Confirm'}];
+  const getProgressSteps = () => {
+    const steps = [
+      { n: 1, l: 'Service' },
+      { n: 2, l: 'Pet' },
+    ];
+
+    if (isGrooming) steps.push({ n: 3, l: 'Grooming Prefs' });
+    steps.push({ n: branchStep, l: 'Branch' });
+    steps.push({ n: dateTimeStep, l: 'Date & Time' });
+    if (hasSymptomStep && symptomStep) steps.push({ n: symptomStep, l: 'Symptoms' });
+    steps.push({ n: medicalInfoStep, l: 'Medical Info' });
+    steps.push({ n: confirmStep, l: 'Confirm' });
+
+    return steps;
+  };
 
   const getStepTitle = () => {
     if (step === 1) return 'Book an Appointment';
     if (step === 2) return 'Select Your Pet';
-    if (step === 3) return isGrooming ? 'Grooming Preferences' : 'Select Branch';
-    if (step === 4) return isGrooming ? 'Select Branch' : 'Select Date & Time';
-    if (step === 5) return isGrooming ? 'Select Date & Time' : 'Symptom Intake';
-    if (step === 6) return isGrooming ? 'Symptom Intake' : 'Medical Information';
-    if (step === 7) return isGrooming ? 'Medical Information' : 'Confirm Booking';
-    if (step === 8) return 'Confirm Booking';
+    if (groomingPrefsStep && step === groomingPrefsStep) return 'Grooming Preferences';
+    if (step === branchStep) return 'Select Branch';
+    if (step === dateTimeStep) return 'Select Date & Time';
+    if (symptomStep && step === symptomStep) return 'Symptom Intake';
+    if (step === medicalInfoStep) return 'Medical Information';
+    if (step === confirmStep) return 'Confirm Booking';
     return '';
+  };
+
+  const getStepDescription = () => {
+    if (step === 1) return 'Choose the service your pet needs and select any required options.';
+    if (step === 2) return 'Pick the pet profile for this appointment.';
+    if (groomingPrefsStep && step === groomingPrefsStep) return 'Tell the groomer what style you prefer.';
+    if (step === branchStep) return 'Choose the PetShield branch for your visit.';
+    if (step === dateTimeStep) return 'Pick an available date and clinic time slot.';
+    if (symptomStep && step === symptomStep) return 'Share symptoms so the clinic can prepare.';
+    if (step === medicalInfoStep) return 'Answer these health questions before confirming.';
+    if (step === confirmStep) return 'Review everything before submitting your booking.';
+    return '';
+  };
+
+  const getStepHeroIcon = () => {
+    const title = getStepTitle();
+    if (title.includes('Pet')) return <IoPawOutline size={30} />;
+    if (title.includes('Branch')) return <IoLocationOutline size={30} />;
+    if (title.includes('Date')) return <IoCalendarOutline size={30} />;
+    if (title.includes('Symptom') || title.includes('Medical')) return <IoMedicalOutline size={30} />;
+    if (title.includes('Grooming')) return <IoCutOutline size={30} />;
+    if (title.includes('Confirm')) return <IoShieldCheckmarkOutline size={30} />;
+    return <IoCalendarOutline size={30} />;
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -727,9 +792,18 @@ const UserAppointmentBook: React.FC = () => {
 
   const handleServiceSelect = (service: Service) => {
     if (selectedService?.id === service.id) {
-      setSelectedService(null); setSelectedGroomingOptions([]); setSelectedLabOptions([]); setExpandedService(null);
+      setSelectedService(null); setSelectedGroomingOptions([]); setSelectedLabOptions([]); setBoardingDays(''); setSelectedSymptoms([]); setOwnerSymptomNotes(''); setSymptomDuration(''); setEatingStatus(''); setDrinkingStatus(''); setWorseningStatus(''); setExpandedService(null);
     } else {
       setSelectedService(service); setSelectedGroomingOptions([]); setSelectedLabOptions([]);
+      if (service.id !== 4) setBoardingDays('');
+      if ([1, 3, 4].includes(service.id)) {
+        setSelectedSymptoms([]);
+        setOwnerSymptomNotes('');
+        setSymptomDuration('');
+        setEatingStatus('');
+        setDrinkingStatus('');
+        setWorseningStatus('');
+      }
       setExpandedService(service.hasOptions ? service.id : null);
     }
   };
@@ -778,6 +852,10 @@ const UserAppointmentBook: React.FC = () => {
       if (selectedService.id === 1 && !selectedGroomingOptions.length) { showAlert('info','No Options','Please select at least one grooming option'); return; }
       if (selectedService.id === 8 && !selectedLabOptions.length)      { showAlert('info','No Tests','Please select at least one laboratory test'); return; }
     }
+    if (selectedService.id === 4 && (!boardingDays || Number(boardingDays) < 1)) {
+      showAlert('info','Stay Duration Needed','Please enter how many days your pet will stay.');
+      return;
+    }
     setStep(2);
   };
 
@@ -788,93 +866,61 @@ const UserAppointmentBook: React.FC = () => {
       return;
     }
 
-    if (step === 3) {
+    if (groomingPrefsStep && step === groomingPrefsStep) {
       setStep(2);
-      if (!isGrooming) setSelectedBranch(null);
       return;
     }
 
-    if (step === 4) {
-      setStep(3);
-      if (isGrooming) setSelectedBranch(null);
-      else {
-        setSelectedDate(null);
-        setSelectedTime(null);
-      }
+    if (step === branchStep) {
+      setStep(isGrooming ? 3 : 2);
+      setSelectedBranch(null);
       return;
     }
 
-    if (step === 5) {
-      setStep(4);
-      if (isGrooming) {
-        setSelectedDate(null);
-        setSelectedTime(null);
-      }
+    if (step === dateTimeStep) {
+      setStep(branchStep);
+      setSelectedDate(null);
+      setSelectedTime(null);
       return;
     }
 
-    if (step === 6) {
-      setStep(5);
+    if (symptomStep && step === symptomStep) {
+      setStep(dateTimeStep);
       return;
     }
 
-    if (step === 7) {
-      setStep(6);
+    if (step === medicalInfoStep) {
+      setStep(symptomStep ?? dateTimeStep);
       return;
     }
 
-    if (step === 8) {
-      setStep(7);
+    if (step === confirmStep) {
+      setStep(medicalInfoStep);
     }
   };
 
   const handleContinue = () => {
     if (step === 2) {
       if (!selectedPet) { showAlert('info','No Pet Selected','Please select a pet first'); return; }
-      setStep(3);
-    } else if (step === 3) {
-      if (isGrooming) {
-        if (!selectedHaircutStyle) { showAlert('info','No Style','Please select a haircut style'); return; }
-        if (selectedHaircutStyle === 'h6' && !customHaircutDescription.trim()) { showAlert('info','Incomplete','Please describe your custom style'); return; }
-        setStep(4);
-      } else {
-        if (!selectedBranch) { showAlert('info','No Branch','Please select a branch'); return; }
-        setStep(4);
-      }
-    } else if (step === 4) {
-      if (isGrooming) {
-        if (!selectedBranch) { showAlert('info','No Branch','Please select a branch'); return; }
-        setStep(5);
-      } else {
-        if (!selectedDate || !selectedTime) { showAlert('info','Incomplete','Please select date and time'); return; }
-        setStep(5);
-      }
-    } else if (step === 5) {
-      if (isGrooming) {
-        if (!selectedDate || !selectedTime) { showAlert('info','Incomplete','Please select date and time'); return; }
-        setStep(6);
-      } else {
-        setStep(6);
-      }
-    } else if (step === 6) {
-      if (isGrooming) {
-        setStep(7);
-      } else {
-        const allAnswered = medicalQuestions.every(q => medicalAnswers[q.key] !== null);
-        if (!allAnswered) { showAlert('info','Incomplete','Please answer all medical questions'); return; }
-        if (medicalAnswers.medications72h && !medicationDetails.trim()) { showAlert('info','Incomplete','Please specify the medications given'); return; }
-        setStep(7);
-      }
-    } else if (step === 7) {
-      if (isGrooming) {
-        const allAnswered = medicalQuestions.every(q => medicalAnswers[q.key] !== null);
-        if (!allAnswered) { showAlert('info','Incomplete','Please answer all medical questions'); return; }
-        if (medicalAnswers.medications72h && !medicationDetails.trim()) { showAlert('info','Incomplete','Please specify the medications given'); return; }
-        setStep(8);
-      } else {
-        openConfirmModal();
-      }
-    } else if (step === 8) {
+      setStep(groomingPrefsStep ?? branchStep);
+    } else if (groomingPrefsStep && step === groomingPrefsStep) {
+      if (!selectedHaircutStyle) { showAlert('info','No Style','Please select a haircut style'); return; }
+      if (selectedHaircutStyle === 'h6' && !customHaircutDescription.trim()) { showAlert('info','Incomplete','Please describe your custom style'); return; }
+      setStep(branchStep);
+    } else if (step === branchStep) {
+      if (!selectedBranch) { showAlert('info','No Branch','Please select a branch'); return; }
+      setStep(dateTimeStep);
+    } else if (step === dateTimeStep) {
+      if (!selectedDate || !selectedTime) { showAlert('info','Incomplete','Please select date and time'); return; }
+      setStep(symptomStep ?? medicalInfoStep);
+    } else if (symptomStep && step === symptomStep) {
+      setStep(medicalInfoStep);
+    } else if (step === medicalInfoStep) {
+      const allAnswered = medicalQuestions.every(q => medicalAnswers[q.key] !== null);
+      if (!allAnswered) { showAlert('info','Incomplete','Please answer all medical questions'); return; }
+      if (medicalAnswers.medications72h && !medicationDetails.trim()) { showAlert('info','Incomplete','Please specify the medications given'); return; }
+      setStep(confirmStep);
+    } else if (step === confirmStep) {
       openConfirmModal();
     }
   };
@@ -905,6 +951,15 @@ const UserAppointmentBook: React.FC = () => {
         typeLabel = `Pet Grooming (${selectedGroomingOptions.map(o => o.name).join(', ')})`;
       if (bookingService.id === 8 && selectedLabOptions.length)
         typeLabel = `Laboratory Tests (${selectedLabOptions.map(o => o.name).join(', ')})`;
+      if (bookingService.id === 4 && boardingDays)
+        typeLabel = `Pet Boarding (${boardingDays} ${Number(boardingDays) === 1 ? 'day' : 'days'})`;
+
+      const patientReasonParts = [
+        bookingService.id === 4 && boardingDays
+          ? `Boarding stay: ${boardingDays} ${Number(boardingDays) === 1 ? 'day' : 'days'}`
+          : '',
+        additionalNotes.trim(),
+      ].filter(Boolean);
       
       // appointments POST — cast ids to Number
       const apptRes = await apiClient.post<{ appointment_id: number; emailSent?: boolean }>(
@@ -916,7 +971,7 @@ const UserAppointmentBook: React.FC = () => {
           appointment_date: selectedDate.toISOString().split('T')[0],
           appointment_time: toDbTime(selectedTime),
           branch_id:        Number(selectedBranch.branch_id), // ← fix bigint error
-          patient_reason:   additionalNotes,
+          patient_reason:   patientReasonParts.join('\n'),
         },
         { headers: { Authorization: `Bearer ${getToken()}` } },
       );
@@ -1140,7 +1195,7 @@ const UserAppointmentBook: React.FC = () => {
       <div className="appointment-content" ref={contentRef}>
 
         {/* Progress bar */}
-        <div className="progress-container">
+        <div className={`progress-container ${!hasSymptomStep ? 'no-symptom-step' : ''}`}>
           <div className="progress-steps">
             {progressSteps.map((s, i, arr) => (
               <React.Fragment key={s.n}>
@@ -1165,13 +1220,27 @@ const UserAppointmentBook: React.FC = () => {
           </div>
         </div>
 
-        <h1 className="step-title">{getStepTitle()}</h1>
+        <div className={`step-hero ${step === confirmStep ? 'step-hero-confirm' : ''}`}>
+          <div className="step-hero-icon">
+            {getStepHeroIcon()}
+          </div>
+          <div className="step-hero-copy">
+            <span className="step-hero-kicker">Step {step} of {progressSteps.length}</span>
+            <h2>{getStepTitle()}</h2>
+            <p>{getStepDescription()}</p>
+          </div>
+          {step === confirmStep && (
+            <div className="confirmation-total-chip">
+              <IoReceiptOutline size={18} />
+              <span>Total</span>
+              <strong>₱{getTotalPrice().toLocaleString()}</strong>
+            </div>
+          )}
+        </div>
 
         {/* ══ STEP 1 — Service ══ */}
         {step === 1 && (
           <div className="step-content">
-            <p className="service-instruction">Click to select an appointment.</p>
-
             <div className="service-carousel-shell">
               <div
                 className="service-carousel"
@@ -1183,7 +1252,7 @@ const UserAppointmentBook: React.FC = () => {
                   <div
                     className="carousel-track"
                     style={{
-                      transform: `translateX(calc(50% - ${isMobileCarousel ? 143 : 130}px - ${currentCardIndex * (isMobileCarousel ? 304 : 288)}px))`,
+                      transform: `translateX(calc(50% - ${isMobileCarousel ? 143 : 144}px - ${currentCardIndex * (isMobileCarousel ? 304 : 316)}px))`,
                     }}
                   >
                     {services.map((service, index) => {
@@ -1201,10 +1270,15 @@ const UserAppointmentBook: React.FC = () => {
                             onClick={() => handleServiceSelect(service)}
                             disabled={!isActive}
                           >
+                            {isSelected && (
+                              <span className="service-selected-mark">
+                                <IoCheckmark size={16} />
+                              </span>
+                            )}
                             <div className="service-icon">{getIconComponent(service.icon)}</div>
                             <h3 className="service-name">{service.name}</h3>
                             <div className="service-description">{service.description.map((l,i) => <p key={i}>{l}</p>)}</div>
-                            {service.basePrice && <p className="service-price">{service.basePrice}</p>}
+                            <p className="service-price">{service.basePrice || 'Select options'}</p>
                           </button>
                         </div>
                       );
@@ -1249,9 +1323,12 @@ const UserAppointmentBook: React.FC = () => {
                           }
                         }}
                       >
-                        <h4 className="option-name">{opt.name}</h4>
-                        <p className="option-description">{opt.description}</p>
-                        <p className="option-price">{opt.price}</p>
+                        <span className="option-check">{isSel ? <IoCheckmark size={15} /> : null}</span>
+                        <span className="option-copy">
+                          <h4 className="option-name">{opt.name}</h4>
+                          <p className="option-description">{opt.description}</p>
+                        </span>
+                        <span className="option-price">{opt.price}</span>
                       </button>
                     );
                   })}
@@ -1260,12 +1337,32 @@ const UserAppointmentBook: React.FC = () => {
               </div>
             )}
 
-            {selectedService && (
+            {isPetBoarding && (
+              <div className="boarding-days-panel">
+                <div className="boarding-days-copy">
+                  <h3>Boarding Stay Duration</h3>
+                  <p>How many days will your pet stay with us?</p>
+                </div>
+                <label className="boarding-days-field">
+                  <span>Number of days</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={boardingDays}
+                    onChange={event => setBoardingDays(event.target.value)}
+                    placeholder="Enter days"
+                  />
+                </label>
+              </div>
+            )}
+
+            {false && selectedService && (
               <div className="selected-services">
                 <h4>Selected:</h4>
                 <div className="selected-services-list">
                   <div className="selected-service-tag">
-                    <span>{selectedService.name}</span>
+                    <span>{selectedService?.name}</span>
                     <button onClick={() => { setSelectedService(null); setSelectedGroomingOptions([]); setSelectedLabOptions([]); setExpandedService(null); }}>
                       <IoCloseCircle size={16} color="white" />
                     </button>
@@ -1331,7 +1428,7 @@ const UserAppointmentBook: React.FC = () => {
         )}
 
         {/* ══ STEP 3 — Grooming prefs / Branch ══ */}
-        {step === 3 && isGrooming && (
+        {groomingPrefsStep && step === groomingPrefsStep && (
           <div className="step-content">
             <div className="grooming-preferences-container">
               <div className="haircut-styles-grid">
@@ -1374,7 +1471,7 @@ const UserAppointmentBook: React.FC = () => {
           </div>
         )}
 
-        {step === 3 && !isGrooming && (
+        {step === branchStep && !isGrooming && (
           <div className="step-content">
             {loadingBranches
               ? <p style={{ textAlign:'center', color:'#999', padding:40 }}>Loading branches…</p>
@@ -1386,8 +1483,12 @@ const UserAppointmentBook: React.FC = () => {
                       className={`branch-card ${selectedBranch?.branch_id === branch.branch_id ? 'selected' : ''}`}
                       onClick={() => setSelectedBranch(branch)}
                     >
-                      <h3 className="branch-name">📍 {branch.branch_name}</h3>
-                      <p className="branch-address">{branch.address}</p>
+                      <img src={getBranchImage(branch)} alt={branch.branch_name} className="branch-image" />
+                      <div className="branch-card-body">
+                        <span className="branch-pill"><IoLocationOutline size={13} /> Branch</span>
+                        <h3 className="branch-name">{branch.branch_name}</h3>
+                        <p className="branch-address">{branch.address}</p>
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -1402,7 +1503,7 @@ const UserAppointmentBook: React.FC = () => {
         )}
 
         {/* ══ STEP 4 — Branch (grooming) / Date+Time (others) ══ */}
-        {step === 4 && isGrooming && (
+        {step === branchStep && isGrooming && (
           <div className="step-content">
             {loadingBranches
               ? <p style={{ textAlign:'center', color:'#999', padding:40 }}>Loading branches…</p>
@@ -1414,8 +1515,12 @@ const UserAppointmentBook: React.FC = () => {
                       className={`branch-card ${selectedBranch?.branch_id === branch.branch_id ? 'selected' : ''}`}
                       onClick={() => setSelectedBranch(branch)}
                     >
-                      <h3 className="branch-name">📍 {branch.branch_name}</h3>
-                      <p className="branch-address">{branch.address}</p>
+                      <img src={getBranchImage(branch)} alt={branch.branch_name} className="branch-image" />
+                      <div className="branch-card-body">
+                        <span className="branch-pill"><IoLocationOutline size={13} /> Branch</span>
+                        <h3 className="branch-name">{branch.branch_name}</h3>
+                        <p className="branch-address">{branch.address}</p>
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -1429,7 +1534,7 @@ const UserAppointmentBook: React.FC = () => {
           </div>
         )}
 
-        {((step === 4 && !isGrooming) || (step === 5 && isGrooming)) && (
+        {step === dateTimeStep && (
           <div className="step-content">
             {selectedDate && (
               <div className="selected-datetime-display">
@@ -1484,9 +1589,9 @@ const UserAppointmentBook: React.FC = () => {
         )}
 
         {/* ══ Symptom Intake ══ */}
-        {((step === 5 && !isGrooming) || (step === 6 && isGrooming)) && (
+        {symptomStep && step === symptomStep && (
           <div className="step-content">
-            <div className="medical-questionnaire symptom-intake-panel">
+            <div className="medical-questionnaire medical-info-step-panel symptom-intake-panel">
               <div className="required-info-banner symptom-intake-banner">
                 <IoMedicalOutline size={24} color="#3d67ee" />
                 <p><strong>Helpful for the clinic:</strong> Share any symptoms or changes you noticed so the team can prepare before the visit.</p>
@@ -1617,9 +1722,9 @@ const UserAppointmentBook: React.FC = () => {
         )}
 
         {/* ══ Medical Info ══ */}
-        {((step === 6 && !isGrooming) || (step === 7 && isGrooming)) && (
+        {step === medicalInfoStep && (
           <div className="step-content">
-            <div className="medical-questionnaire">
+            <div className="medical-questionnaire medical-info-step-panel">
               <div className="required-info-banner">
                 <IoInformationCircleOutline size={24} color="#ee3d5a" />
                 <p><strong>Required:</strong> All questions must be answered before proceeding.</p>
@@ -1669,8 +1774,24 @@ const UserAppointmentBook: React.FC = () => {
         )}
 
         {/* ══ Confirmation ══ */}
-        {((step === 7 && !isGrooming) || step === 8) && (
+        {step === confirmStep && (
           <div className="step-content">
+            <div className="confirmation-hero legacy-confirmation-hero-hidden">
+              <div className="confirmation-hero-icon">
+                <IoShieldCheckmarkOutline size={30} />
+              </div>
+              <div className="confirmation-hero-copy">
+                <span className="confirmation-kicker">Ready for review</span>
+                <h2>Confirm Booking</h2>
+                <p>Review the owner, pet, service, branch, schedule, and intake details before submitting.</p>
+              </div>
+              <div className="confirmation-total-chip">
+                <IoReceiptOutline size={18} />
+                <span>Total</span>
+                <strong>₱{getTotalPrice().toLocaleString()}</strong>
+              </div>
+            </div>
+
             <div className="confirmation-details">
 
               <div className="confirmation-card">
@@ -1697,7 +1818,7 @@ const UserAppointmentBook: React.FC = () => {
                 </div>
               )}
 
-              {step === 8 && selectedHaircutStyle && (
+              {isGrooming && selectedHaircutStyle && (
                 <div className="confirmation-card">
                   <div className="card-header"><IoCutOutline size={22} color="#3d67ee" /><h3>Grooming Preferences</h3></div>
                   <div className="card-details">
@@ -1710,15 +1831,19 @@ const UserAppointmentBook: React.FC = () => {
               )}
 
               {selectedDate && selectedTime && selectedBranch && (
-                <div className="confirmation-card">
+                <div className="confirmation-card confirmation-card-primary">
                   <div className="card-header"><IoCalendarOutline size={22} color="#3d67ee" /><h3>Appointment Details</h3></div>
                   <div className="card-details">
                     <div className="detail-row">
                       <span className="detail-label">Service</span>
                       <div className="service-list">
                         <div className="service-main-item">{selectedService?.name}</div>
-                        {selectedGroomingOptions.map(o => <div key={o.id} className="service-subitem">• {o.name}</div>)}
-                        {selectedLabOptions.map(o => <div key={o.id} className="service-subitem">• {o.name}</div>)}
+                        {selectedGroomingOptions.map(o => <div key={o.id} className="service-subitem">{o.name} <span>{o.price}</span></div>)}
+                        {selectedLabOptions.map(o => <div key={o.id} className="service-subitem">{o.name} <span>{o.price}</span></div>)}
+                        {selectedService?.id === 4 && boardingDays && (
+                          <div className="service-subitem">Boarding stay <span>{boardingDays} {Number(boardingDays) === 1 ? 'day' : 'days'}</span></div>
+                        )}
+                        {selectedService?.basePrice && <div className="service-subitem">Service fee <span>{selectedService.basePrice}</span></div>}
                       </div>
                     </div>
                     <div className="detail-row"><span className="detail-label">Date</span><span className="detail-value">{formatDate(selectedDate)}</span></div>
@@ -1735,22 +1860,24 @@ const UserAppointmentBook: React.FC = () => {
                 </div>
               )}
 
-              <div className="confirmation-card">
-                <div className="card-header"><IoMedicalOutline size={22} color="#3d67ee" /><h3>Symptom Intake</h3></div>
-                <div className="card-details">
-                  <div className="detail-row">
-                    <span className="detail-label">Selected Symptoms</span>
-                    <span className="detail-value">{selectedSymptoms.length > 0 ? selectedSymptoms.join(', ') : 'No symptoms selected'}</span>
+              {hasSymptomStep && (
+                <div className="confirmation-card">
+                  <div className="card-header"><IoMedicalOutline size={22} color="#3d67ee" /><h3>Symptom Intake</h3></div>
+                  <div className="card-details">
+                    <div className="detail-row">
+                      <span className="detail-label">Selected Symptoms</span>
+                      <span className="detail-value">{selectedSymptoms.length > 0 ? selectedSymptoms.join(', ') : 'No symptoms selected'}</span>
+                    </div>
+                    {ownerSymptomNotes && <div className="detail-row"><span className="detail-label">Owner Notes</span><span className="detail-value">{ownerSymptomNotes}</span></div>}
+                    {symptomDuration && <div className="detail-row"><span className="detail-label">Duration</span><span className="detail-value">{symptomDuration}</span></div>}
+                    {eatingStatus && <div className="detail-row"><span className="detail-label">Eating</span><span className="detail-value">{eatingStatus}</span></div>}
+                    {drinkingStatus && <div className="detail-row"><span className="detail-label">Drinking</span><span className="detail-value">{drinkingStatus}</span></div>}
+                    {worseningStatus && <div className="detail-row"><span className="detail-label">Getting Worse</span><span className="detail-value">{worseningStatus}</span></div>}
                   </div>
-                  {ownerSymptomNotes && <div className="detail-row"><span className="detail-label">Owner Notes</span><span className="detail-value">{ownerSymptomNotes}</span></div>}
-                  {symptomDuration && <div className="detail-row"><span className="detail-label">Duration</span><span className="detail-value">{symptomDuration}</span></div>}
-                  {eatingStatus && <div className="detail-row"><span className="detail-label">Eating</span><span className="detail-value">{eatingStatus}</span></div>}
-                  {drinkingStatus && <div className="detail-row"><span className="detail-label">Drinking</span><span className="detail-value">{drinkingStatus}</span></div>}
-                  {worseningStatus && <div className="detail-row"><span className="detail-label">Getting Worse</span><span className="detail-value">{worseningStatus}</span></div>}
                 </div>
-              </div>
+              )}
 
-              <div className="confirmation-card">
+              <div className="confirmation-card medical-info-card">
                 <div className="card-header"><IoMedicalOutline size={22} color="#3d67ee" /><h3>Medical Information</h3></div>
                 <div className="card-details">
                   <div className="detail-row"><span className="detail-label">Medications (72h)</span><span className="detail-value">{medicalAnswers.medications72h ? `Yes — ${medicationDetails}` : 'No'}</span></div>
@@ -1775,3 +1902,4 @@ const UserAppointmentBook: React.FC = () => {
 };
 
 export default UserAppointmentBook;
+
