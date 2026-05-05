@@ -927,8 +927,8 @@ EMAIL_PROVIDER       = (
     or ('smtp' if SMTP_EMAIL and SMTP_PASSWORD else 'resend')
 )
 EMPLOYEE_SETUP_URL_BASE = os.environ.get('EMPLOYEE_SETUP_URL_BASE', 'http://localhost:5173/employee/setup-account')
-GEMINI_API_KEY       = os.environ.get('GEMINI_API_KEY')
-GEMINI_MODEL         = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
+OPENAI_API_KEY       = os.environ.get('OPENAI_API_KEY')
+OPENAI_MODEL         = (os.environ.get('OPENAI_MODEL') or 'gpt-4o-mini').strip()
 AI_BUSY_MESSAGE      = "Server is busy. Please try again later."
 
 if not SUPABASE_URL or not SUPABASE_KEY or not SUPABASE_SERVICE_KEY:
@@ -1412,33 +1412,72 @@ EMR context:
 """.strip()
 
 
-def call_gemini_with_structured_output(prompt, schema):
-    if not GEMINI_API_KEY:
-        raise ValueError("Missing GEMINI_API_KEY in backend environment.")
+def normalize_schema_for_openai(schema):
+    if isinstance(schema, list):
+        return [normalize_schema_for_openai(item) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
 
-    endpoint = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-    )
+    normalized = {}
+    for key, value in schema.items():
+        if key == "type" and isinstance(value, str):
+            normalized[key] = value.lower()
+        else:
+            normalized[key] = normalize_schema_for_openai(value)
+
+    if normalized.get("type") == "object" and "properties" in normalized:
+        normalized.setdefault("additionalProperties", False)
+    return normalized
+
+
+def extract_openai_response_text(parsed):
+    direct_text = parsed.get("output_text")
+    if isinstance(direct_text, str) and direct_text.strip():
+        return direct_text.strip()
+
+    text_parts = []
+    for item in parsed.get("output") or []:
+        for content in (item or {}).get("content") or []:
+            if not isinstance(content, dict):
+                continue
+            if content.get("type") in {"output_text", "text"} and isinstance(content.get("text"), str):
+                text_parts.append(content["text"])
+    return "".join(text_parts).strip()
+
+
+def call_openai_with_raw_structured_output(prompt, schema, schema_name="structured_output"):
+    if not OPENAI_API_KEY:
+        raise ValueError("Missing OPENAI_API_KEY in backend environment.")
+
     payload = {
-        "contents": [
+        "model": OPENAI_MODEL,
+        "input": [
             {
-                "parts": [
-                    {"text": prompt}
-                ]
-            }
+                "role": "system",
+                "content": "Return only JSON that matches the supplied schema.",
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            },
         ],
-        "generationConfig": {
-            "temperature": 0.2,
-            "responseMimeType": "application/json",
-            "responseSchema": schema
-        }
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": schema_name,
+                "schema": normalize_schema_for_openai(schema),
+                "strict": True,
+            }
+        },
     }
 
     req = urllib_request.Request(
-        endpoint,
+        "https://api.openai.com/v1/responses",
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+        },
         method="POST"
     )
 
@@ -1447,75 +1486,29 @@ def call_gemini_with_structured_output(prompt, schema):
             raw = response.read().decode("utf-8")
     except urllib_error.HTTPError as e:
         error_body = e.read().decode("utf-8", errors="replace")
-        raise ValueError(f"Gemini API error ({e.code}): {error_body}")
+        raise ValueError(f"OpenAI API error ({e.code}): {error_body}")
     except urllib_error.URLError as e:
-        raise ValueError(f"Gemini API connection error: {e}")
+        raise ValueError(f"OpenAI API connection error: {e}")
 
     parsed = json.loads(raw)
-    candidates = parsed.get("candidates") or []
-    if not candidates:
-        raise ValueError("Gemini returned no candidates.")
-
-    parts = (((candidates[0] or {}).get("content") or {}).get("parts") or [])
-    text = "".join(part.get("text", "") for part in parts if isinstance(part, dict)).strip()
+    text = extract_openai_response_text(parsed)
     if not text:
-        raise ValueError("Gemini returned an empty response.")
+        raise ValueError("OpenAI returned an empty response.")
 
     result = json.loads(text)
+    result["model"] = OPENAI_MODEL
+    return result
+
+
+def call_openai_with_structured_output(prompt, schema, schema_name="structured_output"):
+    result = call_openai_with_raw_structured_output(prompt, schema, schema_name=schema_name)
     return {
         "summary": _text_or_default(result.get("summary")),
         "important_flags": result.get("important_flags") if isinstance(result.get("important_flags"), list) else [],
         "follow_up_questions": result.get("follow_up_questions") if isinstance(result.get("follow_up_questions"), list) else [],
         "missing_information": result.get("missing_information") if isinstance(result.get("missing_information"), list) else [],
-        "model": GEMINI_MODEL
+        "model": OPENAI_MODEL
     }
-
-
-def call_gemini_with_raw_structured_output(prompt, schema):
-    if not GEMINI_API_KEY:
-        raise ValueError("Missing GEMINI_API_KEY in backend environment.")
-
-    endpoint = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-    )
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.2,
-            "responseMimeType": "application/json",
-            "responseSchema": schema
-        }
-    }
-    req = urllib_request.Request(
-        endpoint,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST"
-    )
-
-    try:
-        with urllib_request.urlopen(req, timeout=45) as response:
-            raw = response.read().decode("utf-8")
-    except urllib_error.HTTPError as e:
-        error_body = e.read().decode("utf-8", errors="replace")
-        raise ValueError(f"Gemini API error ({e.code}): {error_body}")
-    except urllib_error.URLError as e:
-        raise ValueError(f"Gemini API connection error: {e}")
-
-    parsed = json.loads(raw)
-    candidates = parsed.get("candidates") or []
-    if not candidates:
-        raise ValueError("Gemini returned no candidates.")
-
-    parts = (((candidates[0] or {}).get("content") or {}).get("parts") or [])
-    text = "".join(part.get("text", "") for part in parts if isinstance(part, dict)).strip()
-    if not text:
-        raise ValueError("Gemini returned an empty response.")
-
-    result = json.loads(text)
-    result["model"] = GEMINI_MODEL
-    return result
 
 
 def build_client_care_summary_prompt(case_context):
@@ -1701,7 +1694,7 @@ def build_ai_error_response(error, fallback_message):
     if any(marker in lowered for marker in busy_markers):
         return jsonify({"error": AI_BUSY_MESSAGE}), 503
 
-    if "missing gemini_api_key" in lowered:
+    if "missing openai_api_key" in lowered:
         return jsonify({"error": "AI service is not configured yet."}), 500
 
     return jsonify({"error": fallback_message}), 502
@@ -8062,14 +8055,14 @@ def generate_user_symptom_summary():
 
     try:
         prompt = build_user_symptom_summary_prompt(payload)
-        ai_result = call_gemini_with_structured_output(prompt, USER_SYMPTOM_SUMMARY_SCHEMA)
+        ai_result = call_openai_with_structured_output(prompt, USER_SYMPTOM_SUMMARY_SCHEMA, "user_symptom_summary")
         summary = str(ai_result.get("summary") or "").strip()
         if not summary:
             return jsonify({"error": "AI summary could not be generated"}), 502
 
         return jsonify({
             "summary": summary,
-            "model": GEMINI_MODEL,
+            "model": OPENAI_MODEL,
         }), 200
     except ValueError as value_error:
         return build_ai_error_response(value_error, "Unable to generate the symptom summary right now.")
@@ -8087,7 +8080,7 @@ def generate_admin_appointment_summary():
     try:
         case_context = build_admin_ai_case_context(payload)
         prompt = build_admin_ai_prompt(case_context)
-        ai_result = call_gemini_with_structured_output(prompt, ADMIN_AI_SUMMARY_SCHEMA)
+        ai_result = call_openai_with_structured_output(prompt, ADMIN_AI_SUMMARY_SCHEMA, "admin_appointment_summary")
         return jsonify({
             "summary": ai_result,
             "caseContext": case_context
@@ -8108,7 +8101,7 @@ def generate_doctor_emr_brief():
     try:
         case_context = build_doctor_emr_case_context(payload)
         prompt = build_doctor_emr_prompt(case_context)
-        ai_result = call_gemini_with_raw_structured_output(prompt, DOCTOR_EMR_BRIEF_SCHEMA)
+        ai_result = call_openai_with_raw_structured_output(prompt, DOCTOR_EMR_BRIEF_SCHEMA, "doctor_emr_brief")
         ai_result = attach_ai_support_metadata(ai_result, case_context, mode="doctor")
         pet_name = ((payload.get("pet") or {}).get("name") or "this pet").strip() or "this pet"
         record_emr_audit_event(
@@ -8123,7 +8116,7 @@ def generate_doctor_emr_brief():
             metadata={
                 "pet_id": payload.get("petId") or payload.get("pet_id"),
                 "visit_count": len(case_context.get("visit_history") or []),
-                "model": "gemini-2.5-flash",
+                "model": OPENAI_MODEL,
             },
         )
         return jsonify({
@@ -8202,7 +8195,7 @@ def generate_client_care_summary():
     try:
         case_context = build_doctor_emr_case_context(payload)
         prompt = build_client_care_summary_prompt(case_context)
-        ai_result = call_gemini_with_raw_structured_output(prompt, CLIENT_CARE_SUMMARY_SCHEMA)
+        ai_result = call_openai_with_raw_structured_output(prompt, CLIENT_CARE_SUMMARY_SCHEMA, "client_care_summary")
         ai_result = attach_ai_support_metadata(ai_result, case_context, mode="doctor")
         return jsonify({
             "clientCareSummary": ai_result,
@@ -15951,7 +15944,7 @@ def change_password():
 
 if __name__ == '__main__':
     app.run(
-        debug=os.environ.get("FLASK_DEBUG", "").lower() == "true",
+        debug=True,
         host='0.0.0.0',
         port=int(os.environ.get("PORT", 5000)),
     )
