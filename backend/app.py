@@ -1715,7 +1715,7 @@ INVENTORY_CATEGORY_CODES = {
     "Medication": "MED",
 }
 INVENTORY_ITEM_STOP_WORDS = {"and", "for", "of", "the", "with", "to", "a", "an"}
-ADMIN_NOTIFICATION_MODULES = {"inventory"}
+ADMIN_NOTIFICATION_MODULES = {"inventory", "appointments", "emr", "billing"}
 ADMIN_NOTIFICATION_SEVERITIES = {"info", "success", "warning", "error"}
 TRANSIENT_SUPABASE_ERROR_PATTERNS = (
     "winerror 10035",
@@ -4743,6 +4743,230 @@ def safe_create_inventory_admin_notification(**kwargs):
         return None
 
 
+def create_appointment_admin_notification(
+    *,
+    table_name,
+    id_column,
+    record_id,
+    event_type,
+    title,
+    action_text,
+    severity='info',
+    link='/admin/schedule',
+    metadata=None,
+):
+    email_context = get_reschedule_email_context(table_name, id_column, record_id)
+    record = email_context.get("record") or {}
+    branch_id = record.get("branch_id")
+    if not branch_id:
+        raise ValueError("Appointment notification requires branch_id")
+
+    entity_type = 'walkin' if table_name == 'walkin_appointments' else 'appointment'
+    patient_name = email_context.get("patient_name") or "Patient"
+    pet_name = email_context.get("pet_name") or "your pet"
+    service_name = email_context.get("service_name") or "Appointment"
+    appointment_date = record.get("appointment_date") or ""
+    appointment_time = format_display_time(record.get("appointment_time"))
+    schedule_text = " ".join(
+        part for part in [
+            str(appointment_date).strip(),
+            f"at {appointment_time}" if appointment_time else ""
+        ] if part
+    ).strip()
+    message = f"{patient_name}'s appointment for {pet_name} ({service_name}) {action_text}."
+    if schedule_text:
+        message = f"{message} Schedule: {schedule_text}."
+
+    return create_admin_notification(
+        branch_id=branch_id,
+        event_type=event_type,
+        title=title,
+        message=message,
+        severity=severity,
+        module='appointments',
+        link=link,
+        entity_type=entity_type,
+        entity_id=record_id,
+        metadata={
+            "recordType": entity_type,
+            "patientName": patient_name,
+            "petName": pet_name,
+            "serviceName": service_name,
+            "appointmentDate": appointment_date,
+            "appointmentTime": record.get("appointment_time"),
+            **(metadata or {}),
+        },
+    )
+
+
+def safe_create_appointment_admin_notification(**kwargs):
+    try:
+        return create_appointment_admin_notification(**kwargs)
+    except Exception as notification_error:
+        print("Appointment admin notification error:", str(notification_error))
+        return None
+
+
+def resolve_emr_notification_context(medical_record_id=None, visit_id=None):
+    visit = None
+    if visit_id not in (None, ""):
+        visit = get_single_row("medical_record_visits", "medical_record_visit_id", visit_id)
+        if visit and medical_record_id in (None, ""):
+            medical_record_id = visit.get("medical_record_id")
+
+    record = get_single_row("medical_records", "medical_record_id", medical_record_id) if medical_record_id not in (None, "") else None
+    if not record:
+        raise ValueError("Medical record not found for EMR notification")
+
+    pet = get_single_row("pet_profile", "pet_id", record.get("pet_id")) if record.get("pet_id") not in (None, "") else None
+    owner = get_single_row("patient_account", "id", pet.get("owner_id")) if pet and pet.get("owner_id") else None
+
+    if not visit:
+        visit_res = execute_with_retry(
+            lambda: supabase_admin.table("medical_record_visits")
+            .select("*")
+            .eq("medical_record_id", medical_record_id)
+            .order("visit_date", desc=True)
+            .limit(1)
+            .execute(),
+            context="Fetch EMR notification latest visit"
+        )
+        visit = (visit_res.data or [None])[0]
+
+    branch_id = (visit or {}).get("branch_id") or record.get("branch_id")
+    if not branch_id:
+        raise ValueError("EMR notification requires branch_id")
+
+    owner_name = get_profile_display_name(owner) if owner else "Unknown owner"
+    return {
+        "medicalRecordId": record.get("medical_record_id"),
+        "branchId": branch_id,
+        "record": record,
+        "visit": visit,
+        "pet": pet,
+        "owner": owner,
+        "petName": (pet or {}).get("pet_name") or "Unknown pet",
+        "ownerName": owner_name,
+    }
+
+
+def create_emr_admin_notification(
+    *,
+    medical_record_id=None,
+    visit_id=None,
+    event_type,
+    title,
+    action_text,
+    severity='info',
+    link='/patient-records',
+    entity_type='medical_record',
+    entity_id=None,
+    metadata=None,
+):
+    context = resolve_emr_notification_context(medical_record_id=medical_record_id, visit_id=visit_id)
+    resolved_record_id = context.get("medicalRecordId")
+    resolved_entity_id = entity_id if entity_id not in (None, "") else resolved_record_id
+    message = f"{context.get('petName')} ({context.get('ownerName')}) {action_text}."
+
+    return create_admin_notification(
+        branch_id=context.get("branchId"),
+        event_type=event_type,
+        title=title,
+        message=message,
+        severity=severity,
+        module='emr',
+        link=link,
+        entity_type=entity_type,
+        entity_id=resolved_entity_id,
+        metadata={
+            "medicalRecordId": resolved_record_id,
+            "petId": (context.get("pet") or {}).get("pet_id"),
+            "petName": context.get("petName"),
+            "ownerId": (context.get("owner") or {}).get("id"),
+            "ownerName": context.get("ownerName"),
+            "visitId": (context.get("visit") or {}).get("medical_record_visit_id"),
+            **(metadata or {}),
+        },
+    )
+
+
+def safe_create_emr_admin_notification(**kwargs):
+    try:
+        return create_emr_admin_notification(**kwargs)
+    except Exception as notification_error:
+        print("EMR admin notification error:", str(notification_error))
+        return None
+
+
+def get_default_admin_notification_branch_id():
+    response = execute_with_retry(
+        lambda: supabase_admin.table("branches").select("*").limit(1).execute(),
+        context="Fetch default notification branch"
+    )
+    branch = (response.data or [{}])[0]
+    return branch.get("branch_id") or branch.get("id")
+
+
+def create_billing_admin_notification(
+    *,
+    invoice_record,
+    event_type,
+    title,
+    action_text,
+    severity='info',
+    link='/billing',
+    metadata=None,
+):
+    invoice = invoice_record or {}
+    branch_id = invoice.get("branch_id") or get_default_admin_notification_branch_id()
+    if not branch_id:
+        raise ValueError("Billing notification requires a branch_id")
+
+    invoice_id = invoice.get("billing_invoice_id")
+    invoice_number = invoice.get("invoice_number") or f"Invoice {invoice_id or ''}".strip()
+    customer_name = invoice.get("customer_name") or "Customer"
+    pet_name = invoice.get("pet_name") or "pet"
+    total_amount = round(float(invoice.get("total_amount") or 0), 2)
+    amount_paid = round(float(invoice.get("amount_paid") or 0), 2)
+    payment_status = invoice.get("payment_status") or derive_billing_payment_state(total_amount, amount_paid)["payment_status"]
+    message = (
+        f"{invoice_number} for {customer_name} / {pet_name} {action_text}. "
+        f"Total: PHP {total_amount:,.2f}. Status: {payment_status}."
+    )
+
+    return create_admin_notification(
+        branch_id=branch_id,
+        event_type=event_type,
+        title=title,
+        message=message,
+        severity=severity,
+        module='billing',
+        link=link,
+        entity_type='billing_invoice',
+        entity_id=invoice_id,
+        metadata={
+            "invoiceId": invoice_id,
+            "invoiceNumber": invoice_number,
+            "customerName": customer_name,
+            "petName": pet_name,
+            "totalAmount": total_amount,
+            "amountPaid": amount_paid,
+            "paymentStatus": payment_status,
+            "sourceRecordType": invoice.get("source_record_type"),
+            "sourceRecordId": invoice.get("source_record_id"),
+            **(metadata or {}),
+        },
+    )
+
+
+def safe_create_billing_admin_notification(**kwargs):
+    try:
+        return create_billing_admin_notification(**kwargs)
+    except Exception as notification_error:
+        print("Billing admin notification error:", str(notification_error))
+        return None
+
+
 def admin_notification_event_exists(event_key):
     if not event_key:
         return False
@@ -6352,6 +6576,18 @@ def create_appointment_record(data, allow_walk_in=False, branch_scope=None):
             email_context=email_context,
         )
 
+        safe_create_appointment_admin_notification(
+            table_name='walkin_appointments',
+            id_column='walkin_id',
+            record_id=created_id,
+            event_type='appointment_created',
+            title='Walk-in appointment created',
+            action_text='was created',
+            severity='info',
+            link='/admin/schedule',
+            metadata={"emailSent": email_sent, "source": "clinic_created_walk_in"},
+        )
+
         return {
             "message": "Clinic-created appointment created!",
             "data": response.data,
@@ -6427,6 +6663,21 @@ def create_appointment_record(data, allow_walk_in=False, branch_scope=None):
         email_context=email_context,
     )
 
+    safe_create_appointment_admin_notification(
+        table_name='appointments',
+        id_column='appointment_id',
+        record_id=created_id,
+        event_type='appointment_created',
+        title='Appointment created',
+        action_text='was created',
+        severity='info',
+        link='/admin/schedule',
+        metadata={
+            "emailSent": email_sent,
+            "source": "owner_booking" if data.get("owner_id") else "clinic_created",
+        },
+    )
+
     return {
         "message": "Appointment created!",
         "data": response.data,
@@ -6498,6 +6749,18 @@ def cancel_appointment(appointment_id):
             metadata={"cancel_reason": cancel_reason},
         )
 
+        safe_create_appointment_admin_notification(
+            table_name="appointments",
+            id_column="appointment_id",
+            record_id=appointment_id,
+            event_type='appointment_cancelled',
+            title='Appointment cancelled',
+            action_text='was cancelled',
+            severity='warning',
+            link='/admin/history',
+            metadata={"cancelReason": cancel_reason},
+        )
+
         return jsonify({"message": "Appointment cancelled successfully"}), 200
 
     except Exception as e:
@@ -6562,6 +6825,24 @@ def reschedule_appointment(appointment_id):
                 "old_time": check.data.get("appointment_time"),
                 "new_date": new_date,
                 "new_time": normalize_db_time(new_time),
+            },
+        )
+
+        safe_create_appointment_admin_notification(
+            table_name="appointments",
+            id_column="appointment_id",
+            record_id=appointment_id,
+            event_type='appointment_rescheduled',
+            title='Appointment rescheduled',
+            action_text='was rescheduled',
+            severity='warning',
+            link='/admin/schedule',
+            metadata={
+                "rescheduleReason": reschedule_reason,
+                "oldDate": check.data.get("appointment_date"),
+                "oldTime": check.data.get("appointment_time"),
+                "newDate": new_date,
+                "newTime": normalize_db_time(new_time),
             },
         )
 
@@ -6880,7 +7161,19 @@ def emr_records_collection():
         branch_scope, branch_error = require_actor_branch_scope(payload)
         if branch_error:
             return jsonify({"error": branch_error}), 400
+        pet_id = payload.get("petId") or payload.get("pet_id")
+        existing_record = get_single_row("medical_records", "pet_id", int(pet_id)) if pet_id not in (None, "") else None
         saved_record = save_emr_record_payload(payload, branch_scope=branch_scope)
+        saved_record_id = saved_record.get("id") or saved_record.get("medical_record_id") if saved_record else None
+        safe_create_emr_admin_notification(
+            medical_record_id=saved_record_id,
+            event_type='medical_record_updated' if existing_record else 'medical_record_created',
+            title='Medical record updated' if existing_record else 'Medical record created',
+            action_text='had a medical record updated' if existing_record else 'had a medical record created',
+            severity='info' if existing_record else 'success',
+            link='/patient-records',
+            metadata={"source": "emr_create"},
+        )
         return jsonify({
             "message": "Medical record saved successfully!",
             "record": saved_record,
@@ -6914,6 +7207,15 @@ def emr_record_detail(record_id):
             if branch_error:
                 return jsonify({"error": branch_error}), 400
             saved_record = save_emr_record_payload(payload, existing_record_id=record_id, branch_scope=branch_scope)
+            safe_create_emr_admin_notification(
+                medical_record_id=record_id,
+                event_type='medical_record_updated',
+                title='Medical record updated',
+                action_text='had a medical record updated',
+                severity='info',
+                link='/patient-records',
+                metadata={"source": "emr_update"},
+            )
             return jsonify({
                 "message": "Medical record updated successfully!",
                 "record": saved_record,
@@ -6931,6 +7233,15 @@ def emr_record_detail(record_id):
         if not get_emr_records([record_id], include_details=False, branch_scope=branch_scope):
             return jsonify({"error": "Medical record not found."}), 404
 
+        safe_create_emr_admin_notification(
+            medical_record_id=record_id,
+            event_type='medical_record_deleted',
+            title='Medical record deleted',
+            action_text='had a medical record deleted',
+            severity='warning',
+            link='/patient-records',
+            metadata={"source": "emr_delete"},
+        )
         supabase_admin.table("medical_records").delete().eq("medical_record_id", record_id).execute()
         return jsonify({"message": "Medical record deleted successfully."}), 200
     except Exception as e:
@@ -6977,6 +7288,23 @@ def update_emr_lab_result_owner_visibility(lab_result_id):
             "medical_record_lab_result_id", lab_result_id
         ).execute().data or []
         updated_row = response[0] if response else get_single_row("medical_record_lab_results", "medical_record_lab_result_id", lab_result_id)
+        visit_id = updated_row.get("medical_record_visit_id") or existing_row.get("medical_record_visit_id")
+
+        safe_create_emr_admin_notification(
+            visit_id=visit_id,
+            event_type='lab_result_shared' if visible_to_owner else 'lab_result_hidden',
+            title='Lab result shared' if visible_to_owner else 'Lab result hidden',
+            action_text='had a lab result shared to the owner portal' if visible_to_owner else 'had a lab result hidden from the owner portal',
+            severity='success' if visible_to_owner else 'info',
+            link='/patient-records',
+            entity_type='lab_result',
+            entity_id=lab_result_id,
+            metadata={
+                "visibleToOwner": visible_to_owner,
+                "labResultId": lab_result_id,
+                "testType": updated_row.get("test_type") or existing_row.get("test_type"),
+            },
+        )
 
         return jsonify({
             "message": "Lab result owner visibility updated successfully.",
@@ -7019,6 +7347,23 @@ def update_emr_vaccination_owner_visibility(vaccination_id):
             "medical_record_vaccination_id", vaccination_id
         ).execute().data or []
         updated_row = response[0] if response else get_single_row("medical_record_vaccinations", "medical_record_vaccination_id", vaccination_id)
+        visit_id = updated_row.get("medical_record_visit_id") or existing_row.get("medical_record_visit_id")
+
+        safe_create_emr_admin_notification(
+            visit_id=visit_id,
+            event_type='vaccination_shared' if visible_to_owner else 'vaccination_hidden',
+            title='Vaccination shared' if visible_to_owner else 'Vaccination hidden',
+            action_text='had a vaccination record shared to the owner portal' if visible_to_owner else 'had a vaccination record hidden from the owner portal',
+            severity='success' if visible_to_owner else 'info',
+            link='/patient-records',
+            entity_type='vaccination',
+            entity_id=vaccination_id,
+            metadata={
+                "visibleToOwner": visible_to_owner,
+                "vaccinationId": vaccination_id,
+                "vaccineName": updated_row.get("vaccine_name") or existing_row.get("vaccine_name"),
+            },
+        )
 
         return jsonify({
             "message": "Vaccination owner visibility updated successfully.",
@@ -8323,6 +8668,21 @@ def create_billing_invoice():
             except Exception as audit_error:
                 print(f"Appointment billing audit error: {audit_error}")
 
+        notification_invoice = get_single_row("billing_invoices", "billing_invoice_id", invoice_id) or created_invoice
+        safe_create_billing_admin_notification(
+            invoice_record=notification_invoice,
+            event_type='invoice_created',
+            title='Invoice created',
+            action_text='was created',
+            severity='success' if payment_state["payment_status"] == "paid" else 'info',
+            link='/billing',
+            metadata={
+                "serviceItemCount": len(created_service_items),
+                "productItemCount": len(created_product_items),
+                "initialPaymentAmount": payment_state["amount_paid"],
+            },
+        )
+
         return jsonify({
             "message": "Invoice created successfully",
             "invoice": normalized_invoice,
@@ -8417,6 +8777,22 @@ def record_billing_invoice_payment(invoice_id):
         if not normalized_invoice:
             raise ValueError("Updated invoice could not be loaded")
 
+        notification_invoice = get_single_row("billing_invoices", "billing_invoice_id", invoice_id) or invoice_record
+        safe_create_billing_admin_notification(
+            invoice_record=notification_invoice,
+            event_type='payment_recorded',
+            title='Payment recorded',
+            action_text=f"received a payment of PHP {payment_amount:,.2f}",
+            severity='success' if updated_state["payment_status"] == "paid" else 'info',
+            link='/billing',
+            metadata={
+                "paymentAmount": payment_amount,
+                "paymentMethod": payment_method,
+                "paymentStatusBefore": current_state["payment_status"],
+                "paymentStatusAfter": updated_state["payment_status"],
+            },
+        )
+
         return jsonify({
             "message": "Payment recorded successfully",
             "invoice": normalized_invoice,
@@ -8449,13 +8825,22 @@ def delete_billing_invoices():
             for invoice_id in invoice_ids_raw
         ]
 
-        invoices = supabase_admin.table("billing_invoices").select("billing_invoice_id, branch_id").in_("billing_invoice_id", parsed_ids).execute().data or []
+        invoices = supabase_admin.table("billing_invoices").select("*").in_("billing_invoice_id", parsed_ids).execute().data or []
         for invoice in invoices:
             _, branch_access_error = validate_branch_scope_access(branch_scope, invoice.get("branch_id"))
             if branch_access_error:
                 return jsonify({"error": branch_access_error}), 403
 
         supabase_admin.table("billing_invoices").delete().in_("billing_invoice_id", parsed_ids).execute()
+        for invoice in invoices:
+            safe_create_billing_admin_notification(
+                invoice_record=invoice,
+                event_type='invoice_deleted',
+                title='Invoice deleted',
+                action_text='was deleted',
+                severity='warning',
+                link='/billing',
+            )
         return jsonify({"message": "Invoices deleted successfully"}), 200
     except Exception as e:
         if is_missing_relation_error(e, "billing_invoices"):
@@ -8838,7 +9223,7 @@ def get_admin_notifications():
     try:
         admin_user_id = (request.args.get('admin_user_id') or request.args.get('adminUserId') or '').strip()
         branch_id_raw = request.args.get('branch_id', request.args.get('branchId'))
-        module = (request.args.get('module') or 'inventory').strip() or 'inventory'
+        module = (request.args.get('module') or '').strip()
         unread_only = parse_bool(request.args.get('unread_only', request.args.get('unreadOnly')), default=False)
         limit_raw = request.args.get('limit')
 
@@ -8931,13 +9316,109 @@ def read_admin_notification(notification_id):
         return jsonify({"error": str(e)}), 400
 
 
+def ensure_admin_notification_access(notification, branch_scope):
+    if not notification:
+        return 'Notification not found', 404
+    if branch_scope and branch_scope.get('can_access_all'):
+        return None, None
+    _, branch_error = validate_branch_scope_access(branch_scope, notification.get('branch_id'))
+    if branch_error:
+        return branch_error, 403
+    return None, None
+
+
+def get_accessible_admin_notifications(notification_ids, branch_scope):
+    response = supabase_admin.table('admin_notifications') \
+        .select('notification_id, branch_id') \
+        .in_('notification_id', notification_ids) \
+        .execute()
+    notifications = response.data or []
+    found_ids = {int(row.get('notification_id')) for row in notifications if row.get('notification_id') is not None}
+    missing_ids = [notification_id for notification_id in notification_ids if notification_id not in found_ids]
+    if missing_ids:
+        return notifications, f"Notification not found: {missing_ids[0]}", 404
+
+    if branch_scope and branch_scope.get('can_access_all'):
+        return notifications, None, None
+
+    for notification in notifications:
+        _, branch_error = validate_branch_scope_access(branch_scope, notification.get('branch_id'))
+        if branch_error:
+            return notifications, branch_error, 403
+
+    return notifications, None, None
+
+
+@app.route('/api/admin-notifications/<int:notification_id>', methods=['DELETE'])
+def delete_admin_notification(notification_id):
+    data = request.get_json(silent=True) or {}
+    try:
+        admin_user_id = (data.get('admin_user_id') or data.get('adminUserId') or request.args.get('admin_user_id') or request.args.get('adminUserId') or '').strip()
+        _, employee_error = get_employee_account_or_400(admin_user_id)
+        if employee_error:
+            return jsonify({'error': employee_error}), 400
+        branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
+        notification = get_single_row('admin_notifications', 'notification_id', notification_id)
+        access_error, status_code = ensure_admin_notification_access(notification, branch_scope)
+        if access_error:
+            return jsonify({'error': access_error}), status_code
+
+        supabase_admin.table('admin_notification_reads').delete().eq('notification_id', notification_id).execute()
+        supabase_admin.table('admin_notifications').delete().eq('notification_id', notification_id).execute()
+
+        return jsonify({'message': 'Notification deleted', 'deletedCount': 1}), 200
+    except Exception as e:
+        print("Delete admin notification error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/admin-notifications', methods=['DELETE'])
+def delete_admin_notifications():
+    data = request.get_json(silent=True) or {}
+    try:
+        admin_user_id = (data.get('admin_user_id') or data.get('adminUserId') or '').strip()
+        raw_ids = data.get('notificationIds') or data.get('notification_ids') or []
+        _, employee_error = get_employee_account_or_400(admin_user_id)
+        if employee_error:
+            return jsonify({'error': employee_error}), 400
+        branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
+        notification_ids = []
+        for raw_id in raw_ids:
+            try:
+                notification_ids.append(int(raw_id))
+            except (TypeError, ValueError):
+                continue
+        notification_ids = list(dict.fromkeys(notification_ids))
+
+        if not notification_ids:
+            return jsonify({'error': 'notificationIds is required'}), 400
+
+        _, access_error, status_code = get_accessible_admin_notifications(notification_ids, branch_scope)
+        if access_error:
+            return jsonify({'error': access_error}), status_code
+
+        supabase_admin.table('admin_notification_reads').delete().in_('notification_id', notification_ids).execute()
+        supabase_admin.table('admin_notifications').delete().in_('notification_id', notification_ids).execute()
+
+        return jsonify({'message': 'Notifications deleted', 'deletedCount': len(notification_ids)}), 200
+    except Exception as e:
+        print("Bulk delete admin notifications error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
 @app.route('/api/admin-notifications/read-all', methods=['POST'])
 def read_all_admin_notifications():
     data = request.get_json() or {}
     try:
         admin_user_id = (data.get('admin_user_id') or data.get('adminUserId') or '').strip()
         branch_id_raw = data.get('branch_id', data.get('branchId'))
-        module = (data.get('module') or 'inventory').strip() or 'inventory'
+        module = (data.get('module') or '').strip()
 
         _, employee_error = get_employee_account_or_400(admin_user_id)
         if employee_error:
@@ -11950,6 +12431,18 @@ def cancel_appointment_with_reason(appointment_id):
             email_context=email_context if 'email_context' in locals() else None,
         )
 
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='appointment_cancelled',
+            title='Appointment cancelled',
+            action_text='was cancelled',
+            severity='warning',
+            link='/admin/history',
+            metadata={"cancelReason": cancel_reason, "emailSent": email_sent},
+        )
+
         return jsonify({
             "message": "Appointment cancelled successfully",
             "emailSent": email_sent,
@@ -12034,6 +12527,24 @@ def create_admin_reschedule_request(appointment_id):
             email_context=email_context,
         )
 
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='reschedule_requested',
+            title='Reschedule request sent',
+            action_text='was proposed for a new schedule',
+            severity='info',
+            link='/admin/schedule',
+            metadata={
+                "requestId": request_row.get("request_id"),
+                "reason": reschedule_reason,
+                "emailSent": email_sent,
+                "proposedDate": new_date,
+                "proposedTime": normalize_db_time(new_time),
+            },
+        )
+
         return jsonify({
             "message": "Reschedule request emailed to patient" + ("" if email_sent else " (email not sent)"),
             "emailSent": email_sent,
@@ -12111,6 +12622,23 @@ def create_patient_reschedule_request(appointment_id):
                 "preferred_time": normalize_db_time(preferred_time),
             },
             email_context=email_context,
+        )
+
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='patient_reschedule_requested',
+            title='Patient requested reschedule',
+            action_text='has a patient preferred schedule request',
+            severity='warning',
+            link='/admin/schedule',
+            metadata={
+                "requestId": request_row.get("request_id"),
+                "patientNote": patient_note,
+                "preferredDate": preferred_date,
+                "preferredTime": normalize_db_time(preferred_time),
+            },
         )
 
         return jsonify({
@@ -12702,6 +13230,18 @@ def review_reschedule_request(request_id):
                 email_context=email_context,
             )
 
+            safe_create_appointment_admin_notification(
+                table_name=table_name,
+                id_column=id_column,
+                record_id=resolved_id,
+                event_type='reschedule_accepted',
+                title='Preferred schedule accepted',
+                action_text='was moved to the patient preferred schedule',
+                severity='success',
+                link='/admin/schedule',
+                metadata={"requestId": request_id, "note": admin_note or None},
+            )
+
             return jsonify({
                 "message": "Patient preferred schedule accepted",
                 "emailSent": email_sent
@@ -12748,6 +13288,18 @@ def review_reschedule_request(request_id):
                     "preferred_time": normalize_db_time(req.get("patient_preferred_time")),
                 },
                 email_context=email_context,
+            )
+
+            safe_create_appointment_admin_notification(
+                table_name=table_name,
+                id_column=id_column,
+                record_id=resolved_id,
+                event_type='reschedule_declined',
+                title='Preferred schedule declined',
+                action_text='had a patient preferred schedule declined',
+                severity='info',
+                link='/admin/schedule',
+                metadata={"requestId": request_id, "note": admin_note or None},
             )
 
             return jsonify({
@@ -12805,6 +13357,18 @@ def assign_doctor(appointment_id):
                 "new_doctor_id": doctor_id,
                 "new_doctor_name": doctor_name,
             },
+        )
+
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='doctor_assigned',
+            title='Doctor assigned',
+            action_text=f"was assigned to {doctor_name}" if doctor_name else "was assigned to a doctor",
+            severity='info',
+            link='/admin/schedule',
+            metadata={"doctorId": doctor_id, "doctorName": doctor_name},
         )
         return jsonify({"message": "Doctor assigned successfully"}), 200
     except Exception as e:
@@ -12991,6 +13555,33 @@ def update_admin_appointment_status(appointment_id):
                 "email_sent": email_sent,
             },
             email_context=email_context,
+        )
+
+        status_title_map = {
+            "confirmed": ("Appointment confirmed", "was confirmed", "success", "/admin/schedule"),
+            "completed": ("Appointment completed", "was marked as completed", "success", "/admin/history"),
+            "cancelled": ("Appointment cancelled", "was cancelled", "warning", "/admin/history"),
+            "pending": ("Appointment set to pending", "was set back to pending", "info", "/admin/schedule"),
+            "no_show": ("Appointment marked no-show", "was marked as no-show", "warning", "/admin/history"),
+        }
+        title, action_text, severity, link = status_title_map.get(
+            status,
+            ("Appointment status updated", f"was updated to {status or 'unknown'}", "info", "/admin/schedule")
+        )
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='appointment_status_updated',
+            title=title,
+            action_text=action_text,
+            severity=severity,
+            link=link,
+            metadata={
+                "previousStatus": previous_status,
+                "status": status,
+                "emailSent": email_sent,
+            },
         )
 
         return jsonify({

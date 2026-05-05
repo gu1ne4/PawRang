@@ -1130,3 +1130,18 @@
     width: auto;
     object-fit: contain;
 }
+
+/* Modal responsive styles */
+@media (max-width: 560px) {
+    div[style*="position: fixed"] > div[style*="max-width: 600px"] {
+        max-height: 90vh !important;
+    }
+    
+    div[style*="position: fixed"] h3 {
+        font-size: 20px !important;
+    }
+    
+    div[style*="position: fixed"] div[style*="padding: 24px"] {
+        padding: 16px !important;
+    }
+}

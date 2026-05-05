@@ -11,7 +11,8 @@ import {
   IoCheckboxSharp,
   IoSquareOutline,
   IoArrowBackOutline,
-  IoFilterOutline
+  IoFilterOutline,
+  IoTrashOutline
 } from 'react-icons/io5';
 import './NotifStyles.css';
 
@@ -23,6 +24,11 @@ export interface Notification {
   timestamp: Date;
   read: boolean;
   link?: string;
+  module?: string;
+  eventType?: string;
+  entityType?: string;
+  entityId?: string | number | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface NotificationsModalRef {
@@ -34,13 +40,34 @@ interface NotificationsAllModalProps {
   onNotificationClick?: (notification: Notification) => void;
   onMarkAsRead?: (id: string) => void | Promise<void>;
   onMarkAllAsRead?: () => void | Promise<void>;
+  onDelete?: (ids: string[]) => void | Promise<void>;
 }
+
+const MODULE_LABELS: Record<string, string> = {
+  inventory: 'Inventory',
+  appointments: 'Appointments',
+  emr: 'EMR',
+  billing: 'Billing',
+  accounts: 'Accounts',
+  availability: 'Availability',
+  audit: 'Audit',
+  system: 'System',
+};
+
+const getNotificationModuleKey = (notification: Notification) => {
+  return String(notification.module || 'system').trim().toLowerCase() || 'system';
+};
+
+const getNotificationModuleLabel = (moduleKey: string) => {
+  return MODULE_LABELS[moduleKey] || moduleKey.replace(/(^|-|_)\w/g, (match) => match.replace(/[-_]/, '').toUpperCase());
+};
 
 const NotificationsAllModal = forwardRef<NotificationsModalRef, NotificationsAllModalProps>(({
   notifications,
   onNotificationClick,
   onMarkAsRead,
   onMarkAllAsRead,
+  onDelete,
 }, ref) => {
   const [showViewAllModal, setShowViewAllModal] = useState<boolean>(false);
 
@@ -63,6 +90,7 @@ const NotificationsAllModal = forwardRef<NotificationsModalRef, NotificationsAll
       handleMarkAsRead(notification.id);
     }
     if (onNotificationClick) onNotificationClick(notification);
+    setShowViewAllModal(false);
   }, [handleMarkAsRead, onNotificationClick]);
 
   const getIcon = useCallback((type: Notification['type']) => {
@@ -103,6 +131,7 @@ const NotificationsAllModal = forwardRef<NotificationsModalRef, NotificationsAll
           onNotificationClick={handleNotificationClick}
           onMarkAsRead={handleMarkAsRead}
           onMarkAllAsRead={handleMarkAllAsReadGlobal}
+          onDelete={onDelete}
         />
       )}
     </>
@@ -117,10 +146,12 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
   formatTime,
   onNotificationClick,
   onMarkAsRead,
-  onMarkAllAsRead
+  onMarkAllAsRead,
+  onDelete
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'read' | 'unread'>('all');
+  const [filterModule, setFilterModule] = useState('all');
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
   const [selectedNotifications, setSelectedNotifications] = useState<Set<string>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -163,6 +194,10 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
         filterStatus === 'read' ? notif.read : !notif.read
       );
     }
+
+    if (filterModule !== 'all') {
+      result = result.filter(notif => getNotificationModuleKey(notif) === filterModule);
+    }
     
     if (sortOrder === 'newest') {
       result = [...result].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
@@ -171,7 +206,27 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
     }
     
     return result;
-  }, [notifications, displaySearchTerm, filterStatus, sortOrder]);
+  }, [notifications, displaySearchTerm, filterStatus, filterModule, sortOrder]);
+
+  const moduleCounts = useMemo(() => {
+    return notifications.reduce<Record<string, number>>((counts, notification) => {
+      const moduleKey = getNotificationModuleKey(notification);
+      counts[moduleKey] = (counts[moduleKey] || 0) + 1;
+      return counts;
+    }, {});
+  }, [notifications]);
+
+  const moduleOptions = useMemo(() => {
+    const moduleKeys = Object.keys(moduleCounts).sort((a, b) =>
+      getNotificationModuleLabel(a).localeCompare(getNotificationModuleLabel(b))
+    );
+
+    return moduleKeys.map((moduleKey) => ({
+      value: moduleKey,
+      label: getNotificationModuleLabel(moduleKey),
+      count: moduleCounts[moduleKey],
+    }));
+  }, [moduleCounts]);
 
   const unreadCount = useMemo(() => {
     let count = 0;
@@ -212,6 +267,18 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
       setIsSelectionMode(false);
     });
   }, [onMarkAsRead, selectedNotifications]);
+
+  const handleBulkDelete = useCallback(() => {
+    const ids = Array.from(selectedNotifications);
+    if (ids.length === 0) return;
+    if (onDelete) onDelete(ids);
+    setSelectedNotifications(new Set());
+    setIsSelectionMode(false);
+  }, [onDelete, selectedNotifications]);
+
+  const handleDeleteSingle = useCallback((id: string) => {
+    if (onDelete) onDelete([id]);
+  }, [onDelete]);
 
   const handleMarkSingleAsRead = useCallback((id: string) => {
     if (onMarkAsRead) onMarkAsRead(id);
@@ -289,6 +356,22 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
                 <option value="read">Read ({readCount})</option>
               </select>
             </div>
+
+            <div className="viewAllOverlayFilterSelectWrapper">
+              <IoFilterOutline size={16} className="viewAllOverlayFilterSelectIcon" color='#3d67ee' />
+              <select
+                className="viewAllOverlayFilterSelect"
+                value={filterModule}
+                onChange={(e) => setFilterModule(e.target.value)}
+              >
+                <option value="all">All Sources ({notifications.length})</option>
+                {moduleOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label} ({option.count})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -318,6 +401,10 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
                   <button className="viewAllOverlayBulkReadBtn" onClick={handleBulkMarkAsRead}>
                     <IoCheckmarkDoneOutline size={12}/>
                     Mark Read
+                  </button>
+                  <button className="viewAllOverlayBulkDeleteBtn" onClick={handleBulkDelete}>
+                    <IoTrashOutline size={12}/>
+                    Delete
                   </button>
                 </>
               )}
@@ -362,16 +449,23 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
                   onClick={() => {
                     if (isSelectionMode) {
                       handleSelectNotification(notification.id);
-                    } else if (!notification.read) {
+                      return;
+                    }
+
+                    if (!notification.read) {
                       handleMarkSingleAsRead(notification.id);
                     }
                     if (onNotificationClick) onNotificationClick(notification);
+                    onClose();
                   }}
                 >
                   <div className="viewAllOverlayItemHeader">
                     <div className="viewAllOverlayItemTitle">
                       {!notification.read && <span className="viewAllOverlayItemUnreadDot" />}
                       {notification.title}
+                      <span className="viewAllOverlayItemSource">
+                        {getNotificationModuleLabel(getNotificationModuleKey(notification))}
+                      </span>
                     </div>
                     <div className="viewAllOverlayItemTime">
                       {formatTime(notification.timestamp)}
@@ -379,6 +473,20 @@ const ViewAllNotificationsModal: React.FC<ViewAllModalProps> = ({
                   </div>
                   <p className="viewAllOverlayItemMessage">{notification.message}</p>
                 </div>
+                {!isSelectionMode && (
+                  <button
+                    type="button"
+                    className="viewAllOverlayItemDelete"
+                    title="Delete notification"
+                    aria-label="Delete notification"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleDeleteSingle(notification.id);
+                    }}
+                  >
+                    <IoTrashOutline size={17} />
+                  </button>
+                )}
               </div>
             ))
           )}
@@ -396,6 +504,7 @@ interface ViewAllModalProps {
   onNotificationClick?: (notification: Notification) => void;
   onMarkAsRead?: (id: string) => void | Promise<void>;
   onMarkAllAsRead?: () => void | Promise<void>;
+  onDelete?: (ids: string[]) => void | Promise<void>;
 }
 
 export default NotificationsAllModal;
