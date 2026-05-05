@@ -61,7 +61,7 @@ export default function ResetPasswordPage1() {
             <div className='resetCard'>
                 <div className='resetHeader'>
                     <div className='resetIconWrapper'>
-                        <Mail size={28} color='#2619e2' />
+                        <Mail size={28} color='#3d67ee' />
                     </div>
                     <h2>Forgot Password</h2>
                     <p>Enter your email address and we'll send you a one-time password (OTP) to reset your password.</p>
@@ -86,7 +86,7 @@ export default function ResetPasswordPage1() {
                 </button>
 
                 <button className='resetPageNavigator' onClick={() => nav('/login')}>
-                    Back to <strong style={{ color: '#2619e2' }}>Login</strong>
+                    Back to <strong style={{ color: '#3d67ee' }}>Login</strong>
                 </button>
             </div>
         </div>

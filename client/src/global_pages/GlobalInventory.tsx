@@ -94,6 +94,21 @@ const SORT_OPTIONS = [
 ];
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
+const getStoredInventoryUserId = (): string => {
+  try {
+    const session = localStorage.getItem('userSession');
+    const parsed = session ? JSON.parse(session) : null;
+    return parsed?.id || parsed?.pk || '';
+  } catch {
+    return '';
+  }
+};
+
+const withInventoryUserId = (url: string): string => {
+  const userId = getStoredInventoryUserId();
+  if (!userId) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}userId=${encodeURIComponent(userId)}`;
+};
 const CATEGORIES: Category[] = ['Pet Supplies', 'Deworming', 'Vitamins', 'Food', 'Accessories', 'Medication'];
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
 const BRANCH_ID_BY_NAME: Record<string, number> = {
@@ -500,7 +515,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
   const fetchProducts = async (): Promise<void> => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/inventory/items`);
+      const response = await fetch(withInventoryUserId(`${API_URL}/api/inventory/items`));
       if (!response.ok) {
         throw new Error(`Failed to fetch inventory data (${response.status})`);
       }
@@ -853,7 +868,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
       async () => {
         try {
           if (viewMode === 'add') {
-            const response = await fetch(`${API_URL}/api/inventory/items`, {
+            const response = await fetch(withInventoryUserId(`${API_URL}/api/inventory/items`), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(productData),
@@ -864,7 +879,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
               throw new Error(result.error || 'Failed to create inventory item.');
             }
           } else {
-            const response = await fetch(`${API_URL}/api/inventory/items/${editingId}`, {
+            const response = await fetch(withInventoryUserId(`${API_URL}/api/inventory/items/${editingId}`), {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(productData),
@@ -905,7 +920,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
           const actorId = currentUser?.id || currentUser?.pk;
 
           for (const productId of productIds) {
-            const response = await fetch(`${API_URL}/api/inventory/items/${productId}/archive`, {
+            const response = await fetch(withInventoryUserId(`${API_URL}/api/inventory/items/${productId}/archive`), {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -1069,7 +1084,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
             );
 
             if (!matchingProduct) {
-              const createResponse = await fetch(`${API_URL}/api/inventory/items`, {
+              const createResponse = await fetch(withInventoryUserId(`${API_URL}/api/inventory/items`), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1118,7 +1133,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
             }
 
             if (row.stockCount > 0) {
-              const stockInResponse = await fetch(`${API_URL}/api/inventory/stock-in`, {
+              const stockInResponse = await fetch(withInventoryUserId(`${API_URL}/api/inventory/stock-in`), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

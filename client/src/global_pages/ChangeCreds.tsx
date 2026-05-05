@@ -1,8 +1,13 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { IoAtOutline, IoLockClosedOutline } from 'react-icons/io5'
+import { AtSign, Eye, EyeOff, KeyRound, UserCog } from 'lucide-react'
+import './UserAuthStylesheet.css'
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000'
+const USERNAME_MIN_LENGTH = 3
+const USERNAME_MAX_LENGTH = 30
+const PASSWORD_MIN_LENGTH = 8
+const PASSWORD_MAX_LENGTH = 64
 
 type MessageState = {
   text: string
@@ -33,6 +38,9 @@ export default function ChangeCreds() {
   const [tokenValid, setTokenValid] = useState(false)
   const [employeeEmail, setEmployeeEmail] = useState('')
   const [message, setMessage] = useState<MessageState>(null)
+  const [usernameError, setUsernameError] = useState('')
+  const [passwordError, setPasswordError] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
     async function validateToken() {
@@ -70,13 +78,15 @@ export default function ChangeCreds() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    if (!username.trim()) {
-      setMessage({ text: 'Username cannot be empty.', type: 'error' })
-      return
-    }
+    const trimmedUsername = username.trim()
+    const nextUsernameError = validateUsername(trimmedUsername)
+    const nextPasswordError = validatePassword(password)
 
-    if (!password || password.length < 6) {
-      setMessage({ text: 'Password must be at least 6 characters long.', type: 'error' })
+    setUsernameError(nextUsernameError)
+    setPasswordError(nextPasswordError)
+
+    if (nextUsernameError || nextPasswordError) {
+      setMessage({ text: 'Please fix the highlighted fields before continuing.', type: 'error' })
       return
     }
 
@@ -89,7 +99,7 @@ export default function ChangeCreds() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token,
-          username: username.trim(),
+          username: trimmedUsername,
           password,
         }),
       })
@@ -112,155 +122,119 @@ export default function ChangeCreds() {
     }
   }
 
-  const messageStyles: Record<'success' | 'error' | 'info', React.CSSProperties> = {
-    success: {
-      color: '#2e7d32',
-      backgroundColor: '#e8f5e8',
-      border: '1px solid #c3e6c3',
-    },
-    error: {
-      color: '#d32f2f',
-      backgroundColor: '#ffebee',
-      border: '1px solid #ffcdd2',
-    },
-    info: {
-      color: '#1e4ecb',
-      backgroundColor: '#eef3ff',
-      border: '1px solid #c9d8ff',
-    },
+  function validateUsername(value: string) {
+    if (!value) return 'Username cannot be empty.'
+    if (value.length < USERNAME_MIN_LENGTH) return `Username must be at least ${USERNAME_MIN_LENGTH} characters.`
+    if (value.length > USERNAME_MAX_LENGTH) return `Username cannot exceed ${USERNAME_MAX_LENGTH} characters.`
+    return ''
+  }
+
+  function validatePassword(value: string) {
+    if (!value) return 'New password cannot be empty.'
+    if (value.length < PASSWORD_MIN_LENGTH) return `New password must be at least ${PASSWORD_MIN_LENGTH} characters.`
+    if (value.length > PASSWORD_MAX_LENGTH) return `New password cannot exceed ${PASSWORD_MAX_LENGTH} characters.`
+    if (!/[A-Z]/.test(value)) return 'New password must contain at least 1 uppercase letter.'
+    if (!/[a-z]/.test(value)) return 'New password must contain at least 1 lowercase letter.'
+    if (!/\d/.test(value)) return 'New password must contain at least 1 number.'
+    return ''
   }
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        background: 'linear-gradient(to bottom, #ffffff 0%, #3d67ee 100%)',
-        fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-      }}
-    >
-      <div
-        style={{
-          background: 'rgba(255, 255, 255, 0.9)',
-          backdropFilter: 'blur(10px)',
-          padding: '60px 80px',
-          borderRadius: '20px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
-          display: 'flex',
-          flexDirection: 'column',
-          maxWidth: '500px',
-          width: '90%',
-        }}
-      >
-        <h2 style={{ fontWeight: '600', fontSize: '30px', margin: '0 0 8px 0', color: '#333' }}>
-          Set Your New Credentials
-        </h2>
-        <p style={{ fontSize: '16px', margin: '0 0 20px 0', color: '#555' }}>
-          Create the username and password you will use for future employee logins.
-        </p>
+    <div className="resetMain">
+      <div className="resetCard">
+        <div className="resetHeader">
+          <div className="resetIconWrapper">
+            <UserCog size={28} color="#3d67ee" />
+          </div>
+          <h2>Set Your New Credentials</h2>
+          <p>Create the username and password you will use for future employee logins.</p>
+        </div>
 
         {employeeEmail && (
-          <div style={{ fontSize: '13px', color: 'rgba(0, 0, 0, 0.62)', marginBottom: '16px' }}>
+          <div className="credentialEmailBadge">
             Account email: <strong>{employeeEmail}</strong>
           </div>
         )}
 
         {message && (
           <div
-            style={{
-              ...messageStyles[message.type],
-              padding: '12px 15px',
-              borderRadius: '8px',
-              marginBottom: '20px',
-              fontSize: '14px',
-              fontWeight: '500',
-            }}
+            className={
+              message.type === 'success'
+                ? 'resetServerSuccess'
+                : message.type === 'error'
+                  ? 'resetServerError'
+                  : 'resetServerInfo'
+            }
           >
-            {message.text}
+            <p>{message.text}</p>
           </div>
         )}
 
         {validating ? (
-          <div style={{ fontSize: '14px', color: '#555' }}>Validating your setup link...</div>
+          <div className="resetStatusText">Validating your setup link...</div>
         ) : tokenValid ? (
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                width: '100%',
-                backgroundColor: 'rgba(95, 95, 95, 0.17)',
-                border: '1px solid #5f5f5f',
-                borderRadius: '8px',
-                padding: '10px 15px',
-                marginBottom: '15px',
-                boxSizing: 'border-box',
-              }}
-            >
-              <IoAtOutline size={20} color="#5f5f5f" style={{ marginRight: '10px' }} />
-              <input
-                type="text"
-                placeholder="Username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                style={{
-                  border: 'none',
-                  background: 'transparent',
-                  outline: 'none',
-                  width: '100%',
-                  fontSize: '14px',
-                  color: '#333',
-                }}
-              />
+          <form onSubmit={handleSubmit} className="changeCredsForm">
+            <div className="resetInputContainer">
+              <label className={`resetInputLabel${usernameError ? ' errorLabel' : ''}`} htmlFor="employee-username">
+                Username <span className="errorAsterisk">*</span>
+              </label>
+              <div className="resetInputFieldContainer">
+                <AtSign className="resetInputIcon" />
+                <input
+                  id="employee-username"
+                  className={`resetInputField${usernameError ? ' errorField' : ''}`}
+                  type="text"
+                  placeholder="Username"
+                  value={username}
+                  minLength={USERNAME_MIN_LENGTH}
+                  maxLength={USERNAME_MAX_LENGTH}
+                  onChange={(e) => {
+                    setUsername(e.target.value)
+                    setUsernameError('')
+                  }}
+                />
+              </div>
+              {usernameError && <p className="errorMessage">{usernameError}</p>}
             </div>
 
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                width: '100%',
-                backgroundColor: 'rgba(95, 95, 95, 0.17)',
-                border: '1px solid #5f5f5f',
-                borderRadius: '8px',
-                padding: '10px 15px',
-                marginBottom: '25px',
-                boxSizing: 'border-box',
-              }}
-            >
-              <IoLockClosedOutline size={20} color="#5f5f5f" style={{ marginRight: '10px' }} />
-              <input
-                type="password"
-                placeholder="New Password (min. 6 characters)"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                style={{
-                  border: 'none',
-                  background: 'transparent',
-                  outline: 'none',
-                  width: '100%',
-                  fontSize: '14px',
-                  color: '#333',
-                }}
-              />
+            <div className="resetInputContainer">
+              <label className={`resetInputLabel${passwordError ? ' errorLabel' : ''}`} htmlFor="employee-password">
+                New Password <span className="errorAsterisk">*</span>
+              </label>
+              <div className="resetInputFieldContainer">
+                <KeyRound className="resetInputIcon" />
+                <input
+                  id="employee-password"
+                  className={`resetInputField resetInputFieldWithAction${passwordError ? ' errorField' : ''}`}
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="New Password"
+                  value={password}
+                  minLength={PASSWORD_MIN_LENGTH}
+                  maxLength={PASSWORD_MAX_LENGTH}
+                  onChange={(e) => {
+                    setPassword(e.target.value)
+                    setPasswordError('')
+                  }}
+                />
+                <button
+                  type="button"
+                  className="passwordVisibilityButton"
+                  onClick={() => setShowPassword((current) => !current)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+              {passwordError && <p className="errorMessage">{passwordError}</p>}
+              <p className="passwordRequirementText">
+                8-64 characters with uppercase, lowercase, and number.
+              </p>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              style={{
-                width: '50%',
-                background: loading ? '#999' : 'linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9, #0f3bca)',
-                border: 'none',
-                borderRadius: '8px',
-                padding: '15px 20px',
-                color: '#fff',
-                fontSize: '15px',
-                fontWeight: '600',
-                cursor: loading ? 'default' : 'pointer',
-                boxShadow: loading ? 'none' : '0 4px 15px rgba(61, 103, 238, 0.3)',
-              }}
+              className="resetButton"
             >
               {loading ? 'Updating...' : 'Update Credentials'}
             </button>
@@ -269,17 +243,7 @@ export default function ChangeCreds() {
           <button
             type="button"
             onClick={() => navigate('/login', { replace: true })}
-            style={{
-              width: '50%',
-              background: 'linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9, #0f3bca)',
-              border: 'none',
-              borderRadius: '8px',
-              padding: '15px 20px',
-              color: '#fff',
-              fontSize: '15px',
-              fontWeight: '600',
-              cursor: 'pointer',
-            }}
+            className="resetButton"
           >
             Back to Login
           </button>

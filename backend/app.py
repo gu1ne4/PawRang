@@ -269,6 +269,198 @@ def format_date_for_email(value):
     return raw
 
 
+def normalize_email_service_key(value):
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def get_service_price_for_email(service_name):
+    raw_service = str(service_name or "").strip()
+    if not raw_service:
+        return None
+
+    services_by_key = {
+        normalize_email_service_key(row.get("service_name")): float(row.get("unit_price") or 0)
+        for row in BILLING_SERVICE_SEED_ROWS
+    }
+    aliases = {
+        "checkup": "Consultation & Check-Up",
+        "check up": "Consultation & Check-Up",
+        "consultation": "Consultation & Check-Up",
+        "consultation check up": "Consultation & Check-Up",
+        "dental cleaning": "Dental Prophylaxis",
+        "laboratory tests": "Complete Blood Count",
+        "lab tests": "Complete Blood Count",
+        "grooming": "Basic Grooming",
+        "pet grooming": "Basic Grooming",
+        "vaccination": "Vaccinations",
+        "xray": "X-Ray",
+        "x ray": "X-Ray",
+    }
+
+    def resolve_price(label):
+        key = normalize_email_service_key(label)
+        if not key:
+            return None
+        if key in services_by_key:
+            return services_by_key[key]
+        alias_target = aliases.get(key)
+        if alias_target:
+            return services_by_key.get(normalize_email_service_key(alias_target))
+        for service_key, price in services_by_key.items():
+            if service_key and service_key in key:
+                return price
+        return None
+
+    option_match = re.search(r"\((.*?)\)", raw_service)
+    if option_match:
+        option_labels = [item.strip() for item in option_match.group(1).split(",") if item.strip()]
+        option_prices = [resolve_price(label) for label in option_labels]
+        option_prices = [price for price in option_prices if price is not None]
+        if option_prices:
+            return sum(option_prices)
+
+    return resolve_price(raw_service)
+
+
+def format_price_for_email(price):
+    if price is None:
+        return "To be confirmed"
+    amount = float(price or 0)
+    if amount <= 0:
+        return "To be confirmed"
+    if amount.is_integer():
+        return f"&#8369;{int(amount):,}"
+    return f"&#8369;{amount:,.2f}"
+
+
+def build_email_detail_rows(rows):
+    html_rows = []
+    for index, row in enumerate(rows or []):
+        if len(row) < 2:
+            continue
+        label, value = row[0], row[1]
+        if value in (None, ""):
+            continue
+        border = " border-top: 1px solid #e8edf7;" if index else ""
+        html_rows.append(f"""
+            <tr>
+                <td style="padding: 14px 16px;{border} color: #64748b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;">
+                    {escape(str(label))}
+                </td>
+                <td style="padding: 14px 16px;{border} color: #1f3fae; font-size: 15px; font-weight: 700; text-align: right;">
+                    {value}
+                </td>
+            </tr>
+        """)
+    return "".join(html_rows)
+
+
+def build_email_button(label, url, background="#6b8cff"):
+    if not url:
+        return ""
+    return f"""
+        <a href="{escape(str(url), quote=True)}" style="display: inline-block; padding: 10px 14px; background: {background}; color: #ffffff; text-decoration: none; border-radius: 999px; margin: 5px 7px 5px 0; font-size: 12px; font-weight: 800;">
+            {escape(str(label))}
+        </a>
+    """
+
+
+def get_email_badge_style(badge):
+    key = str(badge or "").strip().lower()
+    if "cancel" in key or "declin" in key:
+        return {"background": "#fee2e2", "color": "#dc2626"}
+    if "complete" in key or "confirmed" in key or "booked" in key or key == "accepted":
+        return {"background": "#dcfce7", "color": "#16a34a"}
+    if "resched" in key or "review" in key or "pending" in key or "under review" in key or "action" in key or "update" in key:
+        return {"background": "#fef3c7", "color": "#d97706"}
+    return {"background": "#ffffff", "color": "#3d67ee"}
+
+
+def render_pawrang_email(title, badge, greeting_html, body_html, details_title=None, detail_rows=None, note_html=None, accent="#3d67ee"):
+    clinic_name = "PetShield Veterinary Clinic and Grooming Services"
+    safe_title = escape(title or "PawRang Notification")
+    safe_badge = escape(badge or "Notice")
+    badge_style = get_email_badge_style(badge)
+    petshield_logo_url = f"{SUPABASE_URL}/storage/v1/object/public/email-assets/PetshieldLogo.png"
+    pawrang_logo_url = f"{SUPABASE_URL}/storage/v1/object/public/email-assets/PawRang%20Logomark.png"
+    details_html = ""
+    if detail_rows:
+        details_html = f"""
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width: 100%; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; background: #f8fafc;">
+                <tr>
+                    <td colspan="2" style="padding: 16px 18px; background: #eaf0ff; color: #3d67ee; font-size: 14px; font-weight: 800;">
+                        {escape(details_title or "Details")}
+                    </td>
+                </tr>
+                {build_email_detail_rows(detail_rows)}
+            </table>
+        """
+    note_block = f"""
+        <div style="margin: 24px 0 0; padding: 16px 18px; border-left: 4px solid {accent}; background: #f4f7ff; border-radius: 10px;">
+            <div style="margin: 0; color: #274690; font-size: 14px; line-height: 1.6;">
+                {note_html}
+            </div>
+        </div>
+    """ if note_html else ""
+
+    return f"""
+        <div style="margin: 0; padding: 0; background: #f3f6ff; font-family: Arial, Helvetica, sans-serif; color: #1f2937;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width: 100%; background: #f3f6ff;">
+                <tr>
+                    <td align="center" style="padding: 32px 16px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width: 100%; max-width: 620px; background: #ffffff; border-radius: 18px; overflow: hidden; border: 1px solid #dfe7f3; box-shadow: 0 18px 45px rgba(61, 103, 238, 0.12);">
+                            <tr>
+                                <td style="padding: 26px 30px; background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738d9);">
+                                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                                        <tr>
+                                            <td style="vertical-align: top;">
+                                                <img src="{petshield_logo_url}" width="76" alt="PetShield logo" style="display: block; width: 76px; max-width: 76px; height: auto; margin: 0 0 14px;" />
+                                                <h1 style="margin: 10px 0 0; color: #ffffff; font-size: 30px; line-height: 1.2; font-weight: 800;">
+                                                    {safe_title}
+                                                </h1>
+                                            </td>
+                                            <td align="right" style="vertical-align: top;">
+                                                <span style="display: inline-block; padding: 8px 12px; border-radius: 999px; background: {badge_style['background']}; color: {badge_style['color']}; font-size: 12px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase;">
+                                                    {safe_badge}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 30px;">
+                                    <div style="margin: 0 0 14px; color: #334155; font-size: 16px; line-height: 1.65;">
+                                        {greeting_html}
+                                    </div>
+                                    <div style="margin: 0 0 24px; color: #334155; font-size: 16px; line-height: 1.65;">
+                                        {body_html}
+                                    </div>
+                                    {details_html}
+                                    {note_block}
+                                    <p style="margin: 26px 0 0; color: #334155; font-size: 15px; line-height: 1.65;">
+                                        Thank you,<br/>
+                                        <strong style="color: #0f172a;">{clinic_name}</strong>
+                                    </p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 18px 30px; background: #f8fafc; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 12px; line-height: 1.5; text-align: center;">
+                                    <div style="margin-bottom: 10px;">This is an automated notification from {clinic_name}.</div>
+                                    <div style="color: #94a3b8; font-size: 11px; line-height: 1.4;">
+                                        Powered by
+                                        <img src="{pawrang_logo_url}" width="40" alt="PawRang" style="display: inline-block; width: 40px; max-width: 40px; height: auto; vertical-align: middle; margin: 0 7px;" />
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    """
+
+
 def send_html_email(to_email, subject, html):
     if not to_email:
         raise ValueError("Recipient email is required")
@@ -322,36 +514,42 @@ def send_appointment_status_email(notification_type, patient_email, patient_name
     if not patient_email:
         raise ValueError("Patient email is missing")
 
-    safe_patient = patient_name or "Patient"
-    safe_pet = pet_name or "your pet"
-    safe_service = service or "appointment"
-    display_date = format_date_for_email(appointment_date)
-    display_time = format_time_for_email(appointment_time)
-    reason_html = f"<p><strong>Reason:</strong> {reason}</p>" if reason else ""
+    safe_patient = escape(patient_name or "Patient")
+    safe_pet = escape(pet_name or "your pet")
+    safe_service = escape(service or "appointment")
+    display_date = escape(format_date_for_email(appointment_date))
+    display_time = escape(format_time_for_email(appointment_time))
 
     if notification_type == "cancelled":
         subject = "Your PawRang Appointment Has Been Cancelled"
         heading = "Appointment Cancelled"
-        intro = f"Hello {safe_patient}, your appointment for <strong>{safe_pet}</strong> has been cancelled by the clinic."
+        badge = "Cancelled"
+        intro = f"Your appointment for <strong style=\"color: #0f172a;\">{safe_pet}</strong> has been cancelled by the clinic."
     elif notification_type == "rescheduled":
         subject = "Your PawRang Appointment Has Been Rescheduled"
         heading = "Appointment Rescheduled"
-        intro = f"Hello {safe_patient}, your appointment for <strong>{safe_pet}</strong> has been rescheduled by the clinic."
+        badge = "Rescheduled"
+        intro = f"Your appointment for <strong style=\"color: #0f172a;\">{safe_pet}</strong> has been rescheduled by the clinic."
     else:
         raise ValueError(f"Unsupported notification type: {notification_type}")
 
-    html = f"""
-        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-            <h2>{heading}</h2>
-            <p>{intro}</p>
-            <p><strong>Service:</strong> {safe_service}</p>
-            <p><strong>Date:</strong> {display_date}</p>
-            <p><strong>Time:</strong> {display_time}</p>
-            {reason_html}
-            <p>If you have any questions, please contact the clinic.</p>
-            <p>Thank you,<br/>PawRang Veterinary Clinic</p>
-        </div>
-    """
+    details = [
+        ("Service", safe_service),
+        ("Date", display_date),
+        ("Time", display_time),
+    ]
+    if reason:
+        details.append(("Reason", escape(str(reason))))
+
+    html = render_pawrang_email(
+        heading,
+        badge,
+        f"Hello <strong style=\"color: #0f172a;\">{safe_patient}</strong>,",
+        f"<p style=\"margin: 0;\">{intro}</p>",
+        details_title="Appointment Details",
+        detail_rows=details,
+        note_html="If you have any questions, please contact the clinic.",
+    )
 
     send_html_email(patient_email, subject, html)
 
@@ -362,53 +560,186 @@ def send_reschedule_review_email(to_email, patient_name, pet_name, service_name,
 
     normalized_action = (action or 'accepted').strip().lower()
     is_accepted = normalized_action == 'accepted'
-    display_date = format_date_for_email(appointment_date)
-    display_time = appointment_time or "Not provided"
+    safe_patient = escape(patient_name or "Patient")
+    safe_pet = escape(pet_name or "your pet")
+    safe_service = escape(service_name or "Appointment")
+    display_date = escape(format_date_for_email(appointment_date))
+    display_time = escape(appointment_time or "Not provided")
 
     if is_accepted:
         subject = "Preferred Reschedule Confirmed"
         title = "Preferred Schedule Confirmed"
-        intro = f"Hello {patient_name or 'Patient'}, the clinic has accepted your preferred reschedule for <strong>{pet_name or 'your pet'}</strong>."
-        body = "<p>Your appointment has been updated to the confirmed schedule above.</p><p>If you need further changes, please contact the clinic.</p>"
+        badge = "Confirmed"
+        intro = f"The clinic has accepted your preferred reschedule for <strong style=\"color: #0f172a;\">{safe_pet}</strong>."
+        note = "Your appointment has been updated to the confirmed schedule above. If you need further changes, please contact the clinic."
     else:
         subject = "Preferred Reschedule Update"
         title = "Preferred Schedule Declined"
-        intro = f"Hello {patient_name or 'Patient'}, the clinic reviewed your preferred schedule for <strong>{pet_name or 'your pet'}</strong>, but could not approve it at this time."
-        body = "<p>Please wait for another proposed schedule from the clinic, or contact the clinic directly if you would like to discuss other available times.</p>"
+        badge = "Update"
+        intro = f"The clinic reviewed your preferred schedule for <strong style=\"color: #0f172a;\">{safe_pet}</strong>, but could not approve it at this time."
+        note = "Please wait for another proposed schedule from the clinic, or contact the clinic directly if you would like to discuss other available times."
 
-    note_html = f"<p><strong>Clinic Note:</strong> {clinic_note}</p>" if clinic_note else ""
-    html = f"""
-        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-            <h2>{title}</h2>
-            <p>{intro}</p>
-            <p><strong>Service:</strong> {service_name or 'Appointment'}</p>
-            <p><strong>{'Confirmed' if is_accepted else 'Requested'} Date:</strong> {display_date}</p>
-            <p><strong>{'Confirmed' if is_accepted else 'Requested'} Time:</strong> {display_time}</p>
-            {note_html}
-            {body}
-        </div>
-    """
+    details = [
+        ("Service", safe_service),
+        (f"{'Confirmed' if is_accepted else 'Requested'} Date", display_date),
+        (f"{'Confirmed' if is_accepted else 'Requested'} Time", display_time),
+    ]
+    if clinic_note:
+        details.append(("Clinic Note", escape(str(clinic_note))))
+
+    html = render_pawrang_email(
+        title,
+        badge,
+        f"Hello <strong style=\"color: #0f172a;\">{safe_patient}</strong>,",
+        f"<p style=\"margin: 0;\">{intro}</p>",
+        details_title="Reschedule Details",
+        detail_rows=details,
+        note_html=escape(note),
+    )
 
     send_html_email(to_email, subject, html)
     return True
 
 
-def send_appointment_confirmed_email(to_email, patient_name, pet_name, service_name, appointment_date, appointment_time, assigned_doctor=None):
+def send_appointment_confirmed_email(to_email, patient_name, pet_name, service_name, appointment_date, appointment_time, assigned_doctor=None, branch_name=None, service_price=None):
     if not to_email:
         return False
 
-    doctor_html = f"<p><strong>Assigned Doctor:</strong> {assigned_doctor}</p>" if assigned_doctor else ""
+    clinic_name = "PetShield Veterinary Clinic and Grooming Services"
+    safe_patient = escape(patient_name or "Patient")
+    safe_pet = escape(pet_name or "your pet")
+    safe_service = escape(service_name or "Appointment")
+    safe_date = escape(format_date_for_email(appointment_date))
+    safe_time = escape(format_time_for_email(appointment_time))
+    safe_doctor = escape(assigned_doctor or "")
+    safe_branch = escape(branch_name or "Not specified")
+    safe_price = format_price_for_email(service_price if service_price is not None else get_service_price_for_email(service_name))
+    petshield_logo_url = f"{SUPABASE_URL}/storage/v1/object/public/email-assets/PetshieldLogo.png"
+    pawrang_logo_url = f"{SUPABASE_URL}/storage/v1/object/public/email-assets/PawRang%20Logomark.png"
+    doctor_html = (
+        f"""
+            <tr>
+                <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #64748b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;">
+                    Assigned Doctor
+                </td>
+                <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #1f3fae; font-size: 15px; font-weight: 700; text-align: right;">
+                    {safe_doctor}
+                </td>
+            </tr>
+        """
+        if safe_doctor else ""
+    )
     html = f"""
-        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-            <h2>Appointment Confirmed</h2>
-            <p>Hello {patient_name or 'Patient'},</p>
-            <p>Your appointment for <strong>{pet_name or 'your pet'}</strong> has been confirmed by the clinic.</p>
-            <p><strong>Service:</strong> {service_name or 'Appointment'}</p>
-            <p><strong>Date:</strong> {format_date_for_email(appointment_date)}</p>
-            <p><strong>Time:</strong> {appointment_time or 'TBD'}</p>
-            {doctor_html}
-            <p>If you have any questions, please contact the clinic.</p>
-            <p>Thank you,<br/>PawRang Veterinary Clinic</p>
+        <div style="margin: 0; padding: 0; background: #f3f6ff; font-family: Arial, Helvetica, sans-serif; color: #1f2937;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width: 100%; background: #f3f6ff;">
+                <tr>
+                    <td align="center" style="padding: 32px 16px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width: 100%; max-width: 620px; background: #ffffff; border-radius: 18px; overflow: hidden; border: 1px solid #dfe7f3; box-shadow: 0 18px 45px rgba(61, 103, 238, 0.12);">
+                            <tr>
+                                <td style="padding: 26px 30px; background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738d9);">
+                                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                                        <tr>
+                                            <td style="vertical-align: top;">
+                                                <img src="{petshield_logo_url}" width="76" alt="PetShield logo" style="display: block; width: 76px; max-width: 76px; height: auto; margin: 0 0 14px;" />
+                                                <h1 style="margin: 10px 0 0; color: #ffffff; font-size: 30px; line-height: 1.2; font-weight: 800;">
+                                                    Appointment Confirmed
+                                                </h1>
+                                                <div style="margin-top: 10px; color: #e0f2fe; font-size: 14px; line-height: 1.45;">
+                                                    Branch: <strong style="color: #ffffff;">{safe_branch}</strong>
+                                                </div>
+                                            </td>
+                                            <td align="right" style="vertical-align: top;">
+                                                <span style="display: inline-block; padding: 8px 12px; border-radius: 999px; background: #dcfce7; color: #16a34a; font-size: 12px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase;">
+                                                    Confirmed
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 30px;">
+                                    <p style="margin: 0 0 14px; color: #334155; font-size: 16px; line-height: 1.65;">
+                                        Hello <strong style="color: #0f172a;">{safe_patient}</strong>,
+                                    </p>
+                                    <p style="margin: 0 0 24px; color: #334155; font-size: 16px; line-height: 1.65;">
+                                        Good news! The clinic has confirmed the appointment for <strong style="color: #0f172a;">{safe_pet}</strong>. Here are the details for your visit.
+                                    </p>
+
+                                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width: 100%; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; background: #f8fafc;">
+                                        <tr>
+                                            <td colspan="2" style="padding: 16px 18px; background: #eaf0ff; color: #3d67ee; font-size: 14px; font-weight: 800;">
+                                                Appointment Details
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 14px 16px; color: #64748b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;">
+                                                Service
+                                            </td>
+                                            <td style="padding: 14px 16px; color: #1f3fae; font-size: 15px; font-weight: 700; text-align: right;">
+                                                {safe_service}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #64748b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;">
+                                                Branch
+                                            </td>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #1f3fae; font-size: 15px; font-weight: 700; text-align: right;">
+                                                {safe_branch}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #64748b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;">
+                                                Price
+                                            </td>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #ee3d5a; font-size: 16px; font-weight: 800; text-align: right;">
+                                                {safe_price}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #64748b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;">
+                                                Date
+                                            </td>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #1f3fae; font-size: 15px; font-weight: 700; text-align: right;">
+                                                {safe_date}
+                                            </td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #64748b; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;">
+                                                Time
+                                            </td>
+                                            <td style="padding: 14px 16px; border-top: 1px solid #e8edf7; color: #1f3fae; font-size: 15px; font-weight: 700; text-align: right;">
+                                                {safe_time}
+                                            </td>
+                                        </tr>
+                                        {doctor_html}
+                                    </table>
+
+                                    <div style="margin: 24px 0 0; padding: 16px 18px; border-left: 4px solid #3d67ee; background: #f4f7ff; border-radius: 10px;">
+                                        <p style="margin: 0; color: #274690; font-size: 14px; line-height: 1.6;">
+                                            Please arrive a few minutes before your schedule. If you have questions or need to update any detail, contact the clinic before your appointment date.
+                                        </p>
+                                    </div>
+
+                                    <p style="margin: 26px 0 0; color: #334155; font-size: 15px; line-height: 1.65;">
+                                        Thank you,<br/>
+                                        <strong style="color: #0f172a;">{clinic_name}</strong>
+                                    </p>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 18px 30px; background: #f8fafc; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 12px; line-height: 1.5; text-align: center;">
+                                    <div style="margin-bottom: 10px;">This is an automated appointment notification from {clinic_name}.</div>
+                                    <div style="color: #94a3b8; font-size: 11px; line-height: 1.4;">
+                                        Powered by
+                                        <img src="{pawrang_logo_url}" width="40" alt="PawRang" style="display: inline-block; width: 40px; max-width: 40px; height: auto; vertical-align: middle; margin: 0 7px;" />
+                                    </div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
         </div>
     """
 
@@ -420,31 +751,41 @@ def send_reschedule_email(to_email, patient_name, pet_name, service_name, new_da
     if not to_email:
         return False
 
-    reason_html = f"<p><strong>Reason for rescheduling:</strong> {reason}</p>" if reason else ""
+    safe_patient = escape(patient_name or "Patient")
+    safe_pet = escape(pet_name or "your pet")
+    safe_service = escape(service_name or "Appointment")
+    safe_date = escape(format_date_for_email(new_date))
+    safe_time = escape(new_time or "Not provided")
     action_html = ""
     if action_links:
         action_html = f"""
-            <div style="margin: 24px 0;">
-                <a href="{action_links.get('confirm')}" style="display:inline-block;padding:12px 18px;background:#2e7d32;color:#fff;text-decoration:none;border-radius:8px;margin-right:10px;">Confirm New Schedule</a>
-                <a href="{action_links.get('choose_another')}" style="display:inline-block;padding:12px 18px;background:#1565c0;color:#fff;text-decoration:none;border-radius:8px;margin-right:10px;">Choose Another Date</a>
-                <a href="{action_links.get('cancel')}" style="display:inline-block;padding:12px 18px;background:#c62828;color:#fff;text-decoration:none;border-radius:8px;">Cancel Appointment</a>
+            <div style="margin-top: 16px; padding: 14px 16px; border-radius: 14px; background: #f8fafc; border: 1px solid #e2e8f0;">
+                <p style="margin: 0 0 10px; color: #475569; font-size: 13px; line-height: 1.5;">
+                    Please choose one of the options below so the clinic knows how you would like to proceed.
+                </p>
+                {build_email_button("✓ Confirm New Schedule", action_links.get('confirm'), "#4ade80")}
+                {build_email_button("↻ Choose Another Date", action_links.get('choose_another'), "#60a5fa")}
+                {build_email_button("× Cancel Appointment", action_links.get('cancel'), "#f87171")}
             </div>
         """
 
-    html = f"""
-        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-            <h2>Reschedule Request</h2>
-            <p>Hello {patient_name or 'Patient'},</p>
-            <p>The clinic is proposing a new schedule for <strong>{pet_name or 'your pet'}</strong>.</p>
-            <p><strong>Service:</strong> {service_name or 'Appointment'}</p>
-            <p><strong>Proposed Date:</strong> {format_date_for_email(new_date)}</p>
-            <p><strong>Proposed Time:</strong> {new_time or 'Not provided'}</p>
-            {reason_html}
-            {action_html}
-            <p>Your current appointment will stay unchanged until you confirm.</p>
-            <p>If you have questions, please contact the clinic.</p>
-        </div>
-    """
+    details = [
+        ("Service", safe_service),
+        ("Proposed Date", safe_date),
+        ("Proposed Time", safe_time),
+    ]
+    if reason:
+        details.append(("Reason", escape(str(reason))))
+
+    html = render_pawrang_email(
+        "Reschedule Request",
+        "Action Needed",
+        f"Hello <strong style=\"color: #0f172a;\">{safe_patient}</strong>,",
+        f"<p style=\"margin: 0;\">The clinic is proposing a new schedule for <strong style=\"color: #0f172a;\">{safe_pet}</strong>.</p>{action_html}",
+        details_title="Proposed Schedule",
+        detail_rows=details,
+        note_html="Your current appointment will stay unchanged until you confirm. If you have questions, please contact the clinic.",
+    )
 
     send_html_email(to_email, "Appointment reschedule request", html)
     return True
@@ -454,20 +795,25 @@ def send_cancellation_email(to_email, patient_name, pet_name, service_name, appo
     if not to_email:
         return False
 
-    reason_html = f"<p><strong>Reason for cancellation:</strong> {reason}</p>" if reason else ""
-    html = f"""
-        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-            <h2>Appointment Cancelled</h2>
-            <p>Hello {patient_name or 'Patient'},</p>
-            <p>Your appointment for <strong>{pet_name or 'your pet'}</strong> has been cancelled by the clinic.</p>
-            <p><strong>Service:</strong> {service_name or 'Appointment'}</p>
-            <p><strong>Original Date:</strong> {format_date_for_email(appointment_date)}</p>
-            <p><strong>Original Time:</strong> {appointment_time or 'Not provided'}</p>
-            {reason_html}
-            <p>If you would like to book a new appointment, please contact the clinic or use the booking page.</p>
-            <p>We apologize for the inconvenience.</p>
-        </div>
-    """
+    safe_patient = escape(patient_name or "Patient")
+    safe_pet = escape(pet_name or "your pet")
+    details = [
+        ("Service", escape(service_name or "Appointment")),
+        ("Original Date", escape(format_date_for_email(appointment_date))),
+        ("Original Time", escape(appointment_time or "Not provided")),
+    ]
+    if reason:
+        details.append(("Reason", escape(str(reason))))
+
+    html = render_pawrang_email(
+        "Appointment Cancelled",
+        "Cancelled",
+        f"Hello <strong style=\"color: #0f172a;\">{safe_patient}</strong>,",
+        f"<p style=\"margin: 0;\">Your appointment for <strong style=\"color: #0f172a;\">{safe_pet}</strong> has been cancelled by the clinic.</p>",
+        details_title="Cancelled Appointment",
+        detail_rows=details,
+        note_html="If you would like to book a new appointment, please contact the clinic or use the booking page. We apologize for the inconvenience.",
+    )
 
     send_html_email(to_email, "Appointment cancellation notice", html)
     return True
@@ -479,29 +825,28 @@ def send_booking_confirmation_email(to_email, patient_name, pet_name, service_na
 
     normalized_status = (appointment_status or 'pending').strip().lower()
     is_pending = normalized_status == 'pending'
-    status_html = (
-        """
-        <p>Your request has been received and is currently <strong>under review</strong>.</p>
-        <p>We will send you another email once the clinic confirms your schedule.</p>
-        """
+    safe_patient = escape(patient_name or "Patient")
+    safe_pet = escape(pet_name or "your pet")
+    safe_service = escape(service_name or "Appointment")
+    status_text = (
+        "Your request has been received and is currently under review. We will send you another email once the clinic confirms your schedule."
         if is_pending else
-        """
-        <p>Your appointment has been successfully booked.</p>
-        """
+        "Your appointment has been successfully booked."
     )
 
-    html = f"""
-        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-            <h2>Appointment Booking Confirmation</h2>
-            <p>Hello {patient_name or 'Patient'},</p>
-            <p>We have received the appointment request for <strong>{pet_name or 'your pet'}</strong>.</p>
-            <p><strong>Service:</strong> {service_name or 'Appointment'}</p>
-            <p><strong>Date:</strong> {format_date_for_email(appointment_date)}</p>
-            <p><strong>Time:</strong> {appointment_time or 'Not provided'}</p>
-            {status_html}
-            <p>If any detail needs to change, please contact the clinic.</p>
-        </div>
-    """
+    html = render_pawrang_email(
+        "Appointment Booking Confirmation",
+        "Under Review" if is_pending else "Booked",
+        f"Hello <strong style=\"color: #0f172a;\">{safe_patient}</strong>,",
+        f"<p style=\"margin: 0;\">We have received the appointment request for <strong style=\"color: #0f172a;\">{safe_pet}</strong>.</p>",
+        details_title="Appointment Request",
+        detail_rows=[
+            ("Service", safe_service),
+            ("Date", escape(format_date_for_email(appointment_date))),
+            ("Time", escape(appointment_time or "Not provided")),
+        ],
+        note_html=escape(f"{status_text} If any detail needs to change, please contact the clinic."),
+    )
 
     send_html_email(to_email, "Appointment request received" if is_pending else "Appointment booking confirmation", html)
     return True
@@ -550,7 +895,7 @@ def load_admin_appointments():
     pets_by_id = {item.get("pet_id"): item for item in pets}
     doctors_by_id = {
         item.get("id"): item for item in doctors
-        if (item.get("role") or "").lower() in ("vet", "doctor", "veterinarian", "receptionist", "admin")
+        if (item.get("role") or "").lower() in ("vet", "doctor", "veterinarian", "receptionist", "clinical staff", "clinic staff", "admin")
     }
 
     return [
@@ -623,6 +968,50 @@ ADMIN_AI_SUMMARY_SCHEMA = {
     ]
 }
 
+DOCTOR_EMR_BRIEF_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "summary": {"type": "STRING"},
+        "important_flags": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "relevant_history": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "exam_focus": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "care_continuity_notes": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "missing_information": {"type": "ARRAY", "items": {"type": "STRING"}},
+    },
+    "required": [
+        "summary",
+        "important_flags",
+        "relevant_history",
+        "exam_focus",
+        "care_continuity_notes",
+        "missing_information",
+    ]
+}
+
+CLIENT_CARE_SUMMARY_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "summary": {"type": "STRING"},
+        "visit_summary": {"type": "STRING"},
+        "home_care_instructions": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "medication_notes": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "watch_for": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "follow_up": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "friendly_message": {"type": "STRING"},
+        "missing_information": {"type": "ARRAY", "items": {"type": "STRING"}},
+    },
+    "required": [
+        "summary",
+        "visit_summary",
+        "home_care_instructions",
+        "medication_notes",
+        "watch_for",
+        "follow_up",
+        "friendly_message",
+        "missing_information",
+    ]
+}
+
 USER_SYMPTOM_SUMMARY_SCHEMA = {
     "type": "OBJECT",
     "properties": {
@@ -643,6 +1032,131 @@ def _bool_to_phrase(value):
     if value is False:
         return "No"
     return "Not provided"
+
+
+def _has_meaningful_value(value):
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, (int, float)):
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() not in {"", "not provided", "unknown", "n/a", "none"}
+    if isinstance(value, list):
+        return any(_has_meaningful_value(item) for item in value)
+    if isinstance(value, dict):
+        return any(_has_meaningful_value(item) for item in value.values())
+    return bool(value)
+
+
+def _generated_at_manila_iso():
+    return get_current_manila_datetime().replace(microsecond=0).isoformat()
+
+
+def build_ai_support_metadata(case_context, missing_information=None, mode="admin"):
+    sources = []
+    missing_context = list(missing_information or [])
+
+    pet = case_context.get("pet") or {}
+    current_record = case_context.get("current_record") or {}
+    current_visit = case_context.get("current_visit") or {}
+    visit_history = case_context.get("visit_history") if isinstance(case_context.get("visit_history"), list) else []
+
+    if _has_meaningful_value(pet):
+        sources.append("pet profile")
+    if _has_meaningful_value(current_record):
+        sources.append("current record")
+    if _has_meaningful_value(current_visit):
+        sources.append("current visit")
+    if visit_history:
+        sources.append("visit history")
+    if any(_has_meaningful_value((visit or {}).get("medical_information")) for visit in visit_history):
+        sources.append("medical intake")
+    if any(_has_meaningful_value((visit or {}).get("clinical_exam")) for visit in visit_history):
+        sources.append("clinical exam entries")
+    if any(_has_meaningful_value((visit or {}).get("lab_results")) for visit in visit_history):
+        sources.append("lab results")
+    if any(_has_meaningful_value((visit or {}).get("prescriptions")) for visit in visit_history):
+        sources.append("prescriptions")
+
+    if mode == "doctor" and not visit_history:
+        missing_context.append("Visit history")
+    if mode == "doctor" and not any(_has_meaningful_value((visit or {}).get("clinical_exam")) for visit in visit_history):
+        missing_context.append("Clinical exam findings")
+
+    deduped_sources = list(dict.fromkeys(sources))
+    deduped_missing = list(dict.fromkeys(item for item in missing_context if _has_meaningful_value(item)))
+
+    if len(deduped_sources) >= 5 and len(deduped_missing) <= 2:
+        reliability = "High"
+        reason = "Generated from multiple relevant record sources with few major gaps."
+    elif len(deduped_sources) >= 3 and len(deduped_missing) <= 5:
+        reliability = "Moderate"
+        reason = "Generated from useful case data, but some context still needs review."
+    else:
+        reliability = "Low"
+        reason = "Generated from limited case data or several missing clinical details."
+
+    reasons = [reason]
+    if deduped_missing:
+        reasons.append("Missing or incomplete: " + ", ".join(deduped_missing[:4]))
+
+    return {
+        "label": "AI-generated clinical support",
+        "review_required": True,
+        "reliability": reliability,
+        "reasons": reasons,
+        "sources": deduped_sources,
+        "missing_context": deduped_missing,
+        "generated_at": _generated_at_manila_iso(),
+        "disclaimer": "Review and verify before use. This output does not diagnose, prescribe, or replace veterinary judgment.",
+    }
+
+
+def attach_ai_support_metadata(ai_result, case_context, mode="admin"):
+    result = dict(ai_result or {})
+    result["support_metadata"] = build_ai_support_metadata(
+        case_context,
+        result.get("missing_information") if isinstance(result.get("missing_information"), list) else [],
+        mode,
+    )
+    return result
+
+
+def _normalized_text(value):
+    return str(value or "").strip().lower()
+
+
+def _answer_is_yes(value):
+    return _normalized_text(value) in {"yes", "true", "1", "y"}
+
+
+def _answer_is_no(value):
+    return _normalized_text(value) in {"no", "false", "0", "n"}
+
+
+def _make_risk_flag(flag_id, severity, title, detail, action, source):
+    return {
+        "id": flag_id,
+        "severity": severity,
+        "title": title,
+        "detail": detail,
+        "suggested_action": action,
+        "source": source,
+    }
+
+
+def _make_follow_up_reminder(reminder_id, priority, title, detail, timing, action, source):
+    return {
+        "id": reminder_id,
+        "priority": priority,
+        "title": title,
+        "detail": detail,
+        "suggested_timing": timing,
+        "suggested_action": action,
+        "source": source,
+    }
 
 
 def build_admin_ai_case_context(payload):
@@ -830,6 +1344,7 @@ def build_doctor_emr_case_context(payload):
     pet = payload.get("pet") or {}
     owner = payload.get("owner") or {}
     current_record = payload.get("current_record") or {}
+    current_visit = payload.get("current_visit") or {}
     visit_history = payload.get("visit_history") if isinstance(payload.get("visit_history"), list) else []
 
     return {
@@ -852,6 +1367,7 @@ def build_doctor_emr_case_context(payload):
             "reason_for_visit": _text_or_default(current_record.get("reason_for_visit")),
             "assigned_doctor": _text_or_default(current_record.get("assigned_doctor")),
         },
+        "current_visit": current_visit,
         "visit_history": visit_history[-6:],
     }
 
@@ -875,14 +1391,18 @@ Rules:
 - If symptoms are present, connect them to exam focus areas without naming a definitive disease
 - If information is missing, list only items that could affect the doctor's assessment
 - Return at most 4 important_flags
-- Return at most 5 follow_up_questions
+- Return at most 4 relevant_history items
+- Return at most 4 exam_focus items
+- Return at most 4 care_continuity_notes items
 - Return at most 6 missing_information items
 - Keep the summary in 2 to 4 sentences
 
 Interpret the output fields this way:
 - summary: doctor-facing clinical prep overview
 - important_flags: relevant clinical or intake considerations, not diagnoses
-- follow_up_questions: questions the veterinarian may ask the owner
+- relevant_history: important previous visits, intake patterns, or findings
+- exam_focus: exam areas the veterinarian may consider checking
+- care_continuity_notes: continuity reminders for follow-up, meds, vaccines, labs, or owner education
 - missing_information: data gaps that may matter before or during exam
 
 Use only the data below.
@@ -951,6 +1471,217 @@ def call_gemini_with_structured_output(prompt, schema):
     }
 
 
+def call_gemini_with_raw_structured_output(prompt, schema):
+    if not GEMINI_API_KEY:
+        raise ValueError("Missing GEMINI_API_KEY in backend environment.")
+
+    endpoint = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
+    )
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.2,
+            "responseMimeType": "application/json",
+            "responseSchema": schema
+        }
+    }
+    req = urllib_request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+
+    try:
+        with urllib_request.urlopen(req, timeout=45) as response:
+            raw = response.read().decode("utf-8")
+    except urllib_error.HTTPError as e:
+        error_body = e.read().decode("utf-8", errors="replace")
+        raise ValueError(f"Gemini API error ({e.code}): {error_body}")
+    except urllib_error.URLError as e:
+        raise ValueError(f"Gemini API connection error: {e}")
+
+    parsed = json.loads(raw)
+    candidates = parsed.get("candidates") or []
+    if not candidates:
+        raise ValueError("Gemini returned no candidates.")
+
+    parts = (((candidates[0] or {}).get("content") or {}).get("parts") or [])
+    text = "".join(part.get("text", "") for part in parts if isinstance(part, dict)).strip()
+    if not text:
+        raise ValueError("Gemini returned an empty response.")
+
+    result = json.loads(text)
+    result["model"] = GEMINI_MODEL
+    return result
+
+
+def build_client_care_summary_prompt(case_context):
+    return f"""
+You are helping veterinary clinic staff draft a client-friendly care summary.
+
+Rules:
+- Use plain language for pet owners.
+- Do not diagnose, prescribe, or replace veterinarian judgment.
+- Base the summary only on the provided record.
+- Keep bullets short and practical.
+- Mention that clinic staff should review before sharing when details are incomplete.
+
+Return JSON matching the schema.
+
+Case context:
+{json.dumps(case_context, indent=2)}
+""".strip()
+
+
+def build_clinical_risk_flags(case_context):
+    flags = []
+    current_visit = case_context.get("current_visit") or {}
+    medical = current_visit.get("medical_information") or {}
+    history = case_context.get("visit_history") if isinstance(case_context.get("visit_history"), list) else []
+
+    if _answer_is_yes(medical.get("on_medication")) or _has_meaningful_value(medical.get("medication_details")):
+        flags.append(_make_risk_flag(
+            "current-medication",
+            "medium",
+            "Recent medication reported",
+            "Owner intake indicates recent or current medication use.",
+            "Confirm medication name, dose, timing, and reason before treatment decisions.",
+            "current visit intake",
+        ))
+    if _answer_is_no(medical.get("flea_tick_prevention")):
+        flags.append(_make_risk_flag(
+            "parasite-prevention-gap",
+            "low",
+            "Parasite prevention may be incomplete",
+            "Flea/tick prevention was not confirmed in the intake.",
+            "Verify prevention status, especially before grooming or boarding.",
+            "current visit intake",
+        ))
+    if _answer_is_no(medical.get("up_to_date_vaccinations")) or _answer_is_no(medical.get("is_vaccinated")):
+        flags.append(_make_risk_flag(
+            "vaccine-status-gap",
+            "medium",
+            "Vaccination status needs review",
+            "Vaccination status is missing or not up to date.",
+            "Check vaccine history and clinic requirements before proceeding.",
+            "current visit intake",
+        ))
+    if _answer_is_yes(medical.get("pregnant")) or _answer_is_yes(medical.get("is_pregnant")):
+        flags.append(_make_risk_flag(
+            "pregnancy-reported",
+            "high",
+            "Pregnancy reported",
+            "Owner intake indicates the pet may be pregnant.",
+            "Use pregnancy-aware handling and confirm with the veterinarian.",
+            "current visit intake",
+        ))
+    if _has_meaningful_value(medical.get("reported_symptoms")) or _has_meaningful_value(medical.get("owner_symptom_notes")):
+        flags.append(_make_risk_flag(
+            "owner-symptoms",
+            "medium",
+            "Owner symptoms require review",
+            "Owner submitted symptom details that may affect the exam plan.",
+            "Review duration, appetite, drinking, and worsening status with the owner.",
+            "current visit intake",
+        ))
+    if any(_has_meaningful_value((visit or {}).get("lab_results")) for visit in history):
+        flags.append(_make_risk_flag(
+            "previous-labs",
+            "low",
+            "Previous labs available",
+            "Visit history contains lab or diagnostic results.",
+            "Review prior interpretations before finalizing today's assessment.",
+            "visit history",
+        ))
+
+    missing = []
+    if not _has_meaningful_value(current_visit.get("clinical_exam")):
+        missing.append("Current clinical exam findings")
+    if not _has_meaningful_value(medical):
+        missing.append("Current medical intake")
+
+    return {
+        "summary": "Clinical support flags were prepared from the current visit and recent EMR history.",
+        "flags": flags[:6],
+        "missing_information": missing,
+        "model": "rules",
+        "support_metadata": build_ai_support_metadata(case_context, missing, mode="doctor"),
+    }
+
+
+def build_follow_up_reminders(case_context):
+    reminders = []
+    current_visit = case_context.get("current_visit") or {}
+    medical = current_visit.get("medical_information") or {}
+    history = case_context.get("visit_history") if isinstance(case_context.get("visit_history"), list) else []
+
+    if _has_meaningful_value(current_visit.get("prescriptions")):
+        reminders.append(_make_follow_up_reminder(
+            "prescription-check",
+            "high",
+            "Medication follow-up",
+            "Current visit includes prescription details.",
+            "Within the medication course or as directed by the veterinarian.",
+            "Confirm owner understands dosage, duration, and warning signs.",
+            "current visit",
+        ))
+    if _has_meaningful_value(current_visit.get("vaccination_details")):
+        reminders.append(_make_follow_up_reminder(
+            "vaccine-next-due",
+            "medium",
+            "Vaccine continuity",
+            "Vaccination details were recorded for this visit.",
+            "Use the next due date in the vaccination record.",
+            "Schedule or remind owner about the next vaccine due date.",
+            "current visit",
+        ))
+    if _has_meaningful_value(current_visit.get("lab_results")):
+        reminders.append(_make_follow_up_reminder(
+            "lab-review",
+            "high",
+            "Lab result review",
+            "Current visit includes lab results or interpretations.",
+            "As soon as results are finalized.",
+            "Review results with the veterinarian and communicate owner instructions.",
+            "current visit",
+        ))
+    if _has_meaningful_value(medical.get("reported_symptoms")) or _has_meaningful_value(medical.get("owner_symptom_notes")):
+        reminders.append(_make_follow_up_reminder(
+            "symptom-recheck",
+            "medium",
+            "Symptom recheck",
+            "Owner reported symptoms during intake.",
+            "Follow clinic guidance after today's exam.",
+            "Document whether symptoms improve, persist, or worsen.",
+            "current visit intake",
+        ))
+    if not reminders and history:
+        reminders.append(_make_follow_up_reminder(
+            "routine-continuity",
+            "low",
+            "Routine care continuity",
+            "No urgent follow-up trigger was detected from the provided data.",
+            "At the next routine wellness or service interval.",
+            "Confirm preventive care, vaccines, and owner concerns.",
+            "visit history",
+        ))
+
+    missing = []
+    if not _has_meaningful_value(current_visit):
+        missing.append("Current visit details")
+
+    return {
+        "summary": "Follow-up reminders were prepared from the current visit details and EMR history.",
+        "reminders": reminders[:6],
+        "missing_information": missing,
+        "model": "rules",
+        "support_metadata": build_ai_support_metadata(case_context, missing, mode="doctor"),
+    }
+
+
 def build_ai_error_response(error, fallback_message):
     message = str(error or "")
     lowered = message.lower()
@@ -995,7 +1726,7 @@ INVENTORY_CATEGORY_CODES = {
     "Medication": "MED",
 }
 INVENTORY_ITEM_STOP_WORDS = {"and", "for", "of", "the", "with", "to", "a", "an"}
-ADMIN_NOTIFICATION_MODULES = {"inventory"}
+ADMIN_NOTIFICATION_MODULES = {"inventory", "appointments", "emr", "billing"}
 ADMIN_NOTIFICATION_SEVERITIES = {"info", "success", "warning", "error"}
 TRANSIENT_SUPABASE_ERROR_PATTERNS = (
     "winerror 10035",
@@ -1359,6 +2090,8 @@ def normalize_patient_admin_account(profile):
         "status": status,
         "userImage": user_image,
         "userimage": user_image,
+        "createdAt": profile.get('created_at'),
+        "created_at": profile.get('created_at'),
     }
 
 
@@ -1377,6 +2110,9 @@ def normalize_employee_admin_account(profile):
         "role": role,
         "status": status,
         "employee_image": profile.get('employee_image'),
+        "branch_id": profile.get('branch_id'),
+        "branch_name": profile.get('branch_name') or profile.get('branchName'),
+        "branchName": profile.get('branch_name') or profile.get('branchName'),
         "created_at": profile.get('created_at'),
         "is_initial_login": bool(profile.get('is_initial_login')),
     }
@@ -1826,11 +2562,27 @@ def validate_emr_record_required_fields(data):
         raise ValueError(format_missing_required_fields(missing_fields))
 
 
-def get_emr_search_results():
+def get_emr_search_results(branch_scope=None):
     pets = execute_with_retry(
         lambda: supabase_admin.table("pet_profile").select("*").order("created_at", desc=True).execute(),
         context="Fetch EMR search pets"
     ).data or []
+    if branch_scope and not branch_scope.get("can_access_all"):
+        appointment_pet_ids = execute_with_retry(
+            lambda: supabase_admin.table("appointments").select("pet_id").eq("branch_id", branch_scope.get("branch_id")).execute(),
+            context="Fetch branch-scoped EMR appointment pet ids"
+        ).data or []
+        walkin_pet_names = execute_with_retry(
+            lambda: supabase_admin.table("walkin_appointments").select("pet_name").eq("branch_id", branch_scope.get("branch_id")).execute(),
+            context="Fetch branch-scoped EMR walk-in pet names"
+        ).data or []
+        scoped_pet_ids = {str(item.get("pet_id")) for item in appointment_pet_ids if item.get("pet_id") not in (None, "")}
+        scoped_pet_names = {normalize_branch_text(item.get("pet_name")) for item in walkin_pet_names if item.get("pet_name")}
+        pets = [
+            pet for pet in pets
+            if str(pet.get("pet_id")) in scoped_pet_ids
+            or normalize_branch_text(pet.get("pet_name")) in scoped_pet_names
+        ]
     owners = execute_with_retry(
         lambda: supabase_admin.table("patient_account").select("*").execute(),
         context="Fetch EMR search owners"
@@ -1884,6 +2636,7 @@ def get_emr_records(
     include_lab_results=True,
     include_vaccinations=True,
     include_medical_information=True,
+    branch_scope=None,
 ):
     records_query = supabase_admin.table("medical_records").select("*")
     if record_ids:
@@ -1903,6 +2656,7 @@ def get_emr_records(
     visits_query = supabase_admin.table("medical_record_visits").select("*")
     if medical_record_ids:
         visits_query = visits_query.in_("medical_record_id", medical_record_ids)
+    visits_query = apply_branch_scope_to_query(visits_query, branch_scope)
     visit_rows = execute_with_retry(
         lambda: visits_query.execute(),
         context="Fetch EMR visits"
@@ -2186,7 +2940,7 @@ def get_emr_records(
     return normalized_records
 
 
-def save_emr_record_payload(data, existing_record_id=None):
+def save_emr_record_payload(data, existing_record_id=None, branch_scope=None):
     data = data or {}
     pet_id = data.get("petId") or data.get("pet_id")
     if pet_id in (None, ""):
@@ -2246,9 +3000,19 @@ def save_emr_record_payload(data, existing_record_id=None):
         source_type = (visit.get("sourceType") or ("appointment" if source_id_raw not in (None, "") else "manual")).strip().lower()
         if source_type not in {"manual", "appointment", "walkin"}:
             source_type = "manual"
+        visit_branch_id = resolve_emr_visit_branch_id(
+            source_type=source_type,
+            source_id=source_id_raw,
+            branch_scope=branch_scope,
+            fallback_branch_id=visit.get("branchId") or visit.get("branch_id") or data.get("branchId") or data.get("branch_id"),
+        )
+        _, branch_access_error = validate_branch_scope_access(branch_scope, visit_branch_id)
+        if branch_access_error:
+            raise ValueError(branch_access_error)
 
         visit_payload = {
             "medical_record_id": medical_record_id,
+            "branch_id": visit_branch_id,
             "source_type": source_type,
             "source_id": int(source_id_raw) if source_id_raw not in (None, "") else None,
             "visit_date": normalized_visit_date,
@@ -2397,9 +3161,12 @@ def save_emr_record_payload(data, existing_record_id=None):
     return refreshed_records[0] if refreshed_records else None
 
 
-def get_emr_pet_appointments(pet_id):
+def get_emr_pet_appointments(pet_id, branch_scope=None):
     appointments = execute_with_retry(
-        lambda: supabase_admin.table("appointments").select("*").eq("pet_id", pet_id).order("appointment_date").execute(),
+        lambda: apply_branch_scope_to_query(
+            supabase_admin.table("appointments").select("*").eq("pet_id", pet_id),
+            branch_scope,
+        ).order("appointment_date").execute(),
         context="Fetch EMR pet appointments"
     ).data or []
     doctors = execute_with_retry(
@@ -2595,8 +3362,8 @@ def normalize_audit_role(role):
         return "Admin"
     if "vet" in lowered or "doctor" in lowered:
         return "Veterinarian"
-    if "reception" in lowered or "front" in lowered:
-        return "Receptionist"
+    if "reception" in lowered or "front" in lowered or "clinical" in lowered or "clinic staff" in lowered:
+        return "Clinic Staff"
     if "patient" in lowered or "user" in lowered or "client" in lowered or "owner" in lowered:
         return "User"
     return role_value or "System"
@@ -2604,7 +3371,7 @@ def normalize_audit_role(role):
 
 def normalize_audit_account_type(value):
     raw_value = str(value or "").strip().lower()
-    if raw_value in {"employee", "staff", "admin", "doctor", "vet", "veterinarian", "receptionist", "employee_accounts"}:
+    if raw_value in {"employee", "staff", "clinical staff", "clinic staff", "admin", "doctor", "vet", "veterinarian", "receptionist", "employee_accounts"}:
         return "employee"
     if raw_value in {"patient", "user", "client", "owner", "patient_account"}:
         return "patient"
@@ -2802,6 +3569,23 @@ def resolve_appointment_target(target_id, record_type=None):
 def get_reschedule_email_context(table_name, id_column, record_id):
     record_res = supabase_admin.table(table_name).select("*").eq(id_column, record_id).single().execute()
     record = record_res.data or {}
+    branch = {}
+    branch_id = record.get("branch_id")
+
+    if branch_id not in (None, ""):
+        try:
+            branch_res = supabase_admin.table("branches").select("*").eq("branch_id", branch_id).execute()
+            branch_rows = branch_res.data or []
+            if not branch_rows:
+                branch_res = supabase_admin.table("branches").select("*").eq("id", branch_id).execute()
+                branch_rows = branch_res.data or []
+            branch = branch_rows[0] if branch_rows else {}
+        except Exception as branch_error:
+            print(f"Appointment email branch lookup error: {branch_error}")
+
+    branch_name = branch.get("branch_name") or branch.get("name") or "Not specified"
+    service_name = record.get("appointment_type") or "Appointment"
+    service_price = get_service_price_for_email(service_name)
 
     if table_name == "walkin_appointments":
         return {
@@ -2809,7 +3593,9 @@ def get_reschedule_email_context(table_name, id_column, record_id):
             "email": record.get("email"),
             "patient_name": f"{record.get('first_name', '')} {record.get('last_name', '')}".strip() or "Patient",
             "pet_name": record.get("pet_name") or "your pet",
-            "service_name": record.get("appointment_type") or "Appointment",
+            "service_name": service_name,
+            "service_price": service_price,
+            "branch_name": branch_name,
         }
 
     owner = {}
@@ -2831,7 +3617,9 @@ def get_reschedule_email_context(table_name, id_column, record_id):
         "email": owner.get("email"),
         "patient_name": get_profile_display_name(owner) or "Patient",
         "pet_name": pet.get("pet_name") or "your pet",
-        "service_name": record.get("appointment_type") or "Appointment",
+        "service_name": service_name,
+        "service_price": service_price,
+        "branch_name": branch_name,
     }
 
 
@@ -4835,6 +5623,230 @@ def safe_create_inventory_admin_notification(**kwargs):
         return None
 
 
+def create_appointment_admin_notification(
+    *,
+    table_name,
+    id_column,
+    record_id,
+    event_type,
+    title,
+    action_text,
+    severity='info',
+    link='/admin/schedule',
+    metadata=None,
+):
+    email_context = get_reschedule_email_context(table_name, id_column, record_id)
+    record = email_context.get("record") or {}
+    branch_id = record.get("branch_id")
+    if not branch_id:
+        raise ValueError("Appointment notification requires branch_id")
+
+    entity_type = 'walkin' if table_name == 'walkin_appointments' else 'appointment'
+    patient_name = email_context.get("patient_name") or "Patient"
+    pet_name = email_context.get("pet_name") or "your pet"
+    service_name = email_context.get("service_name") or "Appointment"
+    appointment_date = record.get("appointment_date") or ""
+    appointment_time = format_display_time(record.get("appointment_time"))
+    schedule_text = " ".join(
+        part for part in [
+            str(appointment_date).strip(),
+            f"at {appointment_time}" if appointment_time else ""
+        ] if part
+    ).strip()
+    message = f"{patient_name}'s appointment for {pet_name} ({service_name}) {action_text}."
+    if schedule_text:
+        message = f"{message} Schedule: {schedule_text}."
+
+    return create_admin_notification(
+        branch_id=branch_id,
+        event_type=event_type,
+        title=title,
+        message=message,
+        severity=severity,
+        module='appointments',
+        link=link,
+        entity_type=entity_type,
+        entity_id=record_id,
+        metadata={
+            "recordType": entity_type,
+            "patientName": patient_name,
+            "petName": pet_name,
+            "serviceName": service_name,
+            "appointmentDate": appointment_date,
+            "appointmentTime": record.get("appointment_time"),
+            **(metadata or {}),
+        },
+    )
+
+
+def safe_create_appointment_admin_notification(**kwargs):
+    try:
+        return create_appointment_admin_notification(**kwargs)
+    except Exception as notification_error:
+        print("Appointment admin notification error:", str(notification_error))
+        return None
+
+
+def resolve_emr_notification_context(medical_record_id=None, visit_id=None):
+    visit = None
+    if visit_id not in (None, ""):
+        visit = get_single_row("medical_record_visits", "medical_record_visit_id", visit_id)
+        if visit and medical_record_id in (None, ""):
+            medical_record_id = visit.get("medical_record_id")
+
+    record = get_single_row("medical_records", "medical_record_id", medical_record_id) if medical_record_id not in (None, "") else None
+    if not record:
+        raise ValueError("Medical record not found for EMR notification")
+
+    pet = get_single_row("pet_profile", "pet_id", record.get("pet_id")) if record.get("pet_id") not in (None, "") else None
+    owner = get_single_row("patient_account", "id", pet.get("owner_id")) if pet and pet.get("owner_id") else None
+
+    if not visit:
+        visit_res = execute_with_retry(
+            lambda: supabase_admin.table("medical_record_visits")
+            .select("*")
+            .eq("medical_record_id", medical_record_id)
+            .order("visit_date", desc=True)
+            .limit(1)
+            .execute(),
+            context="Fetch EMR notification latest visit"
+        )
+        visit = (visit_res.data or [None])[0]
+
+    branch_id = (visit or {}).get("branch_id") or record.get("branch_id")
+    if not branch_id:
+        raise ValueError("EMR notification requires branch_id")
+
+    owner_name = get_profile_display_name(owner) if owner else "Unknown owner"
+    return {
+        "medicalRecordId": record.get("medical_record_id"),
+        "branchId": branch_id,
+        "record": record,
+        "visit": visit,
+        "pet": pet,
+        "owner": owner,
+        "petName": (pet or {}).get("pet_name") or "Unknown pet",
+        "ownerName": owner_name,
+    }
+
+
+def create_emr_admin_notification(
+    *,
+    medical_record_id=None,
+    visit_id=None,
+    event_type,
+    title,
+    action_text,
+    severity='info',
+    link='/patient-records',
+    entity_type='medical_record',
+    entity_id=None,
+    metadata=None,
+):
+    context = resolve_emr_notification_context(medical_record_id=medical_record_id, visit_id=visit_id)
+    resolved_record_id = context.get("medicalRecordId")
+    resolved_entity_id = entity_id if entity_id not in (None, "") else resolved_record_id
+    message = f"{context.get('petName')} ({context.get('ownerName')}) {action_text}."
+
+    return create_admin_notification(
+        branch_id=context.get("branchId"),
+        event_type=event_type,
+        title=title,
+        message=message,
+        severity=severity,
+        module='emr',
+        link=link,
+        entity_type=entity_type,
+        entity_id=resolved_entity_id,
+        metadata={
+            "medicalRecordId": resolved_record_id,
+            "petId": (context.get("pet") or {}).get("pet_id"),
+            "petName": context.get("petName"),
+            "ownerId": (context.get("owner") or {}).get("id"),
+            "ownerName": context.get("ownerName"),
+            "visitId": (context.get("visit") or {}).get("medical_record_visit_id"),
+            **(metadata or {}),
+        },
+    )
+
+
+def safe_create_emr_admin_notification(**kwargs):
+    try:
+        return create_emr_admin_notification(**kwargs)
+    except Exception as notification_error:
+        print("EMR admin notification error:", str(notification_error))
+        return None
+
+
+def get_default_admin_notification_branch_id():
+    response = execute_with_retry(
+        lambda: supabase_admin.table("branches").select("*").limit(1).execute(),
+        context="Fetch default notification branch"
+    )
+    branch = (response.data or [{}])[0]
+    return branch.get("branch_id") or branch.get("id")
+
+
+def create_billing_admin_notification(
+    *,
+    invoice_record,
+    event_type,
+    title,
+    action_text,
+    severity='info',
+    link='/billing',
+    metadata=None,
+):
+    invoice = invoice_record or {}
+    branch_id = invoice.get("branch_id") or get_default_admin_notification_branch_id()
+    if not branch_id:
+        raise ValueError("Billing notification requires a branch_id")
+
+    invoice_id = invoice.get("billing_invoice_id")
+    invoice_number = invoice.get("invoice_number") or f"Invoice {invoice_id or ''}".strip()
+    customer_name = invoice.get("customer_name") or "Customer"
+    pet_name = invoice.get("pet_name") or "pet"
+    total_amount = round(float(invoice.get("total_amount") or 0), 2)
+    amount_paid = round(float(invoice.get("amount_paid") or 0), 2)
+    payment_status = invoice.get("payment_status") or derive_billing_payment_state(total_amount, amount_paid)["payment_status"]
+    message = (
+        f"{invoice_number} for {customer_name} / {pet_name} {action_text}. "
+        f"Total: PHP {total_amount:,.2f}. Status: {payment_status}."
+    )
+
+    return create_admin_notification(
+        branch_id=branch_id,
+        event_type=event_type,
+        title=title,
+        message=message,
+        severity=severity,
+        module='billing',
+        link=link,
+        entity_type='billing_invoice',
+        entity_id=invoice_id,
+        metadata={
+            "invoiceId": invoice_id,
+            "invoiceNumber": invoice_number,
+            "customerName": customer_name,
+            "petName": pet_name,
+            "totalAmount": total_amount,
+            "amountPaid": amount_paid,
+            "paymentStatus": payment_status,
+            "sourceRecordType": invoice.get("source_record_type"),
+            "sourceRecordId": invoice.get("source_record_id"),
+            **(metadata or {}),
+        },
+    )
+
+
+def safe_create_billing_admin_notification(**kwargs):
+    try:
+        return create_billing_admin_notification(**kwargs)
+    except Exception as notification_error:
+        print("Billing admin notification error:", str(notification_error))
+        return None
+
+
 def admin_notification_event_exists(event_key):
     if not event_key:
         return False
@@ -5504,23 +6516,21 @@ def issue_employee_setup_token(employee_id, email, created_by=None, expires_in_h
 
 
 def send_employee_setup_email(to_email, employee_name, setup_link):
-    safe_name = employee_name or 'there'
-    html = f"""
-        <div style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-            <h2>Set Up Your PawRang Employee Account</h2>
-            <p>Hello {safe_name},</p>
-            <p>Your employee account has been created. Please click the button below to set your username and password.</p>
-            <p style="margin: 24px 0;">
-                <a href="{setup_link}" style="background:#3d67ee;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600;">
-                    Set Up My Account
-                </a>
-            </p>
-            <p>If the button does not work, copy and paste this link into your browser:</p>
-            <p style="word-break: break-all;">{setup_link}</p>
-            <p>This link will expire in 24 hours and can only be used once.</p>
-            <p>Thank you,<br/>PawRang Veterinary Clinic</p>
-        </div>
-    """
+    safe_name = escape(employee_name or 'there')
+    safe_link = escape(setup_link or '', quote=True)
+    button_html = build_email_button("Set Up My Account", setup_link)
+    html = render_pawrang_email(
+        "Set Up Your PawRang Employee Account",
+        "Account Setup",
+        f"Hello <strong style=\"color: #0f172a;\">{safe_name}</strong>,",
+        f"""
+            <p style="margin: 0 0 16px;">Your employee account has been created. Please click the button below to set your username and password.</p>
+            <div style="margin: 18px 0;">{button_html}</div>
+            <p style="margin: 16px 0 0; color: #64748b; font-size: 13px;">If the button does not work, copy and paste this link into your browser:</p>
+            <p style="margin: 8px 0 0; word-break: break-all; color: #1f3fae; font-size: 13px;">{safe_link}</p>
+        """,
+        note_html="This link will expire in 24 hours and can only be used once.",
+    )
     return send_html_email(to_email, 'Set Up Your PawRang Employee Account', html)
 
 
@@ -5548,13 +6558,23 @@ def is_username_taken(username, exclude_employee_id=None):
 # HELPER — send OTP email via Gmail SMTP
 # -----------------------------------------------
 def send_otp_email(to_email, otp, subject='Your OTP Code', purpose='verification', expires_minutes=10):
-    html = f"""
-        <h2>OTP Verification</h2>
-        <p>Your OTP for <strong>{purpose}</strong> is:</p>
-        <p><strong style="font-size:32px; letter-spacing:8px">{otp}</strong></p>
-        <p>This OTP expires in {expires_minutes} minutes.</p>
-        <p>If you did not request this, please ignore this email.</p>
-    """
+    safe_purpose = escape(purpose or "verification")
+    safe_otp = escape(str(otp))
+    safe_minutes = escape(str(expires_minutes))
+    html = render_pawrang_email(
+        "OTP Verification",
+        "Security Code",
+        "Hello,",
+        f"""
+            <p style="margin: 0 0 16px;">Your OTP for <strong style="color: #0f172a;">{safe_purpose}</strong> is:</p>
+            <div style="margin: 18px 0; padding: 18px; border-radius: 16px; background: #eaf0ff; color: #1f3fae; font-size: 34px; letter-spacing: 8px; font-weight: 900; text-align: center;">
+                {safe_otp}
+            </div>
+        """,
+        details_title="Code Details",
+        detail_rows=[("Expires In", f"{safe_minutes} minutes")],
+        note_html="If you did not request this, please ignore this email.",
+    )
     return send_html_email(to_email, subject, html)
 
 
@@ -6465,7 +7485,7 @@ def delete_pet(pet_id):
         return jsonify({"error": str(e)}), 400
 
 
-def create_appointment_record(data, allow_walk_in=False):
+def create_appointment_record(data, allow_walk_in=False, branch_scope=None):
     data = data or {}
     owner_id = data.get('owner_id')
     pet_id = data.get('pet_id')
@@ -6476,6 +7496,11 @@ def create_appointment_record(data, allow_walk_in=False):
         branch_id = int(branch_id) if branch_id not in (None, '', 'null') else None
     except (TypeError, ValueError):
         branch_id = None
+
+    if branch_scope is not None:
+        branch_id, branch_error = validate_branch_scope_access(branch_scope, branch_id)
+        if branch_error:
+            raise ValueError(branch_error)
 
     if allow_walk_in and (owner_id == 'WALK_IN' or pet_id == 'WALK_IN') and is_walk_in:
         guest_required_fields = {
@@ -6550,6 +7575,18 @@ def create_appointment_record(data, allow_walk_in=False):
                 "source": "clinic_created_walk_in",
             },
             email_context=email_context,
+        )
+
+        safe_create_appointment_admin_notification(
+            table_name='walkin_appointments',
+            id_column='walkin_id',
+            record_id=created_id,
+            event_type='appointment_created',
+            title='Walk-in appointment created',
+            action_text='was created',
+            severity='info',
+            link='/admin/schedule',
+            metadata={"emailSent": email_sent, "source": "clinic_created_walk_in"},
         )
 
         return {
@@ -6627,6 +7664,21 @@ def create_appointment_record(data, allow_walk_in=False):
         email_context=email_context,
     )
 
+    safe_create_appointment_admin_notification(
+        table_name='appointments',
+        id_column='appointment_id',
+        record_id=created_id,
+        event_type='appointment_created',
+        title='Appointment created',
+        action_text='was created',
+        severity='info',
+        link='/admin/schedule',
+        metadata={
+            "emailSent": email_sent,
+            "source": "owner_booking" if data.get("owner_id") else "clinic_created",
+        },
+    )
+
     return {
         "message": "Appointment created!",
         "data": response.data,
@@ -6698,6 +7750,18 @@ def cancel_appointment(appointment_id):
             metadata={"cancel_reason": cancel_reason},
         )
 
+        safe_create_appointment_admin_notification(
+            table_name="appointments",
+            id_column="appointment_id",
+            record_id=appointment_id,
+            event_type='appointment_cancelled',
+            title='Appointment cancelled',
+            action_text='was cancelled',
+            severity='warning',
+            link='/admin/history',
+            metadata={"cancelReason": cancel_reason},
+        )
+
         return jsonify({"message": "Appointment cancelled successfully"}), 200
 
     except Exception as e:
@@ -6762,6 +7826,24 @@ def reschedule_appointment(appointment_id):
                 "old_time": check.data.get("appointment_time"),
                 "new_date": new_date,
                 "new_time": normalize_db_time(new_time),
+            },
+        )
+
+        safe_create_appointment_admin_notification(
+            table_name="appointments",
+            id_column="appointment_id",
+            record_id=appointment_id,
+            event_type='appointment_rescheduled',
+            title='Appointment rescheduled',
+            action_text='was rescheduled',
+            severity='warning',
+            link='/admin/schedule',
+            metadata={
+                "rescheduleReason": reschedule_reason,
+                "oldDate": check.data.get("appointment_date"),
+                "oldTime": check.data.get("appointment_time"),
+                "newDate": new_date,
+                "newTime": normalize_db_time(new_time),
             },
         )
 
@@ -6977,7 +8059,8 @@ def generate_doctor_emr_brief():
     try:
         case_context = build_doctor_emr_case_context(payload)
         prompt = build_doctor_emr_prompt(case_context)
-        ai_result = call_gemini_with_structured_output(prompt, ADMIN_AI_SUMMARY_SCHEMA)
+        ai_result = call_gemini_with_raw_structured_output(prompt, DOCTOR_EMR_BRIEF_SCHEMA)
+        ai_result = attach_ai_support_metadata(ai_result, case_context, mode="doctor")
         pet_name = ((payload.get("pet") or {}).get("name") or "this pet").strip() or "this pet"
         record_emr_audit_event(
             "Doctor AI EMR Brief Generated",
@@ -7025,13 +8108,74 @@ def generate_doctor_emr_brief():
         return build_ai_error_response(e, "Unable to generate the EMR prep brief right now.")
 
 
+@app.route('/api/ai/clinical-risk-flags', methods=['POST'])
+def generate_clinical_risk_flags():
+    payload = request.get_json() or {}
+    if not payload:
+        return jsonify({"error": "EMR context is required"}), 400
+
+    try:
+        case_context = build_doctor_emr_case_context(payload)
+        risk_flags = build_clinical_risk_flags(case_context)
+        return jsonify({
+            "riskFlags": risk_flags,
+            "caseContext": case_context,
+        }), 200
+    except Exception as e:
+        print("Clinical risk flags error:", str(e))
+        return build_ai_error_response(e, "Unable to generate clinical risk flags right now.")
+
+
+@app.route('/api/ai/follow-up-reminders', methods=['POST'])
+def generate_follow_up_reminders():
+    payload = request.get_json() or {}
+    if not payload:
+        return jsonify({"error": "EMR context is required"}), 400
+
+    try:
+        case_context = build_doctor_emr_case_context(payload)
+        follow_up_reminders = build_follow_up_reminders(case_context)
+        return jsonify({
+            "followUpReminders": follow_up_reminders,
+            "caseContext": case_context,
+        }), 200
+    except Exception as e:
+        print("Follow-up reminders error:", str(e))
+        return build_ai_error_response(e, "Unable to generate follow-up reminders right now.")
+
+
+@app.route('/api/ai/client-care-summary', methods=['POST'])
+def generate_client_care_summary():
+    payload = request.get_json() or {}
+    if not payload:
+        return jsonify({"error": "EMR context is required"}), 400
+
+    try:
+        case_context = build_doctor_emr_case_context(payload)
+        prompt = build_client_care_summary_prompt(case_context)
+        ai_result = call_gemini_with_raw_structured_output(prompt, CLIENT_CARE_SUMMARY_SCHEMA)
+        ai_result = attach_ai_support_metadata(ai_result, case_context, mode="doctor")
+        return jsonify({
+            "clientCareSummary": ai_result,
+            "caseContext": case_context,
+        }), 200
+    except ValueError as e:
+        return build_ai_error_response(e, "Unable to generate the client care summary right now.")
+    except Exception as e:
+        print("Client care summary error:", str(e))
+        return build_ai_error_response(e, "Unable to generate the client care summary right now.")
+
+
 # -----------------------------------------------
 # EMR SEARCH / RECORDS
 # -----------------------------------------------
 @app.route('/api/emr/search-pets', methods=['GET'])
 def get_emr_search_pets():
     try:
-        return jsonify({"pets": get_emr_search_results()}), 200
+        branch_scope, branch_error = require_actor_branch_scope()
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        return jsonify({"pets": get_emr_search_results(branch_scope=branch_scope)}), 200
     except Exception as e:
         print("EMR pet search error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -7041,16 +8185,23 @@ def get_emr_search_pets():
 def emr_records_collection():
     if request.method == 'GET':
         try:
-            return jsonify({"records": get_emr_records(include_details=False)}), 200
+            branch_scope, branch_error = require_actor_branch_scope()
+            if branch_error:
+                return jsonify({"error": branch_error}), 400
+            return jsonify({"records": get_emr_records(include_details=False, branch_scope=branch_scope)}), 200
         except Exception as e:
             print("EMR records fetch error:", str(e))
             return jsonify({"error": str(e)}), 400
 
     data = request.get_json(silent=True) or {}
     try:
+        payload = data
+        branch_scope, branch_error = require_actor_branch_scope(payload)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
         existing_record_before_save = None
         previous_record_snapshot = None
-        pet_id_for_audit = data.get("petId") or data.get("pet_id")
+        pet_id_for_audit = payload.get("petId") or payload.get("pet_id")
         if pet_id_for_audit not in (None, ""):
             try:
                 existing_record_before_save = get_single_row("medical_records", "pet_id", int(pet_id_for_audit))
@@ -7060,14 +8211,24 @@ def emr_records_collection():
             except Exception as audit_lookup_error:
                 print(f"EMR audit existing record lookup error: {audit_lookup_error}")
 
-        saved_record = save_emr_record_payload(data)
+        saved_record = save_emr_record_payload(payload, branch_scope=branch_scope)
+        saved_record_id = saved_record.get("id") or saved_record.get("medical_record_id") if saved_record else None
+        safe_create_emr_admin_notification(
+            medical_record_id=saved_record_id,
+            event_type='medical_record_updated' if existing_record_before_save else 'medical_record_created',
+            title='Medical record updated' if existing_record_before_save else 'Medical record created',
+            action_text='had a medical record updated' if existing_record_before_save else 'had a medical record created',
+            severity='info' if existing_record_before_save else 'success',
+            link='/patient-records',
+            metadata={"source": "emr_create"},
+        )
         saved_event = "Medical Record Updated" if existing_record_before_save else "Medical Record Created"
         saved_action = "updated" if existing_record_before_save else "created"
         record_emr_audit_event(
             saved_event,
             saved_record,
-            data=data,
-            summary=build_emr_record_saved_summary(saved_action, saved_record, data, previous_record_snapshot),
+            data=payload,
+            summary=build_emr_record_saved_summary(saved_action, saved_record, payload, previous_record_snapshot),
             status="Success",
             metadata={"action": "update" if existing_record_before_save else "create"},
         )
@@ -7100,7 +8261,10 @@ def emr_records_collection():
 def emr_record_detail(record_id):
     if request.method == 'GET':
         try:
-            records = get_emr_records([record_id], include_billing=True)
+            branch_scope, branch_error = require_actor_branch_scope()
+            if branch_error:
+                return jsonify({"error": branch_error}), 400
+            records = get_emr_records([record_id], include_billing=True, branch_scope=branch_scope)
             if not records:
                 return jsonify({"error": "Medical record not found."}), 404
             return jsonify({"record": records[0]}), 200
@@ -7111,15 +8275,28 @@ def emr_record_detail(record_id):
     if request.method == 'PUT':
         data = request.get_json(silent=True) or {}
         try:
+            payload = data
+            branch_scope, branch_error = require_actor_branch_scope(payload)
+            if branch_error:
+                return jsonify({"error": branch_error}), 400
             previous_records = get_emr_records([record_id], include_billing=True)
             previous_record_snapshot = previous_records[0] if previous_records else None
-            saved_record = save_emr_record_payload(data, existing_record_id=record_id)
+            saved_record = save_emr_record_payload(payload, existing_record_id=record_id, branch_scope=branch_scope)
+            safe_create_emr_admin_notification(
+                medical_record_id=record_id,
+                event_type='medical_record_updated',
+                title='Medical record updated',
+                action_text='had a medical record updated',
+                severity='info',
+                link='/patient-records',
+                metadata={"source": "emr_update"},
+            )
             record_emr_audit_event(
                 "Medical Record Updated",
                 saved_record,
-                data=data,
+                data=payload,
                 record_id=record_id,
-                summary=build_emr_record_saved_summary("updated", saved_record, data, previous_record_snapshot),
+                summary=build_emr_record_saved_summary("updated", saved_record, payload, previous_record_snapshot),
                 status="Success",
                 metadata={"action": "update"},
             )
@@ -7151,6 +8328,9 @@ def emr_record_detail(record_id):
 
     data = request.get_json(silent=True) or {}
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
         existing_record = get_single_row("medical_records", "medical_record_id", record_id)
         if not existing_record:
             record_emr_audit_event(
@@ -7165,6 +8345,18 @@ def emr_record_detail(record_id):
 
         pet_name = get_emr_pet_name(existing_record, data) or "this pet"
         branch_id = get_emr_branch_id(existing_record, data, record_id)
+        if not get_emr_records([record_id], include_details=False, branch_scope=branch_scope):
+            return jsonify({"error": "Medical record not found."}), 404
+
+        safe_create_emr_admin_notification(
+            medical_record_id=record_id,
+            event_type='medical_record_deleted',
+            title='Medical record deleted',
+            action_text='had a medical record deleted',
+            severity='warning',
+            link='/patient-records',
+            metadata={"source": "emr_delete"},
+        )
         supabase_admin.table("medical_records").delete().eq("medical_record_id", record_id).execute()
         record_emr_audit_event(
             "Medical Record Deleted",
@@ -7193,7 +8385,10 @@ def emr_record_detail(record_id):
 @app.route('/api/emr/pets/<int:pet_id>/appointments', methods=['GET'])
 def get_emr_pet_appointment_history(pet_id):
     try:
-        return jsonify({"appointments": get_emr_pet_appointments(pet_id)}), 200
+        branch_scope, branch_error = require_actor_branch_scope()
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        return jsonify({"appointments": get_emr_pet_appointments(pet_id, branch_scope=branch_scope)}), 200
     except Exception as e:
         print("EMR pet appointments error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -7219,6 +8414,13 @@ def update_emr_lab_result_owner_visibility(lab_result_id):
                 status="Failed",
             )
             return jsonify({"error": "Lab result not found."}), 404
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        visit_row = get_single_row("medical_record_visits", "medical_record_visit_id", existing_row.get("medical_record_visit_id"))
+        _, branch_access_error = validate_branch_scope_access(branch_scope, (visit_row or {}).get("branch_id"))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
 
         audit_context = get_emr_child_record_context(
             "medical_record_lab_results",
@@ -7233,6 +8435,23 @@ def update_emr_lab_result_owner_visibility(lab_result_id):
             "medical_record_lab_result_id", lab_result_id
         ).execute().data or []
         updated_row = response[0] if response else get_single_row("medical_record_lab_results", "medical_record_lab_result_id", lab_result_id)
+        visit_id = updated_row.get("medical_record_visit_id") or existing_row.get("medical_record_visit_id")
+
+        safe_create_emr_admin_notification(
+            visit_id=visit_id,
+            event_type='lab_result_shared' if visible_to_owner else 'lab_result_hidden',
+            title='Lab result shared' if visible_to_owner else 'Lab result hidden',
+            action_text='had a lab result shared to the owner portal' if visible_to_owner else 'had a lab result hidden from the owner portal',
+            severity='success' if visible_to_owner else 'info',
+            link='/patient-records',
+            entity_type='lab_result',
+            entity_id=lab_result_id,
+            metadata={
+                "visibleToOwner": visible_to_owner,
+                "labResultId": lab_result_id,
+                "testType": updated_row.get("test_type") or existing_row.get("test_type"),
+            },
+        )
 
         record_emr_child_visibility_audit(
             "Lab Result Shared With Owner" if visible_to_owner else "Lab Result Hidden From Owner",
@@ -7285,6 +8504,13 @@ def update_emr_vaccination_owner_visibility(vaccination_id):
                 status="Failed",
             )
             return jsonify({"error": "Vaccination record not found."}), 404
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        visit_row = get_single_row("medical_record_visits", "medical_record_visit_id", existing_row.get("medical_record_visit_id"))
+        _, branch_access_error = validate_branch_scope_access(branch_scope, (visit_row or {}).get("branch_id"))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
 
         audit_context = get_emr_child_record_context(
             "medical_record_vaccinations",
@@ -7299,6 +8525,23 @@ def update_emr_vaccination_owner_visibility(vaccination_id):
             "medical_record_vaccination_id", vaccination_id
         ).execute().data or []
         updated_row = response[0] if response else get_single_row("medical_record_vaccinations", "medical_record_vaccination_id", vaccination_id)
+        visit_id = updated_row.get("medical_record_visit_id") or existing_row.get("medical_record_visit_id")
+
+        safe_create_emr_admin_notification(
+            visit_id=visit_id,
+            event_type='vaccination_shared' if visible_to_owner else 'vaccination_hidden',
+            title='Vaccination shared' if visible_to_owner else 'Vaccination hidden',
+            action_text='had a vaccination record shared to the owner portal' if visible_to_owner else 'had a vaccination record hidden from the owner portal',
+            severity='success' if visible_to_owner else 'info',
+            link='/patient-records',
+            entity_type='vaccination',
+            entity_id=vaccination_id,
+            metadata={
+                "visibleToOwner": visible_to_owner,
+                "vaccinationId": vaccination_id,
+                "vaccineName": updated_row.get("vaccine_name") or existing_row.get("vaccine_name"),
+            },
+        )
 
         record_emr_child_visibility_audit(
             "Vaccination Record Shared With Owner" if visible_to_owner else "Vaccination Record Hidden From Owner",
@@ -7521,15 +8764,190 @@ def get_branches():
 # -----------------------------------------------
 # ADMIN COMPATIBILITY ROUTES
 # -----------------------------------------------
+def normalize_branch_text(value):
+    return re.sub(r'\s+', ' ', str(value or '').strip().lower())
+
+
+def is_both_branches_label(value):
+    normalized = normalize_branch_text(value)
+    return normalized in {'both branches', 'all branches', 'main branch'} or 'both' in normalized
+
+
+def parse_branch_id(value):
+    if value in (None, ''):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def get_branch_by_id(branch_id):
+    normalized_branch_id = parse_branch_id(branch_id)
+    if normalized_branch_id is None:
+        return None
+    try:
+        return supabase_admin.table('branches').select('*').eq('branch_id', normalized_branch_id).single().execute().data
+    except Exception:
+        return None
+
+
+def get_account_branch_context(account_id):
+    if not account_id:
+        return None, "userId is required to validate branch permissions"
+
+    actor = get_single_row('employee_accounts', 'id', account_id)
+    if not actor:
+        return None, "Current admin account was not found"
+
+    branch = get_branch_by_id(actor.get('branch_id'))
+    branch_name = (branch or {}).get('branch_name') or (branch or {}).get('name') or actor.get('branch_name')
+    return {
+        "account": actor,
+        "branch_id": parse_branch_id(actor.get('branch_id')),
+        "branch_name": branch_name,
+        "is_both_branches": is_both_branches_label(branch_name),
+    }, None
+
+
+def validate_employee_branch_assignment(actor_id, target_branch_id, target_role):
+    branch_id = parse_branch_id(target_branch_id)
+    if branch_id is None:
+        return None, "Branch is required"
+
+    target_branch = get_branch_by_id(branch_id)
+    if not target_branch:
+        return None, "Selected branch was not found"
+
+    actor_context, actor_error = get_account_branch_context(actor_id)
+    if actor_error:
+        return None, actor_error
+
+    target_branch_name = target_branch.get('branch_name') or target_branch.get('name') or ''
+    target_is_both = is_both_branches_label(target_branch_name)
+    actor_can_manage_all = actor_context.get('is_both_branches')
+
+    if target_is_both and not actor_can_manage_all:
+        return None, "Only a Both Branches admin can assign Both Branches accounts"
+
+    if not actor_can_manage_all and actor_context.get('branch_id') != branch_id:
+        return None, "You can only assign employees to your own branch"
+
+    if target_is_both and normalize_branch_text(target_role) != 'admin':
+        return None, "Both Branches can only be assigned to Admin accounts"
+
+    return {
+        "branch_id": branch_id,
+        "branch_name": target_branch_name,
+    }, None
+
+
+def get_actor_branch_scope(actor_id):
+    actor_context, actor_error = get_account_branch_context(actor_id)
+    if actor_error:
+        return None, actor_error
+    if actor_context.get("is_both_branches"):
+        return {"can_access_all": True, "branch_id": None}, None
+    branch_id = actor_context.get("branch_id")
+    if branch_id is None:
+        return None, "Current admin account does not have a branch assigned"
+    return {"can_access_all": False, "branch_id": branch_id}, None
+
+
+def apply_branch_scope_to_query(query, scope, column="branch_id"):
+    if not scope or scope.get("can_access_all"):
+        return query
+    return query.eq(column, scope.get("branch_id"))
+
+
+def get_actor_id_from_request(data=None):
+    data = data or {}
+    return (
+        request.args.get("userId")
+        or request.args.get("user_id")
+        or request.args.get("adminUserId")
+        or data.get("userId")
+        or data.get("user_id")
+        or data.get("adminUserId")
+        or data.get("processedBy")
+        or data.get("processed_by")
+        or data.get("created_by")
+        or data.get("updated_by")
+        or data.get("createdBy")
+        or data.get("updatedBy")
+        or data.get("handledByUserId")
+        or data.get("handled_by_user_id")
+    )
+
+
+def require_actor_branch_scope(data=None):
+    actor_id = get_actor_id_from_request(data)
+    if not actor_id:
+        return None, "userId is required to validate branch access"
+    return get_actor_branch_scope(actor_id)
+
+
+def validate_branch_scope_access(scope, branch_id):
+    normalized_branch_id = parse_branch_id(branch_id)
+    if normalized_branch_id is None:
+        return None, "Branch is required"
+    if scope and not scope.get("can_access_all") and scope.get("branch_id") != normalized_branch_id:
+        return None, "You can only access records from your assigned branch"
+    return normalized_branch_id, None
+
+
+def resolve_emr_visit_branch_id(source_type=None, source_id=None, branch_scope=None, fallback_branch_id=None):
+    normalized_source_type = str(source_type or "").strip().lower()
+    if normalized_source_type == "appointment" and source_id not in (None, ""):
+        appointment = get_single_row("appointments", "appointment_id", source_id)
+        if appointment and appointment.get("branch_id") not in (None, ""):
+            return parse_branch_id(appointment.get("branch_id"))
+    if normalized_source_type == "walkin" and source_id not in (None, ""):
+        walkin = get_single_row("walkin_appointments", "walkin_id", source_id)
+        if walkin and walkin.get("branch_id") not in (None, ""):
+            return parse_branch_id(walkin.get("branch_id"))
+
+    fallback = parse_branch_id(fallback_branch_id)
+    if fallback is not None:
+        return fallback
+    if branch_scope and not branch_scope.get("can_access_all"):
+        return parse_branch_id(branch_scope.get("branch_id"))
+    return None
+
+
 @app.route('/accounts', methods=['GET'])
 @app.route('/api/doctors', methods=['GET'])
 def get_accounts():
     try:
+        actor_id = request.args.get("userId") or request.args.get("user_id") or request.args.get("adminUserId")
+        branch_scope = None
+        if actor_id:
+            branch_scope, branch_error = get_actor_branch_scope(actor_id)
+            if branch_error:
+                return jsonify({"error": branch_error}), 400
+
+        branches = execute_with_retry(
+            lambda: supabase_admin.table('branches').select('*').execute(),
+            context='Fetch employee account branches'
+        ).data or []
+        branch_names_by_id = {
+            str(branch.get('branch_id') or branch.get('id')): branch.get('branch_name') or branch.get('name') or ''
+            for branch in branches
+        }
         res = execute_with_retry(
-            lambda: supabase_admin.table('employee_accounts').select('*').execute(),
+            lambda: apply_branch_scope_to_query(
+                supabase_admin.table('employee_accounts').select('*'),
+                branch_scope,
+            ).execute(),
             context='Fetch employee accounts'
         )
-        accounts = [normalize_employee_admin_account(item) for item in (res.data or [])]
+        accounts = [
+            normalize_employee_admin_account({
+                **item,
+                "branch_name": branch_names_by_id.get(str(item.get('branch_id') or '')),
+            })
+            for item in (res.data or [])
+        ]
         if request.path == '/api/doctors':
             veterinarian_roles = {'veterinarian', 'vet'}
             accounts = [
@@ -7573,6 +8991,10 @@ def create_employee_account():
     role = (data.get('role') or 'Admin').strip()
     status_value = (data.get('status') or 'Active').strip().lower()
     employee_image = data.get('employee_image')
+    actor_id = data.get('created_by') or data.get('userId') or data.get('user_id')
+    branch_assignment, branch_error = validate_employee_branch_assignment(actor_id, data.get('branch_id', data.get('branchId')), role)
+    if branch_error:
+        return jsonify({"error": branch_error}), 400
 
     if not all([first_name, last_name, contact_number, email]):
         return jsonify({"error": "first_name, last_name, contact_number, and email are required"}), 400
@@ -7601,6 +9023,7 @@ def create_employee_account():
             "contact_number": contact_number,
             "email": email,
             "role": role,
+            "branch_id": branch_assignment.get('branch_id'),
             "status": 'disabled' if status_value in ('disabled', 'inactive') else 'active',
             "employee_image": employee_image,
             "is_initial_login": True,
@@ -7608,7 +9031,7 @@ def create_employee_account():
 
         created = insert_response.data[0] if insert_response.data else None
         employee_name = f"{first_name} {last_name}".strip()
-        setup_token, _ = issue_employee_setup_token(user.id, email, created_by=data.get('created_by') or data.get('userId'))
+        setup_token, _ = issue_employee_setup_token(user.id, email, created_by=actor_id)
         email_sent = False
         try:
             send_employee_setup_email(email, employee_name, build_employee_setup_link(setup_token))
@@ -7626,6 +9049,8 @@ def create_employee_account():
                 "contact_number": contact_number,
                 "email": email,
                 "role": role,
+                "branch_id": branch_assignment.get('branch_id'),
+                "branch_name": branch_assignment.get('branch_name'),
                 "status": status_value,
                 "employee_image": employee_image,
                 "is_initial_login": True,
@@ -7648,6 +9073,7 @@ def update_employee_account(account_id):
 
         update_data = {}
         auth_updates = {}
+        actor_id = data.get('updated_by') or data.get('userId') or data.get('user_id')
 
         if 'username' in data:
             update_data['username'] = data.get('username')
@@ -7667,6 +9093,14 @@ def update_employee_account(account_id):
             update_data['status'] = 'disabled' if raw_status in ('disabled', 'inactive') else 'active'
         if 'employee_image' in data:
             update_data['employee_image'] = data.get('employee_image')
+        if 'branch_id' in data or 'branchId' in data or 'role' in data:
+            target_role = update_data.get('role') or existing.get('role') or 'Admin'
+            target_branch_id = data.get('branch_id', data.get('branchId')) if ('branch_id' in data or 'branchId' in data) else existing.get('branch_id')
+            branch_assignment, branch_error = validate_employee_branch_assignment(actor_id, target_branch_id, target_role)
+            if branch_error:
+                return jsonify({"error": branch_error}), 400
+            if 'branch_id' in data or 'branchId' in data:
+                update_data['branch_id'] = branch_assignment.get('branch_id')
 
         if not update_data:
             return jsonify({"error": "No valid fields to update"}), 400
@@ -8010,7 +9444,10 @@ def get_billing_services():
 @app.route('/api/billing/products', methods=['GET'])
 def get_billing_products():
     try:
-        return jsonify({"products": build_billing_product_catalog()}), 200
+        branch_scope, branch_error = require_actor_branch_scope()
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        return jsonify({"products": build_billing_product_catalog(branch_scope=branch_scope)}), 200
     except Exception as e:
         print("Fetch billing products error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -8019,7 +9456,10 @@ def get_billing_products():
 @app.route('/api/billing/source-records', methods=['GET'])
 def get_billing_source_records():
     try:
-        return jsonify(build_billing_source_records()), 200
+        actor_id = request.args.get("userId") or request.args.get("user_id") or request.args.get("adminUserId")
+        if not actor_id:
+            return jsonify({"error": "userId is required to load branch-scoped billing records"}), 400
+        return jsonify(build_billing_source_records(actor_id=actor_id)), 200
     except Exception as e:
         print("Fetch billing source records error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -8028,8 +9468,14 @@ def get_billing_source_records():
 @app.route('/api/billing/invoices', methods=['GET'])
 def get_billing_invoices():
     try:
+        branch_scope, branch_error = require_actor_branch_scope()
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
         invoice_response = execute_with_retry(
-            lambda: supabase_admin.table("billing_invoices").select("*").order("invoice_date", desc=True).order("invoice_time", desc=True).execute(),
+            lambda: apply_branch_scope_to_query(
+                supabase_admin.table("billing_invoices").select("*"),
+                branch_scope,
+            ).order("invoice_date", desc=True).order("invoice_time", desc=True).execute(),
             context="Fetch billing invoices"
         )
         invoices = invoice_response.data or []
@@ -8097,6 +9543,10 @@ def create_billing_invoice():
     data = request.get_json() or {}
 
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         invoice_type = str(data.get("invoiceType") or data.get("invoice_type") or "").strip().lower()
         if invoice_type not in {"appointment", "walkin"}:
             raise ValueError("invoiceType is invalid")
@@ -8173,6 +9623,11 @@ def create_billing_invoice():
             minimum=1,
             allow_none=True,
         )
+        if branch_id is None and branch_scope and not branch_scope.get("can_access_all"):
+            branch_id = branch_scope.get("branch_id")
+        branch_id, branch_access_error = validate_branch_scope_access(branch_scope, branch_id)
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
 
         existing_invoice = get_active_billing_invoice_for_source(source_record_type, source_record_id)
         if existing_invoice:
@@ -8198,7 +9653,7 @@ def create_billing_invoice():
             }), 409
 
         service_lookups = build_billing_service_lookups()
-        product_lookup = build_billing_product_lookup()
+        product_lookup = build_billing_product_lookup(branch_scope=branch_scope)
 
         raw_service_items = data.get("items", data.get("services")) or []
         raw_product_items = data.get("products") or []
@@ -8467,6 +9922,20 @@ def create_billing_invoice():
             except Exception as audit_error:
                 print(f"Appointment billing audit error: {audit_error}")
 
+        notification_invoice = get_single_row("billing_invoices", "billing_invoice_id", invoice_id) or created_invoice
+        safe_create_billing_admin_notification(
+            invoice_record=notification_invoice,
+            event_type='invoice_created',
+            title='Invoice created',
+            action_text='was created',
+            severity='success' if payment_state["payment_status"] == "paid" else 'info',
+            link='/billing',
+            metadata={
+                "serviceItemCount": len(created_service_items),
+                "productItemCount": len(created_product_items),
+                "initialPaymentAmount": payment_state["amount_paid"],
+            },
+        )
         record_billing_audit_event(
             "Invoice Created",
             created_invoice,
@@ -8554,6 +10023,10 @@ def record_billing_invoice_payment(invoice_id):
     data = request.get_json() or {}
 
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         invoice_record = get_single_row("billing_invoices", "billing_invoice_id", invoice_id)
         if not invoice_record:
             record_billing_audit_event(
@@ -8564,6 +10037,9 @@ def record_billing_invoice_payment(invoice_id):
                 status="Failed",
             )
             return jsonify({"error": "Invoice not found"}), 404
+        _, branch_access_error = validate_branch_scope_access(branch_scope, invoice_record.get("branch_id"))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
 
         total_amount = round(float(invoice_record.get("total_amount") or 0), 2)
         current_amount_paid = round(float(invoice_record.get("amount_paid") or 0), 2)
@@ -8653,6 +10129,21 @@ def record_billing_invoice_payment(invoice_id):
         if not normalized_invoice:
             raise ValueError("Updated invoice could not be loaded")
 
+        notification_invoice = get_single_row("billing_invoices", "billing_invoice_id", invoice_id) or invoice_record
+        safe_create_billing_admin_notification(
+            invoice_record=notification_invoice,
+            event_type='payment_recorded',
+            title='Payment recorded',
+            action_text=f"received a payment of PHP {payment_amount:,.2f}",
+            severity='success' if updated_state["payment_status"] == "paid" else 'info',
+            link='/billing',
+            metadata={
+                "paymentAmount": payment_amount,
+                "paymentMethod": payment_method,
+                "paymentStatusBefore": current_state["payment_status"],
+                "paymentStatusAfter": updated_state["payment_status"],
+            },
+        )
         payment_event = (
             "Installment Payment Recorded"
             if invoice_record.get("payment_method") == "installment"
@@ -8716,6 +10207,10 @@ def delete_billing_invoices():
     data = request.get_json(silent=True) or {}
 
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         invoice_ids_raw = data.get("invoiceIds", data.get("invoice_ids")) or []
         if not isinstance(invoice_ids_raw, list) or not invoice_ids_raw:
             raise ValueError("invoiceIds is required")
@@ -8729,7 +10224,21 @@ def delete_billing_invoices():
             lambda: supabase_admin.table("billing_invoices").select("*").in_("billing_invoice_id", parsed_ids).execute(),
             context="Fetch billing invoices for delete audit",
         ).data or []
+        for invoice in invoice_rows:
+            _, branch_access_error = validate_branch_scope_access(branch_scope, invoice.get("branch_id"))
+            if branch_access_error:
+                return jsonify({"error": branch_access_error}), 403
+
         supabase_admin.table("billing_invoices").delete().in_("billing_invoice_id", parsed_ids).execute()
+        for invoice in invoice_rows:
+            safe_create_billing_admin_notification(
+                invoice_record=invoice,
+                event_type='invoice_deleted',
+                title='Invoice deleted',
+                action_text='was deleted',
+                severity='warning',
+                link='/billing',
+            )
         if len(parsed_ids) == 1 and invoice_rows:
             invoice = invoice_rows[0]
             record_billing_audit_event(
@@ -8778,6 +10287,10 @@ def delete_billing_invoices():
 @app.route('/api/inventory/items', methods=['GET'])
 def get_inventory_items():
     try:
+        branch_scope, branch_error = require_actor_branch_scope()
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         branch_id = request.args.get('branch_id', request.args.get('branchId'))
         archived_raw = request.args.get('archived')
         category = (request.args.get('category') or '').strip()
@@ -8786,7 +10299,12 @@ def get_inventory_items():
 
         query = supabase_admin.table('inventory_items').select('*')
         if branch_id:
-            query = query.eq('branch_id', coerce_int(branch_id, 'branch_id', minimum=1))
+            requested_branch_id, branch_access_error = validate_branch_scope_access(branch_scope, branch_id)
+            if branch_access_error:
+                return jsonify({"error": branch_access_error}), 403
+            query = query.eq('branch_id', requested_branch_id)
+        else:
+            query = apply_branch_scope_to_query(query, branch_scope)
         if category:
             query = query.eq('category', category)
         if search:
@@ -8814,9 +10332,16 @@ def get_inventory_items():
 @app.route('/api/inventory/items/<int:item_id>', methods=['GET'])
 def get_inventory_item(item_id):
     try:
+        branch_scope, branch_error = require_actor_branch_scope()
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         item, error_response = get_inventory_item_or_404(item_id)
         if error_response:
             return error_response
+        _, branch_access_error = validate_branch_scope_access(branch_scope, item.get('branch_id'))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
         return jsonify({'item': normalize_inventory_item(item)}), 200
     except Exception as e:
         print("Fetch inventory item error:", str(e))
@@ -8827,7 +10352,15 @@ def get_inventory_item(item_id):
 def create_inventory_item():
     data = request.get_json() or {}
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         payload = build_inventory_item_payload(data)
+        _, branch_access_error = validate_branch_scope_access(branch_scope, payload.get('branch_id'))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
+
         ensure_inventory_item_is_unique(payload)
         response = supabase_admin.table('inventory_items').insert(payload).execute()
         created = response.data[0] if response.data else None
@@ -8872,11 +10405,22 @@ def create_inventory_item():
 def update_inventory_item(item_id):
     data = request.get_json() or {}
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         existing, error_response = get_inventory_item_or_404(item_id)
         if error_response:
             return error_response
+        _, existing_access_error = validate_branch_scope_access(branch_scope, existing.get('branch_id'))
+        if existing_access_error:
+            return jsonify({"error": existing_access_error}), 403
 
         payload = build_inventory_item_payload(data, existing=existing)
+        _, payload_access_error = validate_branch_scope_access(branch_scope, payload.get('branch_id'))
+        if payload_access_error:
+            return jsonify({"error": payload_access_error}), 403
+
         ensure_inventory_item_is_unique(payload, exclude_item_id=item_id)
         response = supabase_admin.table('inventory_items') \
             .update(payload) \
@@ -8917,9 +10461,16 @@ def update_inventory_item(item_id):
 def archive_inventory_item(item_id):
     data = request.get_json() or {}
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         item, error_response = get_inventory_item_or_404(item_id)
         if error_response:
             return error_response
+        _, branch_access_error = validate_branch_scope_access(branch_scope, item.get('branch_id'))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
 
         if item.get('is_archived'):
             return jsonify({'message': 'Inventory item is already archived', 'item': normalize_inventory_item(item)}), 200
@@ -8965,9 +10516,16 @@ def archive_inventory_item(item_id):
 def restore_inventory_item(item_id):
     data = request.get_json() or {}
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         item, error_response = get_inventory_item_or_404(item_id)
         if error_response:
             return error_response
+        _, branch_access_error = validate_branch_scope_access(branch_scope, item.get('branch_id'))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
 
         duplicate_payload = {
             'branch_id': item.get('branch_id'),
@@ -9013,7 +10571,15 @@ def restore_inventory_item(item_id):
 def create_inventory_stock_in():
     data = request.get_json() or {}
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         payload = build_inventory_transaction_payload(data, 'IN')
+        _, branch_access_error = validate_branch_scope_access(branch_scope, payload.get('branch_id'))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
+
         result = persist_inventory_transaction(payload)
         notify_inventory_transaction_created(result, payload)
         record_inventory_transaction_audit(result, payload, event='Stock In Recorded', actor_data=data)
@@ -9052,7 +10618,15 @@ def create_inventory_stock_in():
 def create_inventory_stock_out():
     data = request.get_json() or {}
     try:
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         payload = build_inventory_transaction_payload(data, 'OUT')
+        _, branch_access_error = validate_branch_scope_access(branch_scope, payload.get('branch_id'))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
+
         result = persist_inventory_transaction(payload)
         notify_inventory_transaction_created(result, payload)
         stock_out_reason = str(payload.get('reason') or '').strip().lower()
@@ -9092,6 +10666,10 @@ def create_inventory_stock_out():
 @app.route('/api/inventory/logs', methods=['GET'])
 def get_inventory_logs():
     try:
+        branch_scope, branch_error = require_actor_branch_scope()
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
         branch_id = request.args.get('branch_id', request.args.get('branchId'))
         log_type = (request.args.get('type') or '').strip()
         product_name = (request.args.get('product') or request.args.get('productName') or '').strip()
@@ -9101,7 +10679,12 @@ def get_inventory_logs():
 
         query = supabase_admin.table('inventory_logs_view').select('*')
         if branch_id:
-            query = query.eq('branch_id', coerce_int(branch_id, 'branch_id', minimum=1))
+            requested_branch_id, branch_access_error = validate_branch_scope_access(branch_scope, branch_id)
+            if branch_access_error:
+                return jsonify({"error": branch_access_error}), 403
+            query = query.eq('branch_id', requested_branch_id)
+        else:
+            query = apply_branch_scope_to_query(query, branch_scope)
         if log_type:
             query = query.eq('type', log_type)
         if product_name:
@@ -9129,17 +10712,25 @@ def get_admin_notifications():
     try:
         admin_user_id = (request.args.get('admin_user_id') or request.args.get('adminUserId') or '').strip()
         branch_id_raw = request.args.get('branch_id', request.args.get('branchId'))
-        module = (request.args.get('module') or 'inventory').strip() or 'inventory'
+        module = (request.args.get('module') or '').strip()
         unread_only = parse_bool(request.args.get('unread_only', request.args.get('unreadOnly')), default=False)
         limit_raw = request.args.get('limit')
 
         _, employee_error = get_employee_account_or_400(admin_user_id)
         if employee_error:
             return jsonify({'error': employee_error}), 400
+        branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
 
         query = supabase_admin.table('admin_notifications').select('*')
-        if branch_id_raw:
-            query = query.eq('branch_id', coerce_int(branch_id_raw, 'branch_id', minimum=1))
+        if branch_id_raw not in (None, '', 'all', 'All'):
+            branch_id, branch_error = validate_branch_scope_access(branch_scope, branch_id_raw)
+            if branch_error:
+                return jsonify({"error": branch_error}), 403
+            query = query.eq('branch_id', branch_id)
+        else:
+            query = apply_branch_scope_to_query(query, branch_scope)
         if module:
             query = query.eq('module', module)
 
@@ -9194,6 +10785,12 @@ def read_admin_notification(notification_id):
         notification = get_single_row('admin_notifications', 'notification_id', notification_id)
         if not notification:
             return jsonify({'error': 'Notification not found'}), 404
+        branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        _, branch_access_error = validate_branch_scope_access(branch_scope, notification.get('branch_id'))
+        if branch_access_error:
+            return jsonify({"error": branch_access_error}), 403
 
         mark_admin_notification_read(notification_id, admin_user_id)
 
@@ -9208,21 +10805,125 @@ def read_admin_notification(notification_id):
         return jsonify({"error": str(e)}), 400
 
 
+def ensure_admin_notification_access(notification, branch_scope):
+    if not notification:
+        return 'Notification not found', 404
+    if branch_scope and branch_scope.get('can_access_all'):
+        return None, None
+    _, branch_error = validate_branch_scope_access(branch_scope, notification.get('branch_id'))
+    if branch_error:
+        return branch_error, 403
+    return None, None
+
+
+def get_accessible_admin_notifications(notification_ids, branch_scope):
+    response = supabase_admin.table('admin_notifications') \
+        .select('notification_id, branch_id') \
+        .in_('notification_id', notification_ids) \
+        .execute()
+    notifications = response.data or []
+    found_ids = {int(row.get('notification_id')) for row in notifications if row.get('notification_id') is not None}
+    missing_ids = [notification_id for notification_id in notification_ids if notification_id not in found_ids]
+    if missing_ids:
+        return notifications, f"Notification not found: {missing_ids[0]}", 404
+
+    if branch_scope and branch_scope.get('can_access_all'):
+        return notifications, None, None
+
+    for notification in notifications:
+        _, branch_error = validate_branch_scope_access(branch_scope, notification.get('branch_id'))
+        if branch_error:
+            return notifications, branch_error, 403
+
+    return notifications, None, None
+
+
+@app.route('/api/admin-notifications/<int:notification_id>', methods=['DELETE'])
+def delete_admin_notification(notification_id):
+    data = request.get_json(silent=True) or {}
+    try:
+        admin_user_id = (data.get('admin_user_id') or data.get('adminUserId') or request.args.get('admin_user_id') or request.args.get('adminUserId') or '').strip()
+        _, employee_error = get_employee_account_or_400(admin_user_id)
+        if employee_error:
+            return jsonify({'error': employee_error}), 400
+        branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
+        notification = get_single_row('admin_notifications', 'notification_id', notification_id)
+        access_error, status_code = ensure_admin_notification_access(notification, branch_scope)
+        if access_error:
+            return jsonify({'error': access_error}), status_code
+
+        supabase_admin.table('admin_notification_reads').delete().eq('notification_id', notification_id).execute()
+        supabase_admin.table('admin_notifications').delete().eq('notification_id', notification_id).execute()
+
+        return jsonify({'message': 'Notification deleted', 'deletedCount': 1}), 200
+    except Exception as e:
+        print("Delete admin notification error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/admin-notifications', methods=['DELETE'])
+def delete_admin_notifications():
+    data = request.get_json(silent=True) or {}
+    try:
+        admin_user_id = (data.get('admin_user_id') or data.get('adminUserId') or '').strip()
+        raw_ids = data.get('notificationIds') or data.get('notification_ids') or []
+        _, employee_error = get_employee_account_or_400(admin_user_id)
+        if employee_error:
+            return jsonify({'error': employee_error}), 400
+        branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+
+        notification_ids = []
+        for raw_id in raw_ids:
+            try:
+                notification_ids.append(int(raw_id))
+            except (TypeError, ValueError):
+                continue
+        notification_ids = list(dict.fromkeys(notification_ids))
+
+        if not notification_ids:
+            return jsonify({'error': 'notificationIds is required'}), 400
+
+        _, access_error, status_code = get_accessible_admin_notifications(notification_ids, branch_scope)
+        if access_error:
+            return jsonify({'error': access_error}), status_code
+
+        supabase_admin.table('admin_notification_reads').delete().in_('notification_id', notification_ids).execute()
+        supabase_admin.table('admin_notifications').delete().in_('notification_id', notification_ids).execute()
+
+        return jsonify({'message': 'Notifications deleted', 'deletedCount': len(notification_ids)}), 200
+    except Exception as e:
+        print("Bulk delete admin notifications error:", str(e))
+        return jsonify({"error": str(e)}), 400
+
+
 @app.route('/api/admin-notifications/read-all', methods=['POST'])
 def read_all_admin_notifications():
     data = request.get_json() or {}
     try:
         admin_user_id = (data.get('admin_user_id') or data.get('adminUserId') or '').strip()
         branch_id_raw = data.get('branch_id', data.get('branchId'))
-        module = (data.get('module') or 'inventory').strip() or 'inventory'
+        module = (data.get('module') or '').strip()
 
         _, employee_error = get_employee_account_or_400(admin_user_id)
         if employee_error:
             return jsonify({'error': employee_error}), 400
+        branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
 
         query = supabase_admin.table('admin_notifications').select('notification_id')
-        if branch_id_raw not in (None, ''):
-            query = query.eq('branch_id', coerce_int(branch_id_raw, 'branch_id', minimum=1))
+        if branch_id_raw not in (None, '', 'all', 'All'):
+            branch_id, branch_error = validate_branch_scope_access(branch_scope, branch_id_raw)
+            if branch_error:
+                return jsonify({"error": branch_error}), 403
+            query = query.eq('branch_id', branch_id)
+        else:
+            query = apply_branch_scope_to_query(query, branch_scope)
         if module:
             query = query.eq('module', module)
 
@@ -9281,13 +10982,25 @@ def reconcile_inventory_expiring_soon_notifications():
         return jsonify({"error": str(e)}), 400
 
 
-def build_admin_appointment_rows(include_history=False):
+def build_admin_appointment_rows(include_history=False, actor_id=None):
+    branch_scope = None
+    if actor_id:
+        branch_scope, branch_error = get_actor_branch_scope(actor_id)
+        if branch_error:
+            raise ValueError(branch_error)
+
     appointments = execute_with_retry(
-        lambda: supabase_admin.table("appointments").select("*").execute(),
+        lambda: apply_branch_scope_to_query(
+            supabase_admin.table("appointments").select("*"),
+            branch_scope,
+        ).execute(),
         context="Fetch appointments for admin schedule"
     ).data or []
     walkins = execute_with_retry(
-        lambda: supabase_admin.table("walkin_appointments").select("*").execute(),
+        lambda: apply_branch_scope_to_query(
+            supabase_admin.table("walkin_appointments").select("*"),
+            branch_scope,
+        ).execute(),
         context="Fetch walk-in appointments for admin schedule"
     ).data or []
     patients = execute_with_retry(
@@ -9917,10 +11630,13 @@ def build_resolved_billing_service_items_from_label(label, *, lookups=None):
     return resolved_items
 
 
-def build_billing_product_catalog():
+def build_billing_product_catalog(branch_scope=None):
     try:
         response = execute_with_retry(
-            lambda: supabase_admin.table("inventory_items").select("*").order("item_name").execute(),
+            lambda: apply_branch_scope_to_query(
+                supabase_admin.table("inventory_items").select("*"),
+                branch_scope,
+            ).order("item_name").execute(),
             context="Fetch billing product catalog"
         )
         records = response.data or []
@@ -9963,10 +11679,10 @@ def build_billing_product_catalog():
     return products
 
 
-def build_billing_product_lookup():
+def build_billing_product_lookup(branch_scope=None):
     return {
         product.get("id"): product
-        for product in build_billing_product_catalog()
+        for product in build_billing_product_catalog(branch_scope=branch_scope)
         if product.get("id")
     }
 
@@ -10379,17 +12095,24 @@ def fetch_walkin_service_labels_by_ids(walkin_source_ids):
     }
 
 
-def build_billing_source_records():
-    completed_history_rows = build_admin_appointment_rows(include_history=True)
+def build_billing_source_records(actor_id=None):
+    branch_scope = None
+    if actor_id:
+        branch_scope, branch_error = get_actor_branch_scope(actor_id)
+        if branch_error:
+            raise ValueError(branch_error)
+
+    completed_history_rows = build_admin_appointment_rows(include_history=True, actor_id=actor_id)
     appointments = []
     walkins = []
     service_lookups = build_billing_service_lookups()
-    product_catalog = build_billing_product_catalog()
+    product_catalog = build_billing_product_catalog(branch_scope=branch_scope)
     emr_records = get_emr_records(
         include_billing=True,
         include_lab_results=False,
         include_vaccinations=False,
         include_medical_information=False,
+        branch_scope=branch_scope,
     )
     latest_visit_by_appointment_source = {}
     latest_visit_by_walkin_source = {}
@@ -12487,7 +14210,11 @@ def get_booked_slots(time_slot_id):
 @app.route('/api/appointments', methods=['POST'])
 def create_admin_appointment():
     try:
-        created = create_appointment_record(request.get_json() or {}, allow_walk_in=True)
+        data = request.get_json() or {}
+        branch_scope, branch_error = require_actor_branch_scope(data)
+        if branch_error:
+            return jsonify({"error": branch_error}), 400
+        created = create_appointment_record(data, allow_walk_in=True, branch_scope=branch_scope)
         return jsonify(created), 200
     except ValueError as value_error:
         return jsonify({"error": str(value_error)}), 400
@@ -12498,7 +14225,10 @@ def create_admin_appointment():
 @app.route('/api/appointments/table', methods=['GET'])
 def get_appointments_table():
     try:
-        return jsonify({"appointments": build_admin_appointment_rows(include_history=False)}), 200
+        actor_id = request.args.get("userId") or request.args.get("user_id") or request.args.get("adminUserId")
+        if not actor_id:
+            return jsonify({"error": "userId is required to load branch-scoped appointments"}), 400
+        return jsonify({"appointments": build_admin_appointment_rows(include_history=False, actor_id=actor_id)}), 200
     except Exception as e:
         print("Appointments table error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -12507,7 +14237,10 @@ def get_appointments_table():
 @app.route('/api/appointments/history', methods=['GET'])
 def get_appointments_history():
     try:
-        return jsonify({"appointments": build_admin_appointment_rows(include_history=True)}), 200
+        actor_id = request.args.get("userId") or request.args.get("user_id") or request.args.get("adminUserId")
+        if not actor_id:
+            return jsonify({"error": "userId is required to load branch-scoped appointment history"}), 400
+        return jsonify({"appointments": build_admin_appointment_rows(include_history=True, actor_id=actor_id)}), 200
     except Exception as e:
         print("Appointments history error:", str(e))
         return jsonify({"error": str(e)}), 400
@@ -12567,6 +14300,18 @@ def cancel_appointment_with_reason(appointment_id):
                 "email_sent": email_sent,
             },
             email_context=email_context if 'email_context' in locals() else None,
+        )
+
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='appointment_cancelled',
+            title='Appointment cancelled',
+            action_text='was cancelled',
+            severity='warning',
+            link='/admin/history',
+            metadata={"cancelReason": cancel_reason, "emailSent": email_sent},
         )
 
         return jsonify({
@@ -12653,6 +14398,24 @@ def create_admin_reschedule_request(appointment_id):
             email_context=email_context,
         )
 
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='reschedule_requested',
+            title='Reschedule request sent',
+            action_text='was proposed for a new schedule',
+            severity='info',
+            link='/admin/schedule',
+            metadata={
+                "requestId": request_row.get("request_id"),
+                "reason": reschedule_reason,
+                "emailSent": email_sent,
+                "proposedDate": new_date,
+                "proposedTime": normalize_db_time(new_time),
+            },
+        )
+
         return jsonify({
             "message": "Reschedule request emailed to patient" + ("" if email_sent else " (email not sent)"),
             "emailSent": email_sent,
@@ -12730,6 +14493,23 @@ def create_patient_reschedule_request(appointment_id):
                 "preferred_time": normalize_db_time(preferred_time),
             },
             email_context=email_context,
+        )
+
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='patient_reschedule_requested',
+            title='Patient requested reschedule',
+            action_text='has a patient preferred schedule request',
+            severity='warning',
+            link='/admin/schedule',
+            metadata={
+                "requestId": request_row.get("request_id"),
+                "patientNote": patient_note,
+                "preferredDate": preferred_date,
+                "preferredTime": normalize_db_time(preferred_time),
+            },
         )
 
         return jsonify({
@@ -13321,6 +15101,18 @@ def review_reschedule_request(request_id):
                 email_context=email_context,
             )
 
+            safe_create_appointment_admin_notification(
+                table_name=table_name,
+                id_column=id_column,
+                record_id=resolved_id,
+                event_type='reschedule_accepted',
+                title='Preferred schedule accepted',
+                action_text='was moved to the patient preferred schedule',
+                severity='success',
+                link='/admin/schedule',
+                metadata={"requestId": request_id, "note": admin_note or None},
+            )
+
             return jsonify({
                 "message": "Patient preferred schedule accepted",
                 "emailSent": email_sent
@@ -13367,6 +15159,18 @@ def review_reschedule_request(request_id):
                     "preferred_time": normalize_db_time(req.get("patient_preferred_time")),
                 },
                 email_context=email_context,
+            )
+
+            safe_create_appointment_admin_notification(
+                table_name=table_name,
+                id_column=id_column,
+                record_id=resolved_id,
+                event_type='reschedule_declined',
+                title='Preferred schedule declined',
+                action_text='had a patient preferred schedule declined',
+                severity='info',
+                link='/admin/schedule',
+                metadata={"requestId": request_id, "note": admin_note or None},
             )
 
             return jsonify({
@@ -13424,6 +15228,18 @@ def assign_doctor(appointment_id):
                 "new_doctor_id": doctor_id,
                 "new_doctor_name": doctor_name,
             },
+        )
+
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='doctor_assigned',
+            title='Doctor assigned',
+            action_text=f"was assigned to {doctor_name}" if doctor_name else "was assigned to a doctor",
+            severity='info',
+            link='/admin/schedule',
+            metadata={"doctorId": doctor_id, "doctorName": doctor_name},
         )
         return jsonify({"message": "Doctor assigned successfully"}), 200
     except Exception as e:
@@ -13698,6 +15514,8 @@ def update_admin_appointment_status(appointment_id):
                     existing_record.get("appointment_date"),
                     format_display_time(existing_record.get("appointment_time")),
                     assigned_doctor,
+                    email_context.get("branch_name"),
+                    email_context.get("service_price"),
                     context="Appointment confirmation email preparation"
                 )
             except Exception as email_error:
@@ -13725,6 +15543,33 @@ def update_admin_appointment_status(appointment_id):
                 "email_sent": email_sent,
             },
             email_context=email_context,
+        )
+
+        status_title_map = {
+            "confirmed": ("Appointment confirmed", "was confirmed", "success", "/admin/schedule"),
+            "completed": ("Appointment completed", "was marked as completed", "success", "/admin/history"),
+            "cancelled": ("Appointment cancelled", "was cancelled", "warning", "/admin/history"),
+            "pending": ("Appointment set to pending", "was set back to pending", "info", "/admin/schedule"),
+            "no_show": ("Appointment marked no-show", "was marked as no-show", "warning", "/admin/history"),
+        }
+        title, action_text, severity, link = status_title_map.get(
+            status,
+            ("Appointment status updated", f"was updated to {status or 'unknown'}", "info", "/admin/schedule")
+        )
+        safe_create_appointment_admin_notification(
+            table_name=table_name,
+            id_column=id_column,
+            record_id=resolved_id,
+            event_type='appointment_status_updated',
+            title=title,
+            action_text=action_text,
+            severity=severity,
+            link=link,
+            metadata={
+                "previousStatus": previous_status,
+                "status": status,
+                "emailSent": email_sent,
+            },
         )
 
         return jsonify({

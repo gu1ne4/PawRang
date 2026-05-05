@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import API_URL from '../API'
 import './UserAuthStylesheet.css'
-import { Mail, User, Lock } from 'lucide-react'
+import { Eye, EyeOff, Mail, User, Lock } from 'lucide-react'
 import { getDefaultRouteForUser } from '../auth/roles'
+import UserAuthVisual, { UserAuthPoweredBy } from './UserAuthVisual'
+import petShieldLogo from '../assets/PetshieldLogo.png'
 
 type ButtonState = 'default' | 'loading' | 'success' | 'error'
 
@@ -16,6 +18,7 @@ export default function Login() {
     const [buttonState, setButtonState] = useState<ButtonState>('default')
     const [identifierError, setIdentifierError] = useState('')
     const [passwordError, setPasswordError] = useState('')
+    const [showPassword, setShowPassword] = useState(false)
 
     function isEmailIdentifier(value: string) {
         return value.includes('@')
@@ -39,8 +42,8 @@ export default function Login() {
         setPassword(value)
         if (value.trim() === '') {
             setPasswordError('Password is required.')
-        } else if (value.length < 6) {
-            setPasswordError('Password must be at least 6 characters.')
+        } else if (value.length < 8) {
+            setPasswordError('Password must be at least 8 characters.')
         } else {
             setPasswordError('')
         }
@@ -57,7 +60,7 @@ export default function Login() {
         return (
             getIdentifier.trim() !== '' &&
             identifierIsValid &&
-            getPassword.length >= 6
+            getPassword.length >= 8
         )
     }
 
@@ -134,84 +137,98 @@ export default function Login() {
 
     return (
         <div className="main">
-            <div className='divisionContainers' id='divisionContainer1'>
-                <div className='imageBackground'>
-                    <div className='placeholders'>
-                        <h2>Welcome to PawRang!</h2>
-                        <p>Lorem, ipsum dolor sit amet consectetur adipisicing elit. Porro aliquid nulla dolorem ad dignissimos, totam recusandae aperiam accusantium voluptatem libero, unde quos maxime illum qui aspernatur laborum magnam optio minima.</p>
+            <div className="authContainer">
+                <div className='divisionContainers' id='divisionContainer1'>
+                    <UserAuthVisual />
+                </div>
+
+                <div className='divisionContainers'>
+                    <div className="inputBox">
+                        <div className="authFormBrand">
+                            <img src={petShieldLogo} alt="PetShield" />
+                        </div>
+                        <div className='headerContent'>
+                            <h2>Login to your account</h2>
+                            <p>Please fill the fields below to log in.</p>
+                        </div>
+
+                        {serverError && (
+                            <div className='serverErrorMessage'><p>{serverError}</p></div>
+                        )}
+                        {serverSuccess && (
+                            <div className='serverSuccessMessage'><p>{serverSuccess}</p></div>
+                        )}
+
+                        <div className='form'>
+                            <div className="inputContainer">
+                                <p className={identifierError ? 'inputLabel errorLabel' : 'inputLabel'}>
+                                    Email or Username {identifierError && <span className='errorAsterisk'>*</span>}
+                                </p>
+                                <div className='inputFieldContainer'>
+                                    {isEmailIdentifier(getIdentifier) ? (
+                                        <Mail className='inputIcons' />
+                                    ) : (
+                                        <User className='inputIcons' />
+                                    )}
+                                    <input
+                                        className={identifierError ? 'inputFields errorField' : 'inputFields'}
+                                        type="text"
+                                        value={getIdentifier}
+                                        placeholder="Enter your email or username"
+                                        onChange={e => handleIdentifierChange(e.target.value)}
+                                    />
+                                </div>
+                                {identifierError && <p className='errorMessage'>{identifierError}</p>}
+                            </div>
+
+                            <div className="inputContainer">
+                                <p className={passwordError ? 'inputLabel errorLabel' : 'inputLabel'}>
+                                    Password {passwordError && <span className='errorAsterisk'>*</span>}
+                                </p>
+                                <div className='inputFieldContainer'>
+                                    <Lock className='inputIcons'/>
+                                    <input
+                                        className={passwordError ? 'inputFields errorField inputFieldsWithAction' : 'inputFields inputFieldsWithAction'}
+                                        type={showPassword ? 'text' : 'password'}
+                                        value={getPassword}
+                                        placeholder="Enter your password"
+                                        onChange={e => handlePasswordChange(e.target.value)}
+                                    />
+                                    <button
+                                        type="button"
+                                        className="passwordVisibilityButton"
+                                        onClick={() => setShowPassword((current) => !current)}
+                                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                    >
+                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
+                                {passwordError && <p className='errorMessage'>{passwordError}</p>}
+                            </div>
+
+                            <button className='pageNavigator forgotPasswordLink' onClick={() => nav('/resetpassword')}>
+                                <p>Forgot Password?</p>
+                            </button>
+
+                            <button
+                                id='loginButton'
+                                className={`button loginButton--${buttonState}`}
+                                onClick={loginHandler}
+                                disabled={isDisabled}
+                            >
+                                {renderButtonContent()}
+                            </button>
+
+                            <div className="authNavigatorGroup">
+                                <button className='pageNavigator' onClick={() => nav('/register')}>
+                                    <p style={{ fontSize: 15 }}>Don't have an account? <strong style={{ color: '#3d67ee' }}>Register</strong></p>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-
-            <div className='divisionContainers'>
-                <div className="inputBox">
-                    <div className='headerContent'>
-                        <h2>Log In</h2>
-                        <p>Please fill the fields below to log in.</p>
-                    </div>
-
-                    {serverError && (
-                        <div className='serverErrorMessage'><p>{serverError}</p></div>
-                    )}
-                    {serverSuccess && (
-                        <div className='serverSuccessMessage'><p>{serverSuccess}</p></div>
-                    )}
-
-                    <div className='form'>
-                        <div className="inputContainer">
-                            <p className={identifierError ? 'inputLabel errorLabel' : 'inputLabel'}>
-                                Email or Username {identifierError && <span className='errorAsterisk'>*</span>}
-                            </p>
-                            <div className='inputFieldContainer'>
-                                {isEmailIdentifier(getIdentifier) ? (
-                                    <Mail className='inputIcons' />
-                                ) : (
-                                    <User className='inputIcons' />
-                                )}
-                                <input
-                                    className={identifierError ? 'inputFields errorField' : 'inputFields'}
-                                    type="text"
-                                    value={getIdentifier}
-                                    onChange={e => handleIdentifierChange(e.target.value)}
-                                />
-                            </div>
-                            {identifierError && <p className='errorMessage'>{identifierError}</p>}
-                        </div>
-
-                        <div className="inputContainer">
-                            <p className={passwordError ? 'inputLabel errorLabel' : 'inputLabel'}>
-                                Password {passwordError && <span className='errorAsterisk'>*</span>}
-                            </p>
-                            <div className='inputFieldContainer'>
-                                <Lock className='inputIcons'/>
-                                <input
-                                    className={passwordError ? 'inputFields errorField' : 'inputFields'}
-                                    type="password"
-                                    value={getPassword}
-                                    onChange={e => handlePasswordChange(e.target.value)}
-                                />
-                            </div>
-                            {passwordError && <p className='errorMessage'>{passwordError}</p>}
-                        </div>
-
-                        <button
-                            id='loginButton'
-                            className={`button loginButton--${buttonState}`}
-                            onClick={loginHandler}
-                            disabled={isDisabled}
-                        >
-                            {renderButtonContent()}
-                        </button>
-
-                        <button className='pageNavigator' onClick={() => nav('/resetpassword')}>
-                            <p style={{ color: '#2619e2', fontSize: 18 }}>Forgot Password</p>
-                        </button>
-                        <button className='pageNavigator' onClick={() => nav('/register')}>
-                            <p style={{ fontSize: 18 }}>Don't have an account? <strong style={{ color: '#2619e2' }}>Register</strong></p>
-                        </button>
-                    </div>
-                </div>
-            </div>
+            <UserAuthPoweredBy />
         </div>
     )
 }

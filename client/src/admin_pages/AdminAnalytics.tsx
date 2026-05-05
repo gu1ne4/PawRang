@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -324,6 +324,199 @@ const formatExpectedChange = (change?: number, label = 'expected next period'): 
   return `${change > 0 ? '+' : '-'}${Math.abs(change)}% ${label}`;
 };
 
+const getShortBranchName = (name?: string | null): string => {
+  const normalized = String(name || '').toLowerCase();
+  if (normalized.includes('taguig')) return 'Taguig';
+  if (normalized.includes('las') || normalized.includes('piñas') || normalized.includes('pinas') || normalized.includes('bf resort')) {
+    return 'Las Pinas';
+  }
+  return name || 'Branch';
+};
+
+const formatInsightPercent = (value: number): string =>
+  `${Math.abs(Math.round(value * 10) / 10)}%`;
+
+const buildDerivedSalesInsights = (analytics: AnalyticsOverview): Insight[] => {
+  const insights: Insight[] = [];
+  const addInsight = (insight: Insight) => {
+    if (!insights.some(item => item.id === insight.id)) insights.push(insight);
+  };
+
+  const lowPerformanceChecks = [
+    {
+      id: 'derived-low-revenue',
+      label: 'Revenue',
+      value: analytics.kpis.totalRevenueChange,
+      action: 'Review last month promotions, pricing, and high-value invoice sources.',
+    },
+    {
+      id: 'derived-low-transactions',
+      label: 'Transactions',
+      value: analytics.kpis.totalTransactionsChange,
+      action: 'Run appointment reminders and reactivation messages for inactive clients.',
+    },
+    {
+      id: 'derived-low-average-transaction',
+      label: 'Average transaction value',
+      value: analytics.kpis.averageTransactionChange,
+      action: 'Bundle services with relevant products to increase basket size.',
+    },
+    {
+      id: 'derived-low-appointments',
+      label: 'Completed appointments',
+      value: analytics.kpis.completedAppointmentsChange,
+      action: 'Check schedule availability, cancellations, and follow-up conversion.',
+    },
+  ];
+
+  lowPerformanceChecks.forEach(check => {
+    if (Number.isFinite(check.value) && check.value <= -10) {
+      addInsight({
+        id: check.id,
+        text: `${check.label} is ${formatInsightPercent(check.value)} lower than the previous period.`,
+        type: 'warning',
+        icon: '⚠️',
+        action: check.action,
+      });
+    }
+  });
+
+  analytics.inventory
+    .filter(item => item.movementRate === 'slow')
+    .slice(0, 4)
+    .forEach(item => {
+      addInsight({
+        id: `derived-slow-product-${item.id}`,
+        text: `${item.name} is slow moving and may tie up inventory cash.`,
+        type: 'opportunity',
+        icon: '🏷️',
+        action: 'Try a limited-time bundle, add-on discount, shelf highlight, or social post featuring use cases.',
+      });
+    });
+
+  analytics.topServices
+    .filter(service => Number(service.trend || 0) <= -10 || service.count <= 2)
+    .slice(0, 4)
+    .forEach(service => {
+      addInsight({
+        id: `derived-slow-service-${normalizeInsightId(service.service)}`,
+        text: `${service.service} shows weak service momentum${service.trend !== undefined ? ` (${formatReportPercent(service.trend)})` : ''}.`,
+        type: 'opportunity',
+        icon: '📣',
+        action: 'Promote with client education posts, follow-up reminders, package pricing, or staff recommendation scripts.',
+      });
+    });
+
+  analytics.topServices
+    .filter(service => Number(service.trend || 0) >= 10)
+    .slice(0, 3)
+    .forEach(service => {
+      addInsight({
+        id: `derived-growth-service-${normalizeInsightId(service.service)}`,
+        text: `${service.service} is gaining traction${service.trend !== undefined ? ` (${formatReportPercent(service.trend)})` : ''}.`,
+        type: 'growth',
+        icon: '📈',
+        action: 'Feature it in homepage banners, appointment prompts, and service bundles.',
+      });
+    });
+
+  analytics.topProducts
+    .filter(product => Number(product.predictedDemand || 0) > Number(product.quantitySold || 0))
+    .slice(0, 3)
+    .forEach(product => {
+      addInsight({
+        id: `derived-growth-product-${normalizeInsightId(product.product)}`,
+        text: `${product.product} has demand upside based on forecasted product movement.`,
+        type: 'growth',
+        icon: '🛒',
+        action: 'Keep stock visible at checkout and pair it with related services.',
+      });
+    });
+
+  const topService = analytics.topServices[0];
+  if (topService) {
+    addInsight({
+      id: `derived-service-upsell-${normalizeInsightId(topService.service)}`,
+      text: `${topService.service} is a strong service anchor for add-on sales.`,
+      type: 'growth',
+      icon: '🧩',
+      action: 'Create a bundle with related products, follow-up checkups, or preventive care reminders.',
+    });
+  }
+
+  const topProduct = analytics.topProducts[0];
+  if (topProduct) {
+    addInsight({
+      id: `derived-product-merchandising-${normalizeInsightId(topProduct.product)}`,
+      text: `${topProduct.product} can be used as a merchandising hook for repeat purchases.`,
+      type: 'growth',
+      icon: '🛍️',
+      action: 'Place it near checkout, mention it after related services, and test a multi-buy offer.',
+    });
+  }
+
+  const busiestHour = analytics.peakHours.reduce<PeakTimeData | null>(
+    (best, item) => (!best || (item.appointments || 0) > (best.appointments || 0) ? item : best),
+    null,
+  );
+  if (busiestHour && (busiestHour.appointments || 0) > 0) {
+    addInsight({
+      id: `derived-peak-hour-${normalizeInsightId(busiestHour.hour)}`,
+      text: `${busiestHour.hour} is currently the busiest appointment window.`,
+      type: 'growth',
+      icon: '⏰',
+      action: 'Offer off-peak promos while keeping staff and inventory ready for this high-demand hour.',
+    });
+  }
+
+  if (analytics.kpis.predictedRevenueChange >= 10) {
+    addInsight({
+      id: 'derived-predicted-revenue-growth',
+      text: `Forecasted revenue is ${formatInsightPercent(analytics.kpis.predictedRevenueChange)} higher for the next period.`,
+      type: 'growth',
+      icon: '🚀',
+      action: 'Prepare staffing, stock, and marketing around the expected demand lift.',
+    });
+  }
+
+  if (analytics.salesDistribution.some(item => item.value > 0)) {
+    const productsShare = analytics.salesDistribution.find(item => item.name.toLowerCase() === 'products')?.value || 0;
+    const servicesShare = analytics.salesDistribution.find(item => item.name.toLowerCase() === 'services')?.value || 0;
+    if (productsShare < 25) {
+      addInsight({
+        id: 'derived-product-attach-opportunity',
+        text: `Products are only ${productsShare}% of item revenue.`,
+        type: 'opportunity',
+        icon: '💡',
+        action: 'Train checkout prompts for after-care kits, preventives, and grooming add-ons.',
+      });
+    }
+    if (servicesShare < 45) {
+      addInsight({
+        id: 'derived-service-mix-opportunity',
+        text: `Services are only ${servicesShare}% of item revenue.`,
+        type: 'opportunity',
+        icon: '💡',
+        action: 'Launch service reminders for vaccines, dental care, grooming, and wellness check-ups.',
+      });
+    }
+  }
+
+  return insights;
+};
+
+const normalizeInsightId = (value: string): string =>
+  String(value || 'item').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'item';
+
+const mergeInsights = (baseInsights: Insight[], derivedInsights: Insight[]): Insight[] => {
+  const seen = new Set<string>();
+  return [...baseInsights, ...derivedInsights].filter(insight => {
+    if (seen.has(insight.id)) return false;
+    seen.add(insight.id);
+    return true;
+  });
+};
+
 const formatDateShort = (value?: string | null): string => {
   if (!value) return 'N/A';
   const parsed = new Date(`${value}T00:00:00`);
@@ -435,7 +628,7 @@ const getExportPresetRange = (preset: AnalyticsExportPreset): { startDate: strin
 const getBranchLabel = (branches: BranchOption[], branchId: string): string => {
   if (!branchId || branchId === 'all') return 'All Branches';
   const branch = branches.find((item) => String(item.id) === String(branchId));
-  return branch?.name || `Branch ${branchId}`;
+  return branch ? getShortBranchName(branch.name) : `Branch ${branchId}`;
 };
 
 const formatReportCurrency = (value?: number | null): string =>
@@ -1012,7 +1205,7 @@ const ExportButton: React.FC<{
   const defaultRange = getExportPresetRange('this_month');
   const [startDate, setStartDate] = useState(defaultRange.startDate);
   const [endDate, setEndDate] = useState(defaultRange.endDate);
-  const [branchId, setBranchId] = useState(selectedBranch || 'all');
+  const branchId = selectedBranch || 'all';
   const [selectedSections, setSelectedSections] = useState<Record<ExportSectionKey, boolean>>(createDefaultExportSections);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState('');
@@ -1023,7 +1216,6 @@ const ExportButton: React.FC<{
 
   const openExportModal = (format: AnalyticsExportFormat) => {
     setExportFormat(format);
-    setBranchId(selectedBranch || 'all');
     setExportError('');
     setIsModalOpen(true);
   };
@@ -1112,11 +1304,6 @@ const ExportButton: React.FC<{
       setIsExporting(false);
     }
   };
-
-  useEffect(() => {
-    if (!isModalOpen) return;
-    setBranchId(selectedBranch || 'all');
-  }, [isModalOpen, selectedBranch]);
 
   useEffect(() => {
     if (selectAllSectionsRef.current) {
@@ -1212,18 +1399,6 @@ const ExportButton: React.FC<{
               </div>
 
               <div className="analytics-export-field-group">
-                <label>Branch</label>
-                <select value={branchId} onChange={(event) => setBranchId(event.target.value)}>
-                  <option value="all">All Branches</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={String(branch.id)}>
-                      {branch.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="analytics-export-field-group">
                 <div className="analytics-export-sections-header">
                   <label>Report Sections</label>
                   <label className="analytics-export-select-all">
@@ -1312,7 +1487,7 @@ const PageHeader: React.FC<{
             <option value="all">All Branches</option>
             {branches.map((branch) => (
               <option key={branch.id} value={String(branch.id)}>
-                {branch.name}
+                {getShortBranchName(branch.name)}
               </option>
             ))}
           </select>
@@ -1653,7 +1828,7 @@ const AiInsightsPanel: React.FC<{ insights: Insight[] }> = ({ insights }) => {
               <div className="insight-icon-white">{insight.icon || '📈'}</div>
               <div className="insight-content-white">
                 <div className="insight-text-white">{insight.text}</div>
-                {insight.action && <div className="insight-action-white">→ {insight.action}</div>}
+                {insight.action && <div className="insight-action-white"><span>Suggested action</span>{insight.action}</div>}
               </div>
             </div>
           ))}
@@ -1671,7 +1846,7 @@ const AiInsightsPanel: React.FC<{ insights: Insight[] }> = ({ insights }) => {
               <div className="insight-icon-white">{insight.icon || '⚠️'}</div>
               <div className="insight-content-white">
                 <div className="insight-text-white">{insight.text}</div>
-                {insight.action && <div className="insight-action-white">→ {insight.action}</div>}
+                {insight.action && <div className="insight-action-white"><span>Suggested action</span>{insight.action}</div>}
               </div>
             </div>
           ))}
@@ -1689,7 +1864,7 @@ const AiInsightsPanel: React.FC<{ insights: Insight[] }> = ({ insights }) => {
               <div className="insight-icon-white">{insight.icon || '💡'}</div>
               <div className="insight-content-white">
                 <div className="insight-text-white">{insight.text}</div>
-                {insight.action && <div className="insight-action-white">→ {insight.action}</div>}
+                {insight.action && <div className="insight-action-white"><span>Suggested action</span>{insight.action}</div>}
               </div>
             </div>
           ))}
@@ -1770,6 +1945,10 @@ const AdminAnalytics: React.FC = () => {
   const [analyticsError, setAnalyticsError] = useState('');
 
   const { kpis } = analytics;
+  const salesIntelligenceInsights = useMemo(
+    () => mergeInsights(analytics.insights, buildDerivedSalesInsights(analytics)),
+    [analytics],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -1866,7 +2045,7 @@ const AdminAnalytics: React.FC = () => {
     <div className="biContainer" style={{ backgroundColor: '#f8fafc', minHeight: '100vh' }}>
       <Navbar currentUser={currentUser} onLogout={handleLogout} confirmLogout />
 
-      <div className="bodyContainer" style={{ paddingRight: '10px' }}>
+      <div className="bodyContainer">
         <div className="analytics-wrapper">
           {/* Page Header - Inventory Style */}
           <PageHeader
@@ -1956,7 +2135,7 @@ const AdminAnalytics: React.FC = () => {
           </div>
 
           {/* AI Insights Panel */}
-          <AiInsightsPanel insights={analytics.insights} />
+          <AiInsightsPanel insights={salesIntelligenceInsights} />
         </div>
       </div>
     </div>

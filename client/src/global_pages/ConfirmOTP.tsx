@@ -170,7 +170,7 @@ export default function ConfirmOTP() {
             <div className='resetCard'>
                 <div className='resetHeader'>
                     <div className='resetIconWrapper'>
-                        {isEmailConfirmation ? <UserCheck size={28} color='#2619e2' /> : <ShieldCheck size={28} color='#2619e2' />}
+                        {isEmailConfirmation ? <UserCheck size={28} color='#3d67ee' /> : <ShieldCheck size={28} color='#3d67ee' />}
                     </div>
                     <h2>{isEmailConfirmation ? 'Confirm Your Account' : 'Verify OTP'}</h2>
                     <p>
@@ -222,7 +222,7 @@ export default function ConfirmOTP() {
                 </div>
 
                 <button className='resetPageNavigator' onClick={() => nav('/login')}>
-                    Back to <strong style={{ color: '#2619e2' }}>Login</strong>
+                    Back to <strong style={{ color: '#3d67ee' }}>Login</strong>
                 </button>
             </div>
         </div>

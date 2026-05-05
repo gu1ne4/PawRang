@@ -95,6 +95,21 @@ const SORT_OPTIONS = [
 
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
+const getStoredInventoryUserId = (): string => {
+  try {
+    const session = localStorage.getItem('userSession');
+    const parsed = session ? JSON.parse(session) : null;
+    return parsed?.id || parsed?.pk || '';
+  } catch {
+    return '';
+  }
+};
+
+const withInventoryUserId = (url: string): string => {
+  const userId = getStoredInventoryUserId();
+  if (!userId) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}userId=${encodeURIComponent(userId)}`;
+};
 const BRANCH_ID_BY_NAME: Record<string, number> = {
   Taguig: 1,
   'Las Pinas': 2,
@@ -227,7 +242,7 @@ const GlobalInventoryLogs: React.FC = () => {
       const endpoint = branchId
         ? `${API_URL}/api/inventory/logs?branch_id=${branchId}`
         : `${API_URL}/api/inventory/logs`;
-      const response = await fetch(endpoint);
+      const response = await fetch(withInventoryUserId(endpoint));
       if (!response.ok) {
         throw new Error(`Failed to fetch inventory logs (${response.status})`);
       }
@@ -257,7 +272,7 @@ const GlobalInventoryLogs: React.FC = () => {
       const endpoint = branchId
         ? `${API_URL}/api/inventory/items?branch_id=${branchId}`
         : `${API_URL}/api/inventory/items`;
-      const response = await fetch(endpoint);
+      const response = await fetch(withInventoryUserId(endpoint));
       if (!response.ok) {
         throw new Error(`Failed to fetch inventory data (${response.status})`);
       }
@@ -327,7 +342,7 @@ const GlobalInventoryLogs: React.FC = () => {
             );
 
             if (!matchingProduct) {
-              const createResponse = await fetch(`${API_URL}/api/inventory/items`, {
+              const createResponse = await fetch(withInventoryUserId(`${API_URL}/api/inventory/items`), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -373,7 +388,7 @@ const GlobalInventoryLogs: React.FC = () => {
             }
 
             if (row.stockCount > 0) {
-              const stockInResponse = await fetch(`${API_URL}/api/inventory/stock-in`, {
+              const stockInResponse = await fetch(withInventoryUserId(`${API_URL}/api/inventory/stock-in`), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

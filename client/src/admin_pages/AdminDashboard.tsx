@@ -1,11 +1,11 @@
-import React, { useMemo, useState, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
-import './AdminDashboardLayout.css'
+import './AdminDashboardLayout.css'; 
 import userImg from '../assets/userAvatar.jpg';
 import {
-  Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Line, Legend, ComposedChart
 } from 'recharts';
 
@@ -33,18 +33,18 @@ import {
 
 import Navbar from '../reusable_components/NavBar';
 import NotificationsAllModal from '../reusable_components/NotificationsAllModal';
-import type { Notification, NotificationsModalRef } from '../reusable_components/NotificationsAllModal';
-import { getSessionUser } from '../auth/roles';
+import type { Notification as AppNotification, NotificationsModalRef } from '../reusable_components/NotificationsAllModal';
+import API_URL from '../API';
+import { apiService } from '../apiService';
 
 // ========== INTERFACES ==========
 
 interface Admin {
-  id: string | number;
+  id: number | string;
   name: string;
   username: string;
   role: string;
   image?: string;
-  userImage?: string;
 }
 
 interface InventoryMovement {
@@ -66,22 +66,273 @@ interface CalendarEvent {
   description?: string;
 }
 
-interface NotificationItem {
-  id: number;
-  title: string;
-  description: string;
-  time: string;
-  icon: string;
-  color: string;
+interface DashboardKpis {
+  totalRevenue: number;
+  totalRevenueChange: number;
+  totalTransactions: number;
+  totalTransactionsChange: number;
+  averageTransaction: number;
+  averageTransactionChange: number;
+  completedAppointments: number;
+  completedAppointmentsChange: number;
+  predictedRevenue: number;
+  predictedRevenueChange: number;
 }
 
-
-interface VisitData {
+interface SalesTrendPoint {
   day: string;
-  appointments: number;
-  walkIns: number;
-  total: number;
+  actual: number | null;
+  predicted: number | null;
+  appointments: number | null;
 }
+
+interface AnalyticsOverview {
+  kpis: DashboardKpis;
+  salesTrend: SalesTrendPoint[];
+}
+
+interface DashboardTrendPoint {
+  date: string;
+  dateKey: string;
+  walkIns: number;
+  appointments: number;
+  patients: number;
+}
+
+type DashboardMetricKey = 'walkIns' | 'appointments' | 'patients';
+
+const fallbackUser: Admin = {
+  id: 1,
+  name: 'Admin',
+  username: 'admin',
+  role: 'Admin',
+  image: userImg
+};
+
+const emptyAnalytics: AnalyticsOverview = {
+  kpis: {
+    totalRevenue: 0,
+    totalRevenueChange: 0,
+    totalTransactions: 0,
+    totalTransactionsChange: 0,
+    averageTransaction: 0,
+    averageTransactionChange: 0,
+    completedAppointments: 0,
+    completedAppointmentsChange: 0,
+    predictedRevenue: 0,
+    predictedRevenueChange: 0,
+  },
+  salesTrend: [],
+};
+
+const getSessionUser = (): any | null => {
+  try {
+    const rawSession = localStorage.getItem('userSession');
+    return rawSession ? JSON.parse(rawSession) : null;
+  } catch (error) {
+    console.error('Dashboard session parse error:', error);
+    return null;
+  }
+};
+
+const normalizeCurrentUser = (session: any): Admin => {
+  if (!session) return fallbackUser;
+
+  const firstName = session.firstName || session.first_name || '';
+  const lastName = session.lastName || session.last_name || '';
+  const name = session.fullName || session.name || `${firstName} ${lastName}`.trim() || session.username || 'Admin';
+
+  return {
+    id: session.id || session.pk || session.employee_id || session.employeeId || session.account_id || fallbackUser.id,
+    name,
+    username: session.username || session.email || 'admin',
+    role: session.role || 'Admin',
+    image: session.userImage || session.employee_image || session.profileImage || userImg,
+  };
+};
+
+const getAdminUserId = (session: any, currentUser?: Admin): string => {
+  const id = session?.id || session?.pk || session?.employee_id || session?.employeeId || currentUser?.id || '';
+  return String(id || '');
+};
+
+const toNumber = (value: unknown): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const mergeAnalyticsOverview = (payload: any): AnalyticsOverview => ({
+  kpis: {
+    totalRevenue: toNumber(payload?.kpis?.totalRevenue),
+    totalRevenueChange: toNumber(payload?.kpis?.totalRevenueChange),
+    totalTransactions: toNumber(payload?.kpis?.totalTransactions),
+    totalTransactionsChange: toNumber(payload?.kpis?.totalTransactionsChange),
+    averageTransaction: toNumber(payload?.kpis?.averageTransaction),
+    averageTransactionChange: toNumber(payload?.kpis?.averageTransactionChange),
+    completedAppointments: toNumber(payload?.kpis?.completedAppointments),
+    completedAppointmentsChange: toNumber(payload?.kpis?.completedAppointmentsChange),
+    predictedRevenue: toNumber(payload?.kpis?.predictedRevenue),
+    predictedRevenueChange: toNumber(payload?.kpis?.predictedRevenueChange),
+  },
+  salesTrend: Array.isArray(payload?.salesTrend)
+    ? payload.salesTrend.map((point: any) => ({
+        day: String(point?.day || ''),
+        actual: point?.actual === null || point?.actual === undefined ? null : toNumber(point.actual),
+        predicted: point?.predicted === null || point?.predicted === undefined ? null : toNumber(point.predicted),
+        appointments: point?.appointments === null || point?.appointments === undefined ? null : toNumber(point.appointments),
+      }))
+    : [],
+});
+
+const normalizeInventoryMovement = (log: any, index: number): InventoryMovement => {
+  const rawType = String(log?.type || log?.transactionType || log?.transaction_type || 'OUT').toUpperCase();
+  const timestamp = log?.createdAt || log?.created_at || log?.timestamp || [log?.date, log?.time].filter(Boolean).join(' ');
+
+  return {
+    id: Number(log?.id || log?.logId || log?.log_id || index + 1),
+    itemName: String(log?.productName || log?.product_name || log?.itemName || log?.item_name || 'Inventory Item'),
+    type: rawType === 'IN' ? 'IN' : 'OUT',
+    quantity: toNumber(log?.quantity),
+    user: String(log?.user || log?.processedBy || log?.processed_by || 'System'),
+    timestamp: formatRelativeTimestamp(timestamp),
+    category: String(log?.category || ''),
+  };
+};
+
+const normalizeFetchedNotification = (record: any): AppNotification => {
+  const type = String(record?.type || 'info');
+  const safeType = ['info', 'success', 'warning', 'error'].includes(type) ? type as AppNotification['type'] : 'info';
+
+  return {
+    id: String(record?.notificationId || record?.notification_id || record?.id || ''),
+    title: String(record?.title || 'Notification'),
+    message: String(record?.message || record?.description || ''),
+    type: safeType,
+    timestamp: new Date(record?.timestamp || record?.created_at || Date.now()),
+    read: Boolean(record?.read),
+    link: record?.link || undefined,
+  };
+};
+
+const formatRelativeTimestamp = (rawTimestamp: string): string => {
+  const parsedDate = rawTimestamp ? new Date(rawTimestamp) : null;
+  if (!parsedDate || Number.isNaN(parsedDate.getTime())) return 'Just now';
+
+  const diffMs = Date.now() - parsedDate.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+  if (diffDays === 1) return 'Yesterday';
+  return `${diffDays} days ago`;
+};
+
+const parseDashboardDate = (value: unknown): Date | null => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  const parsed = new Date(raw.includes('T') ? raw : `${raw}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getDashboardDateKey = (value: unknown): string => {
+  const parsed = parseDashboardDate(value);
+  if (!parsed) return '';
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getLastSevenDayPoints = (): DashboardTrendPoint[] => {
+  const formatter = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (6 - index));
+    return {
+      date: formatter.format(date),
+      dateKey: getDashboardDateKey(date),
+      walkIns: 0,
+      appointments: 0,
+      patients: 0,
+    };
+  });
+};
+
+const incrementDailyMetric = (
+  points: DashboardTrendPoint[],
+  dateLookup: Map<string, number>,
+  rawDate: unknown,
+  metric: DashboardMetricKey
+) => {
+  const dateKey = getDashboardDateKey(rawDate);
+  const pointIndex = dateLookup.get(dateKey);
+  if (pointIndex === undefined) return;
+  points[pointIndex][metric] += 1;
+};
+
+const isWithinLastSevenDays = (value: unknown): boolean => {
+  const parsed = parseDashboardDate(value);
+  if (!parsed) return false;
+
+  const today = new Date();
+  today.setHours(23, 59, 59, 999);
+
+  const start = new Date(today);
+  start.setDate(today.getDate() - 6);
+  start.setHours(0, 0, 0, 0);
+
+  return parsed >= start && parsed <= today;
+};
+
+const getAppointmentDateValue = (record: any): string => (
+  record?.date_only ||
+  record?.appointment_date ||
+  record?.dateDisplay ||
+  record?.date_display ||
+  record?.date ||
+  record?.sort_date ||
+  ''
+);
+
+const isValidBillingInvoice = (invoice: any): boolean => {
+  const status = String(invoice?.status || '').toLowerCase();
+  return status !== 'cancelled' && status !== 'refunded';
+};
+
+const isWalkInBillingInvoice = (invoice: any): boolean => {
+  const invoiceType = String(invoice?.invoiceType || invoice?.invoice_type || '').toLowerCase();
+  const sourceRecordType = String(invoice?.sourceRecordType || invoice?.source_record_type || '').toLowerCase();
+  const sourceLabel = String(invoice?.sourceRecord || invoice?.source_record || invoice?.typeLabel || invoice?.type_label || '').toLowerCase();
+
+  return (
+    invoiceType.includes('walkin') ||
+    invoiceType.includes('walk-in') ||
+    sourceRecordType.includes('walkin') ||
+    sourceRecordType.includes('walk-in') ||
+    sourceLabel.includes('walk-in') ||
+    sourceLabel.includes('walkin')
+  );
+};
+
+const getNotificationMeta = (type: AppNotification['type']) => {
+  switch (type) {
+    case 'success':
+      return { color: '#10b981', icon: <IoDocumentText size={12} color="#10b981" /> };
+    case 'warning':
+      return { color: '#f59e0b', icon: <IoWarningOutline size={12} color="#f59e0b" /> };
+    case 'error':
+      return { color: '#ef4444', icon: <IoWarningOutline size={12} color="#ef4444" /> };
+    default:
+      return { color: '#3d67ee', icon: <IoNotificationsOutline size={12} color="#3d67ee" /> };
+  }
+};
 
 // ========== KPI CARD COMPONENT ==========
 interface KpiCardProps {
@@ -167,37 +418,17 @@ const AdminDashboard: React.FC = () => {
   // State
   const [date, setDate] = useState<Date>(new Date());
   const [showAllEvents, setShowAllEvents] = useState<boolean>(false);
+  const [viewportWidth, setViewportWidth] = useState<number>(() => window.innerWidth);
+  const [currentUser, setCurrentUser] = useState<Admin>(fallbackUser);
+  const [analytics, setAnalytics] = useState<AnalyticsOverview>(emptyAnalytics);
+  const [patientsCount, setPatientsCount] = useState<number>(0);
+  const [inventoryItemsCount, setInventoryItemsCount] = useState<number>(0);
+  const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [weeklyActivityData, setWeeklyActivityData] = useState<DashboardTrendPoint[]>([]);
   
   // Refs
   const notificationsModalRef = useRef<NotificationsModalRef>(null);
-  
-  const currentUser: Admin = useMemo(() => {
-    const session = getSessionUser();
-    const fullName =
-      session?.fullName ||
-      session?.fullname ||
-      `${session?.firstName || ''} ${session?.lastName || ''}`.trim();
-
-    return {
-      id: session?.id || session?.pk || 1,
-      name: fullName || session?.username || 'Administrator',
-      username: session?.username || 'admin',
-      role: session?.role || 'Administrator',
-      image: session?.image || session?.userImage || userImg,
-      userImage: session?.userImage || session?.image || userImg,
-    };
-  }, []);
-
-  // Inventory Movement Logs - IN and OUT of items
-  const inventoryMovements: InventoryMovement[] = [
-    { id: 1, itemName: 'Vaccine - Rabies', type: 'OUT', quantity: 5, user: 'Dr. Margaret', timestamp: '10 min ago', category: 'Medicines' },
-    { id: 2, itemName: 'Syringes (Box)', type: 'IN', quantity: 2, user: 'Admin', timestamp: '1 hour ago', category: 'Supplies' },
-    { id: 3, itemName: 'Dog Food - Premium', type: 'OUT', quantity: 10, user: 'Staff', timestamp: '2 hours ago', category: 'Food' },
-    { id: 4, itemName: 'Antibiotics', type: 'OUT', quantity: 3, user: 'Dr. Margaret', timestamp: '3 hours ago', category: 'Medicines' },
-    { id: 5, itemName: 'Surgical Gloves', type: 'IN', quantity: 4, user: 'Admin', timestamp: '5 hours ago', category: 'Supplies' },
-    { id: 6, itemName: 'Cat Litter', type: 'OUT', quantity: 8, user: 'Staff', timestamp: '1 day ago', category: 'Supplies' },
-    { id: 7, itemName: 'Vitamin Supplements', type: 'IN', quantity: 15, user: 'Admin', timestamp: '1 day ago', category: 'Medicines' },
-  ];
 
   // Upcoming Calendar Events
   const allCalendarEvents: CalendarEvent[] = [
@@ -213,99 +444,6 @@ const AdminDashboard: React.FC = () => {
     { id: 10, title: 'Client Appreciation Day', date: '2026-04-02', time: '10:00 AM', type: 'meeting', description: 'Free check-ups for loyal clients' },
     { id: 11, title: 'Pet Adoption Event', date: '2026-04-05', time: '09:00 AM', type: 'appointment', description: 'Community pet adoption drive' },
     { id: 12, title: 'Holy Week Break', date: '2026-03-28', time: 'All day', type: 'holiday', description: 'Clinic closed for Holy Week' },
-  ];
-
-  const notificationItems: NotificationItem[] = [
-    { 
-      id: 1, 
-      title: 'Low stock alert', 
-      description: 'Rabies vaccine running low (5 units left)', 
-      time: '5 min ago',
-      icon: 'warning',
-      color: '#ef4444'
-    },
-    { 
-      id: 2, 
-      title: 'New appointment scheduled', 
-      description: 'John Smith - Tomorrow at 9:00 AM', 
-      time: '2 hours ago',
-      icon: 'calendar',
-      color: '#3d67ee'
-    },
-    { 
-      id: 3, 
-      title: 'Lab results ready', 
-      description: 'Maria Garcia - Blood work completed', 
-      time: '3 hours ago',
-      icon: 'document',
-      color: '#10b981'
-    },
-    { 
-      id: 4, 
-      title: 'Inventory delivered', 
-      description: 'New shipment of supplies arrived', 
-      time: '5 hours ago',
-      icon: 'package',
-      color: '#8b5cf6'
-    },
-  ];
-
-  const getNotificationType = (icon: NotificationItem['icon']): Notification['type'] => {
-    switch (icon) {
-      case 'warning':
-        return 'warning';
-      case 'document':
-        return 'success';
-      default:
-        return 'info';
-    }
-  };
-
-  const getNotificationTimestamp = (timeLabel: string): Date => {
-    const now = new Date();
-    const normalized = timeLabel.toLowerCase().trim();
-    const match = normalized.match(/(\d+)\s*(min|mins|minute|minutes|hour|hours|day|days)/);
-
-    if (!match) {
-      return now;
-    }
-
-    const amount = Number(match[1]);
-    const unit = match[2];
-    const timestamp = new Date(now);
-
-    if (unit.startsWith('min')) {
-      timestamp.setMinutes(now.getMinutes() - amount);
-      return timestamp;
-    }
-
-    if (unit.startsWith('hour')) {
-      timestamp.setHours(now.getHours() - amount);
-      return timestamp;
-    }
-
-    timestamp.setDate(now.getDate() - amount);
-    return timestamp;
-  };
-
-  const dashboardNotifications: Notification[] = notificationItems.map((item) => ({
-    id: String(item.id),
-    title: item.title,
-    message: item.description,
-    type: getNotificationType(item.icon),
-    timestamp: getNotificationTimestamp(item.time),
-    read: false,
-  }));
-
-  // Recent Clinic Visits Data
-  const recentVisitsData: VisitData[] = [
-    { day: 'Mon', appointments: 12, walkIns: 5, total: 17 },
-    { day: 'Tue', appointments: 15, walkIns: 7, total: 22 },
-    { day: 'Wed', appointments: 18, walkIns: 6, total: 24 },
-    { day: 'Thu', appointments: 14, walkIns: 8, total: 22 },
-    { day: 'Fri', appointments: 20, walkIns: 10, total: 30 },
-    { day: 'Sat', appointments: 8, walkIns: 4, total: 12 },
-    { day: 'Sun', appointments: 4, walkIns: 2, total: 6 },
   ];
 
   // Weekly Data for chart
@@ -336,8 +474,7 @@ const AdminDashboard: React.FC = () => {
   };
 
   const formatDate = (): string => {
-    const date = new Date();
-    return date.toLocaleDateString('en-US', { 
+    return new Date().toLocaleDateString('en-US', { 
       month: 'short', 
       day: 'numeric', 
       year: 'numeric' 
@@ -345,10 +482,9 @@ const AdminDashboard: React.FC = () => {
   };
 
   const formatTime = (): string => {
-    const date = new Date();
-    return date.toLocaleTimeString('en-US', { 
+    return new Date().toLocaleTimeString('en-US', { 
       hour: '2-digit', 
-      minute: '2-digit' 
+      minute: '2-digit'
     });
   };
 
@@ -367,6 +503,183 @@ const AdminDashboard: React.FC = () => {
   const handleQuickAction = (action: () => void) => {
     action();
   };
+
+  useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    const session = getSessionUser();
+    const normalizedUser = normalizeCurrentUser(session);
+    const adminUserId = getAdminUserId(session, normalizedUser);
+    setCurrentUser(normalizedUser);
+
+    const fetchDashboardData = async () => {
+      const [
+        analyticsResult,
+        patientsResult,
+        inventoryItemsResult,
+        inventoryLogsResult,
+        billingInvoicesResult,
+        appointmentsResult,
+        appointmentHistoryResult,
+        notificationsResult,
+      ] = await Promise.allSettled([
+        apiService.getAdminAnalyticsOverview(),
+        fetch(`${API_URL}/patients`),
+        fetch(`${API_URL}/api/inventory/items`),
+        fetch(`${API_URL}/api/inventory/logs`),
+        apiService.getBillingInvoices(),
+        apiService.getAppointmentsForTable(),
+        fetch(`${API_URL}/api/appointments/history`),
+        adminUserId
+          ? fetch(`${API_URL}/api/admin-notifications?admin_user_id=${encodeURIComponent(adminUserId)}&module=inventory&limit=50`)
+          : Promise.resolve(null),
+      ]);
+      let nextPatientsCount = 0;
+      const nextWeeklyActivityData = getLastSevenDayPoints();
+      const dateLookup = new Map(
+        nextWeeklyActivityData.map((point, index) => [point.dateKey, index])
+      );
+
+      if (analyticsResult.status === 'fulfilled') {
+        setAnalytics(mergeAnalyticsOverview(analyticsResult.value));
+      } else {
+        console.error('Dashboard analytics fetch error:', analyticsResult.reason);
+      }
+
+      if (patientsResult.status === 'fulfilled' && patientsResult.value.ok) {
+        const patientsPayload = await patientsResult.value.json().catch(() => []);
+        const patients = Array.isArray(patientsPayload)
+          ? patientsPayload
+          : Array.isArray(patientsPayload?.patients)
+            ? patientsPayload.patients
+            : [];
+        nextPatientsCount = patients.length;
+        setPatientsCount(nextPatientsCount);
+      }
+
+      if (inventoryItemsResult.status === 'fulfilled' && inventoryItemsResult.value.ok) {
+        const inventoryPayload = await inventoryItemsResult.value.json().catch(() => ({}));
+        const items = Array.isArray(inventoryPayload?.items)
+          ? inventoryPayload.items
+          : Array.isArray(inventoryPayload)
+            ? inventoryPayload
+            : [];
+        setInventoryItemsCount(items.filter((item: any) => !item?.isArchived && !item?.is_archived).length);
+      }
+
+      if (inventoryLogsResult.status === 'fulfilled' && inventoryLogsResult.value.ok) {
+        const logsPayload = await inventoryLogsResult.value.json().catch(() => ({}));
+        const logs = Array.isArray(logsPayload?.logs)
+          ? logsPayload.logs
+          : Array.isArray(logsPayload)
+            ? logsPayload
+            : [];
+        setInventoryMovements(logs.slice(0, 5).map(normalizeInventoryMovement));
+      }
+
+      if (billingInvoicesResult.status === 'fulfilled') {
+        const invoices = Array.isArray(billingInvoicesResult.value) ? billingInvoicesResult.value : [];
+        invoices.forEach((invoice: any) => {
+          if (
+            isWalkInBillingInvoice(invoice) &&
+            isValidBillingInvoice(invoice)
+          ) {
+            incrementDailyMetric(
+              nextWeeklyActivityData,
+              dateLookup,
+              invoice?.date || invoice?.invoiceDate || invoice?.invoice_date,
+              'walkIns'
+            );
+          }
+        });
+      } else {
+        console.error('Dashboard billing invoices fetch error:', billingInvoicesResult.reason);
+      }
+
+      const activeAppointments = appointmentsResult.status === 'fulfilled' && Array.isArray(appointmentsResult.value?.appointments)
+        ? appointmentsResult.value.appointments
+        : [];
+      const appointmentHistoryPayload = appointmentHistoryResult.status === 'fulfilled' && appointmentHistoryResult.value.ok
+        ? await appointmentHistoryResult.value.json().catch(() => ({}))
+        : {};
+      const historyAppointments = Array.isArray(appointmentHistoryPayload?.appointments)
+        ? appointmentHistoryPayload.appointments
+        : [];
+      const allAppointments = [...activeAppointments, ...historyAppointments];
+      allAppointments.forEach((record: any) => {
+        if (String(record?.recordType || record?.record_type || 'appointment').toLowerCase() === 'appointment') {
+          incrementDailyMetric(
+            nextWeeklyActivityData,
+            dateLookup,
+            getAppointmentDateValue(record),
+            'appointments'
+          );
+        }
+      });
+
+      nextWeeklyActivityData.forEach((point) => {
+        point.patients = point.walkIns + point.appointments;
+      });
+      setWeeklyActivityData(nextWeeklyActivityData);
+
+      if (notificationsResult.status === 'fulfilled' && notificationsResult.value) {
+        const notificationResponse = notificationsResult.value;
+        if (notificationResponse.ok) {
+          const notificationPayload = await notificationResponse.json().catch(() => ({}));
+          const fetchedNotifications = Array.isArray(notificationPayload?.notifications)
+            ? notificationPayload.notifications
+            : [];
+          setNotifications(fetchedNotifications.map(normalizeFetchedNotification));
+        }
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
+  const handleMarkNotificationAsRead = async (id: string) => {
+    setNotifications(prev => prev.map(notification => (
+      notification.id === id ? { ...notification, read: true } : notification
+    )));
+
+    const adminUserId = getAdminUserId(getSessionUser(), currentUser);
+    if (!adminUserId) return;
+
+    try {
+      await fetch(`${API_URL}/api/admin-notifications/${id}/read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminUserId }),
+      });
+    } catch (error) {
+      console.error('Dashboard mark notification read error:', error);
+    }
+  };
+
+  const handleMarkAllNotificationsAsRead = async () => {
+    setNotifications(prev => prev.map(notification => ({ ...notification, read: true })));
+
+    const adminUserId = getAdminUserId(getSessionUser(), currentUser);
+    if (!adminUserId) return;
+
+    try {
+      await fetch(`${API_URL}/api/admin-notifications/read-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminUserId, module: 'inventory' }),
+      });
+    } catch (error) {
+      console.error('Dashboard mark all notifications read error:', error);
+    }
+  };
+
+  const isMobile = viewportWidth <= 900;
+  const isCompact = viewportWidth <= 640;
+  const displayedNotifications = notifications.slice(0, 4);
 
   // Custom tooltip for charts
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -417,19 +730,17 @@ const AdminDashboard: React.FC = () => {
   
   const displayedEvents = showAllEvents ? upcomingEvents : upcomingEvents.slice(0, 5);
 
-  // Calculate totals from recent visits
-
   return (
     <div className="biContainer" style={{ backgroundColor: '#f8fafc', minHeight: '100vh' }}>
       <Navbar currentUser={currentUser} onLogout={handleLogout} confirmLogout />
 
       {/* Main Content */}
-      <div className="bodyContainer" style={{paddingRight: '10px'}}>
-        <div className="doctorTableContainer">
+      <div className="bodyContainer" style={{ paddingRight: isMobile ? '0' : '10px' }}>
+        <div className="doctorTableContainer" style={{ flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '16px' : '20px', overflow: 'visible' }}>
           {/* Left Column */}
-          <div className="leftContainer" style={{ paddingRight: '15px' }}>
+          <div className="leftContainer" style={{ paddingRight: isMobile ? '0' : '15px', paddingLeft: isMobile ? '0' : '10px', overflow: 'visible' }}>
             {/* Doctor Profile Card */}
-            <div className="profileCard" style={{ marginBottom: '20px', minHeight: '140px' }}>
+            <div className="profileCard dashboardProfileCard" style={{ marginBottom: '20px', minHeight: '140px', backgroundColor: '#f4f4f4'}}>
               <div className="profileHeader" style={{ minHeight: '100px', padding: '15px' }}>
                 <div className="profileInfo">
                   <div className="profileNameSection" style={{ marginLeft: '140px' }}>
@@ -450,18 +761,18 @@ const AdminDashboard: React.FC = () => {
                 </div>
               </div>
               <div className="profileAvatar" style={{ bottom: '-15px' }}>
-                <img 
+                <img
                   src={currentUser.image || '../assets/AgsikapLogo-Temp.png'}
                   alt={currentUser.name}
                   className="doctorAvatar"
-                  style={{width: "100px", height: "100px", borderRadius: "50%", objectFit: "cover", border: "4px solid white"}}
+                  style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', border: '4px solid white' }}
                 />
               </div>
             </div>
 
             {/* Monthly Reports - KPI Cards */}
-            <div style={{ marginBottom: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div className="dashboardSectionShell" style={{ marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '10px' : '0', marginBottom: '16px' }}>
                 <div>
                   <h3 className="sectionTitle" style={{ fontSize: '15px', marginTop: '0', marginBottom: '2px' }}>Monthly Reports</h3>
                   <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '0' }}>Overview of this month's clinic activity</p>
@@ -483,13 +794,12 @@ const AdminDashboard: React.FC = () => {
               
               <div style={{ 
                 display: 'grid', 
-                gridTemplateColumns: 'repeat(4, 1fr)', 
+                gridTemplateColumns: isCompact ? '1fr' : isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', 
                 gap: '12px'
               }}>
                 <KpiCard 
                   title="Total Patients"
-                  value={75}
-                  change={2}
+                  value={patientsCount}
                   icon={<IoPeople size={18} color="#8b5cf6" />}
                   iconBgColor="#8b5cf613"
                   iconColor="#8b5cf6"
@@ -497,8 +807,8 @@ const AdminDashboard: React.FC = () => {
                 />
                 <KpiCard 
                   title="Appointments"
-                  value={50}
-                  change={-5}
+                  value={analytics.kpis.completedAppointments}
+                  change={analytics.kpis.completedAppointmentsChange}
                   icon={<IoCalendarClearOutline size={18} color="#14b8a6" />}
                   iconBgColor="#14b8a613"
                   iconColor="#14b8a6"
@@ -506,8 +816,7 @@ const AdminDashboard: React.FC = () => {
                 />
                 <KpiCard 
                   title="Inventory Items"
-                  value={142}
-                  change={-8}
+                  value={inventoryItemsCount}
                   icon={<IoLayersOutline size={18} color="#f97316" />}
                   iconBgColor="#f9731613"
                   iconColor="#f97316"
@@ -515,9 +824,9 @@ const AdminDashboard: React.FC = () => {
                 />
                 <KpiCard 
                   title="Revenue"
-                  value={158000}
+                  value={Math.round(analytics.kpis.totalRevenue)}
                   prefix="₱"
-                  change={12}
+                  change={analytics.kpis.totalRevenueChange}
                   icon={<IoPawOutline size={18} color="#ec4899" />}
                   iconBgColor="#ec489913"
                   iconColor="#ec4899"
@@ -526,90 +835,72 @@ const AdminDashboard: React.FC = () => {
               </div>
             </div>
 
-                        {/* Quick Actions - PRETTIER & RESPONSIVE */}
-            <h3 className="sectionTitle" style={{ fontSize: '15px', marginBottom: '2px' }}>Quick Actions</h3>
-            <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '12px' }}>Frequently used tasks</p>
-            
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', 
-              gap: '10px', 
-              marginBottom: '30px'
-            }}>
-              {quickActions.map((action, index) => (
-                <button 
-                  key={index}
-                  onClick={() => handleQuickAction(action.action)}
-                  style={{ 
-                    padding: '12px 8px', 
-                    gap: '8px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: '14px',
-                    border: `1px solid ${action.borderColor}`,
-                    backgroundColor: action.bgColor,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    minWidth: '85px'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = action.hoverBg;
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = `0 4px 12px ${action.borderColor}30`;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = action.bgColor;
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                >
-                  <action.icon size={22} color={action.iconColor} />
-                  <span style={{ fontSize: '10px', fontWeight: 500, color: action.iconColor, textAlign: 'center' }}>{action.label}</span>
-                </button>
-              ))}
+            <div className="dashboardSectionShell dashboardActionShell">
+              <h3 className="sectionTitle" style={{ fontSize: '15px', marginBottom: '2px', marginTop: '0' }}>Quick Actions</h3>
+              <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '12px' }}>Frequently used tasks</p>
+              
+              <div className="dashboardActionGrid" style={{ 
+                gridTemplateColumns: isCompact ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fit, minmax(100px, 1fr))'
+              }}>
+                {quickActions.map((action, index) => (
+                  <button 
+                    key={index}
+                    onClick={() => handleQuickAction(action.action)}
+                    className="dashboardActionCard"
+                    style={{ 
+                      borderColor: action.borderColor,
+                      backgroundColor: action.bgColor
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = action.hoverBg;
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = `0 4px 12px ${action.borderColor}30`;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = action.bgColor;
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = 'none';
+                    }}
+                  >
+                    <action.icon size={22} color={action.iconColor} />
+                    <span style={{ fontSize: '10px', fontWeight: 500, color: action.iconColor, textAlign: 'center' }}>{action.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Weekly Activity Section */}
-            <div style={{ marginBottom: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <div className="dashboardSectionShell" style={{ marginBottom: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'flex-start' : 'center', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '10px' : '0', marginBottom: '16px' }}>
                 <div>
                   <h3 className="sectionTitle" style={{ fontSize: '15px', marginTop: '0', marginBottom: '2px' }}>Weekly Activity</h3>
-                  <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '0' }}>Appointments vs Clinic-Created Appointments this week</p>
+                  <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '0' }}>Total walk-ins, appointments, and patients</p>
                 </div>
-                <button className="viewAllBtn" style={{ fontSize: '11px' }}>View Details</button>
               </div>
             
 
               {/* Chart */}
-              <div style={{ 
-                backgroundColor: 'white', 
-                borderRadius: '16px', 
-                padding: '16px',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                border: '1px solid #f0f2f5'
-              }}>
-                <ResponsiveContainer width="100%" height={250}>
-                  <ComposedChart data={recentVisitsData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+              <div className="dashboardChartCard">
+                <ResponsiveContainer width="100%" height={isCompact ? 220 : 250}>
+                  <ComposedChart data={weeklyActivityData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend />
-                    <Bar dataKey="appointments" name="Appointments" fill="#3d67ee" radius={[4, 4, 0, 0]} barSize={25} />
-                    <Bar dataKey="walkIns" name="Clinic-Created Appointments" fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={25} />
-                    <Line type="monotone" dataKey="total" name="Total Visits" stroke="#10b981" strokeWidth={2} dot={{ r: 4, fill: '#10b981' }} />
+                    <Line type="monotone" dataKey="walkIns" name="Walk-ins" stroke="#f59e0b" strokeWidth={2.5} strokeDasharray="6 6" dot={{ r: 4, fill: '#f59e0b' }} activeDot={{ r: 6 }} />
+                    <Line type="monotone" dataKey="appointments" name="Appointments" stroke="#3d67ee" strokeWidth={2.5} dot={{ r: 4, fill: '#3d67ee' }} activeDot={{ r: 6 }} />
+                    <Line type="monotone" dataKey="patients" name="Patients" stroke="#10b981" strokeWidth={2.5} dot={{ r: 4, fill: '#10b981' }} activeDot={{ r: 6 }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
             {/* Inventory Movement Logs */}
-            <div className="appointmentsCard" style={{ padding: '15px', marginBottom: '15px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f0f2f5' }}>
+            <div className="appointmentsCard dashboardSoftCard" style={{ padding: '15px', marginTop: isMobile ? '18px' : '35px', marginBottom: '15px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f0f2f5' }}>
               <div className="cardHeader" style={{ marginBottom: '8px' }}>
                 <h3 className="cardTitle" style={{ fontSize: '14px', margin: 0 }}>Inventory Movement Logs</h3>
-                <button className="viewAllBtn" style={{ fontSize: '11px' }}>View All</button>
+                <button className="viewAllBtn" style={{ fontSize: '11px' }} onClick={() => navigate('/inventory-logs')}>View All</button>
               </div>
               <div className="inventoryLogsList">
                 <div className="inventoryLogsHeader" style={{ 
@@ -629,7 +920,7 @@ const AdminDashboard: React.FC = () => {
                   <span style={{ flex: 1.5 }}>User</span>
                   <span style={{ flex: 1, textAlign: 'right' }}>Time</span>
                 </div>
-                {inventoryMovements.slice(0, 5).map(movement => (
+                {inventoryMovements.length > 0 ? inventoryMovements.slice(0, 5).map(movement => (
                   <div key={movement.id} className="inventoryLogRow" style={{ 
                     display: 'flex', 
                     flexDirection: 'row', 
@@ -656,15 +947,19 @@ const AdminDashboard: React.FC = () => {
                     <span style={{ flex: 1.5, color: '#666', fontSize: '10px' }}>{movement.user}</span>
                     <span style={{ flex: 1, textAlign: 'right', fontSize: '10px', color: '#999' }}>{movement.timestamp}</span>
                   </div>
-                ))}
+                )) : (
+                  <div style={{ color: '#94a3b8', fontSize: '12px', textAlign: 'center', padding: '24px' }}>
+                    No inventory movement logs yet
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
           {/* Right Column */}
-          <div className="rightContainer" style={{ gap: '12px', flex: '0.7', overflowY: 'auto', paddingLeft: '2px' }}>
+          <div className="rightContainer" style={{ gap: '12px', flex: isMobile ? '1' : '0.7', overflowY: 'visible', paddingLeft: isMobile ? '0' : '2px' }}>
             {/* Notifications Section */}
-            <div className="notificationsCard" style={{ padding: '12px', height: 'auto', maxHeight: '320px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f0f2f5' }}>
+            <div className="notificationsCard dashboardSoftCard" style={{ padding: '12px', height: 'auto', maxHeight: isMobile ? 'none' : '320px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f0f2f5' }}>
               <div className="notificationsHeader" style={{ marginBottom: '10px', gap: '40px' }}>
                 <div className="notificationsTitle" style={{ minWidth: 'auto', gap: '6px' }}>
                   <IoNotificationsOutline size={14} />
@@ -679,26 +974,30 @@ const AdminDashboard: React.FC = () => {
                 </button>
               </div>
               <div className="notificationsList" style={{ gap: '6px' }}>
-                {notificationItems.map(notif => (
-                  <div key={notif.id} className="notificationItem" style={{ padding: '8px', gap: '8px', backgroundColor: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-                    <div className="notificationIcon" style={{ padding: '5px', backgroundColor: `${notif.color}20`, borderRadius: '8px' }}>
-                      {notif.icon === 'calendar' && <IoCalendarOutline size={12} color={notif.color} />}
-                      {notif.icon === 'document' && <IoDocumentText size={12} color={notif.color} />}
-                      {notif.icon === 'warning' && <IoWarningOutline size={12} color={notif.color} />}
-                      {notif.icon === 'package' && <IoLayersOutline size={12} color={notif.color} />}
+                {displayedNotifications.length > 0 ? displayedNotifications.map(notif => {
+                  const meta = getNotificationMeta(notif.type);
+                  return (
+                    <div key={notif.id} className="notificationItem" style={{ padding: '8px', gap: '8px', backgroundColor: notif.read ? '#f8fafc' : '#eff6ff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                      <div className="notificationIcon" style={{ padding: '5px', backgroundColor: `${meta.color}20`, borderRadius: '8px' }}>
+                        {meta.icon}
+                      </div>
+                      <div className="notificationContent">
+                        <p className="notificationTitle" style={{ fontSize: '11px', fontWeight: 600 }}>{notif.title}</p>
+                        <p className="notificationDesc" style={{ fontSize: '9px', color: '#666' }}>{notif.message}</p>
+                      </div>
+                      <span className="notificationTime" style={{ fontSize: '9px', color: '#999' }}>{formatRelativeTimestamp(notif.timestamp.toISOString())}</span>
                     </div>
-                    <div className="notificationContent">
-                      <p className="notificationTitle" style={{ fontSize: '11px', fontWeight: 600 }}>{notif.title}</p>
-                      <p className="notificationDesc" style={{ fontSize: '9px', color: '#666' }}>{notif.description}</p>
-                    </div>
-                    <span className="notificationTime" style={{ fontSize: '9px', color: '#999' }}>{notif.time}</span>
+                  );
+                }) : (
+                  <div style={{ color: '#94a3b8', fontSize: '12px', textAlign: 'center', padding: '24px' }}>
+                    No notifications yet
                   </div>
-                ))}
+                )}
               </div>
             </div>
 
             {/* Calendar Component */}
-            <div className="calendarCard" style={{ marginTop: '0' }}>
+            <div className="calendarCard dashboardCalendarCard" style={{ marginTop: '0', width: '100%' }}>
               <div className="calendarGradient" style={{ padding: '8px', borderRadius: '16px' }}>
                 <Calendar
                   onChange={handleDateChange}
@@ -716,7 +1015,7 @@ const AdminDashboard: React.FC = () => {
             </div>
 
             {/* Upcoming Events */}
-            <div style={{ 
+            <div className="dashboardSoftCard" style={{ 
               backgroundColor: 'white',
               borderRadius: '16px',
               padding: '15px',
@@ -764,7 +1063,7 @@ const AdminDashboard: React.FC = () => {
                   {showAllEvents ? 'Show Less' : 'View All'}
                 </button>
               </div>
-              <div className="upcomingEventsList" style={{ maxHeight: '350px', overflowY: 'auto' }}>
+              <div className="upcomingEventsList" style={{ maxHeight: isMobile ? 'none' : '350px', overflowY: 'auto' }}>
                 {displayedEvents.length > 0 ? (
                   displayedEvents.map(event => {
                     const eventDate = new Date(event.date);
@@ -815,10 +1114,12 @@ const AdminDashboard: React.FC = () => {
       {/* Notifications Modal */}
       <NotificationsAllModal 
         ref={notificationsModalRef}
-        notifications={dashboardNotifications}
+        notifications={notifications}
         onNotificationClick={(notification) => {
           if (notification.link) navigate(notification.link);
         }}
+        onMarkAsRead={handleMarkNotificationAsRead}
+        onMarkAllAsRead={handleMarkAllNotificationsAsRead}
       />
     </div>
   );

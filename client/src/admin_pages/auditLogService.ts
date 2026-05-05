@@ -50,7 +50,7 @@ const normalizeRole = (role?: string) => {
   const roleValue = role?.trim() || 'Admin';
   if (/admin/i.test(roleValue)) return 'Admin';
   if (/vet|doctor/i.test(roleValue)) return 'Veterinarian';
-  if (/reception|front/i.test(roleValue)) return 'Receptionist';
+  if (/reception|front|clinical|clinic staff/i.test(roleValue)) return 'Clinic Staff';
   if (/user|client|patient/i.test(roleValue)) return 'User';
   return roleValue;
 };

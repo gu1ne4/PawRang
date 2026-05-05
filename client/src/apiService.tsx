@@ -57,6 +57,22 @@ export function invalidateApiCache(prefix?: string): void {
 
 // ─── Generic fetch wrapper ────────────────────────────────────────────────────
 
+function getStoredUserId(): string {
+  try {
+    const session = localStorage.getItem('userSession');
+    const parsed = session ? JSON.parse(session) : null;
+    return parsed?.id || parsed?.pk || '';
+  } catch {
+    return '';
+  }
+}
+
+function withUserIdQuery(path: string, userId?: string | number | null): string {
+  const resolvedUserId = userId || getStoredUserId();
+  if (!resolvedUserId) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}userId=${encodeURIComponent(String(resolvedUserId))}`;
+}
+
 async function request<T = any>(
   path: string,
   options: RequestInit = {}
@@ -241,13 +257,13 @@ export const apiService = {
 
 // ─── Admin Schedule & Appointment Endpoints ───────────────────────────────
 
-  getAppointmentsForTable() {
-    return request('/api/appointments/table');
+  getAppointmentsForTable(userId?: string | number | null) {
+    return request(withUserIdQuery('/api/appointments/table', userId));
   },
 
-  getDoctors() {
+  getDoctors(userId?: string | number | null) {
     // In your app.py, /accounts and /api/doctors both route to get_accounts()
-    return request('/api/doctors');
+    return request(withUserIdQuery('/api/doctors', userId));
   },
 
   updateAppointmentStatus(appointmentId: string | number, status: string, recordType: string) {
@@ -292,6 +308,17 @@ export const apiService = {
     });
   },
 
+  getSavedAdminAppointmentSummary(recordType: string, targetId: string | number) {
+    return request(`/api/ai/admin-appointment-summary/saved?recordType=${encodeURIComponent(recordType)}&targetId=${encodeURIComponent(String(targetId))}`);
+  },
+
+  saveAdminAppointmentSummary(payload: any) {
+    return request('/api/ai/admin-appointment-summary/saved', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   generateDoctorEmrBrief(payload: any) {
     return request('/api/ai/doctor-emr-brief', {
       method: 'POST',
@@ -299,10 +326,31 @@ export const apiService = {
     });
   },
 
+  generateClinicalRiskFlags(payload: any) {
+    return request('/api/ai/clinical-risk-flags', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  generateFollowUpReminders(payload: any) {
+    return request('/api/ai/follow-up-reminders', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  generateClientCareSummary(payload: any) {
+    return request('/api/ai/client-care-summary', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   createAdminAppointment(payload: any) {
     return request('/api/appointments', {
       method: 'POST',
-      body: JSON.stringify(withAuditActor(payload)),
+      body: JSON.stringify(withAuditActor({ ...payload, userId: payload?.userId || getStoredUserId() })),
     });
   },
 
@@ -517,7 +565,7 @@ export const apiService = {
     if (params.startDate) query.set('startDate', params.startDate);
     if (params.endDate) query.set('endDate', params.endDate);
     const suffix = query.toString() ? `?${query.toString()}` : '';
-    return request(`/api/admin/analytics/overview${suffix}`);
+    return request(withUserIdQuery(`/api/admin/analytics/overview${suffix}`));
   },
 
   getAdminAppointmentSearchData() {
@@ -525,15 +573,15 @@ export const apiService = {
   },
 
   getEmrSearchPets() {
-    return request('/api/emr/search-pets');
+    return request(withUserIdQuery('/api/emr/search-pets'));
   },
 
   getEmrRecords() {
-    return request('/api/emr/records');
+    return request(withUserIdQuery('/api/emr/records'));
   },
 
   getEmrRecord(recordId: number | string) {
-    return request(`/api/emr/records/${recordId}`);
+    return request(withUserIdQuery(`/api/emr/records/${recordId}`));
   },
 
   createEmrRecord(payload: any) {
@@ -551,14 +599,14 @@ export const apiService = {
   },
 
   deleteEmrRecord(recordId: number | string) {
-    return request(`/api/emr/records/${recordId}`, {
+    return request(withUserIdQuery(`/api/emr/records/${recordId}`), {
       method: 'DELETE',
       body: JSON.stringify(withAuditActor({})),
     });
   },
 
   getEmrPetAppointments(petId: number | string) {
-    return request(`/api/emr/pets/${petId}/appointments`);
+    return request(withUserIdQuery(`/api/emr/pets/${petId}/appointments`));
   },
 
   getBillingServices() {
@@ -567,18 +615,18 @@ export const apiService = {
     );
   },
 
-  getBillingProducts() {
-    return request('/api/billing/products').then(
+  getBillingProducts(userId?: string | number | null) {
+    return request(withUserIdQuery('/api/billing/products', userId)).then(
       (data: any) => data?.products || []
     );
   },
 
-  getBillingSourceRecords() {
-    return request('/api/billing/source-records');
+  getBillingSourceRecords(userId?: string | number | null) {
+    return request(withUserIdQuery('/api/billing/source-records', userId));
   },
 
-  getBillingInvoices() {
-    return request('/api/billing/invoices').then(
+  getBillingInvoices(userId?: string | number | null) {
+    return request(withUserIdQuery('/api/billing/invoices', userId)).then(
       (data: any) => data?.invoices || []
     );
   },
