@@ -10,6 +10,7 @@ import { TbReportMedical } from "react-icons/tb";
 import RichTextEditor from '../reusable_components/RichTextEditor';
 import { FaFilePdf } from "react-icons/fa6";
 import { apiService } from '../apiService';
+import { recordAuditLog } from '../auditLog';
 
 import './GlobalEMR.css';
 import './GlobalEMR2.css';
@@ -2000,6 +2001,20 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
       setTimeout(() => {
         URL.revokeObjectURL(url);
       }, 100);
+
+      void recordAuditLog({
+        module: 'EMR',
+        event: 'Medical Record PDF Generated',
+        target: `${petName || 'Pet'} Medical Record`,
+        targetType: 'medical_record',
+        targetId: editingId,
+        summary: `Medical record PDF was generated for ${petName || 'this pet'}.`,
+        status: 'Success',
+        metadata: {
+          petId: selectedPetId,
+          visitCount: visitHistory.length,
+        },
+      });
       
       showAlert('success', 'Success', 'PDF opened in new tab!');
     } catch (error) {
@@ -2037,6 +2052,21 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
       URL.revokeObjectURL(url);
+
+      void recordAuditLog({
+        module: 'EMR',
+        event: 'Prescription PDF Generated',
+        target: `${petName || 'Pet'} Prescription`,
+        targetType: 'medical_record_visit',
+        targetId: visit.id,
+        summary: `Prescription PDF was generated for ${petName || 'this pet'} with ${validPrescriptions.length} prescription(s).`,
+        status: 'Success',
+        metadata: {
+          medicalRecordId: editingId,
+          petId: selectedPetId,
+          prescriptionCount: validPrescriptions.length,
+        },
+      });
       
     } catch (error) {
       console.error('Prescription PDF generation error:', error);
@@ -3133,6 +3163,8 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
   };
 
   const buildDoctorAiPayload = () => ({
+    recordId: editingId,
+    petId: selectedPetId,
     pet: {
       name: petName,
       species,

@@ -261,7 +261,8 @@ interface InvoiceLineItem {
 interface InvoicePayment {
   id: string;
   amount: number;
-  paymentMethod: 'cash' | 'card' | 'gcash' | 'bank';
+  paymentMethod: 'cash' | 'gcash';
+  paymentReference?: string;
   date: string;
   time: string;
   handledBy?: string;
@@ -282,10 +283,15 @@ interface InvoicePDFData {
   subtotal: number;
   tax: number;
   discount: number;
+  installmentMonths?: number | null;
+  installmentInterestRate?: number;
+  installmentInterestAmount?: number;
+  installmentMonthlyDue?: number;
+  installmentDownPayment?: number;
   total: number;
   amountPaid?: number;
   remainingBalance?: number;
-  paymentMethod: 'cash' | 'card' | 'gcash' | 'bank' | 'installment';
+  paymentMethod: 'cash' | 'gcash' | 'installment';
   paymentStatus: 'paid' | 'pending' | 'partial';
   notes?: string;
   paymentHistory?: InvoicePayment[];
@@ -339,6 +345,11 @@ const InvoicePDF = ({
   subtotal,
   tax,
   discount,
+  installmentMonths,
+  installmentInterestRate = 0,
+  installmentInterestAmount = 0,
+  installmentMonthlyDue = 0,
+  installmentDownPayment = 0,
   total,
   amountPaid = 0,
   remainingBalance = 0,
@@ -440,8 +451,24 @@ const InvoicePDF = ({
               <Text style={styles.totalLabel}>Discount</Text>
               <Text style={styles.totalValue}>- {formatCurrency(discount)}</Text>
             </View>
+            {paymentMethod === 'installment' ? (
+              <>
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>Installment Interest ({installmentMonths || 0} months / {Math.round(installmentInterestRate * 100)}%)</Text>
+                  <Text style={styles.totalValue}>{formatCurrency(installmentInterestAmount)}</Text>
+                </View>
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>Monthly Due After Downpayment</Text>
+                  <Text style={styles.totalValue}>{formatCurrency(installmentMonthlyDue)}</Text>
+                </View>
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>Payment Plan</Text>
+                  <Text style={styles.totalValue}>{formatCurrency(installmentDownPayment)} downpayment + {formatCurrency(installmentMonthlyDue)} / month</Text>
+                </View>
+              </>
+            ) : null}
             <View style={styles.grandTotalRow}>
-              <Text style={styles.grandTotalLabel}>Grand Total</Text>
+              <Text style={styles.grandTotalLabel}>{paymentMethod === 'installment' ? 'Installment Total' : 'Grand Total'}</Text>
               <Text style={styles.grandTotalValue}>{formatCurrency(total)}</Text>
             </View>
             <View style={styles.totalRow}>
@@ -488,7 +515,11 @@ const InvoicePDF = ({
                       <Text style={styles.tableCell}>{payment.handledBy || 'Not recorded'}</Text>
                     </View>
                     <Text style={[styles.tableCell, styles.paymentAmountCell]}>{formatCurrency(payment.amount)}</Text>
-                    <Text style={[styles.tableCell, styles.paymentNotesCell]}>{payment.notes || 'Recorded payment'}</Text>
+                    <Text style={[styles.tableCell, styles.paymentNotesCell]}>
+                      {payment.paymentReference
+                        ? `Ref: ${payment.paymentReference}${payment.notes ? ` | ${payment.notes}` : ''}`
+                        : payment.notes || 'Recorded payment'}
+                    </Text>
                   </View>
                 ))}
               </View>

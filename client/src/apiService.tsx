@@ -295,7 +295,7 @@ export const apiService = {
   generateDoctorEmrBrief(payload: any) {
     return request('/api/ai/doctor-emr-brief', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
@@ -331,7 +331,7 @@ export const apiService = {
     is_vaccinated?: boolean;
     vaccination_urls?: string[];
   }) {
-    return request('/pets', { method: 'POST', body: JSON.stringify(payload) });
+    return request('/pets', { method: 'POST', body: JSON.stringify(withAuditActor(payload)) });
   },
 
   updatePet(petId: number, payload: Partial<{
@@ -349,12 +349,15 @@ export const apiService = {
   }>) {
     return request(`/pets/${petId}`, {
       method: 'PATCH',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
   deletePet(petId: number) {
-    return request(`/pets/${petId}`, { method: 'DELETE' });
+    return request(`/pets/${petId}`, {
+      method: 'DELETE',
+      body: JSON.stringify(withAuditActor({})),
+    });
   },
 
   uploadPetPhoto(fileBase64: string, fileName: string, mimeType: string) {
@@ -536,20 +539,21 @@ export const apiService = {
   createEmrRecord(payload: any) {
     return request('/api/emr/records', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
   updateEmrRecord(recordId: number | string, payload: any) {
     return request(`/api/emr/records/${recordId}`, {
       method: 'PUT',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
   deleteEmrRecord(recordId: number | string) {
     return request(`/api/emr/records/${recordId}`, {
       method: 'DELETE',
+      body: JSON.stringify(withAuditActor({})),
     });
   },
 
@@ -582,21 +586,21 @@ export const apiService = {
   createBillingInvoice(payload: any) {
     return request('/api/billing/invoices', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
   recordBillingInvoicePayment(invoiceId: number | string, payload: any) {
     return request(`/api/billing/invoices/${invoiceId}/payments`, {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
   deleteBillingInvoices(invoiceIds: Array<number | string>) {
     return request('/api/billing/invoices/bulk', {
       method: 'DELETE',
-      body: JSON.stringify({ invoiceIds }),
+      body: JSON.stringify(withAuditActor({ invoiceIds })),
     });
   },
 
@@ -606,7 +610,7 @@ export const apiService = {
   }) {
     return request(`/api/emr/lab-results/${labResultId}/owner-visibility`, {
       method: 'PUT',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
@@ -616,7 +620,7 @@ export const apiService = {
   }) {
     return request(`/api/emr/vaccinations/${vaccinationId}/owner-visibility`, {
       method: 'PUT',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
@@ -695,6 +699,8 @@ export const apiService = {
     contact_number: string;
     userImage: string;
     profileImage: string;
+    accountType: string;
+    account_type: string;
   }>) {
     return request(`/profile/${userId}`, {
       method: 'PATCH',

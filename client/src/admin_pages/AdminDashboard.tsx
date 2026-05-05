@@ -421,7 +421,7 @@ const AdminDashboard: React.FC = () => {
 
   return (
     <div className="biContainer" style={{ backgroundColor: '#f8fafc', minHeight: '100vh' }}>
-      <Navbar currentUser={currentUser} onLogout={handleLogout} />
+      <Navbar currentUser={currentUser} onLogout={handleLogout} confirmLogout />
 
       {/* Main Content */}
       <div className="bodyContainer" style={{paddingRight: '10px'}}>

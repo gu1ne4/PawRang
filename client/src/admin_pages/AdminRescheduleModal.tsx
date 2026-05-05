@@ -208,7 +208,7 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
                 requested_by: currentUserId || null
             });
         } catch (error: any) {
-            window.alert('Error: ' + (error.message || 'Failed to reschedule'));
+            console.error('Error in reschedule submission:', error);
         } finally {
             setLoading(false);
         }

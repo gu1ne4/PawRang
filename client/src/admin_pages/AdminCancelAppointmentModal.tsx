@@ -94,18 +94,9 @@ const AdminCancelAppointmentModal = ({ visible, onClose, appointment, onSubmit, 
         cancelled_by: currentUserId || null
       };
 
-      const result = await onSubmit(cancellationData);
-      
-      // Show email status in success message
-      if (result && result.emailSent) {
-        window.alert('✅ Success: Appointment cancelled successfully.\n\nAn email notification has been sent to the patient.');
-      } else {
-        window.alert('⚠️ Success with Note: Appointment cancelled successfully.\n\nNote: Email notification could not be sent. Please contact the patient manually.');
-      }
-      
+      await onSubmit(cancellationData);
     } catch (error: any) {
       console.error('Error in cancel submission:', error);
-      window.alert('Error: ' + (error.message || 'Failed to cancel appointment'));
     } finally {
       setLoading(false);
     }

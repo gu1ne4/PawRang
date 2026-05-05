@@ -113,7 +113,7 @@ const DoctorAppointments: React.FC = () => {
 
   return (
     <div className="doctorPortalShell">
-      <Navbar currentUser={currentUser} onLogout={handleLogout} />
+      <Navbar currentUser={currentUser} onLogout={handleLogout} confirmLogout />
       <main className="doctorPortalContent">
         <div className="doctorHeader">
           <div>

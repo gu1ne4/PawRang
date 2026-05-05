@@ -44,9 +44,10 @@ interface NavbarProps {
   } | null;
   onLogout: () => void;
   onNavigateAttempt?: (path: string, navigateFn: () => void) => void;
+  confirmLogout?: boolean;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttempt }) => {
+const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttempt, confirmLogout = false }) => {
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -64,6 +65,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
   const [isHoveringTitle, setIsHoveringTitle] = useState<boolean>(false);
   const [isMobile, setIsMobile] = useState<boolean>(() => window.innerWidth <= 900);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
   const accountDropdownRef = useRef<HTMLDivElement>(null);
   const appointmentsDropdownRef = useRef<HTMLDivElement>(null);
@@ -234,6 +236,20 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
     }
 
     runNavigation();
+  };
+
+  const handleLogoutClick = () => {
+    if (confirmLogout) {
+      setShowLogoutConfirm(true);
+      return;
+    }
+
+    onLogout();
+  };
+
+  const confirmLogoutClick = () => {
+    setShowLogoutConfirm(false);
+    onLogout();
   };
 
   const renderTooltip = () => {
@@ -696,7 +712,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
             <div className="navGlassContainer">
               <button 
                 className="navBtn" 
-                onClick={onLogout}
+                onClick={handleLogoutClick}
                 onMouseEnter={(e) => handleMouseEnter(e, 'Log Out')}
                 onMouseLeave={handleMouseLeave}
               >
@@ -709,6 +725,25 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
         </div>
       </div>
       {!isMobile && renderTooltip()}
+      {showLogoutConfirm && (
+        <div className="modalOverlay">
+          <div className="alertModal">
+            <div className="alertIcon">
+              <IoLogOutOutline size={55} color="#3d67ee" />
+            </div>
+            <h3 className="alertTitle">Log Out</h3>
+            <p className="alertMessage">Are you sure you want to log out?</p>
+            <div className="alertActions">
+              <button className="alertBtn cancelAlertBtn" onClick={() => setShowLogoutConfirm(false)}>
+                Cancel
+              </button>
+              <button className="alertBtn confirmAlertBtn" onClick={confirmLogoutClick}>
+                Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

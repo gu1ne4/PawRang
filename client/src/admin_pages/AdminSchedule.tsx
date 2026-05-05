@@ -41,6 +41,8 @@ interface ModalConfigType {
   showCancel: boolean;
 }
 
+type AppointmentPriorityFilter = 'dateAsc' | 'dateDesc' | 'pendingFirst' | 'confirmedFirst' | 'noDoctorFirst';
+
 // Helper to capitalize first letter
 const capitalizeFirstLetter = (string: string) => {
     if (!string) return '';
@@ -66,6 +68,89 @@ const getDisplayAppointmentStatus = (status: string | undefined, latestReschedul
     }
 
     return baseStatus;
+};
+
+const normalizeAppointmentSortTime = (value: any) => {
+    const rawValue = String(value || '').trim();
+    if (!rawValue) return '00:00:00';
+
+    const firstTime = rawValue.split(/\s+-\s+/)[0].trim();
+    const twelveHourMatch = firstTime.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)$/i);
+    if (twelveHourMatch) {
+        let hour = Number(twelveHourMatch[1]);
+        const minutes = twelveHourMatch[2] || '00';
+        const period = twelveHourMatch[3].toUpperCase();
+
+        if (period === 'PM' && hour < 12) hour += 12;
+        if (period === 'AM' && hour === 12) hour = 0;
+
+        return `${String(hour).padStart(2, '0')}:${minutes}:00`;
+    }
+
+    const twentyFourHourMatch = firstTime.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (twentyFourHourMatch) {
+        return `${String(Number(twentyFourHourMatch[1])).padStart(2, '0')}:${twentyFourHourMatch[2]}:${twentyFourHourMatch[3] || '00'}`;
+    }
+
+    return '00:00:00';
+};
+
+const getAppointmentDateSortValue = (appointment: any) => {
+    const dateValue =
+        appointment?.sort_date ||
+        appointment?.date_only ||
+        appointment?.date_display ||
+        String(appointment?.date_time || '').match(/\d{4}-\d{2}-\d{2}/)?.[0] ||
+        '';
+    const timeValue =
+        appointment?.sort_time ||
+        appointment?.appointment_time ||
+        appointment?.time ||
+        appointment?.time_display ||
+        '';
+    const parsed = new Date(`${dateValue}T${normalizeAppointmentSortTime(timeValue)}`);
+
+    return Number.isNaN(parsed.getTime()) ? Number.MAX_SAFE_INTEGER : parsed.getTime();
+};
+
+const getAppointmentStatusValue = (appointment: any) =>
+    getDisplayAppointmentStatus(appointment?.displayStatus || appointment?.status, appointment?.latestRescheduleRequest);
+
+const isAppointmentDoctorUnassigned = (appointment: any) => {
+    const doctorName = String(appointment?.doctor || '').trim().toLowerCase();
+    return !appointment?.assignedDoctor || !doctorName || doctorName === 'not assigned' || doctorName === 'unassigned';
+};
+
+const compareAppointmentNames = (a: any, b: any) =>
+    String(a?.ownerName || a?.petName || '').localeCompare(String(b?.ownerName || b?.petName || ''));
+
+const compareAppointmentsByPriority = (priority: AppointmentPriorityFilter) => (a: any, b: any) => {
+    const aDate = getAppointmentDateSortValue(a);
+    const bDate = getAppointmentDateSortValue(b);
+    const dateAscending = aDate - bDate;
+    const dateDescending = bDate - aDate;
+
+    if (priority === 'dateDesc') return dateDescending || compareAppointmentNames(a, b);
+
+    if (priority === 'pendingFirst') {
+        const pendingSort =
+            (getAppointmentStatusValue(a) === 'pending' ? 0 : 1) -
+            (getAppointmentStatusValue(b) === 'pending' ? 0 : 1);
+        return pendingSort || dateAscending || compareAppointmentNames(a, b);
+    }
+
+    if (priority === 'confirmedFirst') {
+        const isConfirmed = (appointment: any) => ['confirmed', 'scheduled'].includes(getAppointmentStatusValue(appointment));
+        const confirmedSort = (isConfirmed(a) ? 0 : 1) - (isConfirmed(b) ? 0 : 1);
+        return confirmedSort || dateAscending || compareAppointmentNames(a, b);
+    }
+
+    if (priority === 'noDoctorFirst') {
+        const noDoctorSort = (isAppointmentDoctorUnassigned(a) ? 0 : 1) - (isAppointmentDoctorUnassigned(b) ? 0 : 1);
+        return noDoctorSort || dateAscending || compareAppointmentNames(a, b);
+    }
+
+    return dateAscending || compareAppointmentNames(a, b);
 };
 
 const DECLINE_PREFERENCE_REASONS = [
@@ -1365,7 +1450,59 @@ const AssignDoctorModal = ({ visible, onClose, appointment, doctors, onAssign }:
 // ==========================================
 //  4. TABLE VIEW COMPONENT
 // ==========================================
-const TableView = ({ onViewUser, loading, filteredAppointments, service, setService, doctorFilter, setDoctorFilter, selectedCalendarDate, setSelectedCalendarDate, tableSearchQuery, setTableSearchQuery, doctors, userData, handleCreateAppointment }: any) => {
+const TableView = ({
+  onViewUser,
+  loading,
+  filteredAppointments,
+  service,
+  setService,
+  doctorFilter,
+  setDoctorFilter,
+  appointmentPriority,
+  setAppointmentPriority,
+  selectedCalendarDate,
+  setSelectedCalendarDate,
+  tableSearchQuery,
+  setTableSearchQuery,
+  doctors,
+  userData,
+  handleCreateAppointment
+}: any) => {
+  const hasActiveFilters = Boolean(
+    service ||
+    doctorFilter ||
+    selectedCalendarDate ||
+    tableSearchQuery ||
+    appointmentPriority !== 'dateAsc'
+  );
+
+  const clearTableFilters = () => {
+    setService('');
+    setDoctorFilter('');
+    setSelectedCalendarDate('');
+    setTableSearchQuery('');
+    setAppointmentPriority('dateAsc');
+  };
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(8);
+  const totalPages = Math.max(1, Math.ceil(filteredAppointments.length / rowsPerPage));
+  const pageStartIndex = (currentPage - 1) * rowsPerPage;
+  const paginatedAppointments = filteredAppointments.slice(pageStartIndex, pageStartIndex + rowsPerPage);
+  const pageNumbers = Array.from({ length: totalPages }, (_, index) => index + 1).filter((page) => {
+    if (totalPages <= 5) return true;
+    if (page === 1 || page === totalPages) return true;
+    return Math.abs(page - currentPage) <= 1;
+  });
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [service, doctorFilter, selectedCalendarDate, tableSearchQuery, appointmentPriority, rowsPerPage]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
+
   return (
     <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', flex: 1, display: 'flex', flexDirection: 'column', boxShadow: '0 0 18px rgba(0,0,0,0.05)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
@@ -1403,6 +1540,17 @@ const TableView = ({ onViewUser, loading, filteredAppointments, service, setServ
             <div style={{ width: '1px', height: '30px', backgroundColor: '#eee', margin: '0 5px' }}></div>
 
             <IoFilterSharp size={25} color="#3d67ee" style={{ marginRight: '5px' }} />
+
+            <div>
+              <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Table Priority</div>
+              <select value={appointmentPriority} onChange={(e) => setAppointmentPriority(e.target.value)} className="filterSelect" style={{ width: '180px' }}>
+                <option value="dateAsc">Closest first</option>
+                <option value="dateDesc">Farthest first</option>
+                <option value="pendingFirst">Pending first</option>
+                <option value="confirmedFirst">Confirmed first</option>
+                <option value="noDoctorFirst">No doctor first</option>
+              </select>
+            </div>
             
             <div>
               <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Service</div>
@@ -1432,18 +1580,33 @@ const TableView = ({ onViewUser, loading, filteredAppointments, service, setServ
                 ))}
               </select>
             </div>
+
+            <div>
+              <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Rows</div>
+              <select
+                value={rowsPerPage}
+                onChange={(event) => setRowsPerPage(Number(event.target.value))}
+                className="filterSelect"
+                style={{ width: '90px' }}
+              >
+                <option value={5}>5</option>
+                <option value={8}>8</option>
+                <option value={10}>10</option>
+                <option value={15}>15</option>
+              </select>
+            </div>
             
-            {(service || doctorFilter || selectedCalendarDate || tableSearchQuery) && (
-              <button onClick={() => { setService(''); setDoctorFilter(''); setSelectedCalendarDate(''); setTableSearchQuery(''); }} style={{ marginLeft: '15px', display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer' }}>
+            {hasActiveFilters && (
+              <button onClick={clearTableFilters} style={{ marginLeft: '15px', display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer' }}>
                 <IoCloseCircle size={18} color="#666" />
                 <span style={{ marginLeft: '5px', fontSize: '12px', color: '#666' }}>
-                  {(selectedCalendarDate || tableSearchQuery) ? 'Clear All Filters' : 'Clear'}
+                  Clear Filters
                 </span>
               </button>
             )}
           </div>
 
-          <div className="tableWrapper" style={{ marginTop: '0' }}>
+          <div className="tableWrapper appointmentTableScroll" style={{ marginTop: '0' }}>
             <table className="dataTable">
                 <thead>
                     <tr>
@@ -1458,8 +1621,8 @@ const TableView = ({ onViewUser, loading, filteredAppointments, service, setServ
                     </tr>
                 </thead>
                 <tbody>
-                {filteredAppointments.length > 0 ? (
-                    filteredAppointments.map((user: any, index: number) => (
+                {paginatedAppointments.length > 0 ? (
+                    paginatedAppointments.map((user: any, index: number) => (
                     <tr key={user.id || `appt-row-${index}`}>
                         {(() => {
                             const statusToShow = (user.displayStatus || user.status || 'scheduled').toLowerCase();
@@ -1534,6 +1697,45 @@ const TableView = ({ onViewUser, loading, filteredAppointments, service, setServ
                 </tbody>
             </table>
           </div>
+
+          <div className="appointmentPaginationBar">
+            <div className="appointmentPageControls">
+              <button
+                type="button"
+                className="paginationBtn appointmentPageBtn"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </button>
+
+              {pageNumbers.map((page, index) => {
+                const previousPage = pageNumbers[index - 1];
+                const needsGap = previousPage && page - previousPage > 1;
+                return (
+                  <React.Fragment key={page}>
+                    {needsGap && <span className="appointmentPageGap">...</span>}
+                    <button
+                      type="button"
+                      className={`appointmentPageNumber ${currentPage === page ? 'active' : ''}`}
+                      onClick={() => setCurrentPage(page)}
+                    >
+                      {page}
+                    </button>
+                  </React.Fragment>
+                );
+              })}
+
+              <button
+                type="button"
+                className="paginationBtn appointmentPageBtn"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1550,6 +1752,7 @@ export default function Schedule() {
     const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
     const [service, setService] = useState('');
     const [doctorFilter, setDoctorFilter] = useState('');
+    const [appointmentPriority, setAppointmentPriority] = useState<AppointmentPriorityFilter>('dateAsc');
     const [tableSearchQuery, setTableSearchQuery] = useState(''); 
     const [bookedDates, setBookedDates] = useState<any>({});
     
@@ -1585,6 +1788,7 @@ export default function Schedule() {
     const [confirmationAction, setConfirmationAction] = useState<any>(null);
     const [selectedAppointmentForAction, setSelectedAppointmentForAction] = useState<any>(null);
     const [confirmationType, setConfirmationType] = useState('info');
+    const [appointmentActionLoading, setAppointmentActionLoading] = useState<{ type: string; key: string } | null>(null);
 
     const selectedUserRef = useRef<any>(null);
 
@@ -1617,19 +1821,34 @@ export default function Schedule() {
         loadUser();
     }, []);
 
+    const getAppointmentActionKey = (appointment: any) =>
+        `${appointment?.recordType || (appointment?.is_walk_in ? 'walkin' : 'appointment')}:${appointment?.dbId ?? appointment?.id ?? ''}`;
+
+    const beginAppointmentAction = (type: string, appointment: any) => {
+        setAppointmentActionLoading({ type, key: getAppointmentActionKey(appointment) });
+    };
+
+    const endAppointmentAction = () => {
+        setAppointmentActionLoading(null);
+    };
+
     const filteredAppointments = userData.filter(appointment => {
       if (['completed', 'cancelled', 'no_show', 'expired'].includes((appointment.status || '').toLowerCase())) return false;
-      if (selectedCalendarDate && !appointment.date_time.includes(selectedCalendarDate)) return false; 
+      if (
+        selectedCalendarDate &&
+        appointment.date_only !== selectedCalendarDate &&
+        !String(appointment.date_time || '').includes(selectedCalendarDate)
+      ) return false; 
       
       const matchesService = service === '' || (appointment.service && appointment.service.includes(service));
       const matchesDoctor = doctorFilter === '' || appointment.doctor === doctorFilter;
       
       const searchLower = (tableSearchQuery || '').toLowerCase().trim();
-      const combinedNames = `${appointment.ownerName || ''} ${appointment.petName || ''}`.toLowerCase();
+      const combinedNames = `${appointment.ownerName || ''} ${appointment.petName || ''} ${appointment.service || ''} ${appointment.doctor || ''}`.toLowerCase();
       const matchesSearch = searchLower === '' || combinedNames.includes(searchLower);
 
       return matchesService && matchesDoctor && matchesSearch;
-    });
+    }).sort(compareAppointmentsByPriority(appointmentPriority));
 
     const handleViewUser = (user: any) => {
         setSelectedUser(user);
@@ -1690,7 +1909,10 @@ export default function Schedule() {
     };
 
     const handleCancelAppointment = (appointment: any) => {
-        if (!appointment || !appointment.id) { window.alert('Error: Invalid appointment data'); return; }
+        if (!appointment || !appointment.id) {
+            showAlert('error', 'Cancel Appointment Failed', 'Invalid appointment data.');
+            return;
+        }
         setSelectedAppointmentForCancel(appointment);
         setShowCancelModal(true);
     };
@@ -1698,6 +1920,7 @@ export default function Schedule() {
     const handleCancelWithReason = async (cancellationData: any) => {
         try {
             setLoading(true);
+            beginAppointmentAction('cancel', selectedAppointmentForCancel);
             const currentUserId = currentUser?.id ?? currentUser?.pk ?? null;
             const fullCancelData = { ...cancellationData, cancelled_by: currentUserId };
             const result = await apiService.cancelAppointmentWithReason(
@@ -1716,17 +1939,28 @@ export default function Schedule() {
             
             setShowCancelModal(false);
             setSelectedAppointmentForCancel(null);
+            showAlert(
+                result?.emailSent === false ? 'info' : 'success',
+                'Appointment Cancelled',
+                result?.emailSent === false
+                    ? 'Appointment cancelled successfully. Email notification could not be sent, so please contact the patient manually.'
+                    : 'Appointment cancelled successfully. The patient was notified by email.'
+            );
             return result;
         } catch (error: any) {
-            window.alert('Error: ' + (error.message || 'Failed to cancel appointment'));
+            showAlert('error', 'Cancel Appointment Failed', error.message || 'Failed to cancel appointment.');
             throw error;
         } finally {
             setLoading(false);
+            endAppointmentAction();
         }
     };
 
     const handleRescheduleAppointment = (appointment: any) => {
-        if (!appointment || !appointment.id) { window.alert('Error: Invalid appointment data'); return; }
+        if (!appointment || !appointment.id) {
+            showAlert('error', 'Reschedule Failed', 'Invalid appointment data.');
+            return;
+        }
         setSelectedAppointmentForReschedule(appointment);
         setShowRescheduleModal(true);
     };
@@ -1734,6 +1968,7 @@ export default function Schedule() {
     const handleRescheduleSubmit = async (rescheduleData: any) => {
         try {
             setLoading(true);
+            beginAppointmentAction('reschedule', selectedAppointmentForReschedule);
             const currentUserId = currentUser?.id ?? null;
             const fullRescheduleData = { ...rescheduleData, requested_by: currentUserId };
             const result = await apiService.createRescheduleRequest(
@@ -1745,35 +1980,40 @@ export default function Schedule() {
             setShowRescheduleModal(false);
             setSelectedAppointmentForReschedule(null);
             await loadAppointments();
-            window.alert('Success: ' + (result.message || 'Reschedule request emailed to patient.'));
+            showAlert('success', 'Reschedule Sent', result.message || 'Reschedule request emailed to patient.');
             return result;
         } catch (error: any) {
-            window.alert('Error: ' + (error.message || 'Failed to create reschedule request'));
+            showAlert('error', 'Reschedule Failed', error.message || 'Failed to create reschedule request.');
             throw error;
         } finally {
             setLoading(false);
+            endAppointmentAction();
         }
     };
 
     const handleAcceptClientPreference = async (appointment: any, requestDetails: any) => {
         if (!requestDetails?.request_id) {
-            window.alert('Error: Missing reschedule request details');
+            showAlert('error', 'Preference Review Failed', 'Missing reschedule request details.');
             return;
         }
 
         try {
             setLoading(true);
+            beginAppointmentAction('acceptPreference', appointment);
             const result = await apiService.reviewRescheduleRequest(requestDetails.request_id, 'accept');
             await loadAppointments();
-            window.alert(
+            showAlert(
+                result.emailSent === false ? 'info' : 'success',
+                'Preferred Date Accepted',
                 result.emailSent === false
-                    ? 'Success with note: Patient preferred schedule accepted, but the confirmation email could not be sent.'
-                    : 'Success: ' + (result.message || 'Patient preferred schedule accepted. The patient was notified by email.')
+                    ? 'Patient preferred schedule accepted, but the confirmation email could not be sent.'
+                    : (result.message || 'Patient preferred schedule accepted. The patient was notified by email.')
             );
         } catch (error: any) {
-            window.alert('Error: ' + (error.message || 'Failed to accept patient preferred schedule.'));
+            showAlert('error', 'Preference Review Failed', error.message || 'Failed to accept patient preferred schedule.');
         } finally {
             setLoading(false);
+            endAppointmentAction();
         }
     };
 
@@ -1785,7 +2025,7 @@ export default function Schedule() {
 
     const handleDeclineClientPreference = (appointment: any, requestDetails: any) => {
         if (!requestDetails?.request_id) {
-            window.alert('Error: Missing reschedule request details');
+            showAlert('error', 'Preference Review Failed', 'Missing reschedule request details.');
             return;
         }
 
@@ -1796,12 +2036,13 @@ export default function Schedule() {
 
     const handleDeclineClientPreferenceSubmit = async (declineReason: string) => {
         if (!selectedPreferenceRequest?.request_id) {
-            window.alert('Error: Missing reschedule request details');
+            showAlert('error', 'Preference Review Failed', 'Missing reschedule request details.');
             return;
         }
 
         try {
             setLoading(true);
+            beginAppointmentAction('declinePreference', selectedAppointmentForPreferenceReview);
             const result = await apiService.reviewRescheduleRequest(
                 selectedPreferenceRequest.request_id,
                 'decline',
@@ -1809,15 +2050,18 @@ export default function Schedule() {
             );
             await loadAppointments();
             closeDeclinePreferenceModal();
-            window.alert(
+            showAlert(
+                result.emailSent === false ? 'info' : 'success',
+                'Preferred Date Declined',
                 result.emailSent === false
-                    ? 'Success with note: Patient preferred schedule declined, but the update email could not be sent.'
-                    : 'Success: ' + (result.message || 'Patient preferred schedule declined. The patient was notified by email.')
+                    ? 'Patient preferred schedule declined, but the update email could not be sent.'
+                    : (result.message || 'Patient preferred schedule declined. The patient was notified by email.')
             );
         } catch (error: any) {
-            window.alert('Error: ' + (error.message || 'Failed to decline patient preferred schedule.'));
+            showAlert('error', 'Preference Review Failed', error.message || 'Failed to decline patient preferred schedule.');
         } finally {
             setLoading(false);
+            endAppointmentAction();
         }
     };
 
@@ -1831,6 +2075,7 @@ export default function Schedule() {
         setConfirmationAction(() => async () => {
             try {
                 setLoading(true);
+                beginAppointmentAction('accept', appointment);
                 const result = await apiService.updateAppointmentStatus(
                     appointment.dbId ?? appointment.id,
                     'confirmed',
@@ -1840,10 +2085,10 @@ export default function Schedule() {
                     await loadAppointments({ silent: true });
                     const successMessage =
                         result.emailSent === false
-                            ? 'Success with note: Appointment accepted and marked as confirmed. Confirmation email could not be sent.'
+                            ? 'Appointment accepted and marked as confirmed. Confirmation email could not be sent.'
                             : appointment.assignedDoctor
-                                ? `Success: Appointment accepted and marked as confirmed. Patient notified by email with assigned doctor ${appointment.doctor || 'details'}.`
-                                : 'Success: Appointment accepted and marked as confirmed. Patient notified by email.';
+                                ? `Appointment accepted and marked as confirmed. Patient notified by email with assigned doctor ${appointment.doctor || 'details'}.`
+                                : 'Appointment accepted and marked as confirmed. Patient notified by email.';
 
                     showAlert(
                         result.emailSent === false ? 'info' : 'success',
@@ -1856,18 +2101,23 @@ export default function Schedule() {
             } finally {
                 setLoading(false);
                 setSelectedAppointmentForAction(null);
+                endAppointmentAction();
             }
         });
         setShowConfirmationModal(true);
     };
 
     const handleCompleteAppointment = (appointment: any) => {
-        if (!appointment || !appointment.id) { window.alert('Error: Invalid appointment data'); return; }
+        if (!appointment || !appointment.id) {
+            showAlert('error', 'Complete Appointment Failed', 'Invalid appointment data.');
+            return;
+        }
         setSelectedAppointmentForAction(appointment);
         setConfirmationType('complete');
         setConfirmationAction(() => async () => {
             try {
                 setLoading(true);
+                beginAppointmentAction('complete', appointment);
                 const result = await apiService.updateAppointmentStatus(
                     appointment.dbId ?? appointment.id,
                     'completed',
@@ -1880,13 +2130,14 @@ export default function Schedule() {
                         setCurrentView('table');
                         setSelectedUser(null);
                     }
-                    window.alert('Success: Appointment marked as completed, moved to history, and is ready for billing.');
+                    showAlert('success', 'Appointment Completed', 'Appointment marked as completed, moved to history, and is ready for billing.');
                 }
             } catch (error: any) {
-                window.alert('Error: ' + (error.message || 'Failed to complete appointment.'));
+                showAlert('error', 'Complete Appointment Failed', error.message || 'Failed to complete appointment.');
             } finally {
                 setLoading(false);
                 setSelectedAppointmentForAction(null);
+                endAppointmentAction();
             }
         });
         setShowConfirmationModal(true);
@@ -1894,7 +2145,7 @@ export default function Schedule() {
 
     const handleProceedToBilling = (appointment: any) => {
         if (!appointment) {
-            window.alert('Error: Appointment details are unavailable.');
+            showAlert('error', 'Billing Unavailable', 'Appointment details are unavailable.');
             return;
         }
 
@@ -1903,7 +2154,7 @@ export default function Schedule() {
         const sourceRecordId = appointment.billingSourceId || appointment.dbId || appointment.id;
 
         if (!sourceRecordType || !sourceRecordId) {
-            window.alert('Error: This appointment does not have a billing source yet.');
+            showAlert('error', 'Billing Unavailable', 'This appointment does not have a billing source yet.');
             return;
         }
 
@@ -2171,6 +2422,8 @@ export default function Schedule() {
                                 setService={setService}
                                 doctorFilter={doctorFilter}
                                 setDoctorFilter={setDoctorFilter}
+                                appointmentPriority={appointmentPriority}
+                                setAppointmentPriority={setAppointmentPriority}
                                 selectedCalendarDate={selectedCalendarDate}
                                 setSelectedCalendarDate={setSelectedCalendarDate}
                                 tableSearchQuery={tableSearchQuery}       
@@ -2193,6 +2446,7 @@ export default function Schedule() {
                                 onDeclineClientPreference={handleDeclineClientPreference}
                                 onRefresh={handleManualRefresh}
                                 refreshing={refreshingDetails}
+                                actionBusyType={appointmentActionLoading?.type || null}
                             />
                         )}
                     </div>

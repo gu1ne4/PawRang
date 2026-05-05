@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useBeforeUnload, useLocation, useNavigate } from 'react-router-dom';
 import {
   IoAddOutline,
   IoAlertCircleOutline,
@@ -27,6 +27,7 @@ import defaultUserImg from '../assets/userImg.jpg';
 import heroImg from '../assets/hero.png';
 import branchLPImg from '../assets/branchLP.jpg';
 import branchTaguigImg from '../assets/branchTaguig.jpg';
+import { apiService } from '../apiService';
 import { recordSettingsAuditLog } from './auditLogService';
 
 interface CurrentUser {
@@ -34,10 +35,17 @@ interface CurrentUser {
   pk?: string | number;
   username: string;
   fullName?: string;
+  fullname?: string;
+  firstName?: string;
+  lastName?: string;
   role: string;
   userImage?: string;
+  userimage?: string;
+  profileImage?: string;
+  employee_image?: string;
   email?: string;
   contactNumber?: string;
+  contact_number?: string;
 }
 
 interface ModalConfigType {
@@ -142,24 +150,32 @@ type HomepageEditorTarget =
   | 'about-card-1'
   | 'about-card-2';
 
+type SettingsPanel = 'account' | 'security' | 'developer' | 'homepage' | 'announcements';
 type FieldErrors = Record<string, string>;
+type PasswordRequirement = {
+  id: string;
+  label: string;
+  isMet: boolean;
+};
+
+const showFutureDefenseSettings = false;
+const futureDefenseSettingsPanels = new Set<SettingsPanel>(['developer', 'homepage', 'announcements']);
 
 const defaultSessionUser: CurrentUser = {
-  id: 'admin-1',
-  username: 'margaret.hilario',
-  fullName: 'Dr. Margaret Hilario',
+  username: '',
+  fullName: '',
   role: 'Administrator',
-  email: 'margaret.hilario@petshield.ph',
-  contactNumber: '09171234567',
+  email: '',
+  contactNumber: '',
   userImage: defaultUserImg
 };
 
 const initialProfileForm: ProfileForm = {
-  fullName: 'Dr. Margaret Hilario',
-  username: 'margaret.hilario',
-  contactNumber: '09171234567',
-  role: 'Administrator',
-  branch: 'PetShield Main Clinic',
+  fullName: '',
+  username: '',
+  contactNumber: '',
+  role: '',
+  branch: '',
   userImage: defaultUserImg
 };
 
@@ -170,7 +186,7 @@ const initialPasswordForm: PasswordForm = {
 };
 
 const initialEmailForm: EmailForm = {
-  currentEmail: 'margaret.hilario@petshield.ph',
+  currentEmail: '',
   newEmail: '',
   confirmEmail: ''
 };
@@ -370,6 +386,183 @@ const createGoogleMapsSearchUrl = (address: string) => `https://www.google.com/m
 
 const formatPeso = (value: string) => `PHP ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+const getSettingsUserId = (user?: CurrentUser | null): string => {
+  const id = user?.id ?? user?.pk;
+  return id === undefined || id === null ? '' : String(id);
+};
+
+const splitSettingsFullName = (fullName: string): { firstName: string; lastName: string } => {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) {
+    return { firstName: parts[0] || '', lastName: '' };
+  }
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' ')
+  };
+};
+
+const getSettingsProfileImage = (profile: Partial<CurrentUser> | Record<string, any> | null | undefined): string =>
+  profile?.profileImage ||
+  profile?.employee_image ||
+  profile?.userImage ||
+  profile?.userimage ||
+  defaultUserImg;
+
+const normalizeSettingsPhoneDigits = (value: string | number | null | undefined): string => String(value || '').replace(/\D/g, '');
+
+const getSettingsLocalMobileDigits = (value: string | number | null | undefined): string => {
+  let digits = normalizeSettingsPhoneDigits(value);
+  if (digits.startsWith('63')) digits = digits.slice(2);
+  if (digits.startsWith('0')) digits = digits.slice(1);
+  return digits;
+};
+
+const formatSettingsPhoneNumber = (value: string | number | null | undefined): string => {
+  const localDigits = getSettingsLocalMobileDigits(value).slice(0, 10);
+  if (!localDigits) return '';
+
+  const firstGroup = localDigits.slice(0, 3);
+  const secondGroup = localDigits.slice(3, 6);
+  const thirdGroup = localDigits.slice(6, 10);
+  return `+63 ${[firstGroup, secondGroup, thirdGroup].filter(Boolean).join(' ')}`;
+};
+
+const isValidSettingsPhoneNumber = (value: string | number | null | undefined): boolean => /^9\d{9}$/.test(getSettingsLocalMobileDigits(value));
+
+const normalizeSettingsUser = (
+  profile: Partial<CurrentUser> | Record<string, any>,
+  fallback: Partial<CurrentUser> = {}
+): CurrentUser => {
+  const profileData = profile as Record<string, any>;
+  const fallbackData = fallback as Record<string, any>;
+  const firstName = profileData.firstName || profileData.first_name || fallbackData.firstName || '';
+  const lastName = profileData.lastName || profileData.last_name || fallbackData.lastName || '';
+  const fullName =
+    profileData.fullName ||
+    profileData.fullname ||
+    profileData.full_name ||
+    [firstName, lastName].filter(Boolean).join(' ') ||
+    fallbackData.fullName ||
+    fallbackData.fullname ||
+    '';
+
+  return {
+    ...fallback,
+    ...profile,
+    id: profileData.id ?? fallbackData.id,
+    pk: profileData.pk ?? fallbackData.pk,
+    username: profileData.username || fallbackData.username || '',
+    fullName,
+    fullname: fullName,
+    firstName,
+    lastName,
+    role: profileData.role || fallbackData.role || 'Administrator',
+    email: profileData.email || fallbackData.email || '',
+    contactNumber: formatSettingsPhoneNumber(profileData.contactNumber || profileData.contact_number || profileData.contactnumber || fallbackData.contactNumber || fallbackData.contact_number || ''),
+    contact_number: formatSettingsPhoneNumber(profileData.contact_number || profileData.contactNumber || profileData.contactnumber || fallbackData.contact_number || fallbackData.contactNumber || ''),
+    userImage: getSettingsProfileImage(profile) || getSettingsProfileImage(fallback),
+    userimage: getSettingsProfileImage(profile) || getSettingsProfileImage(fallback),
+    profileImage: getSettingsProfileImage(profile) || getSettingsProfileImage(fallback)
+  };
+};
+
+const buildProfileFormFromUser = (user: CurrentUser, previousBranch = ''): ProfileForm => ({
+  fullName: user.fullName || user.fullname || '',
+  username: user.username || '',
+  contactNumber: user.contactNumber || user.contact_number || '',
+  role: user.role || '',
+  branch: previousBranch,
+  userImage: getSettingsProfileImage(user)
+});
+
+const readFileAsDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Could not read the selected image.'));
+      }
+    };
+    reader.onerror = () => reject(new Error('Could not read the selected image.'));
+    reader.readAsDataURL(file);
+  });
+
+const getPasswordRequirementItems = (newPassword: string, currentPassword: string): PasswordRequirement[] => [
+  {
+    id: 'length',
+    label: 'At least 8 characters',
+    isMet: newPassword.length >= 8
+  },
+  {
+    id: 'lowercase',
+    label: 'At least one lowercase letter',
+    isMet: /[a-z]/.test(newPassword)
+  },
+  {
+    id: 'uppercase',
+    label: 'At least one uppercase letter',
+    isMet: /[A-Z]/.test(newPassword)
+  },
+  {
+    id: 'number',
+    label: 'At least one number',
+    isMet: /\d/.test(newPassword)
+  },
+  {
+    id: 'different',
+    label: 'Different from the current password',
+    isMet: Boolean(newPassword) && newPassword !== currentPassword
+  }
+];
+
+const maskSettingsEmail = (email: string): string => {
+  const trimmed = email.trim();
+  const [localPart, domainPart] = trimmed.split('@');
+  if (!localPart || !domainPart) {
+    return 'selected email address';
+  }
+
+  const visiblePrefix = localPart.slice(0, Math.min(2, localPart.length));
+  return `${visiblePrefix}${localPart.length > 2 ? '***' : '***'}@${domainPart}`;
+};
+
+const getSettingsAuditTarget = (user?: CurrentUser | null): string =>
+  user?.username || user?.fullName || user?.fullname || user?.email || 'Current admin account';
+
+const getSettingsAccountType = (user?: CurrentUser | null): 'employee' | 'patient' => {
+  const role = String(user?.role || '').trim().toLowerCase();
+  return role.includes('patient') || role.includes('owner') || role === 'user' ? 'patient' : 'employee';
+};
+
+const getProfileChangedFields = (currentUser: CurrentUser | null, nextProfile: ProfileForm): string[] => {
+  if (!currentUser) {
+    return ['profile details'];
+  }
+
+  const changes: string[] = [];
+  const currentFullName = (currentUser.fullName || currentUser.fullname || '').trim();
+  const currentUsername = (currentUser.username || '').trim();
+  const currentContactNumber = formatSettingsPhoneNumber(currentUser.contactNumber || currentUser.contact_number || '');
+  const nextContactNumber = formatSettingsPhoneNumber(nextProfile.contactNumber);
+  const currentImage = getSettingsProfileImage(currentUser);
+
+  if (currentFullName !== nextProfile.fullName.trim()) changes.push('full name');
+  if (currentUsername !== nextProfile.username.trim()) changes.push('username');
+  if (currentContactNumber !== nextContactNumber) changes.push('contact number');
+  if (currentImage !== nextProfile.userImage) changes.push('profile image');
+
+  return changes;
+};
+
+const toSafeSettingsError = (message?: string): string => {
+  const cleanMessage = String(message || '').trim();
+  if (!cleanMessage) return 'The request could not be completed.';
+  return cleanMessage.replace(/\b\d{6}\b/g, '[otp]').slice(0, 180);
+};
+
 const summarizeServiceChanges = (previousService: ServiceItem, nextService: ServiceItem) => {
   const changes: string[] = [];
 
@@ -384,10 +577,11 @@ const summarizeServiceChanges = (previousService: ServiceItem, nextService: Serv
 
 export default function AdminSettingsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const announcementImageInputRef = useRef<HTMLInputElement>(null);
 
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(defaultSessionUser);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [modalConfig, setModalConfig] = useState<ModalConfigType>({
     type: 'info',
@@ -397,7 +591,7 @@ export default function AdminSettingsPage() {
     showCancel: false
   });
 
-  const [activePanel, setActivePanel] = useState<'account' | 'security' | 'developer' | 'homepage' | 'announcements'>('account');
+  const [activePanel, setActivePanel] = useState<SettingsPanel>('account');
   const [homepageTarget, setHomepageTarget] = useState<HomepageEditorTarget>('hero');
 
   const [profileForm, setProfileForm] = useState<ProfileForm>(initialProfileForm);
@@ -443,6 +637,12 @@ export default function AdminSettingsPage() {
   const [otpError, setOtpError] = useState('');
   const [pendingEmail, setPendingEmail] = useState('');
   const [selectedHomepageServiceId, setSelectedHomepageServiceId] = useState<string | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [emailOtpSending, setEmailOtpSending] = useState(false);
+  const [emailVerifying, setEmailVerifying] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
 
   const activePanelLabel = useMemo(() => {
     const labels: Record<typeof activePanel, string> = {
@@ -456,28 +656,83 @@ export default function AdminSettingsPage() {
   }, [activePanel]);
 
   useEffect(() => {
-    try {
-      const session = localStorage.getItem('userSession');
-      if (session) {
+    let isMounted = true;
+
+    const loadSettingsProfile = async () => {
+      try {
+        const session = localStorage.getItem('userSession');
+        if (!session) {
+          navigate('/Login');
+          return;
+        }
+
         const parsed = JSON.parse(session) as CurrentUser;
-        setCurrentUser({ ...defaultSessionUser, ...parsed });
-        setProfileForm(prev => ({
-          ...prev,
-          fullName: parsed.fullName || prev.fullName,
-          username: parsed.username || prev.username,
-          contactNumber: parsed.contactNumber || prev.contactNumber,
-          role: parsed.role || prev.role,
-          userImage: parsed.userImage || prev.userImage
-        }));
+        const sessionUser = normalizeSettingsUser(parsed, defaultSessionUser);
+        if (!isMounted) return;
+
+        setCurrentUser(sessionUser);
+        setProfileForm(buildProfileFormFromUser(sessionUser));
         setEmailForm(prev => ({
           ...prev,
-          currentEmail: parsed.email || defaultSessionUser.email || ''
+          currentEmail: sessionUser.email || ''
         }));
+
+        const userId = getSettingsUserId(sessionUser);
+        if (!userId) return;
+
+        const response = await apiService.getProfile(userId);
+        const profilePayload = response?.user || response || {};
+        const normalizedProfile = normalizeSettingsUser(profilePayload, sessionUser);
+        const mergedSession = {
+          ...parsed,
+          ...profilePayload,
+          id: normalizedProfile.id,
+          pk: normalizedProfile.pk,
+          username: normalizedProfile.username,
+          fullName: normalizedProfile.fullName,
+          fullname: normalizedProfile.fullName,
+          firstName: normalizedProfile.firstName,
+          lastName: normalizedProfile.lastName,
+          contactNumber: normalizedProfile.contactNumber,
+          contact_number: normalizedProfile.contact_number,
+          role: normalizedProfile.role,
+          email: normalizedProfile.email,
+          profileImage: normalizedProfile.profileImage,
+          userImage: normalizedProfile.userImage,
+          userimage: normalizedProfile.userImage
+        };
+
+        localStorage.setItem('userSession', JSON.stringify(mergedSession));
+        if (!isMounted) return;
+        setCurrentUser(normalizedProfile);
+        setProfileForm(prev => buildProfileFormFromUser(normalizedProfile, prev.branch));
+        setEmailForm(prev => ({
+          ...prev,
+          currentEmail: normalizedProfile.email || ''
+        }));
+      } catch (error: any) {
+        console.error('Failed to load settings profile', error);
+        if (isMounted) {
+          showAlert('error', 'Unable to Load Profile', error?.message || 'We could not load your latest profile information right now.');
+        }
+      } finally {
+        if (isMounted) {
+          setProfileLoading(false);
+        }
       }
-    } catch (error) {
-      console.error('Failed to load user session', error);
+    };
+
+    loadSettingsProfile();
+    return () => {
+      isMounted = false;
+    };
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!showFutureDefenseSettings && futureDefenseSettingsPanels.has(activePanel)) {
+      setActivePanel('account');
     }
-  }, []);
+  }, [activePanel]);
 
   const homepageServicesPreview = useMemo(
     () => services.filter(service => service.status === 'Active').slice(0, 4),
@@ -538,6 +793,22 @@ export default function AdminSettingsPage() {
     return labels[homepageTarget];
   }, [homepageTarget]);
 
+  const passwordRequirementItems = useMemo(
+    () => getPasswordRequirementItems(passwordForm.newPassword, passwordForm.currentPassword),
+    [passwordForm.currentPassword, passwordForm.newPassword]
+  );
+
+  const hasUnsavedAccountChanges = useMemo(
+    () => Boolean(currentUser) && !profileLoading && getProfileChangedFields(currentUser, profileForm).length > 0,
+    [currentUser, profileForm, profileLoading]
+  );
+
+  useBeforeUnload((event) => {
+    if (!hasUnsavedAccountChanges) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+
   const showAlert = (
     type: 'info' | 'success' | 'error' | 'confirm',
     title: string,
@@ -553,23 +824,71 @@ export default function AdminSettingsPage() {
     showAlert('confirm', title, message, onConfirm, true);
   };
 
+  const confirmLeaveUnsavedAccountChanges = (
+    onProceed: () => void,
+    message = 'You have unsaved changes. Are you sure you want to leave without saving?'
+  ) => {
+    if (!hasUnsavedAccountChanges) {
+      onProceed();
+      return;
+    }
+
+    showAlert('confirm', 'Unsaved Changes', message, onProceed, true);
+  };
+
+  const handleSettingsPanelChange = (nextPanel: SettingsPanel) => {
+    if (nextPanel === activePanel) return;
+
+    if (activePanel === 'account') {
+      confirmLeaveUnsavedAccountChanges(
+        () => setActivePanel(nextPanel),
+        'You have unsaved changes. Are you sure you want to leave this page without saving?'
+      );
+      return;
+    }
+
+    setActivePanel(nextPanel);
+  };
+
+  const handleProtectedSettingsNavigation = (path: string, navigateFn: () => void) => {
+    if (path === location.pathname) {
+      navigateFn();
+      return;
+    }
+
+    confirmLeaveUnsavedAccountChanges(
+      navigateFn,
+      'You have unsaved changes. Are you sure you want to leave this page without saving?'
+    );
+  };
+
   const handleLogoutPress = () => {
-    showAlert('confirm', 'Log Out', 'Are you sure you want to log out?', () => {
+    const finishLogout = () => {
       localStorage.removeItem('userSession');
       setCurrentUser(null);
       navigate('/Login');
+    };
+
+    if (hasUnsavedAccountChanges) {
+      showAlert('confirm', 'Unsaved Changes', 'You have unsaved changes. Are you sure you want to leave and log out?', finishLogout, true);
+      return;
+    }
+
+    showAlert('confirm', 'Log Out', 'Are you sure you want to log out?', () => {
+      finishLogout();
     }, true);
   };
 
   const validateProfile = () => {
     const errors: FieldErrors = {};
+    const formattedContactNumber = formatSettingsPhoneNumber(profileForm.contactNumber);
     if (!profileForm.fullName.trim()) errors.fullName = 'Full name is required.';
     if (!profileForm.username.trim()) errors.username = 'Username is required.';
     if (!/^[a-z0-9._-]{4,}$/i.test(profileForm.username.trim())) errors.username = 'Use at least 4 letters, numbers, dots, or underscores.';
-    if (!profileForm.contactNumber.trim()) errors.contactNumber = 'Contact number is required.';
-    if (!/^09\d{9}$/.test(profileForm.contactNumber.trim())) errors.contactNumber = 'Use an 11-digit PH mobile number starting with 09.';
-    if (!profileForm.role.trim()) errors.role = 'Role is required.';
-    if (!profileForm.branch.trim()) errors.branch = 'Branch is required.';
+    if (!formattedContactNumber) errors.contactNumber = 'Contact number is required.';
+    if (formattedContactNumber && !isValidSettingsPhoneNumber(formattedContactNumber)) {
+      errors.contactNumber = 'Use a PH mobile number in +63 format, example +63 927 306 6923.';
+    }
     if (!profileForm.userImage.trim()) errors.userImage = 'Profile image is required.';
     setProfileErrors(errors);
     return Object.keys(errors).length === 0;
@@ -579,9 +898,9 @@ export default function AdminSettingsPage() {
     const errors: FieldErrors = {};
     if (!passwordForm.currentPassword) errors.currentPassword = 'Current password is required.';
     if (!passwordForm.newPassword) errors.newPassword = 'New password is required.';
-    if (passwordForm.newPassword && passwordForm.newPassword.length < 8) errors.newPassword = 'Use at least 8 characters.';
-    if (passwordForm.newPassword && !/[A-Z]/.test(passwordForm.newPassword)) errors.newPassword = 'Include at least one uppercase letter.';
-    if (passwordForm.newPassword && !/\d/.test(passwordForm.newPassword)) errors.newPassword = 'Include at least one number.';
+    if (passwordForm.newPassword && passwordRequirementItems.some(requirement => !requirement.isMet)) {
+      errors.newPassword = 'Complete all password requirements below.';
+    }
     if (!passwordForm.confirmPassword) errors.confirmPassword = 'Please confirm the new password.';
     if (passwordForm.confirmPassword && passwordForm.confirmPassword !== passwordForm.newPassword) errors.confirmPassword = 'Passwords do not match.';
     setPasswordErrors(errors);
@@ -642,37 +961,217 @@ export default function AdminSettingsPage() {
 
   const handleProfileSave = () => {
     if (!validateProfile()) return;
-    confirmAction('Save profile changes', 'Save these account profile changes?', () => {
-      showAlert('success', 'Profile updated', 'Your profile changes were validated and saved in this UI preview.');
+    const userId = getSettingsUserId(currentUser);
+    if (!userId) {
+      showAlert('error', 'Unable to Save', 'Could not find your user session. Please log in again.');
+      return;
+    }
+
+    confirmAction('Save profile changes', 'Save these account profile changes?', async () => {
+      const { firstName, lastName } = splitSettingsFullName(profileForm.fullName);
+      const formattedContactNumber = formatSettingsPhoneNumber(profileForm.contactNumber);
+      const nextProfile = {
+        ...profileForm,
+        contactNumber: formattedContactNumber
+      };
+      const changedFields = getProfileChangedFields(currentUser, nextProfile);
+      try {
+        setProfileSaving(true);
+        const response = await apiService.updateProfile(userId, {
+          username: profileForm.username.trim(),
+          firstName,
+          lastName,
+          contactNumber: formattedContactNumber,
+          userImage: profileForm.userImage || undefined,
+          accountType: getSettingsAccountType(currentUser)
+        });
+        const responsePayload = response?.user || response || {};
+        const normalizedProfile = normalizeSettingsUser(
+          {
+            ...currentUser,
+            ...responsePayload,
+            username: profileForm.username.trim(),
+            fullName: profileForm.fullName.trim(),
+            firstName,
+            lastName,
+            contactNumber: formattedContactNumber,
+            userImage: profileForm.userImage
+          },
+          currentUser || defaultSessionUser
+        );
+        const rawSession = localStorage.getItem('userSession');
+        const existingSession = rawSession ? JSON.parse(rawSession) : {};
+        const mergedSession = {
+          ...existingSession,
+          ...responsePayload,
+          username: normalizedProfile.username,
+          fullName: normalizedProfile.fullName,
+          fullname: normalizedProfile.fullName,
+          firstName: normalizedProfile.firstName,
+          lastName: normalizedProfile.lastName,
+          contactNumber: normalizedProfile.contactNumber,
+          contact_number: normalizedProfile.contact_number,
+          role: normalizedProfile.role,
+          email: normalizedProfile.email,
+          profileImage: normalizedProfile.profileImage,
+          userImage: normalizedProfile.userImage,
+          userimage: normalizedProfile.userImage
+        };
+
+        localStorage.setItem('userSession', JSON.stringify(mergedSession));
+        setCurrentUser(normalizedProfile);
+        setProfileForm(prev => buildProfileFormFromUser(normalizedProfile, prev.branch));
+        setProfileErrors({});
+        recordSettingsAuditLog({
+          module: 'Settings',
+          event: 'Account Profile Updated',
+          target: getSettingsAuditTarget(normalizedProfile),
+          summary: changedFields.length > 0
+            ? `Account profile was updated: ${changedFields.join(', ')}.`
+            : 'Account profile was saved with no visible field changes.',
+          status: 'Success'
+        }, normalizedProfile);
+        showAlert('success', 'Profile Updated', 'Your account profile has been saved.');
+      } catch (error: any) {
+        console.error('Failed to update settings profile', error);
+        const message = toSafeSettingsError(error?.message || 'Failed to save profile changes. Please try again.');
+        recordSettingsAuditLog({
+          module: 'Settings',
+          event: 'Account Profile Update Failed',
+          target: getSettingsAuditTarget(currentUser),
+          summary: `Account profile update failed: ${message}`,
+          status: 'Failed'
+        }, currentUser);
+        showAlert('error', 'Unable to Save Profile', message);
+      } finally {
+        setProfileSaving(false);
+      }
     });
   };
 
   const handlePasswordSave = () => {
     if (!validatePassword()) return;
-    confirmAction('Update password', 'Apply this password change in the settings preview?', () => {
-      setPasswordForm(initialPasswordForm);
-      setPasswordErrors({});
-      showAlert('success', 'Password ready', 'Password change passed validation in this mock settings flow.');
+    const userId = getSettingsUserId(currentUser);
+    if (!userId) {
+      showAlert('error', 'Unable to Update Password', 'Could not find your user session. Please log in again.');
+      return;
+    }
+
+    confirmAction('Update password', 'Apply this password change?', async () => {
+      try {
+        setPasswordSaving(true);
+        await apiService.changeAuthenticatedPassword(userId, {
+          current_password: passwordForm.currentPassword,
+          new_password: passwordForm.newPassword
+        });
+        setPasswordForm(initialPasswordForm);
+        setPasswordErrors({});
+        recordSettingsAuditLog({
+          module: 'Settings',
+          event: 'Password Changed',
+          target: getSettingsAuditTarget(currentUser),
+          summary: 'Account password was changed from Settings. Password values were not logged.',
+          status: 'Success'
+        }, currentUser);
+        showAlert('success', 'Password Updated', 'Password changed successfully.');
+      } catch (error: any) {
+        const message = toSafeSettingsError(error?.message || 'Failed to change password. Please try again.');
+        if (message.toLowerCase().includes('current password')) {
+          setPasswordErrors({ currentPassword: message });
+        } else {
+          setPasswordErrors({ newPassword: message });
+        }
+        recordSettingsAuditLog({
+          module: 'Settings',
+          event: 'Password Change Failed',
+          target: getSettingsAuditTarget(currentUser),
+          summary: `Password change failed: ${message}`,
+          status: 'Failed'
+        }, currentUser);
+        showAlert('error', 'Unable to Update Password', message);
+      } finally {
+        setPasswordSaving(false);
+      }
     });
   };
 
   const handleEmailSubmit = () => {
     if (!validateEmail()) return;
     const nextEmail = emailForm.newEmail.trim();
-    confirmAction('Send OTP', `Send an OTP to ${nextEmail}?`, () => {
-      setPendingEmail(nextEmail);
-      setOtpCode('');
-      setOtpError('');
-      setShowOtpModal(true);
+    const userId = getSettingsUserId(currentUser);
+    if (!userId) {
+      showAlert('error', 'Unable to Send OTP', 'Could not find your user session. Please log in again.');
+      return;
+    }
+
+    confirmAction('Send OTP', `Send an OTP to ${nextEmail}?`, async () => {
+      try {
+        setEmailOtpSending(true);
+        await apiService.requestEmailChangeOtp(userId, { newEmail: nextEmail });
+        setPendingEmail(nextEmail);
+        setOtpCode('');
+        setOtpError('');
+        setEmailErrors({});
+        setShowOtpModal(true);
+        recordSettingsAuditLog({
+          module: 'Settings',
+          event: 'Email Change OTP Requested',
+          target: getSettingsAuditTarget(currentUser),
+          summary: `Email change OTP was requested for ${maskSettingsEmail(nextEmail)}.`,
+          status: 'Success'
+        }, currentUser);
+      } catch (error: any) {
+        const message = toSafeSettingsError(error?.message || 'Unable to send OTP. Please try again.');
+        setEmailErrors({ newEmail: message });
+        recordSettingsAuditLog({
+          module: 'Settings',
+          event: 'Email Change OTP Request Failed',
+          target: getSettingsAuditTarget(currentUser),
+          summary: `Email change OTP request for ${maskSettingsEmail(nextEmail)} failed: ${message}`,
+          status: 'Failed'
+        }, currentUser);
+        showAlert('error', 'Unable to Send OTP', message);
+      } finally {
+        setEmailOtpSending(false);
+      }
     });
   };
 
-  const handleOtpVerify = () => {
+  const handleOtpVerify = async () => {
     if (!/^\d{6}$/.test(otpCode.trim())) {
       setOtpError('Enter the 6-digit OTP sent to the new email address.');
       return;
     }
-    confirmAction('Verify email change', `Use ${pendingEmail} as the active account email?`, () => {
+    const userId = getSettingsUserId(currentUser);
+    if (!userId) {
+      setOtpError('Could not find your user session. Please log in again.');
+      return;
+    }
+
+    try {
+      setEmailVerifying(true);
+      const response = await apiService.verifyEmailChangeOtp(userId, {
+        newEmail: pendingEmail,
+        otp: otpCode.trim()
+      });
+      const responsePayload = response?.user || response || {};
+      const normalizedProfile = normalizeSettingsUser(
+        {
+          ...currentUser,
+          ...responsePayload,
+          email: pendingEmail
+        },
+        currentUser || defaultSessionUser
+      );
+      const rawSession = localStorage.getItem('userSession');
+      const existingSession = rawSession ? JSON.parse(rawSession) : {};
+      localStorage.setItem('userSession', JSON.stringify({
+        ...existingSession,
+        ...responsePayload,
+        email: pendingEmail
+      }));
+      setCurrentUser(normalizedProfile);
+      setProfileForm(prev => buildProfileFormFromUser(normalizedProfile, prev.branch));
       setShowOtpModal(false);
       setEmailForm({
         currentEmail: pendingEmail,
@@ -680,22 +1179,122 @@ export default function AdminSettingsPage() {
         confirmEmail: ''
       });
       setEmailErrors({});
-      showAlert('success', 'Email verified', `OTP confirmed. ${pendingEmail} is now the active email in this UI preview.`);
-    });
+      recordSettingsAuditLog({
+        module: 'Settings',
+        event: 'Email Changed',
+        target: getSettingsAuditTarget(normalizedProfile),
+        summary: `Account email was changed to ${maskSettingsEmail(pendingEmail)} after OTP verification.`,
+        status: 'Success'
+      }, normalizedProfile);
+      showAlert('success', 'Email Updated', `${pendingEmail} is now the active account email.`);
+    } catch (error: any) {
+      const message = toSafeSettingsError(error?.message || 'Unable to verify OTP. Please try again.');
+      recordSettingsAuditLog({
+        module: 'Settings',
+        event: 'Email Change Verification Failed',
+        target: getSettingsAuditTarget(currentUser),
+        summary: `Email change verification for ${maskSettingsEmail(pendingEmail)} failed: ${message}`,
+        status: 'Failed'
+      }, currentUser);
+      if (message.toLowerCase().includes('otp') || message.toLowerCase().includes('code')) {
+        setOtpError(message);
+      } else {
+        setEmailErrors({ newEmail: message });
+        setShowOtpModal(false);
+        showAlert('error', 'Unable to Update Email', message);
+      }
+    } finally {
+      setEmailVerifying(false);
+    }
   };
 
   const handleImagePick = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const imageValue = typeof reader.result === 'string' ? reader.result : defaultUserImg;
-      confirmAction('Update profile photo', 'Use this image as the account profile photo?', () => {
-        setProfileForm(prev => ({ ...prev, userImage: imageValue }));
-        setCurrentUser(prev => (prev ? { ...prev, userImage: imageValue } : prev));
-      });
-    };
-    reader.readAsDataURL(file);
+
+    confirmAction('Upload profile photo', 'Upload and save this image as the account profile photo?', async () => {
+      try {
+        const userId = getSettingsUserId(currentUser);
+        if (!userId) {
+          throw new Error('Could not find your user session. Please log in again.');
+        }
+
+        setImageUploading(true);
+        const dataUrl = await readFileAsDataUrl(file);
+        const fileBase64 = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+        const uploadResponse = await apiService.uploadProfilePhoto(fileBase64, file.name, file.type || 'image/jpeg');
+        const uploadedPhotoUrl = uploadResponse?.photoUrl;
+        if (!uploadedPhotoUrl) {
+          throw new Error('Profile photo upload did not return an image URL.');
+        }
+
+        const saveResponse = await apiService.updateProfile(userId, {
+          userImage: uploadedPhotoUrl,
+          profileImage: uploadedPhotoUrl,
+          accountType: getSettingsAccountType(currentUser)
+        });
+        const responsePayload = saveResponse?.user || saveResponse || {};
+        const normalizedProfile = normalizeSettingsUser(
+          {
+            ...currentUser,
+            ...responsePayload,
+            userImage: uploadedPhotoUrl,
+            userimage: uploadedPhotoUrl,
+            profileImage: uploadedPhotoUrl,
+            employee_image: uploadedPhotoUrl
+          },
+          currentUser || defaultSessionUser
+        );
+        const rawSession = localStorage.getItem('userSession');
+        const existingSession = rawSession ? JSON.parse(rawSession) : {};
+        const mergedSession = {
+          ...existingSession,
+          ...responsePayload,
+          username: normalizedProfile.username,
+          fullName: normalizedProfile.fullName,
+          fullname: normalizedProfile.fullName,
+          firstName: normalizedProfile.firstName,
+          lastName: normalizedProfile.lastName,
+          contactNumber: normalizedProfile.contactNumber,
+          contact_number: normalizedProfile.contact_number,
+          role: normalizedProfile.role,
+          email: normalizedProfile.email,
+          profileImage: uploadedPhotoUrl,
+          userImage: uploadedPhotoUrl,
+          userimage: uploadedPhotoUrl,
+          employee_image: uploadedPhotoUrl
+        };
+
+        localStorage.setItem('userSession', JSON.stringify(mergedSession));
+        setProfileForm(prev => buildProfileFormFromUser(normalizedProfile, prev.branch));
+        setCurrentUser(normalizedProfile);
+        setProfileErrors(prev => {
+          const { userImage, ...rest } = prev;
+          return rest;
+        });
+        recordSettingsAuditLog({
+          module: 'Settings',
+          event: 'Profile Photo Updated',
+          target: getSettingsAuditTarget(normalizedProfile),
+          summary: 'A new profile photo was uploaded and saved to the account from Settings.',
+          status: 'Success'
+        }, normalizedProfile);
+        showAlert('success', 'Photo Saved', 'Your profile photo has been saved to your account.');
+      } catch (error: any) {
+        console.error('Failed to upload settings profile image', error);
+        const message = toSafeSettingsError(error?.message || 'We could not upload your profile picture right now.');
+        recordSettingsAuditLog({
+          module: 'Settings',
+          event: 'Profile Photo Upload Failed',
+          target: getSettingsAuditTarget(currentUser),
+          summary: `Profile photo upload failed: ${message}`,
+          status: 'Failed'
+        }, currentUser);
+        showAlert('error', 'Unable to Upload Photo', message);
+      } finally {
+        setImageUploading(false);
+      }
+    });
     event.currentTarget.value = '';
   };
 
@@ -1303,7 +1902,7 @@ export default function AdminSettingsPage() {
 
   return (
     <div className="biContainer">
-      <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
+      <Navbar currentUser={currentUser} onLogout={handleLogoutPress} onNavigateAttempt={handleProtectedSettingsNavigation} />
 
       <div className="bodyContainer">
         <div className="topContainer settingsTopContainer">
@@ -1328,8 +1927,9 @@ export default function AdminSettingsPage() {
                 console.log('View all notifications');
               }}
               onNotificationClick={(notification) => {
-                if (notification.link) {
-                  navigate(notification.link);
+                const notificationLink = notification.link;
+                if (notificationLink) {
+                  handleProtectedSettingsNavigation(notificationLink, () => navigate(notificationLink));
                 }
               }}
             />
@@ -1337,67 +1937,71 @@ export default function AdminSettingsPage() {
         </div>
 
         <div className="tableContainer settingsTableContainer settingsTableNoHeader">
-          <div className="settingsHero">
+          <div className={`settingsHero ${showFutureDefenseSettings ? '' : 'settingsHeroDefenseMode'}`}>
             <div className="settingsHeroPanel">
               <span className="settingsHeroEyebrow">Admin Control Center</span>
-              <h2>Manage account security, homepage content, services, and homepage announcements.</h2>
+              <h2>Manage account profile and security.</h2>
               <p>
-                This Settings page focuses on account management, homepage editing, and developer-side content controls
-                while staying lighter and easier to navigate.
+                This Settings page focuses on the account details and security controls needed for the current defense.
               </p>
               <div className="settingsHeroPills">
                 <span>Editable profile image</span>
-                <span>Billing-based service catalog</span>
-                <span>Clickable homepage preview</span>
-                <span>Homepage announcement targeting</span>
+                <span>Password validation</span>
+                <span>Email OTP verification</span>
               </div>
             </div>
 
-            <div className="settingsSummaryGrid">
-              <div className="settingsSummaryCard">
-                <div className="settingsSummaryIcon blue"><IoShieldCheckmarkOutline size={18} /></div>
-                <strong>3 security actions</strong>
-                <span>Profile, password, and email management with validation.</span>
+            {showFutureDefenseSettings && (
+              <div className="settingsSummaryGrid">
+                <div className="settingsSummaryCard">
+                  <div className="settingsSummaryIcon blue"><IoShieldCheckmarkOutline size={18} /></div>
+                  <strong>3 security actions</strong>
+                  <span>Profile, password, and email management with validation.</span>
+                </div>
+                <div className="settingsSummaryCard">
+                  <div className="settingsSummaryIcon cyan"><IoPricetagOutline size={18} /></div>
+                  <strong>{services.length} services</strong>
+                  <span>Based on the Billing module structure and editable here.</span>
+                </div>
+                <div className="settingsSummaryCard">
+                  <div className="settingsSummaryIcon pink"><IoAppsOutline size={18} /></div>
+                  <strong>{announcements.length} homepage announcements</strong>
+                  <span>Target Web Home, Mobile App Home, or both homepages.</span>
+                </div>
+                <div className="settingsSummaryCard">
+                  <div className="settingsSummaryIcon amber"><IoGlobeOutline size={18} /></div>
+                  <strong>Focused editor flow</strong>
+                  <span>Click a preview area first, then edit only that part in the side pane.</span>
+                </div>
               </div>
-              <div className="settingsSummaryCard">
-                <div className="settingsSummaryIcon cyan"><IoPricetagOutline size={18} /></div>
-                <strong>{services.length} services</strong>
-                <span>Based on the Billing module structure and editable here.</span>
-              </div>
-              <div className="settingsSummaryCard">
-                <div className="settingsSummaryIcon pink"><IoAppsOutline size={18} /></div>
-                <strong>{announcements.length} homepage announcements</strong>
-                <span>Target Web Home, Mobile App Home, or both homepages.</span>
-              </div>
-              <div className="settingsSummaryCard">
-                <div className="settingsSummaryIcon amber"><IoGlobeOutline size={18} /></div>
-                <strong>Focused editor flow</strong>
-                <span>Click a preview area first, then edit only that part in the side pane.</span>
-              </div>
-            </div>
+            )}
           </div>
 
           <div className="settingsTabRow">
-            <button className={`settingsTab ${activePanel === 'account' ? 'active' : ''}`} onClick={() => setActivePanel('account')}>
+            <button className={`settingsTab ${activePanel === 'account' ? 'active' : ''}`} onClick={() => handleSettingsPanelChange('account')}>
               <IoPeopleOutline size={16} />
               <span>Account</span>
             </button>
-            <button className={`settingsTab ${activePanel === 'security' ? 'active' : ''}`} onClick={() => setActivePanel('security')}>
+            <button className={`settingsTab ${activePanel === 'security' ? 'active' : ''}`} onClick={() => handleSettingsPanelChange('security')}>
               <IoShieldCheckmarkOutline size={16} />
               <span>Security</span>
             </button>
-            <button className={`settingsTab ${activePanel === 'developer' ? 'active' : ''}`} onClick={() => setActivePanel('developer')}>
-              <IoLayersOutline size={16} />
-              <span>Developer Settings</span>
-            </button>
-            <button className={`settingsTab ${activePanel === 'homepage' ? 'active' : ''}`} onClick={() => setActivePanel('homepage')}>
-              <IoGlobeOutline size={16} />
-              <span>Homepage Editor</span>
-            </button>
-            <button className={`settingsTab ${activePanel === 'announcements' ? 'active' : ''}`} onClick={() => setActivePanel('announcements')}>
-              <IoAppsOutline size={16} />
-              <span>Announcements</span>
-            </button>
+            {showFutureDefenseSettings && (
+              <>
+                <button className={`settingsTab ${activePanel === 'developer' ? 'active' : ''}`} onClick={() => handleSettingsPanelChange('developer')}>
+                  <IoLayersOutline size={16} />
+                  <span>Developer Settings</span>
+                </button>
+                <button className={`settingsTab ${activePanel === 'homepage' ? 'active' : ''}`} onClick={() => handleSettingsPanelChange('homepage')}>
+                  <IoGlobeOutline size={16} />
+                  <span>Homepage Editor</span>
+                </button>
+                <button className={`settingsTab ${activePanel === 'announcements' ? 'active' : ''}`} onClick={() => handleSettingsPanelChange('announcements')}>
+                  <IoAppsOutline size={16} />
+                  <span>Announcements</span>
+                </button>
+              </>
+            )}
           </div>
 
           {activePanel === 'account' && (
@@ -1408,7 +2012,9 @@ export default function AdminSettingsPage() {
                     <span className="settingsSectionEyebrow">Edit Account Profile</span>
                     <h3>Update user information</h3>
                   </div>
-                  <button className="settingsPrimaryBtn" onClick={handleProfileSave}>Save Profile</button>
+                  <button className="settingsPrimaryBtn" onClick={handleProfileSave} disabled={profileLoading || profileSaving || imageUploading}>
+                    {profileSaving ? 'Saving...' : 'Save Profile'}
+                  </button>
                 </div>
 
                 <div className="settingsProfileShell">
@@ -1424,12 +2030,12 @@ export default function AdminSettingsPage() {
                   <div className="settingsImageEditor">
                     <div className="settingsImageEditorInfo">
                       <IoImageOutline size={18} />
-                      <span>Upload a new Profile Image!</span>
+                      <span>{imageUploading ? 'Uploading profile image...' : 'Upload a new profile image'}</span>
                     </div>
                     <div className="settingsImageEditorActions">
-                      <button className="settingsGhostBtn" onClick={() => fileInputRef.current?.click()}>
+                      <button className="settingsGhostBtn" onClick={() => fileInputRef.current?.click()} disabled={profileLoading || profileSaving || imageUploading}>
                         <IoImageOutline size={16} />
-                        <span>Upload Image</span>
+                        <span>{imageUploading ? 'Uploading...' : 'Upload Image'}</span>
                       </button>
                       <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImagePick} />
                     </div>
@@ -1439,28 +2045,30 @@ export default function AdminSettingsPage() {
                   <div className="settingsFormGrid">
                     <div className="settingsFormField">
                       <label>Full Name</label>
-                      <input className={`settingsInput ${profileErrors.fullName ? 'hasError' : ''}`} value={profileForm.fullName} onChange={(e) => setProfileForm(prev => ({ ...prev, fullName: e.target.value }))} />
+                      <input className={`settingsInput ${profileErrors.fullName ? 'hasError' : ''}`} value={profileForm.fullName} onChange={(e) => setProfileForm(prev => ({ ...prev, fullName: e.target.value }))} disabled={profileLoading || profileSaving} />
                       {profileErrors.fullName && <small className="settingsErrorText">{profileErrors.fullName}</small>}
                     </div>
                     <div className="settingsFormField">
                       <label>Username</label>
-                      <input className={`settingsInput ${profileErrors.username ? 'hasError' : ''}`} value={profileForm.username} onChange={(e) => setProfileForm(prev => ({ ...prev, username: e.target.value }))} />
+                      <input className={`settingsInput ${profileErrors.username ? 'hasError' : ''}`} value={profileForm.username} onChange={(e) => setProfileForm(prev => ({ ...prev, username: e.target.value }))} disabled={profileLoading || profileSaving} />
                       {profileErrors.username && <small className="settingsErrorText">{profileErrors.username}</small>}
                     </div>
                     <div className="settingsFormField">
                       <label>Contact Number</label>
-                      <input className={`settingsInput ${profileErrors.contactNumber ? 'hasError' : ''}`} value={profileForm.contactNumber} onChange={(e) => setProfileForm(prev => ({ ...prev, contactNumber: e.target.value }))} />
+                      <input
+                        className={`settingsInput ${profileErrors.contactNumber ? 'hasError' : ''}`}
+                        value={profileForm.contactNumber}
+                        onChange={(e) => setProfileForm(prev => ({ ...prev, contactNumber: formatSettingsPhoneNumber(e.target.value) }))}
+                        inputMode="tel"
+                        placeholder="+63 927 306 6923"
+                        disabled={profileLoading || profileSaving}
+                      />
                       {profileErrors.contactNumber && <small className="settingsErrorText">{profileErrors.contactNumber}</small>}
                     </div>
                     <div className="settingsFormField">
                       <label>Role</label>
-                      <input className={`settingsInput ${profileErrors.role ? 'hasError' : ''}`} value={profileForm.role} onChange={(e) => setProfileForm(prev => ({ ...prev, role: e.target.value }))} />
+                      <input className={`settingsInput ${profileErrors.role ? 'hasError' : ''}`} value={profileForm.role} readOnly disabled={profileLoading} />
                       {profileErrors.role && <small className="settingsErrorText">{profileErrors.role}</small>}
-                    </div>
-                    <div className="settingsFormField settingsFormFieldWide">
-                      <label>Branch / Assigned Clinic</label>
-                      <input className={`settingsInput ${profileErrors.branch ? 'hasError' : ''}`} value={profileForm.branch} onChange={(e) => setProfileForm(prev => ({ ...prev, branch: e.target.value }))} />
-                      {profileErrors.branch && <small className="settingsErrorText">{profileErrors.branch}</small>}
                     </div>
                   </div>
                 </div>
@@ -1474,10 +2082,11 @@ export default function AdminSettingsPage() {
                   </div>
                 </div>
                 <ul className="settingsChecklist">
-                  <li>Full name, username, contact number, role, branch, and image are required.</li>
+                  <li>Full name, username, contact number, and profile image are saved to the current account.</li>
                   <li>Username must use at least 4 valid characters.</li>
-                  <li>Contact number expects an 11-digit Philippine mobile format.</li>
-                  <li>Image upload updates the preview instantly in this UI-only flow.</li>
+                  <li>Contact number uses +63 format, example +63 927 306 6923.</li>
+                  <li>Role is shown from the account record and is not edited here.</li>
+                  <li>Branch assignment is intentionally untouched for now to avoid conflicts with the team branch work.</li>
                 </ul>
               </section>
             </div>
@@ -1491,23 +2100,62 @@ export default function AdminSettingsPage() {
                     <span className="settingsSectionEyebrow">Change Password</span>
                     <h3>Protect the admin account</h3>
                   </div>
-                  <button className="settingsPrimaryBtn" onClick={handlePasswordSave}>Update Password</button>
+                  <button className="settingsPrimaryBtn" onClick={handlePasswordSave} disabled={passwordSaving}>
+                    {passwordSaving ? 'Updating...' : 'Update Password'}
+                  </button>
                 </div>
 
                 <div className="settingsFormGrid">
                   <div className="settingsFormField settingsFormFieldWide">
                     <label>Current Password</label>
-                    <input type="password" className={`settingsInput ${passwordErrors.currentPassword ? 'hasError' : ''}`} value={passwordForm.currentPassword} onChange={(e) => setPasswordForm(prev => ({ ...prev, currentPassword: e.target.value }))} />
+                    <input
+                      type="password"
+                      name="settings-current-password"
+                      autoComplete="new-password"
+                      className={`settingsInput ${passwordErrors.currentPassword ? 'hasError' : ''}`}
+                      value={passwordForm.currentPassword}
+                      onChange={(e) => setPasswordForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+                      disabled={passwordSaving}
+                    />
                     {passwordErrors.currentPassword && <small className="settingsErrorText">{passwordErrors.currentPassword}</small>}
                   </div>
                   <div className="settingsFormField">
                     <label>New Password</label>
-                    <input type="password" className={`settingsInput ${passwordErrors.newPassword ? 'hasError' : ''}`} value={passwordForm.newPassword} onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))} />
+                    <input
+                      type="password"
+                      name="settings-new-password"
+                      autoComplete="new-password"
+                      className={`settingsInput ${passwordErrors.newPassword ? 'hasError' : ''}`}
+                      value={passwordForm.newPassword}
+                      onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                      disabled={passwordSaving}
+                    />
+                    <div className="settingsPasswordRequirements" aria-live="polite">
+                      {passwordRequirementItems.map(requirement => (
+                        <div
+                          key={requirement.id}
+                          className={`settingsPasswordRequirement ${requirement.isMet ? 'met' : 'missing'}`}
+                        >
+                          <span className="settingsPasswordRequirementMark" aria-hidden="true">
+                            {requirement.isMet ? <IoCheckmarkCircleOutline size={14} /> : <IoCloseCircleOutline size={14} />}
+                          </span>
+                          <span>{requirement.label}</span>
+                        </div>
+                      ))}
+                    </div>
                     {passwordErrors.newPassword && <small className="settingsErrorText">{passwordErrors.newPassword}</small>}
                   </div>
                   <div className="settingsFormField">
                     <label>Confirm New Password</label>
-                    <input type="password" className={`settingsInput ${passwordErrors.confirmPassword ? 'hasError' : ''}`} value={passwordForm.confirmPassword} onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))} />
+                    <input
+                      type="password"
+                      name="settings-confirm-password"
+                      autoComplete="new-password"
+                      className={`settingsInput ${passwordErrors.confirmPassword ? 'hasError' : ''}`}
+                      value={passwordForm.confirmPassword}
+                      onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                      disabled={passwordSaving}
+                    />
                     {passwordErrors.confirmPassword && <small className="settingsErrorText">{passwordErrors.confirmPassword}</small>}
                   </div>
                 </div>
@@ -1519,36 +2167,38 @@ export default function AdminSettingsPage() {
                     <span className="settingsSectionEyebrow">Change Email</span>
                     <h3>Verify using OTP</h3>
                   </div>
-                  <button className="settingsPrimaryBtn" onClick={handleEmailSubmit}>Send OTP</button>
+                  <button className="settingsPrimaryBtn" onClick={handleEmailSubmit} disabled={emailOtpSending}>
+                    {emailOtpSending ? 'Sending...' : 'Send OTP'}
+                  </button>
                 </div>
 
                 <div className="settingsFormGrid">
                   <div className="settingsFormField settingsFormFieldWide">
                     <label>Current Email</label>
-                    <input className={`settingsInput ${emailErrors.currentEmail ? 'hasError' : ''}`} value={emailForm.currentEmail} onChange={(e) => setEmailForm(prev => ({ ...prev, currentEmail: e.target.value }))} />
+                    <input className={`settingsInput ${emailErrors.currentEmail ? 'hasError' : ''}`} value={emailForm.currentEmail} readOnly />
                     {emailErrors.currentEmail && <small className="settingsErrorText">{emailErrors.currentEmail}</small>}
                   </div>
                   <div className="settingsFormField">
                     <label>New Email</label>
-                    <input className={`settingsInput ${emailErrors.newEmail ? 'hasError' : ''}`} value={emailForm.newEmail} onChange={(e) => setEmailForm(prev => ({ ...prev, newEmail: e.target.value }))} />
+                    <input className={`settingsInput ${emailErrors.newEmail ? 'hasError' : ''}`} value={emailForm.newEmail} onChange={(e) => setEmailForm(prev => ({ ...prev, newEmail: e.target.value }))} disabled={emailOtpSending} />
                     {emailErrors.newEmail && <small className="settingsErrorText">{emailErrors.newEmail}</small>}
                   </div>
                   <div className="settingsFormField">
                     <label>Confirm New Email</label>
-                    <input className={`settingsInput ${emailErrors.confirmEmail ? 'hasError' : ''}`} value={emailForm.confirmEmail} onChange={(e) => setEmailForm(prev => ({ ...prev, confirmEmail: e.target.value }))} />
+                    <input className={`settingsInput ${emailErrors.confirmEmail ? 'hasError' : ''}`} value={emailForm.confirmEmail} onChange={(e) => setEmailForm(prev => ({ ...prev, confirmEmail: e.target.value }))} disabled={emailOtpSending} />
                     {emailErrors.confirmEmail && <small className="settingsErrorText">{emailErrors.confirmEmail}</small>}
                   </div>
                 </div>
 
                 <div className="settingsInlineNotice">
                   <IoMailOpenOutline size={18} />
-                  <span>After validation, a 6-digit OTP modal appears. For this mock UI, any valid 6-digit code is accepted.</span>
+                  <span>After validation, a 6-digit OTP is sent to the new email address.</span>
                 </div>
               </section>
             </div>
           )}
 
-          {activePanel === 'developer' && (
+          {showFutureDefenseSettings && activePanel === 'developer' && (
             <div className="settingsPanelGrid settingsDeveloperGrid">
               <section className="settingsCard">
                 <div className="settingsSectionHeader">
@@ -1709,7 +2359,7 @@ export default function AdminSettingsPage() {
             </div>
           )}
 
-          {activePanel === 'homepage' && (
+          {showFutureDefenseSettings && activePanel === 'homepage' && (
             <div className="settingsPanelGrid settingsHomepageGrid settingsHomepageFocusedGrid">
               <section className="settingsCard">
                 <div className="settingsSectionHeader">
@@ -1897,7 +2547,7 @@ export default function AdminSettingsPage() {
             </div>
           )}
 
-          {activePanel === 'announcements' && (
+          {showFutureDefenseSettings && activePanel === 'announcements' && (
             <div className="settingsPanelGrid settingsAnnouncementsGrid">
               <div className="settingsAnnouncementsLeftStack">
                 <section className="settingsCard">
@@ -2174,12 +2824,14 @@ export default function AdminSettingsPage() {
             <div className="settingsOtpIcon"><IoMailOpenOutline size={34} /></div>
             <h3>Verify email change</h3>
             <p>Enter the 6-digit OTP sent to <strong>{pendingEmail}</strong>.</p>
-            <input className={`settingsOtpInput ${otpError ? 'hasError' : ''}`} value={otpCode} onChange={(e) => { setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setOtpError(''); }} placeholder="000000" />
+            <input className={`settingsOtpInput ${otpError ? 'hasError' : ''}`} value={otpCode} onChange={(e) => { setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setOtpError(''); }} placeholder="000000" disabled={emailVerifying} />
             {otpError && <small className="settingsErrorText">{otpError}</small>}
-            <span className="settingsOtpHint">Demo note: any 6-digit code works in this UI-only flow.</span>
+            <span className="settingsOtpHint">Use the code from the email sent by the system.</span>
             <div className="settingsOtpActions">
-              <button className="settingsSecondaryBtn" onClick={() => setShowOtpModal(false)}>Cancel</button>
-              <button className="settingsPrimaryBtn" onClick={handleOtpVerify}>Verify OTP</button>
+              <button className="settingsSecondaryBtn" onClick={() => setShowOtpModal(false)} disabled={emailVerifying}>Cancel</button>
+              <button className="settingsPrimaryBtn" onClick={handleOtpVerify} disabled={emailVerifying}>
+                {emailVerifying ? 'Verifying...' : 'Verify OTP'}
+              </button>
             </div>
           </div>
         </div>

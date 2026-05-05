@@ -4,6 +4,7 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 import os
 import json
+import math
 import random
 import re
 import string
@@ -41,6 +42,16 @@ BILLING_DISCOUNT_RATES = {
     "senior": 0.20,
     "pwd": 0.20,
     "promo": 0.10,
+}
+BILLING_INSTALLMENT_INTEREST_RATES = {
+    3: 0.0,
+    6: 0.06,
+    9: 0.09,
+}
+BILLING_INSTALLMENT_DOWN_PAYMENT_RATES = {
+    3: 0.20,
+    6: 0.30,
+    9: 0.40,
 }
 BILLING_TABLES_SETUP_MESSAGE = "Billing tables are not ready yet. Run backend/sql/billing_schema.sql first."
 BILLING_SERVICE_SEED_ROWS = [
@@ -2214,8 +2225,13 @@ def save_emr_record_payload(data, existing_record_id=None):
     owner_visibility_maps = get_emr_owner_visibility_maps(medical_record_id)
     supabase_admin.table("medical_record_visits").delete().eq("medical_record_id", medical_record_id).execute()
 
-    visit_history = data.get("visitHistory") or []
-    if not visit_history:
+    raw_visit_history = data.get("visitHistory")
+    visit_history = raw_visit_history if isinstance(raw_visit_history, list) else []
+    should_create_default_visit = parse_bool(
+        data.get("createDefaultVisit", data.get("create_default_visit", False)),
+        default=False,
+    )
+    if not visit_history and should_create_default_visit:
         default_visit = build_emr_default_visit(data)
         visit_history = [default_visit] if default_visit else []
 
@@ -2477,7 +2493,7 @@ def get_profile_display_name(profile):
     )
 
 
-def normalize_public_profile(profile):
+def normalize_public_profile(profile, source_table=None):
     if not profile:
         return None
 
@@ -2496,12 +2512,22 @@ def normalize_public_profile(profile):
         last_name = last_name or split_last
 
     contact = profile.get("contact_number") or profile.get("contactNumber") or profile.get("contactnumber") or ""
-    user_image = (
-        profile.get("userImage")
-        or profile.get("userimage")
-        or profile.get("user_image")
-        or profile.get("profileImage")
-    )
+    if source_table == "employee_accounts":
+        user_image = (
+            profile.get("employee_image")
+            or profile.get("profileImage")
+            or profile.get("userImage")
+            or profile.get("userimage")
+            or profile.get("user_image")
+        )
+    else:
+        user_image = (
+            profile.get("profileImage")
+            or profile.get("userImage")
+            or profile.get("userimage")
+            or profile.get("user_image")
+            or profile.get("employee_image")
+        )
     created_at = profile.get("created_at") or profile.get("dateJoined") or profile.get("date_joined") or ""
     raw_status = (profile.get("status") or "active").strip().lower()
 
@@ -2682,6 +2708,8 @@ def normalize_audit_log(row):
     if not row:
         return None
 
+    branch_id = row.get("branch_id", row.get("branchId"))
+
     return {
         "id": row.get("audit_log_id") or row.get("id"),
         "module": row.get("module") or "System",
@@ -2692,6 +2720,8 @@ def normalize_audit_log(row):
         "summary": row.get("summary") or "",
         "dateTime": row.get("created_at") or row.get("dateTime") or row.get("date_time"),
         "status": normalize_audit_status(row.get("status")),
+        "branchId": branch_id,
+        "branch_id": branch_id,
     }
 
 
@@ -3007,6 +3037,596 @@ def record_appointment_audit_event(
         "summary": summary,
         "status": status,
         "metadata": audit_metadata,
+    })
+
+
+def format_audit_money(value):
+    try:
+        return f"PHP {float(value or 0):,.2f}"
+    except (TypeError, ValueError):
+        return "PHP 0.00"
+
+
+def get_emr_record_id(record=None, fallback_id=None):
+    record = record or {}
+    return (
+        record.get("medical_record_id")
+        or record.get("id")
+        or record.get("pk")
+        or fallback_id
+    )
+
+
+def get_emr_pet_id(record=None, data=None):
+    record = record or {}
+    data = data or {}
+    pet_details = data.get("petDetails") or data.get("pet_details") or {}
+    return (
+        record.get("petId")
+        or record.get("pet_id")
+        or data.get("petId")
+        or data.get("pet_id")
+        or pet_details.get("petId")
+        or pet_details.get("pet_id")
+    )
+
+
+def get_emr_pet_name(record=None, data=None):
+    record = record or {}
+    data = data or {}
+    pet_details = data.get("petDetails") or data.get("pet_details") or {}
+    pet_name = (
+        record.get("petName")
+        or record.get("pet_name")
+        or data.get("petName")
+        or data.get("pet_name")
+        or pet_details.get("name")
+        or pet_details.get("petName")
+    )
+    if pet_name:
+        return str(pet_name).strip()
+
+    pet_id = get_emr_pet_id(record, data)
+    if pet_id not in (None, ""):
+        try:
+            pet = get_single_row("pet_profile", "pet_id", pet_id)
+            return str((pet or {}).get("pet_name") or "").strip()
+        except Exception as pet_error:
+            print(f"EMR audit pet lookup error: {pet_error}")
+    return ""
+
+
+def get_emr_owner_id(record=None, data=None):
+    record = record or {}
+    data = data or {}
+    owner_id = record.get("ownerId") or record.get("owner_id") or data.get("ownerId") or data.get("owner_id")
+    if owner_id:
+        return owner_id
+
+    pet_id = get_emr_pet_id(record, data)
+    if pet_id not in (None, ""):
+        try:
+            pet = get_single_row("pet_profile", "pet_id", pet_id)
+            return (pet or {}).get("owner_id")
+        except Exception as pet_error:
+            print(f"EMR audit owner lookup error: {pet_error}")
+    return None
+
+
+def get_emr_visit_history(record=None, data=None):
+    record = record or {}
+    data = data or {}
+    visits = record.get("visitHistory") or record.get("visit_history")
+    if isinstance(visits, list):
+        return visits
+    visits = data.get("visitHistory") or data.get("visit_history")
+    return visits if isinstance(visits, list) else []
+
+
+def get_emr_branch_id_from_visit_source(source_type, source_id):
+    normalized_type = str(source_type or "").strip().lower()
+    if normalized_type in {"walk-in", "walkin_appointment"}:
+        normalized_type = "walkin"
+    if normalized_type not in {"appointment", "walkin"} or source_id in (None, ""):
+        return None
+
+    try:
+        table_name = "walkin_appointments" if normalized_type == "walkin" else "appointments"
+        id_column = "walkin_id" if normalized_type == "walkin" else "appointment_id"
+        source_record = get_single_row(table_name, id_column, source_id)
+        return (source_record or {}).get("branch_id")
+    except Exception as source_error:
+        print(f"EMR audit branch lookup error: {source_error}")
+        return None
+
+
+def get_emr_branch_id(record=None, data=None, record_id=None, branch_id=None):
+    if branch_id not in (None, ""):
+        return branch_id
+
+    record = record or {}
+    data = data or {}
+    direct_branch_id = (
+        record.get("branchId")
+        or record.get("branch_id")
+        or data.get("branchId")
+        or data.get("branch_id")
+    )
+    if direct_branch_id not in (None, ""):
+        return direct_branch_id
+
+    for visit in get_emr_visit_history(record, data):
+        source_type = visit.get("sourceType") or visit.get("source_type")
+        source_id = (
+            visit.get("sourceId")
+            or visit.get("source_id")
+            or visit.get("appointmentId")
+            or visit.get("appointment_id")
+            or visit.get("walkinId")
+            or visit.get("walkin_id")
+        )
+        resolved_branch_id = get_emr_branch_id_from_visit_source(source_type, source_id)
+        if resolved_branch_id not in (None, ""):
+            return resolved_branch_id
+
+    resolved_record_id = record_id or get_emr_record_id(record)
+    if resolved_record_id in (None, ""):
+        return None
+
+    try:
+        visits = execute_with_retry(
+            lambda: supabase_admin.table("medical_record_visits")
+            .select("source_type,source_id")
+            .eq("medical_record_id", resolved_record_id)
+            .execute(),
+            context="Fetch EMR audit visit sources",
+        ).data or []
+        for visit in visits:
+            resolved_branch_id = get_emr_branch_id_from_visit_source(visit.get("source_type"), visit.get("source_id"))
+            if resolved_branch_id not in (None, ""):
+                return resolved_branch_id
+    except Exception as visits_error:
+        print(f"EMR audit visit lookup error: {visits_error}")
+
+    return None
+
+
+def get_emr_record_audit_target(record=None, data=None, record_id=None):
+    resolved_record_id = get_emr_record_id(record, record_id)
+    pet_name = get_emr_pet_name(record, data)
+    if pet_name:
+        return trim_audit_text(f"{pet_name} Medical Record", f"Medical Record #{resolved_record_id}", 180)
+    if resolved_record_id:
+        return f"Medical Record #{resolved_record_id}"
+    return "Medical Record"
+
+
+def get_emr_record_audit_counts(record=None, data=None):
+    visits = get_emr_visit_history(record, data)
+    prescription_count = 0
+    lab_result_count = 0
+    service_count = 0
+    vaccination_count = 0
+
+    for visit in visits:
+        prescriptions = visit.get("prescriptions") if isinstance(visit, dict) else []
+        lab_results = visit.get("labResults") or visit.get("lab_results") if isinstance(visit, dict) else []
+        services = visit.get("selectedServices") or visit.get("selected_services") if isinstance(visit, dict) else []
+        vaccination = visit.get("vaccinationDetails") or visit.get("vaccination_details") if isinstance(visit, dict) else None
+
+        prescription_count += len(prescriptions) if isinstance(prescriptions, list) else 0
+        lab_result_count += len(lab_results) if isinstance(lab_results, list) else 0
+        service_count += len(services) if isinstance(services, list) else 0
+        if isinstance(vaccination, dict) and (vaccination.get("vaccineName") or vaccination.get("vaccine_name")):
+            vaccination_count += 1
+
+    return {
+        "visit_count": len(visits),
+        "prescription_count": prescription_count,
+        "lab_result_count": lab_result_count,
+        "service_count": service_count,
+        "vaccination_count": vaccination_count,
+    }
+
+
+def get_emr_record_value(record, paths, default=None):
+    if not isinstance(record, dict):
+        return default
+
+    for path in paths:
+        current = record
+        found = True
+        for key in path:
+            if isinstance(current, dict) and key in current:
+                current = current.get(key)
+            else:
+                found = False
+                break
+        if found and current is not None:
+            return current
+    return default
+
+
+def normalize_emr_audit_compare_value(value):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def emr_record_field_changed(previous_record, current_record, paths):
+    previous_value = get_emr_record_value(previous_record, paths)
+    current_value = get_emr_record_value(current_record, paths)
+    return normalize_emr_audit_compare_value(previous_value) != normalize_emr_audit_compare_value(current_value)
+
+
+def get_emr_record_deceased_state(record):
+    value = get_emr_record_value(record, [("deceased",), ("petDetails", "deceased")])
+    if value is None:
+        return None
+    return parse_bool(value, default=False)
+
+
+def build_emr_record_update_summary(record=None, previous_record=None, data=None):
+    pet_name = get_emr_pet_name(record, data) or "this pet"
+    counts = get_emr_record_audit_counts(record, data)
+
+    if not previous_record:
+        return f"Medical record for {pet_name} was updated."
+
+    changed_parts = []
+    previous_deceased = get_emr_record_deceased_state(previous_record)
+    current_deceased = get_emr_record_deceased_state(record)
+    if previous_deceased != current_deceased and current_deceased is not None:
+        changed_parts.append("pet status was marked deceased" if current_deceased else "pet status was marked active")
+
+    pet_profile_fields = [
+        [("petName",), ("petDetails", "name")],
+        [("petDetails", "species")],
+        [("petDetails", "breed")],
+        [("petDetails", "gender")],
+        [("petDetails", "dateOfBirth")],
+        [("petDetails", "age")],
+        [("petDetails", "weight")],
+        [("petDetails", "weightUnit")],
+        [("petDetails", "colorMarkings")],
+        [("petDetails", "neutered")],
+        [("petDetails", "vaccinated")],
+        [("petDetails", "vaccinationProof")],
+        [("petDetails", "image")],
+    ]
+    if any(emr_record_field_changed(previous_record, record, paths) for paths in pet_profile_fields):
+        changed_parts.append("pet profile details")
+
+    owner_fields = [
+        [("ownerFirstName",)],
+        [("ownerLastName",)],
+        [("ownerEmail",)],
+        [("ownerContact",)],
+    ]
+    if any(emr_record_field_changed(previous_record, record, paths) for paths in owner_fields):
+        changed_parts.append("owner contact details")
+
+    record_fields = [
+        [("veterinarian",), ("petDetails", "doctorAssigned")],
+        [("reason",), ("petDetails", "reasonForVisit")],
+        [("petDetails", "doctorRemarks")],
+    ]
+    if any(emr_record_field_changed(previous_record, record, paths) for paths in record_fields):
+        changed_parts.append("record details")
+
+    if not changed_parts:
+        changed_parts.append(f"visit history ({counts['visit_count']} visit(s))")
+
+    detail = ", ".join(dict.fromkeys(changed_parts))
+    return f"Medical record for {pet_name} was updated: {detail}."
+
+
+def build_emr_record_saved_summary(action, record=None, data=None, previous_record=None):
+    if action == "updated":
+        return build_emr_record_update_summary(record, previous_record, data)
+
+    pet_name = get_emr_pet_name(record, data) or "this pet"
+    counts = get_emr_record_audit_counts(record, data)
+    parts = [f"{counts['visit_count']} visit(s)"] if counts["visit_count"] else ["record details"]
+    if counts["prescription_count"]:
+        parts.append(f"{counts['prescription_count']} prescription(s)")
+    if counts["lab_result_count"]:
+        parts.append(f"{counts['lab_result_count']} lab result(s)")
+    if counts["vaccination_count"]:
+        parts.append(f"{counts['vaccination_count']} vaccination record(s)")
+    if counts["service_count"]:
+        parts.append(f"{counts['service_count']} billed service reference(s)")
+
+    detail = ", ".join(parts) if parts else "record details"
+    return f"Medical record for {pet_name} was {action} with {detail}."
+
+
+def record_emr_audit_event(
+    event,
+    record=None,
+    *,
+    data=None,
+    record_id=None,
+    target=None,
+    target_type="medical_record",
+    target_id=None,
+    branch_id=None,
+    summary="",
+    status="Success",
+    metadata=None,
+):
+    data = data or {}
+    record = record or {}
+    resolved_record_id = get_emr_record_id(record, record_id)
+    resolved_target_id = target_id if target_id not in (None, "") else resolved_record_id
+    pet_id = get_emr_pet_id(record, data)
+    counts = get_emr_record_audit_counts(record, data)
+
+    audit_metadata = {
+        "medical_record_id": resolved_record_id,
+        "pet_id": pet_id,
+        **counts,
+    }
+    if metadata:
+        audit_metadata.update(serialize_audit_metadata_value(metadata))
+
+    record_system_audit_log({
+        **get_appointment_audit_actor_fields(data),
+        "module": "EMR",
+        "event": event,
+        "target": target or get_emr_record_audit_target(record, data, resolved_record_id),
+        "targetType": target_type,
+        "targetId": resolved_target_id,
+        "branchId": get_emr_branch_id(record, data, resolved_record_id, branch_id),
+        "summary": summary,
+        "status": status,
+        "metadata": {
+            key: value
+            for key, value in audit_metadata.items()
+            if value not in (None, "")
+        },
+    })
+
+
+def get_emr_child_record_context(child_table, child_id_column, child_id):
+    child_record = get_single_row(child_table, child_id_column, child_id)
+    if not child_record:
+        return None
+
+    visit_id = child_record.get("medical_record_visit_id")
+    visit_record = get_single_row("medical_record_visits", "medical_record_visit_id", visit_id) if visit_id else None
+    medical_record = (
+        get_single_row("medical_records", "medical_record_id", visit_record.get("medical_record_id"))
+        if visit_record else None
+    )
+    pet = get_single_row("pet_profile", "pet_id", medical_record.get("pet_id")) if medical_record else None
+
+    return {
+        "child": child_record,
+        "visit": visit_record or {},
+        "record": medical_record or {},
+        "pet": pet or {},
+        "branch_id": get_emr_branch_id_from_visit_source(
+            (visit_record or {}).get("source_type"),
+            (visit_record or {}).get("source_id"),
+        ),
+    }
+
+
+def record_emr_child_visibility_audit(event, context, *, data=None, child_type, child_id, visible_to_owner):
+    context = context or {}
+    medical_record = context.get("record") or {}
+    pet = context.get("pet") or {}
+    pet_name = pet.get("pet_name") or get_emr_pet_name(medical_record, data) or "this pet"
+    visibility_label = "shared with" if visible_to_owner else "hidden from"
+
+    record_emr_audit_event(
+        event,
+        medical_record,
+        data=data,
+        target=f"{pet_name} {child_type}",
+        target_type=child_type.lower().replace(" ", "_"),
+        target_id=child_id,
+        branch_id=context.get("branch_id"),
+        summary=f"{child_type} for {pet_name} was {visibility_label} the owner portal.",
+        status="Success",
+        metadata={
+            "visible_to_owner": bool(visible_to_owner),
+            "medical_record_visit_id": (context.get("visit") or {}).get("medical_record_visit_id"),
+        },
+    )
+
+
+def get_billing_invoice_id(invoice=None, fallback_id=None):
+    invoice = invoice or {}
+    return invoice.get("billing_invoice_id") or invoice.get("id") or fallback_id
+
+
+def get_billing_invoice_number(invoice=None):
+    invoice = invoice or {}
+    return invoice.get("invoice_number") or invoice.get("invoiceNumber") or ""
+
+
+def get_billing_invoice_target(invoice=None, fallback_id=None):
+    invoice = invoice or {}
+    invoice_number = get_billing_invoice_number(invoice)
+    pet_name = invoice.get("pet_name") or invoice.get("petName") or ""
+    if invoice_number and pet_name:
+        return trim_audit_text(f"{invoice_number} - {pet_name}", invoice_number, 180)
+    if invoice_number:
+        return invoice_number
+    invoice_id = get_billing_invoice_id(invoice, fallback_id)
+    return f"Invoice #{invoice_id}" if invoice_id else "Billing Invoice"
+
+
+def record_billing_audit_event(
+    event,
+    invoice=None,
+    *,
+    actor_data=None,
+    target=None,
+    target_type="billing_invoice",
+    target_id=None,
+    branch_id=None,
+    summary="",
+    status="Success",
+    metadata=None,
+):
+    invoice = invoice or {}
+    actor_data = actor_data or {}
+    resolved_invoice_id = get_billing_invoice_id(invoice, target_id)
+    resolved_branch_id = (
+        branch_id
+        or invoice.get("branch_id")
+        or invoice.get("branchId")
+        or actor_data.get("branch_id")
+        or actor_data.get("branchId")
+    )
+
+    audit_metadata = {
+        "billing_invoice_id": resolved_invoice_id,
+        "invoice_number": get_billing_invoice_number(invoice),
+        "invoice_type": invoice.get("invoice_type") or invoice.get("invoiceType"),
+        "source_record_type": invoice.get("source_record_type") or invoice.get("sourceRecordType"),
+        "source_record_id": invoice.get("source_record_id") or invoice.get("sourceRecordId"),
+        "payment_status": invoice.get("payment_status") or invoice.get("paymentStatus"),
+        "total_amount": invoice.get("total_amount") or invoice.get("total"),
+        "amount_paid": invoice.get("amount_paid") or invoice.get("amountPaid"),
+        "remaining_balance": invoice.get("remaining_balance") or invoice.get("remainingBalance"),
+        "installment_months": invoice.get("installment_months") or invoice.get("installmentMonths"),
+        "installment_interest_rate": invoice.get("installment_interest_rate") or invoice.get("installmentInterestRate"),
+        "installment_interest_amount": invoice.get("installment_interest_amount") or invoice.get("installmentInterestAmount"),
+        "installment_monthly_due": invoice.get("installment_monthly_due") or invoice.get("installmentMonthlyDue"),
+    }
+    if metadata:
+        audit_metadata.update(serialize_audit_metadata_value(metadata))
+
+    record_system_audit_log({
+        **get_appointment_audit_actor_fields(actor_data),
+        "module": "Billing",
+        "event": event,
+        "target": target or get_billing_invoice_target(invoice, resolved_invoice_id),
+        "targetType": target_type,
+        "targetId": resolved_invoice_id,
+        "branchId": resolved_branch_id,
+        "summary": summary,
+        "status": status,
+        "metadata": {
+            key: value
+            for key, value in audit_metadata.items()
+            if value not in (None, "")
+        },
+    })
+
+
+def title_case_day(day_name):
+    return str(day_name or "").strip().capitalize() or "Day"
+
+
+def record_availability_audit_event(
+    event,
+    *,
+    data=None,
+    target="Availability Settings",
+    target_type="availability_settings",
+    target_id=None,
+    summary="",
+    status="Success",
+    metadata=None,
+):
+    data = data or {}
+    record_system_audit_log({
+        **get_appointment_audit_actor_fields(data),
+        "module": "Availability Settings",
+        "event": event,
+        "target": trim_audit_text(target, "Availability Settings", 180),
+        "targetType": target_type,
+        "targetId": target_id,
+        "summary": trim_audit_text(summary, "", 700),
+        "status": status,
+        "metadata": serialize_audit_metadata_value(metadata or {}),
+    })
+
+
+PET_PROFILE_AUDIT_FIELDS = {
+    "pet_name": "name",
+    "pet_species": "species",
+    "pet_breed": "breed",
+    "pet_gender": "gender",
+    "pet_size": "size",
+    "birthday": "birthday",
+    "age": "age",
+    "weight_kg": "weight",
+    "pet_photo_url": "photo",
+    "is_vaccinated": "vaccination status",
+    "vaccination_urls": "vaccination records",
+}
+
+
+def get_pet_profile_target(pet=None, fallback_id=None):
+    pet = pet or {}
+    pet_name = pet.get("pet_name") or pet.get("petName") or ""
+    pet_id = pet.get("pet_id") or pet.get("petId") or fallback_id
+    if pet_name:
+        return trim_audit_text(f"{pet_name} Pet Profile", f"Pet Profile #{pet_id}", 180)
+    return f"Pet Profile #{pet_id}" if pet_id else "Pet Profile"
+
+
+def get_pet_vaccination_record_count(pet=None):
+    urls = (pet or {}).get("vaccination_urls")
+    return len(urls) if isinstance(urls, list) else 0
+
+
+def get_pet_profile_changed_fields(old_pet=None, new_pet=None):
+    old_pet = old_pet or {}
+    new_pet = new_pet or {}
+    changed_fields = []
+    for field, label in PET_PROFILE_AUDIT_FIELDS.items():
+        if field in new_pet and old_pet.get(field) != new_pet.get(field):
+            changed_fields.append(label)
+    return changed_fields
+
+
+def record_pet_profile_audit_event(
+    event,
+    pet=None,
+    *,
+    data=None,
+    old_pet=None,
+    new_pet=None,
+    target_id=None,
+    summary="",
+    status="Success",
+    metadata=None,
+):
+    pet = pet or new_pet or old_pet or {}
+    data = data or {}
+    resolved_pet_id = pet.get("pet_id") or target_id
+    audit_metadata = {
+        "pet_id": resolved_pet_id,
+        "owner_id": pet.get("owner_id") or data.get("owner_id"),
+        "changed_fields": get_pet_profile_changed_fields(old_pet, new_pet),
+        "vaccination_record_count": get_pet_vaccination_record_count(new_pet or pet),
+    }
+    if metadata:
+        audit_metadata.update(serialize_audit_metadata_value(metadata))
+
+    record_system_audit_log({
+        **get_appointment_audit_actor_fields(data, fallback_actor_id=pet.get("owner_id") or data.get("owner_id")),
+        "module": "Pet Profiles",
+        "event": event,
+        "target": get_pet_profile_target(pet, resolved_pet_id),
+        "targetType": "pet_profile",
+        "targetId": resolved_pet_id,
+        "summary": trim_audit_text(summary, "", 700),
+        "status": status,
+        "metadata": {
+            key: value
+            for key, value in audit_metadata.items()
+            if value not in (None, "", [])
+        },
     })
 
 
@@ -5186,11 +5806,11 @@ def login():
 @app.route('/profile/<user_id>', methods=['GET'])
 def get_profile(user_id):
     try:
-        profile, _ = find_account_by_user_id(user_id)
+        profile, source_table = find_account_by_user_id(user_id)
         if not profile:
             return jsonify({"error": "User not found"}), 404
 
-        normalized = normalize_public_profile(profile)
+        normalized = normalize_public_profile(profile, source_table)
         return jsonify({**normalized, "user": normalized}), 200
 
     except Exception as e:
@@ -5206,12 +5826,29 @@ def update_profile(user_id):
     data = request.get_json() or {}
 
     try:
-        profile = get_single_row('patient_account', 'id', user_id)
-        table_name = 'patient_account'
+        requested_account_type = str(
+            data.get("accountType")
+            or data.get("account_type")
+            or data.get("userType")
+            or data.get("actorAccountType")
+            or (data.get("currentUser") or {}).get("account_type")
+            or ""
+        ).strip().lower()
 
-        if not profile:
+        if requested_account_type in ("patient", "owner", "user", "patient_account"):
+            profile = get_single_row('patient_account', 'id', user_id)
+            table_name = 'patient_account'
+            if not profile:
+                profile = get_single_row('employee_accounts', 'id', user_id)
+                table_name = 'employee_accounts'
+        elif requested_account_type in ("employee", "staff", "admin", "administrator", "employee_accounts"):
             profile = get_single_row('employee_accounts', 'id', user_id)
             table_name = 'employee_accounts'
+            if not profile:
+                profile = get_single_row('patient_account', 'id', user_id)
+                table_name = 'patient_account'
+        else:
+            profile, table_name = find_account_by_user_id(user_id)
 
         if not profile:
             return jsonify({"error": "Profile not found"}), 404
@@ -5353,7 +5990,13 @@ def update_profile(user_id):
             raise last_error if last_error else Exception("Unable to update profile")
 
         updated_profile = response.data[0] if response.data else get_single_row(table_name, 'id', user_id)
-        normalized = normalize_public_profile(updated_profile or profile)
+        if not updated_profile:
+            return jsonify({"error": "Profile update did not match an account record"}), 404
+
+        normalized = normalize_public_profile(updated_profile or profile, table_name)
+        if has_image_update and user_image and normalized.get("profileImage") != user_image:
+            return jsonify({"error": "Profile photo could not be saved to the account record"}), 400
+
         return jsonify({"message": "Profile updated successfully", **normalized, "user": normalized}), 200
 
     except Exception as e:
@@ -5492,7 +6135,7 @@ def verify_profile_email_change(user_id):
             raise db_error
 
         updated_profile = response.data[0] if response.data else get_single_row(table_name, 'id', user_id)
-        normalized = normalize_public_profile(updated_profile or {**profile, "email": new_email})
+        normalized = normalize_public_profile(updated_profile or {**profile, "email": new_email}, table_name)
         del otp_store[otp_key]
 
         return jsonify({
@@ -5641,6 +6284,14 @@ def add_pet():
             "owner_id": owner_id, "pet_name": pet_name, "pet_type": pet_type,
             "breed": breed, "pet_size": pet_size, "gender": gender
         }.items() if not v]
+        record_pet_profile_audit_event(
+            "Pet Profile Creation Failed",
+            data=data,
+            target_id=None,
+            summary=f"Pet profile creation failed because required fields were missing: {', '.join(missing)}.",
+            status="Failed",
+            metadata={"missing_fields": missing},
+        )
         return jsonify({"error": f"Missing required fields: {missing}"}), 400
 
     try:
@@ -5660,10 +6311,29 @@ def add_pet():
         }).execute()
 
         pet = response.data[0] if response.data else None
+        record_pet_profile_audit_event(
+            "Pet Profile Created",
+            pet,
+            data=data,
+            new_pet=pet,
+            summary=f"Pet profile for {pet_name} was created.",
+            status="Success",
+            metadata={
+                "species": pet_type,
+                "vaccination_record_count": get_pet_vaccination_record_count(pet),
+            },
+        )
         return jsonify({"message": "Pet added successfully", "pet": pet}), 200
 
     except Exception as e:
         print("Add pet error:", str(e))
+        record_pet_profile_audit_event(
+            "Pet Profile Creation Failed",
+            data=data,
+            target_id=None,
+            summary=f"Pet profile creation failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -5699,19 +6369,64 @@ def update_pet(pet_id):
     update_data = {k: v for k, v in data.items() if k in allowed}
 
     if not update_data:
+        record_pet_profile_audit_event(
+            "Pet Profile Update Failed",
+            data=data,
+            target_id=pet_id,
+            summary=f"Pet profile #{pet_id} update failed because no valid fields were provided.",
+            status="Failed",
+        )
         return jsonify({"error": "No valid fields to update"}), 400
 
     try:
+        existing_pet = get_single_row("pet_profile", "pet_id", pet_id) or {}
         response = supabase_admin.table('pet_profile') \
             .update(update_data) \
             .eq('pet_id', pet_id) \
             .execute()
 
-        pet = response.data[0] if response.data else None
+        pet = response.data[0] if response.data else get_single_row("pet_profile", "pet_id", pet_id)
+        old_vaccination_count = get_pet_vaccination_record_count(existing_pet)
+        new_vaccination_count = get_pet_vaccination_record_count(pet)
+        changed_fields = get_pet_profile_changed_fields(existing_pet, pet)
+        if "vaccination records" in changed_fields and new_vaccination_count > old_vaccination_count:
+            event = "Vaccination Record Added"
+            summary = f"Vaccination record was added to {get_pet_profile_target(pet, pet_id)}."
+        elif "vaccination records" in changed_fields and new_vaccination_count < old_vaccination_count:
+            event = "Vaccination Record Removed"
+            summary = f"Vaccination record was removed from {get_pet_profile_target(pet, pet_id)}."
+        else:
+            event = "Pet Profile Updated"
+            summary = (
+                f"Pet profile for {(pet or {}).get('pet_name') or (existing_pet or {}).get('pet_name') or 'this pet'} "
+                f"was updated: {', '.join(changed_fields) if changed_fields else 'profile details'}."
+            )
+
+        record_pet_profile_audit_event(
+            event,
+            pet or existing_pet,
+            data=data,
+            old_pet=existing_pet,
+            new_pet=pet or {**existing_pet, **update_data},
+            target_id=pet_id,
+            summary=summary,
+            status="Success",
+            metadata={
+                "old_vaccination_record_count": old_vaccination_count,
+                "new_vaccination_record_count": new_vaccination_count,
+            },
+        )
         return jsonify({"message": "Pet updated successfully", "pet": pet}), 200
 
     except Exception as e:
         print("Update pet error:", str(e))
+        record_pet_profile_audit_event(
+            "Pet Profile Update Failed",
+            data=data,
+            target_id=pet_id,
+            summary=f"Pet profile update failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -5720,16 +6435,33 @@ def update_pet(pet_id):
 # -----------------------------------------------
 @app.route('/pets/<int:pet_id>', methods=['DELETE'])
 def delete_pet(pet_id):
+    data = request.get_json(silent=True) or {}
     try:
+        existing_pet = get_single_row("pet_profile", "pet_id", pet_id) or {}
         supabase_admin.table('pet_profile') \
             .delete() \
             .eq('pet_id', pet_id) \
             .execute()
 
+        record_pet_profile_audit_event(
+            "Pet Profile Deleted",
+            existing_pet,
+            data=data,
+            target_id=pet_id,
+            summary=f"Pet profile for {existing_pet.get('pet_name') or 'this pet'} was deleted.",
+            status="Warning",
+        )
         return jsonify({"message": "Pet deleted successfully"}), 200
 
     except Exception as e:
         print("Delete pet error:", str(e))
+        record_pet_profile_audit_event(
+            "Pet Profile Delete Failed",
+            data=data,
+            target_id=pet_id,
+            summary=f"Pet profile delete failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -6246,14 +6978,50 @@ def generate_doctor_emr_brief():
         case_context = build_doctor_emr_case_context(payload)
         prompt = build_doctor_emr_prompt(case_context)
         ai_result = call_gemini_with_structured_output(prompt, ADMIN_AI_SUMMARY_SCHEMA)
+        pet_name = ((payload.get("pet") or {}).get("name") or "this pet").strip() or "this pet"
+        record_emr_audit_event(
+            "Doctor AI EMR Brief Generated",
+            data=payload,
+            record_id=payload.get("recordId") or payload.get("record_id"),
+            target=f"{pet_name} EMR Brief",
+            target_type="emr_ai_brief",
+            target_id=payload.get("recordId") or payload.get("record_id") or payload.get("petId") or payload.get("pet_id"),
+            summary=f"Doctor AI EMR brief was generated for {pet_name}.",
+            status="Success",
+            metadata={
+                "pet_id": payload.get("petId") or payload.get("pet_id"),
+                "visit_count": len(case_context.get("visit_history") or []),
+                "model": "gemini-2.5-flash",
+            },
+        )
         return jsonify({
             "summary": ai_result,
             "caseContext": case_context
         }), 200
     except ValueError as e:
+        record_emr_audit_event(
+            "Doctor AI EMR Brief Failed",
+            data=payload,
+            record_id=payload.get("recordId") or payload.get("record_id"),
+            target="EMR Brief",
+            target_type="emr_ai_brief",
+            target_id=payload.get("recordId") or payload.get("record_id") or payload.get("petId") or payload.get("pet_id"),
+            summary=f"Doctor AI EMR brief generation failed: {str(e)}",
+            status="Failed",
+        )
         return build_ai_error_response(e, "Unable to generate the EMR prep brief right now.")
     except Exception as e:
         print("Doctor EMR AI brief error:", str(e))
+        record_emr_audit_event(
+            "Doctor AI EMR Brief Failed",
+            data=payload,
+            record_id=payload.get("recordId") or payload.get("record_id"),
+            target="EMR Brief",
+            target_type="emr_ai_brief",
+            target_id=payload.get("recordId") or payload.get("record_id") or payload.get("petId") or payload.get("pet_id"),
+            summary=f"Doctor AI EMR brief generation failed: {str(e)}",
+            status="Failed",
+        )
         return build_ai_error_response(e, "Unable to generate the EMR prep brief right now.")
 
 
@@ -6278,16 +7046,53 @@ def emr_records_collection():
             print("EMR records fetch error:", str(e))
             return jsonify({"error": str(e)}), 400
 
+    data = request.get_json(silent=True) or {}
     try:
-        saved_record = save_emr_record_payload(request.get_json() or {})
+        existing_record_before_save = None
+        previous_record_snapshot = None
+        pet_id_for_audit = data.get("petId") or data.get("pet_id")
+        if pet_id_for_audit not in (None, ""):
+            try:
+                existing_record_before_save = get_single_row("medical_records", "pet_id", int(pet_id_for_audit))
+                if existing_record_before_save and existing_record_before_save.get("medical_record_id"):
+                    previous_records = get_emr_records([int(existing_record_before_save.get("medical_record_id"))], include_billing=True)
+                    previous_record_snapshot = previous_records[0] if previous_records else None
+            except Exception as audit_lookup_error:
+                print(f"EMR audit existing record lookup error: {audit_lookup_error}")
+
+        saved_record = save_emr_record_payload(data)
+        saved_event = "Medical Record Updated" if existing_record_before_save else "Medical Record Created"
+        saved_action = "updated" if existing_record_before_save else "created"
+        record_emr_audit_event(
+            saved_event,
+            saved_record,
+            data=data,
+            summary=build_emr_record_saved_summary(saved_action, saved_record, data, previous_record_snapshot),
+            status="Success",
+            metadata={"action": "update" if existing_record_before_save else "create"},
+        )
         return jsonify({
             "message": "Medical record saved successfully!",
             "record": saved_record,
         }), 200
     except ValueError as value_error:
+        record_emr_audit_event(
+            "Medical Record Save Failed",
+            data=data,
+            summary=f"Medical record save failed: {str(value_error)}",
+            status="Failed",
+            metadata={"action": "create"},
+        )
         return jsonify({"error": str(value_error)}), 400
     except Exception as e:
         print("EMR create error:", str(e))
+        record_emr_audit_event(
+            "Medical Record Save Failed",
+            data=data,
+            summary=f"Medical record save failed: {str(e)}",
+            status="Failed",
+            metadata={"action": "create"},
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -6304,27 +7109,84 @@ def emr_record_detail(record_id):
             return jsonify({"error": str(e)}), 400
 
     if request.method == 'PUT':
+        data = request.get_json(silent=True) or {}
         try:
-            saved_record = save_emr_record_payload(request.get_json() or {}, existing_record_id=record_id)
+            previous_records = get_emr_records([record_id], include_billing=True)
+            previous_record_snapshot = previous_records[0] if previous_records else None
+            saved_record = save_emr_record_payload(data, existing_record_id=record_id)
+            record_emr_audit_event(
+                "Medical Record Updated",
+                saved_record,
+                data=data,
+                record_id=record_id,
+                summary=build_emr_record_saved_summary("updated", saved_record, data, previous_record_snapshot),
+                status="Success",
+                metadata={"action": "update"},
+            )
             return jsonify({
                 "message": "Medical record updated successfully!",
                 "record": saved_record,
             }), 200
         except ValueError as value_error:
+            record_emr_audit_event(
+                "Medical Record Save Failed",
+                data=data,
+                record_id=record_id,
+                summary=f"Medical record save failed: {str(value_error)}",
+                status="Failed",
+                metadata={"action": "update"},
+            )
             return jsonify({"error": str(value_error)}), 400
         except Exception as e:
             print("EMR update error:", str(e))
+            record_emr_audit_event(
+                "Medical Record Save Failed",
+                data=data,
+                record_id=record_id,
+                summary=f"Medical record save failed: {str(e)}",
+                status="Failed",
+                metadata={"action": "update"},
+            )
             return jsonify({"error": str(e)}), 400
 
+    data = request.get_json(silent=True) or {}
     try:
         existing_record = get_single_row("medical_records", "medical_record_id", record_id)
         if not existing_record:
+            record_emr_audit_event(
+                "Medical Record Delete Failed",
+                data=data,
+                record_id=record_id,
+                summary=f"Medical record #{record_id} delete failed because the record was not found.",
+                status="Failed",
+                metadata={"action": "delete"},
+            )
             return jsonify({"error": "Medical record not found."}), 404
 
+        pet_name = get_emr_pet_name(existing_record, data) or "this pet"
+        branch_id = get_emr_branch_id(existing_record, data, record_id)
         supabase_admin.table("medical_records").delete().eq("medical_record_id", record_id).execute()
+        record_emr_audit_event(
+            "Medical Record Deleted",
+            existing_record,
+            data=data,
+            record_id=record_id,
+            branch_id=branch_id,
+            summary=f"Medical record for {pet_name} was deleted.",
+            status="Warning",
+            metadata={"action": "delete"},
+        )
         return jsonify({"message": "Medical record deleted successfully."}), 200
     except Exception as e:
         print("EMR delete error:", str(e))
+        record_emr_audit_event(
+            "Medical Record Delete Failed",
+            data=data,
+            record_id=record_id,
+            summary=f"Medical record delete failed: {str(e)}",
+            status="Failed",
+            metadata={"action": "delete"},
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -6347,8 +7209,22 @@ def update_emr_lab_result_owner_visibility(lab_result_id):
 
         existing_row = get_single_row("medical_record_lab_results", "medical_record_lab_result_id", lab_result_id)
         if not existing_row:
+            record_emr_audit_event(
+                "Lab Result Visibility Update Failed",
+                data=data,
+                target="Lab Result",
+                target_type="lab_result",
+                target_id=lab_result_id,
+                summary=f"Lab result #{lab_result_id} visibility update failed because the lab result was not found.",
+                status="Failed",
+            )
             return jsonify({"error": "Lab result not found."}), 404
 
+        audit_context = get_emr_child_record_context(
+            "medical_record_lab_results",
+            "medical_record_lab_result_id",
+            lab_result_id,
+        )
         payload = build_owner_visibility_payload(
             {"visibleToOwner": visible_to_owner, **data},
             existing_row=existing_row,
@@ -6358,6 +7234,14 @@ def update_emr_lab_result_owner_visibility(lab_result_id):
         ).execute().data or []
         updated_row = response[0] if response else get_single_row("medical_record_lab_results", "medical_record_lab_result_id", lab_result_id)
 
+        record_emr_child_visibility_audit(
+            "Lab Result Shared With Owner" if visible_to_owner else "Lab Result Hidden From Owner",
+            audit_context,
+            data=data,
+            child_type="Lab Result",
+            child_id=lab_result_id,
+            visible_to_owner=visible_to_owner,
+        )
         return jsonify({
             "message": "Lab result owner visibility updated successfully.",
             "labResult": {
@@ -6369,6 +7253,15 @@ def update_emr_lab_result_owner_visibility(lab_result_id):
         }), 200
     except Exception as e:
         print("EMR lab result visibility update error:", str(e))
+        record_emr_audit_event(
+            "Lab Result Visibility Update Failed",
+            data=request.get_json(silent=True) or {},
+            target="Lab Result",
+            target_type="lab_result",
+            target_id=lab_result_id,
+            summary=f"Lab result visibility update failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -6382,8 +7275,22 @@ def update_emr_vaccination_owner_visibility(vaccination_id):
 
         existing_row = get_single_row("medical_record_vaccinations", "medical_record_vaccination_id", vaccination_id)
         if not existing_row:
+            record_emr_audit_event(
+                "Vaccination Visibility Update Failed",
+                data=data,
+                target="Vaccination Record",
+                target_type="vaccination_record",
+                target_id=vaccination_id,
+                summary=f"Vaccination record #{vaccination_id} visibility update failed because the record was not found.",
+                status="Failed",
+            )
             return jsonify({"error": "Vaccination record not found."}), 404
 
+        audit_context = get_emr_child_record_context(
+            "medical_record_vaccinations",
+            "medical_record_vaccination_id",
+            vaccination_id,
+        )
         payload = build_owner_visibility_payload(
             {"visibleToOwner": visible_to_owner, **data},
             existing_row=existing_row,
@@ -6393,6 +7300,14 @@ def update_emr_vaccination_owner_visibility(vaccination_id):
         ).execute().data or []
         updated_row = response[0] if response else get_single_row("medical_record_vaccinations", "medical_record_vaccination_id", vaccination_id)
 
+        record_emr_child_visibility_audit(
+            "Vaccination Record Shared With Owner" if visible_to_owner else "Vaccination Record Hidden From Owner",
+            audit_context,
+            data=data,
+            child_type="Vaccination Record",
+            child_id=vaccination_id,
+            visible_to_owner=visible_to_owner,
+        )
         return jsonify({
             "message": "Vaccination owner visibility updated successfully.",
             "vaccination": {
@@ -6404,6 +7319,15 @@ def update_emr_vaccination_owner_visibility(vaccination_id):
         }), 200
     except Exception as e:
         print("EMR vaccination visibility update error:", str(e))
+        record_emr_audit_event(
+            "Vaccination Visibility Update Failed",
+            data=request.get_json(silent=True) or {},
+            target="Vaccination Record",
+            target_type="vaccination_record",
+            target_id=vaccination_id,
+            summary=f"Vaccination record visibility update failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -7009,6 +7933,7 @@ def get_audit_logs():
         module = (request.args.get('module') or '').strip()
         role = (request.args.get('role') or '').strip()
         status = (request.args.get('status') or '').strip()
+        branch_id = (request.args.get('branch_id', request.args.get('branchId')) or '').strip()
 
         query = supabase_admin.table(AUDIT_LOGS_TABLE).select('*')
         if module and module != 'All Modules':
@@ -7017,6 +7942,11 @@ def get_audit_logs():
             query = query.eq('actor_role', role)
         if status and status != 'All Statuses':
             query = query.eq('status', normalize_audit_status(status))
+        if branch_id and branch_id not in ('All Branches', 'all', 'All'):
+            if branch_id.lower() in ('system-wide', 'system', 'none', 'unassigned'):
+                query = query.is_('branch_id', 'null')
+            else:
+                query = query.eq('branch_id', coerce_int(branch_id, 'branch_id', minimum=1))
         if search:
             escaped_search = search.replace(',', '\\,')
             query = query.or_(
@@ -7198,15 +8128,21 @@ def create_billing_invoice():
         customer_email = str(data.get("customerEmail") or data.get("customer_email") or "").strip()
         customer_phone = str(data.get("customerPhone") or data.get("customer_phone") or "").strip()
         payment_method = str(data.get("paymentMethod") or data.get("payment_method") or "cash").strip().lower()
-        if payment_method not in {"cash", "card", "gcash", "bank", "installment"}:
+        if payment_method not in {"cash", "gcash", "installment"}:
             raise ValueError("paymentMethod is invalid")
         initial_payment_method = str(
             data.get("initialPaymentMethod")
             or data.get("initial_payment_method")
             or ("cash" if payment_method == "installment" else payment_method)
         ).strip().lower()
-        if initial_payment_method not in {"cash", "card", "gcash", "bank"}:
+        if initial_payment_method not in {"cash", "gcash"}:
             raise ValueError("initialPaymentMethod is invalid")
+        payment_reference = get_payment_reference_from_request(data, "paymentReference", "payment_reference")
+        initial_payment_reference = get_payment_reference_from_request(
+            data,
+            "initialPaymentReference",
+            "initial_payment_reference",
+        )
         payment_actor_id = resolve_billing_payment_actor_id(
             data.get("handledByUserId")
             or data.get("handled_by_user_id")
@@ -7241,6 +8177,21 @@ def create_billing_invoice():
         existing_invoice = get_active_billing_invoice_for_source(source_record_type, source_record_id)
         if existing_invoice:
             normalized_existing_invoice = fetch_billing_invoice_with_details(existing_invoice.get("billing_invoice_id"))
+            record_billing_audit_event(
+                "Invoice Creation Blocked",
+                existing_invoice,
+                actor_data=data,
+                summary=(
+                    f"Invoice creation was blocked because active invoice "
+                    f"{existing_invoice.get('invoice_number')} already exists for this billing source."
+                ),
+                status="Warning",
+                metadata={
+                    "requested_invoice_type": invoice_type,
+                    "requested_source_record_type": source_record_type,
+                    "requested_source_record_id": source_record_id,
+                },
+            )
             return jsonify({
                 "error": "An active invoice already exists for this billing source.",
                 "invoice": normalized_existing_invoice,
@@ -7345,21 +8296,36 @@ def create_billing_invoice():
             discount_value=discount_value,
             discount_is_percentage=discount_is_percentage,
         )
-        total_amount = round(subtotal + tax_amount - discount_amount, 2)
+        base_total_amount = round(subtotal + tax_amount - discount_amount, 2)
+        installment_plan = build_billing_installment_plan(
+            payment_method,
+            base_total_amount,
+            data.get("installmentMonths", data.get("installment_months")),
+        )
+        total_amount = installment_plan["total_amount"]
         initial_payment_amount = 0.0
         if payment_method == "installment":
-            initial_payment_amount = coerce_number(
-                data.get("initialPaymentAmount", data.get("initial_payment_amount", 0)),
-                "initialPaymentAmount",
-                minimum=0,
-                default=0,
-            )
-            if initial_payment_amount > total_amount:
-                raise ValueError("initialPaymentAmount cannot be greater than the total amount")
+            initial_payment_amount = installment_plan["down_payment_amount"]
         else:
             initial_payment_amount = total_amount
+            initial_payment_reference = payment_reference
+
+        if payment_state_requires_reference(payment_method, initial_payment_method, initial_payment_amount) and not initial_payment_reference:
+            label = {
+                "gcash": "GCash reference number",
+            }.get(initial_payment_method, "payment reference")
+            raise ValueError(f"{label} is required")
+        if (
+            payment_state_requires_reference(payment_method, initial_payment_method, initial_payment_amount)
+            and not is_billing_numeric_payment_reference(initial_payment_reference)
+        ):
+            raise ValueError("GCash reference number must contain numbers only")
 
         payment_state = derive_billing_payment_state(total_amount, initial_payment_amount)
+        installment_monthly_due = calculate_billing_monthly_due(
+            payment_state["remaining_balance"],
+            installment_plan["months"],
+        )
         manila_now = get_current_manila_datetime()
 
         invoice_payload = {
@@ -7382,6 +8348,10 @@ def create_billing_invoice():
             "total_amount": total_amount,
             "amount_paid": payment_state["amount_paid"],
             "remaining_balance": payment_state["remaining_balance"],
+            "installment_months": installment_plan["months"],
+            "installment_interest_rate": installment_plan["interest_rate"],
+            "installment_interest_amount": installment_plan["interest_amount"],
+            "installment_monthly_due": installment_monthly_due,
             "payment_method": payment_method,
             "payment_status": payment_state["payment_status"],
             "status": "completed",
@@ -7398,10 +8368,18 @@ def create_billing_invoice():
                 processed_by=payment_actor_id,
             )
 
-        invoice_response = supabase_admin.table("billing_invoices").insert(invoice_payload).execute()
-        created_invoice = invoice_response.data[0] if invoice_response.data else get_single_row("billing_invoices", "invoice_number", invoice_payload["invoice_number"])
+        invoice_rows = insert_billing_invoice_record(invoice_payload)
+        created_invoice = invoice_rows[0] if invoice_rows else get_single_row("billing_invoices", "invoice_number", invoice_payload["invoice_number"])
         if not created_invoice:
             raise ValueError("Invoice could not be created")
+        for key in (
+            "installment_months",
+            "installment_interest_rate",
+            "installment_interest_amount",
+            "installment_monthly_due",
+        ):
+            if key not in created_invoice:
+                created_invoice[key] = invoice_payload.get(key)
 
         invoice_id = created_invoice.get("billing_invoice_id")
 
@@ -7437,11 +8415,11 @@ def create_billing_invoice():
                 "payment_method": initial_payment_method,
                 "payment_date": manila_now.date().isoformat(),
                 "payment_time": manila_now.strftime("%H:%M:%S"),
-                "notes": "Initial payment" if payment_method == "installment" else "Invoice payment",
+                "payment_reference": initial_payment_reference or None,
+                "notes": "Downpayment" if payment_method == "installment" else "Invoice payment",
                 "created_by": payment_actor_id,
             }
-            payment_response = supabase_admin.table("billing_invoice_payments").insert(payment_payload).execute()
-            created_payment_history = payment_response.data or [payment_payload]
+            created_payment_history = insert_billing_payment_record(payment_payload)
 
         if payment_state["payment_status"] == "paid":
             sync_billing_invoice_inventory_stock_out(
@@ -7460,6 +8438,11 @@ def create_billing_invoice():
                 payment_history=created_payment_history,
                 payment_handler_lookup=build_billing_payment_handler_lookup(created_payment_history),
             )
+        if normalized_invoice and payment_method == "installment":
+            normalized_invoice["installmentMonths"] = normalized_invoice.get("installmentMonths") or installment_plan["months"]
+            normalized_invoice["installmentInterestRate"] = normalized_invoice.get("installmentInterestRate") or installment_plan["interest_rate"]
+            normalized_invoice["installmentInterestAmount"] = normalized_invoice.get("installmentInterestAmount") or installment_plan["interest_amount"]
+            normalized_invoice["installmentMonthlyDue"] = normalized_invoice.get("installmentMonthlyDue") or installment_monthly_due
 
         if source_record_type in {"appointment", "walkin"} and source_record_id:
             try:
@@ -7484,6 +8467,57 @@ def create_billing_invoice():
             except Exception as audit_error:
                 print(f"Appointment billing audit error: {audit_error}")
 
+        record_billing_audit_event(
+            "Invoice Created",
+            created_invoice,
+            actor_data=data,
+            summary=(
+                f"Invoice {created_invoice.get('invoice_number')} was created for "
+                f"{created_invoice.get('pet_name') or 'this pet'} totaling "
+                f"{format_audit_money(created_invoice.get('total_amount'))}."
+            ),
+            status="Success",
+            metadata={
+                "service_item_count": len(created_service_items),
+                "product_item_count": len(created_product_items),
+                "discount_type": created_invoice.get("discount_type"),
+                "base_total_amount": base_total_amount,
+                "initial_payment_amount": payment_state["amount_paid"],
+                "downpayment_amount": payment_state["amount_paid"],
+                "downpayment_rate": installment_plan["down_payment_rate"],
+                "installment_months": created_invoice.get("installment_months"),
+                "installment_interest_rate": created_invoice.get("installment_interest_rate"),
+                "installment_interest_amount": created_invoice.get("installment_interest_amount"),
+                "installment_monthly_due": installment_monthly_due,
+            },
+        )
+        if payment_state["amount_paid"] > 0:
+            payment_event = (
+                "Invoice Fully Paid"
+                if payment_state["payment_status"] == "paid"
+                else "Installment Payment Recorded"
+            )
+            record_billing_audit_event(
+                payment_event,
+                created_invoice,
+                actor_data=data,
+                summary=(
+                    f"Downpayment of {format_audit_money(payment_state['amount_paid'])} was recorded for "
+                    f"invoice {created_invoice.get('invoice_number')}. Remaining balance: "
+                    f"{format_audit_money(payment_state['remaining_balance'])}."
+                ),
+                status="Success",
+                metadata={
+                    "payment_amount": payment_state["amount_paid"],
+                    "remaining_balance": payment_state["remaining_balance"],
+                    "payment_method": initial_payment_method,
+                    "payment_reference": initial_payment_reference,
+                    "is_initial_payment": True,
+                    "downpayment_rate": installment_plan["down_payment_rate"],
+                    "installment_monthly_due": installment_monthly_due,
+                },
+            )
+
         return jsonify({
             "message": "Invoice created successfully",
             "invoice": normalized_invoice,
@@ -7497,6 +8531,21 @@ def create_billing_invoice():
         ):
             return jsonify({"error": BILLING_TABLES_SETUP_MESSAGE}), 400
         print("Create billing invoice error:", str(e))
+        record_billing_audit_event(
+            "Invoice Creation Failed",
+            {
+                "invoiceType": data.get("invoiceType") or data.get("invoice_type"),
+                "sourceRecordType": data.get("sourceRecordType") or data.get("source_record_type"),
+                "sourceRecordId": data.get("sourceRecordId") or data.get("source_record_id"),
+                "branchId": data.get("branchId") or data.get("branch_id"),
+                "petName": data.get("petName") or data.get("pet_name"),
+                "total": data.get("total") or data.get("totalAmount"),
+            },
+            actor_data=data,
+            target=data.get("petName") or data.get("pet_name") or "Billing Invoice",
+            summary=f"Invoice creation failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -7507,6 +8556,13 @@ def record_billing_invoice_payment(invoice_id):
     try:
         invoice_record = get_single_row("billing_invoices", "billing_invoice_id", invoice_id)
         if not invoice_record:
+            record_billing_audit_event(
+                "Payment Recording Failed",
+                {"billing_invoice_id": invoice_id},
+                actor_data=data,
+                summary=f"Payment recording failed because invoice #{invoice_id} was not found.",
+                status="Failed",
+            )
             return jsonify({"error": "Invoice not found"}), 404
 
         total_amount = round(float(invoice_record.get("total_amount") or 0), 2)
@@ -7522,10 +8578,34 @@ def record_billing_invoice_payment(invoice_id):
         )
         if payment_amount > current_state["remaining_balance"]:
             raise ValueError("Payment amount cannot be greater than the remaining balance")
+        if invoice_record.get("payment_method") == "installment":
+            installment_metadata = resolve_billing_installment_metadata(invoice_record, current_state)
+            installment_months = int(installment_metadata["months"] or 0)
+            contract_monthly_due = installment_metadata["monthly_due"]
+            if contract_monthly_due <= 0:
+                raise ValueError("Installment monthly due could not be calculated")
+            remaining_terms = min(
+                installment_months,
+                max(1, math.ceil((current_state["remaining_balance"] - 0.005) / contract_monthly_due)),
+            )
+            valid_installment_amounts = {
+                round(min(contract_monthly_due * term_count, current_state["remaining_balance"]), 2)
+                for term_count in range(1, remaining_terms + 1)
+            }
+            if all(abs(payment_amount - valid_amount) > 0.01 for valid_amount in valid_installment_amounts):
+                raise ValueError("Installment payment must match the monthly due or selected advance terms")
 
         payment_method = str(data.get("paymentMethod") or data.get("payment_method") or "").strip().lower()
-        if payment_method not in {"cash", "card", "gcash", "bank"}:
+        if payment_method not in {"cash", "gcash"}:
             raise ValueError("paymentMethod is invalid")
+        payment_reference = get_payment_reference_from_request(data, "paymentReference", "payment_reference")
+        if payment_method == "gcash" and not payment_reference:
+            label = {
+                "gcash": "GCash reference number",
+            }.get(payment_method, "payment reference")
+            raise ValueError(f"{label} is required")
+        if payment_method == "gcash" and not is_billing_numeric_payment_reference(payment_reference):
+            raise ValueError("GCash reference number must contain numbers only")
 
         payment_note = str(data.get("notes") or "").strip()
         payment_actor_id = resolve_billing_payment_actor_id(
@@ -7539,11 +8619,12 @@ def record_billing_invoice_payment(invoice_id):
         manila_now = get_current_manila_datetime()
         updated_state = derive_billing_payment_state(total_amount, current_amount_paid + payment_amount)
 
-        supabase_admin.table("billing_invoices").update({
+        invoice_update_payload = {
             "amount_paid": updated_state["amount_paid"],
             "remaining_balance": updated_state["remaining_balance"],
             "payment_status": updated_state["payment_status"],
-        }).eq("billing_invoice_id", invoice_id).execute()
+        }
+        supabase_admin.table("billing_invoices").update(invoice_update_payload).eq("billing_invoice_id", invoice_id).execute()
 
         payment_payload = {
             "billing_invoice_id": invoice_id,
@@ -7551,10 +8632,11 @@ def record_billing_invoice_payment(invoice_id):
             "payment_method": payment_method,
             "payment_date": manila_now.date().isoformat(),
             "payment_time": manila_now.strftime("%H:%M:%S"),
+            "payment_reference": payment_reference or None,
             "notes": payment_note or None,
             "created_by": payment_actor_id,
         }
-        supabase_admin.table("billing_invoice_payments").insert(payment_payload).execute()
+        insert_billing_payment_record(payment_payload)
 
         if updated_state["payment_status"] == "paid":
             product_items = execute_with_retry(
@@ -7571,6 +8653,43 @@ def record_billing_invoice_payment(invoice_id):
         if not normalized_invoice:
             raise ValueError("Updated invoice could not be loaded")
 
+        payment_event = (
+            "Installment Payment Recorded"
+            if invoice_record.get("payment_method") == "installment"
+            else "Invoice Payment Recorded"
+        )
+        record_billing_audit_event(
+            payment_event,
+            normalized_invoice,
+            actor_data=data,
+            summary=(
+                f"Payment of {format_audit_money(payment_amount)} was recorded for invoice "
+                f"{normalized_invoice.get('invoiceNumber')}. Remaining balance: "
+                f"{format_audit_money(updated_state['remaining_balance'])}."
+            ),
+            status="Success",
+            metadata={
+                "payment_amount": payment_amount,
+                "payment_method": payment_method,
+                "payment_reference": payment_reference,
+                "previous_amount_paid": current_amount_paid,
+                "new_amount_paid": updated_state["amount_paid"],
+                "remaining_balance": updated_state["remaining_balance"],
+            },
+        )
+        if updated_state["payment_status"] == "paid" and current_state["payment_status"] != "paid":
+            record_billing_audit_event(
+                "Invoice Fully Paid",
+                normalized_invoice,
+                actor_data=data,
+                summary=f"Invoice {normalized_invoice.get('invoiceNumber')} was fully paid.",
+                status="Success",
+                metadata={
+                    "payment_amount": payment_amount,
+                    "total_amount": total_amount,
+                },
+            )
+
         return jsonify({
             "message": "Payment recorded successfully",
             "invoice": normalized_invoice,
@@ -7582,6 +8701,13 @@ def record_billing_invoice_payment(invoice_id):
         ):
             return jsonify({"error": BILLING_TABLES_SETUP_MESSAGE}), 400
         print("Record billing payment error:", str(e))
+        record_billing_audit_event(
+            "Payment Recording Failed",
+            {"billing_invoice_id": invoice_id},
+            actor_data=data,
+            summary=f"Payment recording failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -7599,12 +8725,53 @@ def delete_billing_invoices():
             for invoice_id in invoice_ids_raw
         ]
 
+        invoice_rows = execute_with_retry(
+            lambda: supabase_admin.table("billing_invoices").select("*").in_("billing_invoice_id", parsed_ids).execute(),
+            context="Fetch billing invoices for delete audit",
+        ).data or []
         supabase_admin.table("billing_invoices").delete().in_("billing_invoice_id", parsed_ids).execute()
+        if len(parsed_ids) == 1 and invoice_rows:
+            invoice = invoice_rows[0]
+            record_billing_audit_event(
+                "Invoice Deleted",
+                invoice,
+                actor_data=data,
+                summary=f"Invoice {invoice.get('invoice_number')} for {invoice.get('pet_name') or 'this pet'} was deleted.",
+                status="Warning",
+                metadata={"deleted_invoice_ids": parsed_ids},
+            )
+        else:
+            invoice_numbers = [row.get("invoice_number") for row in invoice_rows if row.get("invoice_number")]
+            record_billing_audit_event(
+                "Bulk Invoice Deleted",
+                {},
+                actor_data=data,
+                target=f"{len(parsed_ids)} Billing Invoices",
+                target_type="billing_invoice_bulk",
+                target_id=None,
+                summary=f"{len(parsed_ids)} billing invoice(s) were deleted.",
+                status="Warning",
+                metadata={
+                    "deleted_invoice_ids": parsed_ids,
+                    "invoice_numbers": invoice_numbers,
+                },
+            )
         return jsonify({"message": "Invoices deleted successfully"}), 200
     except Exception as e:
         if is_missing_relation_error(e, "billing_invoices"):
             return jsonify({"error": BILLING_TABLES_SETUP_MESSAGE}), 400
         print("Delete billing invoices error:", str(e))
+        record_billing_audit_event(
+            "Invoice Delete Failed",
+            {},
+            actor_data=data,
+            target="Billing Invoices",
+            target_type="billing_invoice_bulk",
+            target_id=None,
+            summary=f"Invoice delete failed: {str(e)}",
+            status="Failed",
+            metadata={"requested_invoice_ids": data.get("invoiceIds", data.get("invoice_ids"))},
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -8435,6 +9602,22 @@ def is_missing_relation_error(error, relation_name):
     )
 
 
+def is_missing_column_error(error, column_name):
+    message = str(error or "")
+    normalized_message = message.lower()
+    normalized_column = str(column_name or "").lower()
+    return (
+        normalized_column in normalized_message
+        and (
+            "schema cache" in normalized_message
+            or "could not find" in normalized_message
+            or "does not exist" in normalized_message
+            or "pgrst204" in normalized_message
+            or "42703" in normalized_message
+        )
+    )
+
+
 def normalize_billing_service_name(value):
     raw_value = (
         str(value or "")
@@ -8963,6 +10146,22 @@ def sync_billing_invoice_inventory_stock_out(invoice_record, product_items=None,
                 "billing_invoice_id": (invoice_record or {}).get("billing_invoice_id"),
                 "invoice_number": (invoice_record or {}).get("invoice_number"),
                 "customer_name": (invoice_record or {}).get("customer_name"),
+            },
+        )
+        record_billing_audit_event(
+            "Billing Inventory Deducted",
+            invoice_record,
+            actor_data={"processedBy": payload.get("processed_by")},
+            branch_id=payload.get("branch_id"),
+            summary=(
+                f"Inventory was deducted for billing invoice "
+                f"{(invoice_record or {}).get('invoice_number') or (invoice_record or {}).get('billing_invoice_id')}."
+            ),
+            status="Success",
+            metadata={
+                "inventory_transaction_id": (result.get("transaction") or {}).get("inventory_transaction_id"),
+                "reference_number": (result.get("transaction") or {}).get("reference_number"),
+                "item_count": len(result.get("items") or []),
             },
         )
         for item in (result.get("items") or []):
@@ -9503,6 +10702,66 @@ def calculate_billing_discount_amount(subtotal, discount_type, discount_value=No
     return 0.0
 
 
+def build_billing_installment_plan(payment_method, base_total, requested_months=None):
+    if str(payment_method or "").strip().lower() != "installment":
+        return {
+            "months": None,
+            "interest_rate": 0.0,
+            "interest_amount": 0.0,
+            "down_payment_rate": 0.0,
+            "down_payment_amount": 0.0,
+            "total_amount": round(float(base_total or 0), 2),
+        }
+
+    if requested_months in (None, ""):
+        raise ValueError("installmentMonths is required")
+
+    months = coerce_int(requested_months, "installmentMonths", minimum=1)
+    if months not in BILLING_INSTALLMENT_INTEREST_RATES:
+        raise ValueError("installmentMonths must be 3, 6, or 9")
+
+    safe_base_total = round(max(float(base_total or 0), 0), 2)
+    interest_rate = BILLING_INSTALLMENT_INTEREST_RATES[months]
+    interest_amount = round(safe_base_total * interest_rate, 2)
+    total_amount = round(safe_base_total + interest_amount, 2)
+    down_payment_rate = BILLING_INSTALLMENT_DOWN_PAYMENT_RATES[months]
+    down_payment_amount = calculate_billing_installment_down_payment(total_amount, months)
+
+    return {
+        "months": months,
+        "interest_rate": interest_rate,
+        "interest_amount": interest_amount,
+        "down_payment_rate": down_payment_rate,
+        "down_payment_amount": down_payment_amount,
+        "total_amount": total_amount,
+    }
+
+
+def calculate_billing_installment_down_payment(total_amount, installment_months):
+    months = int(installment_months or 0)
+    down_payment_rate = BILLING_INSTALLMENT_DOWN_PAYMENT_RATES.get(months, 0)
+    safe_total = round(max(float(total_amount or 0), 0), 2)
+    if safe_total <= 0 or down_payment_rate <= 0:
+        return 0.0
+    return float(min(math.ceil(safe_total * down_payment_rate), safe_total))
+
+
+def calculate_billing_contract_monthly_due(total_amount, installment_months):
+    months = int(installment_months or 0)
+    if months <= 0:
+        return 0.0
+    down_payment_amount = calculate_billing_installment_down_payment(total_amount, months)
+    financed_balance = max(float(total_amount or 0) - down_payment_amount, 0)
+    return round(financed_balance / months, 2)
+
+
+def calculate_billing_monthly_due(remaining_balance, installment_months):
+    months = int(installment_months or 0)
+    if months <= 0:
+        return 0.0
+    return round(max(float(remaining_balance or 0), 0) / months, 2)
+
+
 def derive_billing_payment_status(payment_method, explicit_status=None):
     normalized_method = str(payment_method or "").strip().lower()
     normalized_status = str(explicit_status or "").strip().lower()
@@ -9575,6 +10834,186 @@ def build_billing_payment_handler_lookup(payment_records):
         return {}
 
 
+def normalize_billing_payment_reference(value):
+    return str(value or "").strip()[:120]
+
+
+def is_billing_numeric_payment_reference(value):
+    return bool(re.fullmatch(r"\d+", str(value or "").strip()))
+
+
+def get_payment_reference_from_request(data, *keys):
+    data = data or {}
+    for key in keys:
+        value = data.get(key)
+        if value not in (None, ""):
+            return normalize_billing_payment_reference(value)
+    return ""
+
+
+def payment_state_requires_reference(payment_method, initial_payment_method, payment_amount):
+    normalized_payment_method = str(payment_method or "").strip().lower()
+    normalized_entry_method = str(initial_payment_method or "").strip().lower()
+    resolved_method = normalized_entry_method if normalized_payment_method == "installment" else normalized_payment_method
+    return resolved_method == "gcash" and float(payment_amount or 0) > 0
+
+
+def merge_payment_note_with_reference(note, reference):
+    clean_note = str(note or "").strip()
+    clean_reference = normalize_billing_payment_reference(reference)
+    if not clean_reference:
+        return clean_note or None
+    reference_note = f"Reference: {clean_reference}"
+    return f"{reference_note} | {clean_note}" if clean_note else reference_note
+
+
+def insert_billing_payment_record(payment_payload):
+    try:
+        payment_response = supabase_admin.table("billing_invoice_payments").insert(payment_payload).execute()
+        return payment_response.data or [payment_payload]
+    except Exception as e:
+        if "payment_reference" in (payment_payload or {}) and is_missing_column_error(e, "payment_reference"):
+            fallback_payload = dict(payment_payload)
+            reference = fallback_payload.pop("payment_reference", "")
+            fallback_payload["notes"] = merge_payment_note_with_reference(fallback_payload.get("notes"), reference)
+            payment_response = supabase_admin.table("billing_invoice_payments").insert(fallback_payload).execute()
+            return payment_response.data or [fallback_payload]
+        raise
+
+
+def merge_invoice_note_with_installment_plan(note, invoice_payload):
+    clean_note = str(note or "").strip()
+    if str((invoice_payload or {}).get("payment_method") or "").lower() != "installment":
+        return clean_note or None
+
+    plan_note = (
+        f"Installment plan: {(invoice_payload or {}).get('installment_months')} months, "
+        f"{round(float((invoice_payload or {}).get('installment_interest_rate') or 0) * 100)}% interest, "
+        f"downpayment {format_audit_money((invoice_payload or {}).get('amount_paid'))}, "
+        f"monthly due {format_audit_money((invoice_payload or {}).get('installment_monthly_due'))}."
+    )
+    return f"{clean_note} | {plan_note}" if clean_note else plan_note
+
+
+def parse_billing_installment_plan_from_note(note):
+    clean_note = str(note or "")
+    if "Installment plan:" not in clean_note:
+        return {}
+
+    match = re.search(
+        r"Installment plan:\s*(?P<months>\d+)\s+months,\s*"
+        r"(?P<interest_rate>\d+(?:\.\d+)?)%\s+interest,\s*"
+        r"downpayment\s+(?P<downpayment>(?:PHP|\u20b1)?\s*[\d,]+(?:\.\d+)?),\s*"
+        r"monthly due\s+(?P<monthly_due>(?:PHP|\u20b1)?\s*[\d,]+(?:\.\d+)?)",
+        clean_note,
+        re.IGNORECASE,
+    )
+    if not match:
+        return {}
+
+    return {
+        "installment_months": int(match.group("months")),
+        "installment_interest_rate": round(float(match.group("interest_rate")) / 100, 4),
+        "installment_downpayment_amount": parse_billing_money_amount(match.group("downpayment")),
+        "installment_monthly_due": parse_billing_money_amount(match.group("monthly_due")),
+    }
+
+
+def parse_billing_money_amount(value):
+    clean_value = re.sub(r"[^\d.]", "", str(value or ""))
+    try:
+        return round(float(clean_value), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def coerce_billing_optional_int(value):
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def resolve_billing_installment_metadata(record, payment_state):
+    if str((record or {}).get("payment_method") or "").lower() != "installment":
+        return {
+            "months": None,
+            "interest_rate": 0.0,
+            "interest_amount": 0.0,
+            "monthly_due": 0.0,
+        }
+
+    note_plan = parse_billing_installment_plan_from_note((record or {}).get("notes"))
+    months = coerce_billing_optional_int(
+        (record or {}).get("installment_months")
+        or note_plan.get("installment_months")
+    )
+    interest_rate = float(
+        (record or {}).get("installment_interest_rate")
+        or note_plan.get("installment_interest_rate")
+        or 0
+    )
+
+    base_total = round(
+        float((record or {}).get("subtotal") or 0)
+        + float((record or {}).get("tax_amount") or 0)
+        - float((record or {}).get("discount_amount") or 0),
+        2,
+    )
+    stored_interest_amount = float((record or {}).get("installment_interest_amount") or 0)
+    interest_amount = stored_interest_amount
+    if interest_amount <= 0 and interest_rate > 0 and base_total > 0:
+        interest_amount = round(base_total * interest_rate, 2)
+
+    monthly_due = float((record or {}).get("installment_monthly_due") or 0)
+    if monthly_due <= 0:
+        monthly_due = calculate_billing_contract_monthly_due((record or {}).get("total_amount"), months)
+    if monthly_due <= 0:
+        monthly_due = float(note_plan.get("installment_monthly_due") or 0)
+    if monthly_due <= 0:
+        monthly_due = calculate_billing_monthly_due(payment_state["remaining_balance"], months)
+
+    return {
+        "months": months,
+        "interest_rate": interest_rate,
+        "interest_amount": round(float(interest_amount or 0), 2),
+        "monthly_due": round(float(monthly_due or 0), 2),
+    }
+
+
+def insert_billing_invoice_record(invoice_payload):
+    try:
+        invoice_response = supabase_admin.table("billing_invoices").insert(invoice_payload).execute()
+        return invoice_response.data or []
+    except Exception as e:
+        if any(
+            key in (invoice_payload or {}) and is_missing_column_error(e, key)
+            for key in (
+                "installment_months",
+                "installment_interest_rate",
+                "installment_interest_amount",
+                "installment_monthly_due",
+            )
+        ):
+            fallback_payload = dict(invoice_payload)
+            fallback_payload["notes"] = merge_invoice_note_with_installment_plan(
+                fallback_payload.get("notes"),
+                fallback_payload,
+            )
+            for key in (
+                "installment_months",
+                "installment_interest_rate",
+                "installment_interest_amount",
+                "installment_monthly_due",
+            ):
+                fallback_payload.pop(key, None)
+            invoice_response = supabase_admin.table("billing_invoices").insert(fallback_payload).execute()
+            return invoice_response.data or []
+        raise
+
+
 def normalize_billing_payment_record(record, handler_lookup=None):
     payment_date = str(record.get("payment_date") or "")
     if payment_date and "T" in payment_date:
@@ -9586,6 +11025,7 @@ def normalize_billing_payment_record(record, handler_lookup=None):
         "id": str(record.get("billing_invoice_payment_id") or ""),
         "amount": round(float(record.get("payment_amount") or 0), 2),
         "paymentMethod": record.get("payment_method") or "cash",
+        "paymentReference": record.get("payment_reference") or "",
         "date": payment_date,
         "time": format_display_time(str(record.get("payment_time") or "")),
         "handledBy": (handler_lookup or {}).get(actor_id, ""),
@@ -9642,6 +11082,7 @@ def normalize_billing_invoice_record(record, service_items=None, product_items=N
         record.get("amount_paid"),
     )
     payment_method = record.get("payment_method") or "cash"
+    installment_metadata = resolve_billing_installment_metadata(record, payment_state)
 
     return {
         "id": str(record.get("billing_invoice_id") or ""),
@@ -9661,6 +11102,10 @@ def normalize_billing_invoice_record(record, service_items=None, product_items=N
         "discountType": record.get("discount_type") or "none",
         "discountValue": float(record.get("discount_value") or 0) if record.get("discount_value") not in (None, "") else None,
         "discountIsPercentage": bool(record.get("discount_is_percentage")) if record.get("discount_is_percentage") is not None else None,
+        "installmentMonths": installment_metadata["months"],
+        "installmentInterestRate": installment_metadata["interest_rate"],
+        "installmentInterestAmount": installment_metadata["interest_amount"],
+        "installmentMonthlyDue": installment_metadata["monthly_due"],
         "total": round(float(record.get("total_amount") or 0), 2),
         "amountPaid": payment_state["amount_paid"],
         "remainingBalance": payment_state["remaining_balance"],
@@ -10857,8 +12302,28 @@ def create_day_availability():
             "day_of_week": day,
             "is_active": is_available,
         }).execute()
+        record_availability_audit_event(
+            "Day Availability Updated",
+            data=data,
+            target=f"{title_case_day(day)} Availability",
+            target_type="working_day",
+            target_id=day,
+            summary=f"{title_case_day(day)} was set to {'available' if is_available else 'unavailable'}.",
+            status="Success",
+            metadata={"day_of_week": day, "is_available": is_available},
+        )
         return jsonify({"message": "Day availability saved", "day_of_week": day, "is_available": is_available}), 200
     except Exception as e:
+        record_availability_audit_event(
+            "Day Availability Update Failed",
+            data=data,
+            target=f"{title_case_day(day)} Availability",
+            target_type="working_day",
+            target_id=day,
+            summary=f"{title_case_day(day)} availability update failed: {str(e)}",
+            status="Failed",
+            metadata={"day_of_week": day, "is_available": is_available},
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -10866,13 +12331,34 @@ def create_day_availability():
 def update_day_availability(day_name):
     data = request.get_json() or {}
     is_available = bool(data.get('is_available'))
+    day = (day_name or '').lower()
     try:
         supabase_admin.table('working_days').upsert({
-            "day_of_week": (day_name or '').lower(),
+            "day_of_week": day,
             "is_active": is_available,
         }).execute()
+        record_availability_audit_event(
+            "Day Availability Updated",
+            data=data,
+            target=f"{title_case_day(day)} Availability",
+            target_type="working_day",
+            target_id=day,
+            summary=f"{title_case_day(day)} was set to {'available' if is_available else 'unavailable'}.",
+            status="Success",
+            metadata={"day_of_week": day, "is_available": is_available},
+        )
         return jsonify({"message": f"{day_name} updated successfully"}), 200
     except Exception as e:
+        record_availability_audit_event(
+            "Day Availability Update Failed",
+            data=data,
+            target=f"{title_case_day(day)} Availability",
+            target_type="working_day",
+            target_id=day,
+            summary=f"{title_case_day(day)} availability update failed: {str(e)}",
+            status="Failed",
+            metadata={"day_of_week": day, "is_available": is_available},
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -10908,19 +12394,70 @@ def handle_time_slots_api(param):
                 }).execute()
 
             res = supabase_admin.table('time_slots').select('*').eq('day_of_week', day).execute()
+            saved_slots = res.data or []
+            record_availability_audit_event(
+                "Time Slots Updated",
+                data=data,
+                target=f"{title_case_day(day)} Time Slots",
+                target_type="time_slots",
+                target_id=day,
+                summary=f"Time slots for {title_case_day(day)} were saved with {len(saved_slots)} slot(s).",
+                status="Success",
+                metadata={
+                    "day_of_week": day,
+                    "slot_count": len(saved_slots),
+                },
+            )
             return jsonify({"timeSlots": res.data or []}), 200
         except Exception as e:
             print("Time slot save error:", str(e))
+            record_availability_audit_event(
+                "Time Slots Update Failed",
+                data=data,
+                target=f"{title_case_day(day)} Time Slots",
+                target_type="time_slots",
+                target_id=day,
+                summary=f"Time slots for {title_case_day(day)} failed to save: {str(e)}",
+                status="Failed",
+                metadata={"day_of_week": day, "slot_count": len(slots) if isinstance(slots, list) else 0},
+            )
             return jsonify({"error": str(e)}), 400
 
     slot_id = param
+    data = request.get_json(silent=True) or {}
     try:
         if str(slot_id).startswith('temp-'):
             return jsonify({"message": "Temp slot removed"}), 200
 
+        existing_slot = get_single_row("time_slots", "id", slot_id) or {}
         supabase_admin.table('time_slots').delete().eq('id', slot_id).execute()
+        day = existing_slot.get("day_of_week") or ""
+        record_availability_audit_event(
+            "Time Slot Deleted",
+            data=data,
+            target=f"{title_case_day(day)} Time Slot",
+            target_type="time_slot",
+            target_id=slot_id,
+            summary=f"Time slot {existing_slot.get('start_time') or ''} to {existing_slot.get('end_time') or ''} was deleted from {title_case_day(day)}.",
+            status="Warning",
+            metadata={
+                "day_of_week": day,
+                "slot_id": slot_id,
+                "start_time": existing_slot.get("start_time"),
+                "end_time": existing_slot.get("end_time"),
+            },
+        )
         return jsonify({"message": "Slot deleted successfully"}), 200
     except Exception as e:
+        record_availability_audit_event(
+            "Time Slot Delete Failed",
+            data=data,
+            target="Time Slot",
+            target_type="time_slot",
+            target_id=slot_id,
+            summary=f"Time slot delete failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -11909,10 +13446,30 @@ def handle_special_dates():
         if special_date_payload["event_recurrence"] == "annual":
             existing_res = supabase_admin.table('special_dates').select('event_month,event_day').eq('event_recurrence', 'annual').eq('event_month', special_date_payload["event_month"]).eq('event_day', special_date_payload["event_day"]).execute()
             if existing_res.data:
+                record_availability_audit_event(
+                    "Special Date Creation Failed",
+                    data=data,
+                    target=special_date_payload.get("event_name") or "Special Date",
+                    target_type="special_date",
+                    target_id=f"{special_date_payload.get('event_month')}-{special_date_payload.get('event_day')}",
+                    summary="Special date creation failed because this annual special day already exists.",
+                    status="Failed",
+                    metadata=special_date_payload,
+                )
                 return jsonify({"error": "This annual special day already exists"}), 409
         else:
             existing_res = supabase_admin.table('special_dates').select('event_date').eq('event_recurrence', 'once').eq('event_date', special_date_payload["event_date"]).execute()
             if existing_res.data:
+                record_availability_audit_event(
+                    "Special Date Creation Failed",
+                    data=data,
+                    target=special_date_payload.get("event_name") or "Special Date",
+                    target_type="special_date",
+                    target_id=special_date_payload.get("event_date"),
+                    summary="Special date creation failed because this date is already marked as a special date.",
+                    status="Failed",
+                    metadata=special_date_payload,
+                )
                 return jsonify({"error": "This date is already marked as a special date"}), 409
 
         try:
@@ -11929,11 +13486,35 @@ def handle_special_dates():
             insert_res = supabase_admin.table('special_dates').insert(special_date_payload).execute()
 
         created_special_date = (insert_res.data or [special_date_payload])[0]
+        record_availability_audit_event(
+            "Special Date Added",
+            data=data,
+            target=created_special_date.get("event_name") or "Special Date",
+            target_type="special_date",
+            target_id=created_special_date.get("event_date") or f"{created_special_date.get('event_month')}-{created_special_date.get('event_day')}",
+            summary=f"Special date {created_special_date.get('event_name') or 'Special Date'} was added.",
+            status="Success",
+            metadata={
+                "event_recurrence": created_special_date.get("event_recurrence"),
+                "event_date": created_special_date.get("event_date"),
+                "event_month": created_special_date.get("event_month"),
+                "event_day": created_special_date.get("event_day"),
+            },
+        )
         return jsonify({
             "message": "Special date added successfully",
             "specialDate": created_special_date
         }), 200
     except Exception as e:
+        record_availability_audit_event(
+            "Special Date Creation Failed",
+            data=data,
+            target=data.get("event_name") or "Special Date",
+            target_type="special_date",
+            target_id=data.get("event_date"),
+            summary=f"Special date creation failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -11961,6 +13542,16 @@ def update_special_date(date):
                 if normalize_special_date_record(record) != normalize_special_date_record(current_record)
             ]
             if duplicate_records:
+                record_availability_audit_event(
+                    "Special Date Update Failed",
+                    data=data,
+                    target=special_date_payload.get("event_name") or "Special Date",
+                    target_type="special_date",
+                    target_id=f"{special_date_payload.get('event_month')}-{special_date_payload.get('event_day')}",
+                    summary="Special date update failed because this annual special day already exists.",
+                    status="Failed",
+                    metadata=special_date_payload,
+                )
                 return jsonify({"error": "This annual special day already exists"}), 409
         else:
             existing_res = supabase_admin.table('special_dates').select('*').eq('event_recurrence', 'once').eq('event_date', special_date_payload["event_date"]).execute()
@@ -11969,6 +13560,16 @@ def update_special_date(date):
                 if normalize_special_date_record(record) != normalize_special_date_record(current_record)
             ]
             if duplicate_records:
+                record_availability_audit_event(
+                    "Special Date Update Failed",
+                    data=data,
+                    target=special_date_payload.get("event_name") or "Special Date",
+                    target_type="special_date",
+                    target_id=special_date_payload.get("event_date"),
+                    summary="Special date update failed because this date is already marked as a special date.",
+                    status="Failed",
+                    metadata=special_date_payload,
+                )
                 return jsonify({"error": "This date is already marked as a special date"}), 409
 
         update_query = supabase_admin.table('special_dates').update(special_date_payload)
@@ -11990,28 +13591,81 @@ def update_special_date(date):
             update_res = supabase_admin.table('special_dates').update(special_date_payload).eq('event_date', date).execute()
 
         updated_special_date = (update_res.data or [special_date_payload])[0]
+        record_availability_audit_event(
+            "Special Date Updated",
+            data=data,
+            target=updated_special_date.get("event_name") or "Special Date",
+            target_type="special_date",
+            target_id=updated_special_date.get("event_date") or f"{updated_special_date.get('event_month')}-{updated_special_date.get('event_day')}",
+            summary=f"Special date {updated_special_date.get('event_name') or 'Special Date'} was updated.",
+            status="Success",
+            metadata={
+                "old_record": normalize_special_date_record(current_record),
+                "new_record": normalize_special_date_record(updated_special_date),
+            },
+        )
         return jsonify({
             "message": "Special date updated successfully",
             "specialDate": updated_special_date
         }), 200
     except Exception as e:
+        record_availability_audit_event(
+            "Special Date Update Failed",
+            data=data,
+            target=data.get("event_name") or "Special Date",
+            target_type="special_date",
+            target_id=date,
+            summary=f"Special date update failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
 @app.route('/api/special-dates/<date>', methods=['DELETE'])
 def delete_special_date(date):
+    data = request.get_json(silent=True) or {}
     try:
         recurrence = normalize_special_date_recurrence(request.args.get('event_recurrence') or request.args.get('recurrence_type'))
         event_month = request.args.get('event_month')
         event_day = request.args.get('event_day')
+        current_query = supabase_admin.table('special_dates').select('*')
+        if recurrence == "annual" and event_month and event_day:
+            current_query = current_query.eq('event_recurrence', 'annual').eq('event_month', int(event_month)).eq('event_day', int(event_day))
+        else:
+            current_query = current_query.eq('event_date', date)
+        current_rows = current_query.execute().data or []
+        deleted_record = current_rows[0] if current_rows else {}
+
         delete_query = supabase_admin.table('special_dates').delete()
         if recurrence == "annual" and event_month and event_day:
             delete_query = delete_query.eq('event_recurrence', 'annual').eq('event_month', int(event_month)).eq('event_day', int(event_day))
         else:
             delete_query = delete_query.eq('event_date', date)
         delete_query.execute()
+        record_availability_audit_event(
+            "Special Date Deleted",
+            data=data,
+            target=deleted_record.get("event_name") or data.get("event_name") or "Special Date",
+            target_type="special_date",
+            target_id=date,
+            summary=f"Special date {deleted_record.get('event_name') or data.get('event_name') or date} was deleted.",
+            status="Warning",
+            metadata={
+                "deleted_record": normalize_special_date_record(deleted_record) if deleted_record else {},
+                "event_recurrence": recurrence,
+            },
+        )
         return jsonify({"message": "Special date deleted successfully"}), 200
     except Exception as e:
+        record_availability_audit_event(
+            "Special Date Delete Failed",
+            data=data,
+            target=data.get("event_name") or "Special Date",
+            target_type="special_date",
+            target_id=date,
+            summary=f"Special date delete failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 

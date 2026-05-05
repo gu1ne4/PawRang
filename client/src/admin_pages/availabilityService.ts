@@ -1,6 +1,41 @@
 // Service to manage vet availability data
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 
+function getCurrentAuditUser(): any | null {
+  try {
+    const session = localStorage.getItem('userSession');
+    return session ? JSON.parse(session) : null;
+  } catch {
+    return null;
+  }
+}
+
+function withAuditActor<T extends Record<string, any>>(payload: T): T & Record<string, any> {
+  const currentUser = getCurrentAuditUser();
+  if (!currentUser) return payload;
+
+  const userId = currentUser.id || currentUser.pk;
+  const role = currentUser.role;
+  const normalizedRole = String(role || '').toLowerCase();
+  const accountType =
+    currentUser.account_type ||
+    currentUser.accountType ||
+    (normalizedRole.includes('patient') || normalizedRole.includes('owner') || normalizedRole.includes('user')
+      ? 'patient'
+      : 'employee');
+
+  return {
+    ...payload,
+    actorId: userId,
+    userId,
+    userType: accountType,
+    actorAccountType: accountType,
+    username: currentUser.username || currentUser.fullName || currentUser.fullname,
+    role,
+    currentUser,
+  };
+}
+
 export const availabilityService = {
   // Get day availability (all 7 days)
   async getDayAvailability(): Promise<any> {
@@ -51,7 +86,7 @@ export const availabilityService = {
       const response = await fetch(`${API_URL}/api/day-availability/${dayName.toLowerCase()}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(withAuditActor(payload))
       });
       
       // If PUT fails with 404, try POST (create new)
@@ -60,7 +95,7 @@ export const availabilityService = {
         const postResponse = await fetch(`${API_URL}/api/day-availability`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(withAuditActor(payload))
         });
         
         if (!postResponse.ok) {
@@ -118,7 +153,7 @@ export const availabilityService = {
       const response = await fetch(`${API_URL}/api/time-slots/${dayName.toLowerCase()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slots: sanitizedSlots })
+        body: JSON.stringify(withAuditActor({ slots: sanitizedSlots }))
       });
       
       if (!response.ok) {
@@ -143,7 +178,9 @@ export const availabilityService = {
     try {
       console.log('Calling delete API for slot:', slotId);
       const response = await fetch(`${API_URL}/api/time-slots/${slotId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(withAuditActor({}))
       });
       
       if (!response.ok) {
@@ -441,14 +478,14 @@ export const availabilityService = {
       const response = await fetch(`${API_URL}/api/special-dates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(withAuditActor({
           event_name: eventName,
           event_date: eventRecurrence === 'annual' ? null : eventDate,
           event_description: eventDescription,
           event_recurrence: eventRecurrence,
           event_month: eventMonth,
           event_day: eventDay
-        })
+        }))
       });
       
       if (!response.ok) throw new Error('Failed to save special date');
@@ -475,7 +512,7 @@ export const availabilityService = {
       const response = await fetch(`${API_URL}/api/special-dates/${originalEventDate}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(withAuditActor({
           event_name: eventName,
           event_date: eventRecurrence === 'annual' ? null : eventDate,
           event_description: eventDescription,
@@ -485,7 +522,7 @@ export const availabilityService = {
           original_event_recurrence: originalEventRecurrence,
           original_event_month: originalEventMonth,
           original_event_day: originalEventDay
-        })
+        }))
       });
       
       if (!response.ok) throw new Error('Failed to update special date');
@@ -503,7 +540,14 @@ export const availabilityService = {
         ? `?event_recurrence=annual&event_month=${eventMonth}&event_day=${eventDay}`
         : '';
       const response = await fetch(`${API_URL}/api/special-dates/${eventDate}${query}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(withAuditActor({
+          event_date: eventDate,
+          event_recurrence: eventRecurrence,
+          event_month: eventMonth,
+          event_day: eventDay
+        }))
       });
       
       if (!response.ok) throw new Error('Failed to delete special date');
