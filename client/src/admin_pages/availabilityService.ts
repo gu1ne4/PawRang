@@ -601,8 +601,14 @@ export const availabilityService = {
   // Get completed/cancelled appointments for history
   async getAppointmentHistory(): Promise<any[]> {
     try {
-      const response = await fetch(`${API_URL}/api/appointments/history`);
-      if (!response.ok) throw new Error('Failed to load appointment history');
+      const currentUser = getCurrentAuditUser();
+      const userId = currentUser?.id || currentUser?.pk;
+      const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+      const response = await fetch(`${API_URL}/api/appointments/history${query}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to load appointment history');
+      }
       const data = await response.json();
       return data.appointments || [];
     } catch (error) {

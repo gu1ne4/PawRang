@@ -619,6 +619,7 @@ const UserAppointmentBook: React.FC = () => {
     if (isGrooming && selectedHaircutStyle === 'h6' && !customHaircutDescription.trim()) missingFields.push('Custom haircut description');
     if (!selectedBranch) missingFields.push('Branch');
     if (!selectedDate) missingFields.push('Appointment date');
+    if (selectedDate && isDateBeforeBookingLeadTime(selectedDate)) missingFields.push('Appointment date at least 2 days after today');
     if (!selectedTime) missingFields.push('Time slot');
 
     const allMedicalAnswered = medicalQuestions.every(question => medicalAnswers[question.key] !== null);
@@ -681,6 +682,20 @@ const UserAppointmentBook: React.FC = () => {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  };
+
+  const getEarliestBookableDate = () => {
+    const earliest = new Date();
+    earliest.setHours(0, 0, 0, 0);
+    earliest.setDate(earliest.getDate() + 2);
+    return earliest;
+  };
+
+  const isDateBeforeBookingLeadTime = (date: Date | null) => {
+    if (!date) return false;
+    const normalizedDate = new Date(date);
+    normalizedDate.setHours(0, 0, 0, 0);
+    return normalizedDate < getEarliestBookableDate();
   };
 
   const formatSlotTime = (timeStr: string) => {
@@ -912,6 +927,10 @@ const UserAppointmentBook: React.FC = () => {
       setStep(dateTimeStep);
     } else if (step === dateTimeStep) {
       if (!selectedDate || !selectedTime) { showAlert('info','Incomplete','Please select date and time'); return; }
+      if (isDateBeforeBookingLeadTime(selectedDate)) {
+        showAlert('info', 'Date Too Soon', 'Please choose an appointment date at least 2 days after today.');
+        return;
+      }
       setStep(symptomStep ?? medicalInfoStep);
     } else if (symptomStep && step === symptomStep) {
       setStep(medicalInfoStep);
@@ -1549,18 +1568,18 @@ const UserAppointmentBook: React.FC = () => {
                   <Calendar
                     onChange={(v: any) => { if (v instanceof Date) { setSelectedDate(v); setSelectedTime(null); } }}
                     value={selectedDate}
-                    minDate={new Date()}
+                    minDate={getEarliestBookableDate()}
                     maxDate={(() => { const d = new Date(); d.setMonth(d.getMonth()+2); return d; })()}
                     tileDisabled={({ date, view }) => {
                       if (view !== 'month') return false;
 
                       const dayName = getDayName(date);
                       const dateKey = toDateKey(date);
-                      const isPast = date < new Date(new Date().setHours(0, 0, 0, 0));
+                      const isTooSoon = isDateBeforeBookingLeadTime(date);
                       const isEnabledDay = dayName ? Boolean(dayAvailability[dayName.toLowerCase()]) : false;
                       const isSpecialDate = specialDates.includes(dateKey) || annualSpecialDates.includes(dateKey.slice(5));
 
-                      return loadingAvailability || isPast || !isEnabledDay || isSpecialDate;
+                      return loadingAvailability || isTooSoon || !isEnabledDay || isSpecialDate;
                     }}
                   />
                 </div>

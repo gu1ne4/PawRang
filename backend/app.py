@@ -2809,6 +2809,8 @@ def get_emr_records(
                 "id": str(visit.get("medical_record_visit_id") or ""),
                 "sourceType": (visit.get("source_type") or "manual").strip().lower() or "manual",
                 "sourceId": str(visit.get("source_id")) if visit.get("source_id") not in (None, "") else None,
+                "branchId": visit.get("branch_id"),
+                "branch_id": visit.get("branch_id"),
                 "date": format_emr_display_date(visit.get("visit_date")),
                 "time": format_display_time(visit.get("visit_time")) or "",
                 "veterinarian": visit.get("veterinarian_name") or "",
@@ -3007,7 +3009,13 @@ def save_emr_record_payload(data, existing_record_id=None, branch_scope=None):
             fallback_branch_id=visit.get("branchId") or visit.get("branch_id") or data.get("branchId") or data.get("branch_id"),
         )
         _, branch_access_error = validate_branch_scope_access(branch_scope, visit_branch_id)
-        if branch_access_error:
+        can_save_branchless_emr_visit = (
+            branch_access_error == "Branch is required"
+            and branch_scope
+            and branch_scope.get("can_access_all")
+            and visit_branch_id is None
+        )
+        if branch_access_error and not can_save_branchless_emr_visit:
             raise ValueError(branch_access_error)
 
         visit_payload = {
@@ -4426,6 +4434,8 @@ def get_appointment_status_audit_event(status):
         return "Appointment Completed"
     if normalized_status == "cancelled":
         return "Appointment Cancelled"
+    if normalized_status == "declined":
+        return "Appointment Declined"
     if normalized_status == "no_show":
         return "Appointment Marked No-Show"
     if normalized_status == "expired":
@@ -5633,6 +5643,7 @@ def create_appointment_admin_notification(
     action_text,
     severity='info',
     link='/admin/schedule',
+    event_key=None,
     metadata=None,
 ):
     email_context = get_reschedule_email_context(table_name, id_column, record_id)
@@ -5667,6 +5678,7 @@ def create_appointment_admin_notification(
         link=link,
         entity_type=entity_type,
         entity_id=record_id,
+        event_key=event_key,
         metadata={
             "recordType": entity_type,
             "patientName": patient_name,
@@ -5685,6 +5697,40 @@ def safe_create_appointment_admin_notification(**kwargs):
     except Exception as notification_error:
         print("Appointment admin notification error:", str(notification_error))
         return None
+
+
+def validate_patient_appointment_lead_time(appointment_date_value, label="Appointment date"):
+    try:
+        selected_date = datetime.strptime(str(appointment_date_value or ""), "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError(f"{label} must be a valid date.")
+
+    earliest_allowed = get_current_manila_date() + timedelta(days=2)
+    if selected_date < earliest_allowed:
+        raise ValueError(f"{label} must be at least 2 days after today.")
+
+    return selected_date
+
+
+def validate_admin_appointment_not_same_day(appointment_date_value, label="Appointment date"):
+    try:
+        selected_date = datetime.strptime(str(appointment_date_value or ""), "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError(f"{label} must be a valid date.")
+
+    if selected_date <= get_current_manila_date():
+        raise ValueError(f"{label} cannot be today or in the past. Please choose tomorrow or a later date.")
+
+    return selected_date
+
+
+def validate_admin_reschedule_window(existing_record):
+    appointment_date = parse_emr_date((existing_record or {}).get("appointment_date"))
+    if not appointment_date:
+        return
+    days_until_appointment = (appointment_date - get_current_manila_date()).days
+    if 0 <= days_until_appointment <= 2:
+        raise ValueError("Appointments within 2 days can no longer be rescheduled. You may cancel the appointment instead.")
 
 
 def resolve_emr_notification_context(medical_record_id=None, visit_id=None):
@@ -7696,7 +7742,9 @@ def create_appointment_record(data, allow_walk_in=False, branch_scope=None):
 @app.route('/appointments', methods=['POST'])
 def book_appointment():
     try:
-        created = create_appointment_record(request.get_json() or {}, allow_walk_in=False)
+        data = request.get_json() or {}
+        validate_patient_appointment_lead_time(data.get('appointment_date') or data.get('date'))
+        created = create_appointment_record(data, allow_walk_in=False)
         return jsonify(created), 200
     except ValueError as value_error:
         return jsonify({"error": str(value_error)}), 400
@@ -7783,6 +7831,7 @@ def reschedule_appointment(appointment_id):
         return jsonify({"error": "new_date and new_time are required"}), 400
 
     try:
+        validate_patient_appointment_lead_time(new_date, "New appointment date")
         check = supabase_admin.table('appointments') \
             .select('*') \
             .eq('appointment_id', appointment_id) \
@@ -10676,6 +10725,7 @@ def get_inventory_logs():
         search = (request.args.get('search') or '').strip()
         start_date = (request.args.get('start_date') or request.args.get('startDate') or '').strip()
         end_date = (request.args.get('end_date') or request.args.get('endDate') or '').strip()
+        limit_raw = request.args.get('limit')
 
         query = supabase_admin.table('inventory_logs_view').select('*')
         if branch_id:
@@ -10698,6 +10748,13 @@ def get_inventory_logs():
             query = query.or_(
                 f"productCode.ilike.%{escaped}%,productName.ilike.%{escaped}%,referenceNumber.ilike.%{escaped}%,user.ilike.%{escaped}%"
             )
+
+        if limit_raw:
+            try:
+                limit = max(1, min(int(limit_raw), 100))
+                query = query.limit(limit)
+            except (TypeError, ValueError):
+                pass
 
         response = query.order('id', desc=True).execute()
         logs = [normalize_inventory_log(item) for item in (response.data or [])]
@@ -11050,7 +11107,7 @@ def build_admin_appointment_rows(include_history=False, actor_id=None):
         if normalized_medical.get("target_id") not in (None, "") and medical_key not in medical_information_by_target:
             medical_information_by_target[medical_key] = normalized_medical
 
-    history_statuses = {"completed", "cancelled", "no_show", "expired"}
+    history_statuses = {"completed", "cancelled", "declined", "no_show", "expired"}
     formatted = []
     today_in_manila = get_current_manila_date()
 
@@ -11063,18 +11120,117 @@ def build_admin_appointment_rows(include_history=False, actor_id=None):
             else normalized_status
         )
 
-        appointment_date = parse_emr_date(appointment_date_value)
-        if appointment_date and appointment_date < today_in_manila:
-            if effective_status in {"confirmed", "scheduled"}:
-                return "no_show"
-            if effective_status == "pending":
-                return "expired"
-
         return effective_status
 
     def should_include(status_value):
         normalized = (status_value or "").lower()
         return normalized in history_statuses if include_history else normalized not in history_statuses
+
+    def reconcile_appointment_schedule_state(table_name, id_column, record, status_value):
+        normalized_status = (status_value or "pending").strip().lower()
+        record_id = record.get(id_column)
+        appointment_date_value = record.get("appointment_date")
+        appointment_date = parse_emr_date(appointment_date_value)
+        if not appointment_date or record_id in (None, ""):
+            return record, normalized_status
+
+        entity_type = "walkin" if table_name == "walkin_appointments" else "appointment"
+
+        if normalized_status == "pending" and appointment_date <= today_in_manila:
+            updated_record = {**record, "status": "cancelled"}
+            supabase_admin.table(table_name).update({"status": "cancelled"}).eq(id_column, record_id).execute()
+            for open_status in ("pending", "needs_new_schedule"):
+                supabase_admin.table("reschedule_requests").update({
+                    "status": "cancelled",
+                    "responded_at": datetime.utcnow().isoformat(),
+                    "response_note": "Auto-cancelled because the appointment reached its scheduled date while still pending",
+                }).eq("target_type", entity_type).eq("target_id", record_id).eq("status", open_status).execute()
+            record_appointment_audit_event(
+                "Appointment Auto-Cancelled",
+                updated_record,
+                table_name=table_name,
+                fallback_id=record_id,
+                old_record=record,
+                new_record=updated_record,
+                summary=f"Pending appointment was automatically cancelled on its scheduled date {appointment_date_value}.",
+                status="Warning",
+                metadata={"source": "appointment_table_reconcile"},
+            )
+            event_key = f"appointment-auto-cancelled:{entity_type}:{record_id}:{appointment_date_value}"
+            if not admin_notification_event_exists(event_key):
+                safe_create_appointment_admin_notification(
+                    table_name=table_name,
+                    id_column=id_column,
+                    record_id=record_id,
+                    event_type="appointment_auto_cancelled",
+                    title="Appointment auto-cancelled",
+                    action_text="was automatically cancelled because it was still pending on its scheduled date",
+                    severity="warning",
+                    link="/admin/history",
+                    event_key=event_key,
+                    metadata={"source": "appointment_table_reconcile"},
+                )
+            return updated_record, "cancelled"
+
+        if normalized_status in {"confirmed", "scheduled"} and appointment_date < today_in_manila:
+            event_key = f"appointment-passed-needs-completion:{entity_type}:{record_id}:{appointment_date_value}"
+            if not admin_notification_event_exists(event_key):
+                safe_create_appointment_admin_notification(
+                    table_name=table_name,
+                    id_column=id_column,
+                    record_id=record_id,
+                    event_type="appointment_passed_needs_completion",
+                    title="This appointment has already passed, do you want to mark it as complete?",
+                    action_text="has already passed. Do you want to mark it as complete?",
+                    severity="warning",
+                    link=f"/admin/schedule?appointment={entity_type}-{record_id}",
+                    event_key=event_key,
+                    metadata={
+                        "source": "appointment_table_reconcile",
+                        "actionPrompt": "This appointment has already passed, do you want to mark it as complete?",
+                    },
+                )
+
+        return record, normalized_status
+
+    def get_pending_urgency(status_value, appointment_date_value):
+        if (status_value or "").strip().lower() != "pending":
+            return {"is_urgent": False, "days_remaining": None}
+        appointment_date = parse_emr_date(appointment_date_value)
+        if not appointment_date:
+            return {"is_urgent": False, "days_remaining": None}
+        days_remaining = (appointment_date - today_in_manila).days
+        return {
+            "is_urgent": 0 <= days_remaining <= 5,
+            "days_remaining": days_remaining,
+        }
+
+    def maybe_create_pending_urgency_notification(table_name, id_column, record_id, status_value, appointment_date_value):
+        urgency = get_pending_urgency(status_value, appointment_date_value)
+        if include_history or not urgency["is_urgent"]:
+            return urgency
+        entity_type = "walkin" if table_name == "walkin_appointments" else "appointment"
+        event_key = f"pending-appointment-urgent:{entity_type}:{record_id}:{appointment_date_value}"
+        if not admin_notification_event_exists(event_key):
+            days_remaining = urgency["days_remaining"]
+            day_label = "today" if days_remaining == 0 else f"in {days_remaining} day{'s' if days_remaining != 1 else ''}"
+            safe_create_appointment_admin_notification(
+                table_name=table_name,
+                id_column=id_column,
+                record_id=record_id,
+                event_type='pending_appointment_urgent',
+                title='Pending appointment needs review',
+                action_text=f'is still pending and scheduled {day_label}',
+                severity='warning',
+                link='/admin/schedule',
+                event_key=event_key,
+                metadata={
+                    "daysRemaining": days_remaining,
+                    "urgencyWindowDays": 5,
+                    "source": "appointment_table_reconcile",
+                },
+            )
+        return urgency
 
     for app in appointments:
         owner = patients_by_id.get(str(app.get("owner_id")), {})
@@ -11085,8 +11241,16 @@ def build_admin_appointment_rows(include_history=False, actor_id=None):
         latest_reschedule_request = latest_request_by_target.get(f"appointment-{app.get('appointment_id')}")
         medical_information = medical_information_by_target.get(f"appointment-{app.get('appointment_id')}")
         status = derive_schedule_status(app.get("status"), app.get("appointment_date"), latest_reschedule_request)
+        app, status = reconcile_appointment_schedule_state("appointments", "appointment_id", app, status)
         if not should_include(status):
             continue
+        urgency = maybe_create_pending_urgency_notification(
+            "appointments",
+            "appointment_id",
+            app.get("appointment_id"),
+            status,
+            app.get("appointment_date"),
+        )
 
         owner_name = get_profile_display_name(owner) or "Unknown Owner"
         pet_name = pet.get("pet_name") or "Unknown Pet"
@@ -11168,6 +11332,8 @@ def build_admin_appointment_rows(include_history=False, actor_id=None):
             "status": status,
             "displayStatus": status,
             "rawStatus": (app.get("status") or "pending").lower(),
+            "isUrgentPending": urgency["is_urgent"],
+            "urgencyDaysRemaining": urgency["days_remaining"],
             "medicalInformation": medical_information,
             "medical_information": medical_information,
             "latestRescheduleRequest": latest_reschedule_request,
@@ -11190,8 +11356,16 @@ def build_admin_appointment_rows(include_history=False, actor_id=None):
         latest_reschedule_request = latest_request_by_target.get(f"walkin-{walkin.get('walkin_id')}")
         medical_information = medical_information_by_target.get(f"walkin-{walkin.get('walkin_id')}")
         status = derive_schedule_status(walkin.get("status"), walkin.get("appointment_date"), latest_reschedule_request)
+        walkin, status = reconcile_appointment_schedule_state("walkin_appointments", "walkin_id", walkin, status)
         if not should_include(status):
             continue
+        urgency = maybe_create_pending_urgency_notification(
+            "walkin_appointments",
+            "walkin_id",
+            walkin.get("walkin_id"),
+            status,
+            walkin.get("appointment_date"),
+        )
         patient_name = f"{walkin.get('first_name', '')} {walkin.get('last_name', '')}".strip() or "Guest Patient"
         pet_name = walkin.get("pet_name") or "Unknown Pet"
         time_range = format_display_time_range(walkin.get("appointment_time"))
@@ -11273,6 +11447,8 @@ def build_admin_appointment_rows(include_history=False, actor_id=None):
             "status": status,
             "displayStatus": status,
             "rawStatus": (walkin.get("status") or "pending").lower(),
+            "isUrgentPending": urgency["is_urgent"],
+            "urgencyDaysRemaining": urgency["days_remaining"],
             "medicalInformation": medical_information,
             "medical_information": medical_information,
             "latestRescheduleRequest": latest_reschedule_request,
@@ -11289,7 +11465,13 @@ def build_admin_appointment_rows(include_history=False, actor_id=None):
         })
 
     formatted.sort(
-        key=lambda item: (item.get("sort_date") or "", item.get("sort_time") or "", item.get("id") or ""),
+        key=lambda item: (
+            0 if item.get("isUrgentPending") else 1,
+            item.get("urgencyDaysRemaining") if item.get("urgencyDaysRemaining") is not None else 999,
+            item.get("sort_date") or "",
+            item.get("sort_time") or "",
+            item.get("id") or "",
+        ),
         reverse=include_history
     )
 
@@ -14214,6 +14396,7 @@ def create_admin_appointment():
         branch_scope, branch_error = require_actor_branch_scope(data)
         if branch_error:
             return jsonify({"error": branch_error}), 400
+        validate_admin_appointment_not_same_day(data.get('appointment_date') or data.get('date'))
         created = create_appointment_record(data, allow_walk_in=True, branch_scope=branch_scope)
         return jsonify(created), 200
     except ValueError as value_error:
@@ -14338,6 +14521,9 @@ def create_admin_reschedule_request(appointment_id):
         requested_by = parse_uuid_or_none(data.get("requested_by"))
         target_type = 'walkin' if table_name == 'walkin_appointments' else 'appointment'
 
+        validate_admin_reschedule_window(existing_record)
+        validate_admin_appointment_not_same_day(new_date, "New appointment date")
+
         for open_status in ('pending', 'needs_new_schedule'):
             supabase_admin.table('reschedule_requests').update({
                 "status": "cancelled",
@@ -14444,6 +14630,7 @@ def create_patient_reschedule_request(appointment_id):
 
         if not preferred_date or not preferred_time:
             return jsonify({"error": "Preferred date and time are required"}), 400
+        validate_patient_appointment_lead_time(preferred_date, "Preferred date")
 
         combined_note = build_patient_preference_note(
             preferred_date,
@@ -14923,10 +15110,7 @@ def choose_another_date_from_web(request_id):
         if not preferred_date or not preferred_time:
             return jsonify({"error": "Preferred date and time are required"}), 400
 
-        try:
-            selected_preferred_date = datetime.strptime(preferred_date, "%Y-%m-%d").date()
-        except ValueError:
-            return jsonify({"error": "Please choose a valid preferred date."}), 400
+        selected_preferred_date = validate_patient_appointment_lead_time(preferred_date, "Preferred date")
 
         today_in_manila = get_current_manila_date()
         current_month_start = date(today_in_manila.year, today_in_manila.month, 1)
@@ -15055,6 +15239,11 @@ def review_reschedule_request(request_id):
 
             if not preferred_date or not preferred_time:
                 return jsonify({"error": "Patient preference is missing a preferred date or time"}), 400
+
+            table_name, id_column, resolved_id = resolve_appointment_target(req.get('target_id'), req.get('target_type'))
+            original_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+            validate_admin_reschedule_window(original_context.get("record") or {})
+            validate_admin_appointment_not_same_day(preferred_date, "Preferred appointment date")
 
             table_name, id_column, resolved_id = apply_reschedule_to_target(req, preferred_date, preferred_time)
             supabase_admin.table('reschedule_requests').update({

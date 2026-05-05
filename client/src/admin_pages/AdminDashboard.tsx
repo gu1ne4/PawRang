@@ -517,6 +517,13 @@ const AdminDashboard: React.FC = () => {
     setCurrentUser(normalizedUser);
 
     const fetchDashboardData = async () => {
+      const withDashboardUser = (path: string, extraParams: Record<string, string | number> = {}) => {
+        const params = new URLSearchParams();
+        if (adminUserId) params.set('userId', String(adminUserId));
+        Object.entries(extraParams).forEach(([key, value]) => params.set(key, String(value)));
+        const query = params.toString();
+        return `${API_URL}${path}${query ? `?${query}` : ''}`;
+      };
       const [
         analyticsResult,
         patientsResult,
@@ -529,11 +536,11 @@ const AdminDashboard: React.FC = () => {
       ] = await Promise.allSettled([
         apiService.getAdminAnalyticsOverview(),
         fetch(`${API_URL}/patients`),
-        fetch(`${API_URL}/api/inventory/items`),
-        fetch(`${API_URL}/api/inventory/logs`),
-        apiService.getBillingInvoices(),
-        apiService.getAppointmentsForTable(),
-        fetch(`${API_URL}/api/appointments/history`),
+        fetch(withDashboardUser('/api/inventory/items')),
+        fetch(withDashboardUser('/api/inventory/logs', { limit: 5 })),
+        apiService.getBillingInvoices(adminUserId),
+        apiService.getAppointmentsForTable(adminUserId),
+        fetch(withDashboardUser('/api/appointments/history')),
         adminUserId
           ? fetch(`${API_URL}/api/admin-notifications?admin_user_id=${encodeURIComponent(adminUserId)}&module=inventory&limit=50`)
           : Promise.resolve(null),
@@ -569,6 +576,11 @@ const AdminDashboard: React.FC = () => {
             ? inventoryPayload
             : [];
         setInventoryItemsCount(items.filter((item: any) => !item?.isArchived && !item?.is_archived).length);
+      } else {
+        console.error(
+          'Dashboard inventory items fetch error:',
+          inventoryItemsResult.status === 'rejected' ? inventoryItemsResult.reason : inventoryItemsResult.value.status
+        );
       }
 
       if (inventoryLogsResult.status === 'fulfilled' && inventoryLogsResult.value.ok) {
@@ -579,6 +591,11 @@ const AdminDashboard: React.FC = () => {
             ? logsPayload
             : [];
         setInventoryMovements(logs.slice(0, 5).map(normalizeInventoryMovement));
+      } else {
+        console.error(
+          'Dashboard inventory logs fetch error:',
+          inventoryLogsResult.status === 'rejected' ? inventoryLogsResult.reason : inventoryLogsResult.value.status
+        );
       }
 
       if (billingInvoicesResult.status === 'fulfilled') {

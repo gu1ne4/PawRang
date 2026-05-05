@@ -115,7 +115,8 @@ const RescheduleCalendar = ({
   const annualSpecialDateSet = new Set(annualSpecialDates);
   const dayNamesList = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const todayStr = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
+  const todayStr = getDateKey(todayDate);
+  const earliestDateKey = getEarliestRescheduleDateKey();
 
   const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   const getFirstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
@@ -138,10 +139,10 @@ const RescheduleCalendar = ({
       const dayName = dayNamesList[dayOfWeek];
       const isSelected = selectedDate === fullDate;
       const isToday = fullDate === todayStr;
-      const isPast = disablePastDates && fullDate < todayStr;
+      const isTooSoon = disablePastDates && fullDate < earliestDateKey;
       const isUnavailableDay = availableDays && availableDays[dayName] === false;
       const isSpecialDate = specialDateSet.has(fullDate) || annualSpecialDateSet.has(`${monthStr}-${dayStr}`);
-      const isDisabled = isPast || isUnavailableDay || isSpecialDate;
+      const isDisabled = isTooSoon || isUnavailableDay || isSpecialDate;
 
       let bgColor = 'transparent';
       let textColor = isDisabled ? '#d3d3d3' : '#333';
@@ -224,6 +225,19 @@ const RescheduleCalendar = ({
 
 const MIN_REASON_CHARS = 10;
 const RESCHEDULE_LOCK_MESSAGE = 'A reschedule request is already under review. You can request another change after the clinic reviews the current request.';
+
+const getDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const getEarliestRescheduleDateKey = () => {
+  const earliest = new Date();
+  earliest.setHours(0, 0, 0, 0);
+  earliest.setDate(earliest.getDate() + 2);
+  return getDateKey(earliest);
+};
+
+const isBeforeRescheduleLeadTime = (dateKey: string) =>
+  Boolean(dateKey) && dateKey < getEarliestRescheduleDateKey();
 
 const hasStructuredRescheduleMetadata = (value?: string | null) =>
   /(^|\|)\s*Preferred (date|time):/i.test(value || '');
@@ -592,12 +606,12 @@ const UserAppointmentView: React.FC = () => {
     const dayNamesList = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const selectedDayName = dayNamesList[new Date(`${newDate}T00:00:00`).getDay()];
     const today = new Date();
-    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const earliestDateKey = getEarliestRescheduleDateKey();
     const monthAfterNext = new Date(today.getFullYear(), today.getMonth() + 2, 1);
-    const monthAfterNextKey = `${monthAfterNext.getFullYear()}-${String(monthAfterNext.getMonth() + 1).padStart(2, '0')}-${String(monthAfterNext.getDate()).padStart(2, '0')}`;
+    const monthAfterNextKey = getDateKey(monthAfterNext);
     const isBlockedSpecialDate = rescheduleSpecialDates.includes(newDate) || rescheduleAnnualSpecialDates.includes(newDate.slice(5));
     const isAllowedDay = rescheduleAvailableDays ? Boolean(rescheduleAvailableDays[selectedDayName]) : true;
-    const isWithinWindow = newDate >= todayKey && newDate < monthAfterNextKey;
+    const isWithinWindow = newDate >= earliestDateKey && newDate < monthAfterNextKey;
 
     const mapSlots = (slots: any[]): RescheduleTimeSlot[] => (slots || []).map((slot: any) => ({
       id: slot.id,
@@ -887,6 +901,10 @@ const UserAppointmentView: React.FC = () => {
         showAlert('info','Incomplete','Please select both date and time');
         return;
       }
+      if (isBeforeRescheduleLeadTime(newDate)) {
+        showAlert('info', 'Date Too Soon', 'Please choose a preferred date at least 2 days after today.');
+        return;
+      }
       setRescheduleStep(2);
     } else if (rescheduleStep === 2) {
       if (requiresReason && rescheduleReason.trim().length < MIN_REASON_CHARS) {
@@ -898,6 +916,10 @@ const UserAppointmentView: React.FC = () => {
 
   const confirmReschedule = async () => {
     if (!rescheduleTarget || !newDate || !newTime) return;
+    if (isBeforeRescheduleLeadTime(newDate)) {
+      showAlert('info', 'Date Too Soon', 'Please choose a preferred date at least 2 days after today.');
+      return;
+    }
     setIsMutating(true);
     const restoreModal = rescheduleParentModal;
     try {

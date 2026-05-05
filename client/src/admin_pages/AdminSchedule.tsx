@@ -49,6 +49,31 @@ const capitalizeFirstLetter = (string: string) => {
     return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
+const getLocalDateKey = (date: Date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const getTomorrowDateKey = () => {
+    const tomorrow = new Date();
+    tomorrow.setHours(0, 0, 0, 0);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return getLocalDateKey(tomorrow);
+};
+
+const getDaysUntilAppointment = (appointment: any) => {
+    const dateValue = appointment?.date_only || appointment?.date_display || '';
+    if (!dateValue) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const appointmentDate = new Date(`${dateValue}T00:00:00`);
+    if (Number.isNaN(appointmentDate.getTime())) return null;
+    return Math.ceil((appointmentDate.getTime() - today.getTime()) / 86400000);
+};
+
+const isAdminRescheduleLocked = (appointment: any) => {
+    const daysUntilAppointment = getDaysUntilAppointment(appointment);
+    return daysUntilAppointment !== null && daysUntilAppointment >= 0 && daysUntilAppointment <= 2;
+};
+
 const getPersonDisplayName = (record: any) => {
     if (!record) return 'Unknown';
 
@@ -116,6 +141,15 @@ const getAppointmentDateSortValue = (appointment: any) => {
 const getAppointmentStatusValue = (appointment: any) =>
     getDisplayAppointmentStatus(appointment?.displayStatus || appointment?.status, appointment?.latestRescheduleRequest);
 
+const isAppointmentUrgentPending = (appointment: any) => {
+    if (appointment?.isUrgentPending === true) return true;
+    const status = getAppointmentStatusValue(appointment);
+    if (status !== 'pending') return false;
+    const daysRemaining = getDaysUntilAppointment(appointment);
+    if (daysRemaining === null) return false;
+    return daysRemaining >= 0 && daysRemaining <= 5;
+};
+
 const isAppointmentDoctorUnassigned = (appointment: any) => {
     const doctorName = String(appointment?.doctor || '').trim().toLowerCase();
     return !appointment?.assignedDoctor || !doctorName || doctorName === 'not assigned' || doctorName === 'unassigned';
@@ -129,6 +163,9 @@ const compareAppointmentsByPriority = (priority: AppointmentPriorityFilter) => (
     const bDate = getAppointmentDateSortValue(b);
     const dateAscending = aDate - bDate;
     const dateDescending = bDate - aDate;
+    const urgentSort = (isAppointmentUrgentPending(a) ? 0 : 1) - (isAppointmentUrgentPending(b) ? 0 : 1);
+
+    if (urgentSort) return urgentSort;
 
     if (priority === 'dateDesc') return dateDescending || compareAppointmentNames(a, b);
 
@@ -189,7 +226,7 @@ const DECLINE_PREFERENCE_REASONS = [
 // ==========================================
 //  0. CUSTOM CALENDAR COMPONENT 
 // ==========================================
-const CustomCalendar = ({ selectedDate, onSelectDate, bookedDates = {}, availableDays = null, disablePastDates = false }: any) => {
+const CustomCalendar = ({ selectedDate, onSelectDate, bookedDates = {}, availableDays = null, disablePastDates = false, minDateKey = '' }: any) => {
     const [currentMonth, setCurrentMonth] = useState(new Date());
 
     const todayDate = new Date();
@@ -217,7 +254,8 @@ const CustomCalendar = ({ selectedDate, onSelectDate, bookedDates = {}, availabl
     const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
     const getFirstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
 
-    const todayStr = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
+    const todayStr = getLocalDateKey(todayDate);
+    const effectiveMinDateKey = minDateKey || todayStr;
 
     const renderDays = () => {
         const daysInMonth = getDaysInMonth(currentMonth);
@@ -245,7 +283,7 @@ const CustomCalendar = ({ selectedDate, onSelectDate, bookedDates = {}, availabl
             const hasAppointment = bookedDates[fullDate];
 
             // AVAILABILITY CHECKS
-            const isPast = disablePastDates && fullDate < todayStr;
+            const isPast = disablePastDates && fullDate < effectiveMinDateKey;
             const isUnavailableDay = availableDays && availableDays[dayName] === false;
             const isDisabled = isPast || isUnavailableDay;
 
@@ -697,8 +735,9 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
     const validBranch = branchId !== '';
     const allMedicalAnswered = medicalQuestionConfigs.every(question => medicalAnswers[question.key] !== null);
     const validMedical = allMedicalAnswered && (!medicalAnswers.medications72h || medicationDetails.trim() !== '');
+    const isDateTooSoon = Boolean(date) && date < getTomorrowDateKey();
 
-    const isFormValid = firstName.trim() !== '' && lastName.trim() !== '' && petName.trim() !== '' && date !== '' && time !== '' && validPetType && validBreed && validGender && validService && validBranch && validMedical;
+    const isFormValid = firstName.trim() !== '' && lastName.trim() !== '' && petName.trim() !== '' && date !== '' && !isDateTooSoon && time !== '' && validPetType && validBreed && validGender && validService && validBranch && validMedical;
 
     const missingFields: string[] = [];
 
@@ -711,6 +750,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
     if (!validService) missingFields.push('Service');
     if (!validBranch) missingFields.push('Branch');
     if (!date) missingFields.push('Appointment date');
+    if (isDateTooSoon) missingFields.push('Appointment date must be tomorrow or later');
     if (!time) missingFields.push('Time slot');
     if (!allMedicalAnswered) missingFields.push('Medical information');
     if (medicalAnswers.medications72h && !medicationDetails.trim()) missingFields.push('Medication details');
@@ -941,7 +981,8 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
                                     selectedDate={date} 
                                     onSelectDate={setDate} 
                                     availableDays={availableDays} 
-                                    disablePastDates={true} 
+                                    disablePastDates={true}
+                                    minDateKey={getTomorrowDateKey()}
                                 />
                             </div>
                         </div>
@@ -1606,6 +1647,22 @@ const TableView = ({
             )}
           </div>
 
+          <div className="appointmentTableLegend" aria-label="Appointment table legend">
+            <span className="appointmentLegendLabel">Legends:</span>
+            <span className="appointmentLegendItem">
+              <span className="appointmentLegendSwatch urgent" />
+              Pending within 5 days
+            </span>
+            <span className="appointmentLegendItem">
+              <span className="appointmentLegendSwatch pending" />
+              Pending review
+            </span>
+            <span className="appointmentLegendItem">
+              <span className="appointmentLegendSwatch confirmed" />
+              Confirmed or scheduled
+            </span>
+          </div>
+
           <div className="tableWrapper appointmentTableScroll" style={{ marginTop: '0' }}>
             <table className="dataTable">
                 <thead>
@@ -1623,10 +1680,14 @@ const TableView = ({
                 <tbody>
                 {paginatedAppointments.length > 0 ? (
                     paginatedAppointments.map((user: any, index: number) => (
-                    <tr key={user.id || `appt-row-${index}`}>
+                    <tr
+                        key={user.id || `appt-row-${index}`}
+                        className={isAppointmentUrgentPending(user) ? 'urgentPendingAppointmentRow' : ''}
+                    >
                         {(() => {
                             const statusToShow = (user.displayStatus || user.status || 'scheduled').toLowerCase();
                             const isPendingDisplay = statusToShow === 'pending';
+                            const isUrgentPendingDisplay = isAppointmentUrgentPending(user);
                             const isPositiveDisplay = statusToShow === 'scheduled' || statusToShow === 'confirmed';
                             const isNeutralDisplay = statusToShow === 'expired';
                             const statusLabel = statusToShow
@@ -1642,14 +1703,14 @@ const TableView = ({
                         <td style={{ textAlign: 'center' }}>
                             <div className="statusBadge" style={{
                                 backgroundColor: isPendingDisplay
-                                    ? '#fff3e0'
+                                    ? (isUrgentPendingDisplay ? '#fee2e2' : '#fff3e0')
                                     : (isPositiveDisplay ? '#e8f5e9' : (isNeutralDisplay ? '#f5f5f5' : '#ffebee')),
                                 display: 'inline-block'
                             }}>
                                 <span style={{
                                     fontSize: '11px', fontWeight: '600',
                                     color: isPendingDisplay
-                                        ? '#f57c00'
+                                        ? (isUrgentPendingDisplay ? '#b91c1c' : '#f57c00')
                                         : (isPositiveDisplay ? '#2e7d32' : (isNeutralDisplay ? '#616161' : '#d32f2f'))
                                 }}>
                                     {statusLabel}
@@ -1748,6 +1809,7 @@ const TableView = ({
 // ==========================================
 export default function Schedule() {
     const navigate = useNavigate();
+    const location = useLocation();
 
     const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
     const [service, setService] = useState('');
@@ -1959,6 +2021,14 @@ export default function Schedule() {
     const handleRescheduleAppointment = (appointment: any) => {
         if (!appointment || !appointment.id) {
             showAlert('error', 'Reschedule Failed', 'Invalid appointment data.');
+            return;
+        }
+        if (isAdminRescheduleLocked(appointment)) {
+            showAlert(
+                'info',
+                'Reschedule Locked',
+                'This appointment is within 2 days. You can cancel it, but it can no longer be rescheduled.'
+            );
             return;
         }
         setSelectedAppointmentForReschedule(appointment);
@@ -2330,6 +2400,22 @@ export default function Schedule() {
         loadBranches();
         loadDayAvailability(); 
     }, [loadAppointments]);
+
+    useEffect(() => {
+        const targetAppointment = new URLSearchParams(location.search).get('appointment');
+        if (!targetAppointment || userData.length === 0) return;
+
+        const matchedAppointment = userData.find((appointment) => (
+            appointment.id === targetAppointment ||
+            `${appointment.recordType || (appointment.is_walk_in ? 'walkin' : 'appointment')}-${appointment.dbId ?? appointment.id}` === targetAppointment
+        ));
+
+        if (!matchedAppointment) return;
+        setSelectedUser(matchedAppointment);
+        setSelectedAppointment(matchedAppointment);
+        setSelectedDoctor(matchedAppointment.assignedDoctor || '');
+        setCurrentView('userDetails');
+    }, [location.search, userData]);
 
     useEffect(() => {
         if (currentView !== 'userDetails' || !selectedUser) return;

@@ -40,8 +40,18 @@ const RESCHEDULE_REASONS = [
     }
 ];
 
+const getLocalDateKey = (date: Date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+const getTomorrowDateKey = () => {
+    const tomorrow = new Date();
+    tomorrow.setHours(0, 0, 0, 0);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return getLocalDateKey(tomorrow);
+};
+
 // ── Custom Calendar (same as AdminSchedule) ──────────────────────────
-const CustomCalendar = ({ selectedDate, onSelectDate, availableDays = null, disablePastDates = false }: any) => {
+const CustomCalendar = ({ selectedDate, onSelectDate, availableDays = null, disablePastDates = false, minDateKey = '' }: any) => {
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const todayDate = new Date();
     const minMonth = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
@@ -54,7 +64,8 @@ const CustomCalendar = ({ selectedDate, onSelectDate, availableDays = null, disa
 
     const getDaysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
     const getFirstDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-    const todayStr = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
+    const todayStr = getLocalDateKey(todayDate);
+    const effectiveMinDateKey = minDateKey || todayStr;
 
     const renderDays = () => {
         const daysInMonth = getDaysInMonth(currentMonth);
@@ -73,7 +84,7 @@ const CustomCalendar = ({ selectedDate, onSelectDate, availableDays = null, disa
             const dayName = dayNamesList[dayOfWeek];
             const isSelected = selectedDate === fullDate;
             const isToday = fullDate === todayStr;
-            const isPast = disablePastDates && fullDate < todayStr;
+            const isPast = disablePastDates && fullDate < effectiveMinDateKey;
             const isUnavailableDay = availableDays && availableDays[dayName] === false;
             const isDisabled = isPast || isUnavailableDay;
 
@@ -139,7 +150,8 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
     const generatedExplanation = emailMessage;
     const requiresEmailMessage = Boolean(selectedReason);
     const isReasonMessageInvalid = requiresEmailMessage && !emailMessage.trim();
-    const isSubmitDisabled = !selectedDate || !selectedTimeSlot || loading || isReasonMessageInvalid;
+    const isDateTooSoon = Boolean(selectedDate) && selectedDate < getTomorrowDateKey();
+    const isSubmitDisabled = !selectedDate || isDateTooSoon || !selectedTimeSlot || loading || isReasonMessageInvalid;
 
     useEffect(() => {
         if (visible) {
@@ -198,6 +210,7 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
 
     const handleSubmit = async () => {
         if (!selectedDate || !selectedTimeSlot) return;
+        if (isDateTooSoon) return;
         if (isReasonMessageInvalid) return;
         setLoading(true);
         try {
@@ -264,6 +277,7 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
                                 onSelectDate={setSelectedDate}
                                 availableDays={availableDays}
                                 disablePastDates={true}
+                                minDateKey={getTomorrowDateKey()}
                             />
                         </div>
                         {selectedDate && (
@@ -272,6 +286,12 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
                             </div>
                         )}
                     </div>
+
+                    {isDateTooSoon && (
+                        <div style={{ backgroundColor: '#fff1f2', padding: '10px', borderRadius: '6px', color: '#b91c1c', fontWeight: '600', fontSize: '13px' }}>
+                            Same-day reschedules are not allowed. Please choose tomorrow or a later date.
+                        </div>
+                    )}
 
                     {/* Select Time Slot */}
                     <div>

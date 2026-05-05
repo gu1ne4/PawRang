@@ -1168,6 +1168,60 @@ html, body {
   padding: 0 2px;
 }
 
+.dataTable tbody tr.urgentPendingAppointmentRow {
+  background-color: #fff1f2;
+  box-shadow: inset 4px 0 0 #dc2626;
+}
+
+.dataTable tbody tr.urgentPendingAppointmentRow:hover {
+  background-color: #ffe4e6;
+}
+
+.appointmentTableLegend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  color: #5f6b7a;
+  font-size: 12px;
+}
+
+.appointmentLegendLabel {
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.appointmentLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.appointmentLegendSwatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+}
+
+.appointmentLegendSwatch.urgent {
+  background: #fff1f2;
+  border-color: #dc2626;
+  box-shadow: inset 3px 0 0 #dc2626;
+}
+
+.appointmentLegendSwatch.pending {
+  background: #fff3e0;
+  border-color: #f57c00;
+}
+
+.appointmentLegendSwatch.confirmed {
+  background: #e8f5e9;
+  border-color: #2e7d32;
+}
+
 .accountPagination {
   justify-content: space-between;
   gap: 12px;
