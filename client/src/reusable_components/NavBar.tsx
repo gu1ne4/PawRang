@@ -9,6 +9,7 @@ import { TbArrowsUpDown } from "react-icons/tb";
 import { IoIosArchive } from "react-icons/io";
 import petShieldLogo from '../assets/PetshieldLogo.png';
 import pawRangLogomarkWhite from '../assets/PawRang Logomark White.png';
+import defaultUserAvatar from '../assets/userAvatar.jpg';
 import { isAdminRole, isDoctorRole, normalizeRole } from '../auth/roles';
 
 // Icons
@@ -41,7 +42,12 @@ interface NavbarProps {
     username?: string;
     fullName?: string;
     role?: string;
+    image?: string;
     userImage?: string;
+    userimage?: string;
+    user_image?: string;
+    profileImage?: string;
+    employee_image?: string;
   } | null;
   onLogout: () => void;
   onNavigateAttempt?: (path: string, navigateFn: () => void) => void;
@@ -80,6 +86,15 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
   const appointmentsPath = isDoctorWorkspace ? '/doctor/appointments' : '/admin/schedule';
   const recordsPath = isDoctorWorkspace ? '/doctor/medical-records' : '/patient-records';
   const inventoryPath = isDoctorWorkspace ? '/doctor/inventory' : '/inventory';
+  const profileImage =
+    currentUser?.profileImage ||
+    currentUser?.employee_image ||
+    currentUser?.image ||
+    currentUser?.userImage ||
+    currentUser?.userimage ||
+    currentUser?.user_image ||
+    '';
+  const avatarSource = profileImage || defaultUserAvatar;
 
   const isActive = (path: string): boolean => {
     return location.pathname === path;
@@ -351,7 +366,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
           <div className="navGlassContainer navAccountContainer">
             <div className="navAccount">
               <img 
-                src={(currentUser && currentUser.userImage) ? currentUser.userImage : "/src/assets/userAvatar.jpg"} 
+                src={avatarSource} 
                 alt="User"
                 className="navAvatar"
               />

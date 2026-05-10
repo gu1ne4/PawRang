@@ -488,7 +488,10 @@ export const availabilityService = {
         }))
       });
       
-      if (!response.ok) throw new Error('Failed to save special date');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to save special date');
+      }
       return await response.json();
     } catch (error) {
       console.error('Error saving special date:', error);
@@ -525,7 +528,10 @@ export const availabilityService = {
         }))
       });
       
-      if (!response.ok) throw new Error('Failed to update special date');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to update special date');
+      }
       return await response.json();
     } catch (error) {
       console.error('Error updating special date:', error);
@@ -550,7 +556,10 @@ export const availabilityService = {
         }))
       });
       
-      if (!response.ok) throw new Error('Failed to delete special date');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to delete special date');
+      }
       return await response.json();
     } catch (error) {
       console.error('Error deleting special date:', error);
@@ -620,7 +629,18 @@ export const availabilityService = {
   // Check if a date is a special date
   isSpecialDate(dateString: string, specialDates: any[]): boolean {
     if (!specialDates || !dateString) return false;
-    return specialDates.some(event => event.event_date === dateString);
+    const [, month, day] = dateString.split('-');
+    const annualKey = month && day ? `${month}-${day}` : '';
+
+    return specialDates.some(event => {
+      const recurrence = String(event?.event_recurrence || event?.recurrence_type || 'once').toLowerCase();
+      if (recurrence === 'annual' || recurrence === 'yearly') {
+        const eventMonth = Number(event?.event_month) || Number(String(event?.event_date || '').split('-')[1]);
+        const eventDay = Number(event?.event_day) || Number(String(event?.event_date || '').split('-')[2]);
+        return annualKey === `${String(eventMonth).padStart(2, '0')}-${String(eventDay).padStart(2, '0')}`;
+      }
+      return event.event_date === dateString;
+    });
   },
 
   // Get day name from date string

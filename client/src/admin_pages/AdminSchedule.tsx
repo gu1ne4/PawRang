@@ -59,6 +59,24 @@ const getTomorrowDateKey = () => {
     return getLocalDateKey(tomorrow);
 };
 
+const getSpecialDateAnnualKey = (event: any) => {
+    const recurrence = String(event?.event_recurrence || 'once').toLowerCase();
+    if (recurrence !== 'annual') return '';
+    const month = Number(event?.event_month) || Number(String(event?.event_date || '').split('-')[1]);
+    const day = Number(event?.event_day) || Number(String(event?.event_date || '').split('-')[2]);
+    return month && day ? `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` : '';
+};
+
+const isSpecialDateKey = (dateKey: string, specialDates: any[] = []) => {
+    if (!dateKey) return false;
+    const annualKey = dateKey.slice(5);
+    return specialDates.some((event: any) => {
+        const recurrence = String(event?.event_recurrence || 'once').toLowerCase();
+        if (recurrence === 'annual') return getSpecialDateAnnualKey(event) === annualKey;
+        return String(event?.event_date || '').trim() === dateKey;
+    });
+};
+
 const getDaysUntilAppointment = (appointment: any) => {
     const dateValue = appointment?.date_only || appointment?.date_display || '';
     if (!dateValue) return null;
@@ -226,7 +244,7 @@ const DECLINE_PREFERENCE_REASONS = [
 // ==========================================
 //  0. CUSTOM CALENDAR COMPONENT 
 // ==========================================
-const CustomCalendar = ({ selectedDate, onSelectDate, bookedDates = {}, availableDays = null, disablePastDates = false, minDateKey = '' }: any) => {
+const CustomCalendar = ({ selectedDate, onSelectDate, bookedDates = {}, availableDays = null, specialDates = [], disablePastDates = false, minDateKey = '' }: any) => {
     const [currentMonth, setCurrentMonth] = useState(new Date());
 
     const todayDate = new Date();
@@ -285,10 +303,11 @@ const CustomCalendar = ({ selectedDate, onSelectDate, bookedDates = {}, availabl
             // AVAILABILITY CHECKS
             const isPast = disablePastDates && fullDate < effectiveMinDateKey;
             const isUnavailableDay = availableDays && availableDays[dayName] === false;
-            const isDisabled = isPast || isUnavailableDay;
+            const isSpecialDate = isSpecialDateKey(fullDate, specialDates);
+            const isDisabled = isPast || isUnavailableDay || isSpecialDate;
 
             let bgColor = 'transparent';
-            let textColor = isDisabled ? '#d3d3d3' : '#333';
+            let textColor = isSpecialDate ? '#d32f2f' : isDisabled ? '#d3d3d3' : '#333';
             let fontWeight = '400';
             let cursor = isDisabled ? 'not-allowed' : 'pointer';
 
@@ -418,6 +437,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
 
     // --- AVAILABILITY STATE ---
     const [availableDays, setAvailableDays] = useState<any>(null);
+    const [specialDates, setSpecialDates] = useState<any[]>([]);
     const [timeSlots, setTimeSlots] = useState<any[]>([]);
 
     // --- HIDDEN STATE (Supabase IDs) ---
@@ -458,6 +478,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
         setMedicationDetails('');
         setMedicalNotes('');
         setAvailableDays(null);
+        setSpecialDates([]);
         setTimeSlots([]);
         setOwnerId(''); setPetId('');
         setIsSearchOpen(false);
@@ -492,19 +513,25 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
             apiService.getDayAvailability()
                 .then(setAvailableDays)
                 .catch(console.error);
+            apiService.getSpecialDates()
+                .then(setSpecialDates)
+                .catch(console.error);
         }
     }, [visible]);
 
     // Load time slots when a Date is selected
     useEffect(() => {
         if (date) {
-            const dayNamesList = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-            const selectedDayName = dayNamesList[new Date(date).getDay()];
-            
-            apiService.getTimeSlotsForDay(selectedDayName)
+            if (isSpecialDateKey(date, specialDates)) {
+                setTimeSlots([]);
+                setTime('');
+                return;
+            }
+
+            apiService.getAvailableTimeSlots(date)
                 .then(slots => {
                     const formatted = slots.map((s: any) => {
-                        return `${formatTimeStr(s.start_time)} - ${formatTimeStr(s.end_time)}`;
+                        return s.displayText || `${formatTimeStr(s.start_time)} - ${formatTimeStr(s.end_time)}`;
                     });
                     setTimeSlots(formatted);
                     setTime(''); // Reset time selection when date changes
@@ -513,7 +540,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
         } else {
             setTimeSlots([]);
         }
-    }, [date]);
+    }, [date, specialDates]);
 
     // Auto-calculate exact age
     useEffect(() => {
@@ -736,8 +763,9 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
     const allMedicalAnswered = medicalQuestionConfigs.every(question => medicalAnswers[question.key] !== null);
     const validMedical = allMedicalAnswered && (!medicalAnswers.medications72h || medicationDetails.trim() !== '');
     const isDateTooSoon = Boolean(date) && date < getTomorrowDateKey();
+    const isSpecialAppointmentDate = isSpecialDateKey(date, specialDates);
 
-    const isFormValid = firstName.trim() !== '' && lastName.trim() !== '' && petName.trim() !== '' && date !== '' && !isDateTooSoon && time !== '' && validPetType && validBreed && validGender && validService && validBranch && validMedical;
+    const isFormValid = firstName.trim() !== '' && lastName.trim() !== '' && petName.trim() !== '' && date !== '' && !isDateTooSoon && !isSpecialAppointmentDate && time !== '' && validPetType && validBreed && validGender && validService && validBranch && validMedical;
 
     const missingFields: string[] = [];
 
@@ -751,6 +779,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
     if (!validBranch) missingFields.push('Branch');
     if (!date) missingFields.push('Appointment date');
     if (isDateTooSoon) missingFields.push('Appointment date must be tomorrow or later');
+    if (isSpecialAppointmentDate) missingFields.push('Appointment date is blocked by special dates');
     if (!time) missingFields.push('Time slot');
     if (!allMedicalAnswered) missingFields.push('Medical information');
     if (medicalAnswers.medications72h && !medicationDetails.trim()) missingFields.push('Medication details');
@@ -981,10 +1010,16 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
                                     selectedDate={date} 
                                     onSelectDate={setDate} 
                                     availableDays={availableDays} 
+                                    specialDates={specialDates}
                                     disablePastDates={true}
                                     minDateKey={getTomorrowDateKey()}
                                 />
                             </div>
+                            {date && isSpecialAppointmentDate && (
+                                <div style={{ marginTop: '10px', padding: '10px 12px', backgroundColor: '#ffebee', border: '1px solid #ffcdd2', borderRadius: '8px', color: '#c62828', fontSize: '12px', fontWeight: 600 }}>
+                                    This date is blocked in Special Dates and cannot be used for appointments.
+                                </div>
+                            )}
                         </div>
 
                         {/* Interactive Time Slots */}

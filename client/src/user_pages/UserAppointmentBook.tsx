@@ -516,16 +516,22 @@ const UserAppointmentBook: React.FC = () => {
       return;
     }
 
+    if (isSpecialBookingDate(selectedDate)) {
+      setDayTimeSlots([]);
+      setSelectedTime(null);
+      return;
+    }
+
     let isCancelled = false;
     setLoadingTimeSlots(true);
-    requestJson<{ timeSlots?: TimeSlotRecord[] }>(`${API_URL}/api/time-slots/${dayName.toLowerCase()}`)
+    requestJson<{ timeSlots?: TimeSlotRecord[] }>(`${API_URL}/api/available-time-slots?date=${encodeURIComponent(toDateKey(selectedDate))}`)
       .then(data => {
         if (isCancelled) return;
 
         const rawSlots = Array.isArray(data?.timeSlots) ? data.timeSlots : [];
         const formattedSlots = rawSlots
           .filter((slot: TimeSlotRecord) => slot?.start_time && slot?.end_time && slot?.is_available !== false)
-          .map((slot: TimeSlotRecord) => `${formatSlotTime(slot.start_time)} - ${formatSlotTime(slot.end_time)}`);
+          .map((slot: any) => slot?.displayText || `${formatSlotTime(slot.start_time)} - ${formatSlotTime(slot.end_time)}`);
 
         setDayTimeSlots(formattedSlots);
         setSelectedTime(prev => (prev && formattedSlots.includes(prev) ? prev : null));
@@ -543,7 +549,7 @@ const UserAppointmentBook: React.FC = () => {
     return () => {
       isCancelled = true;
     };
-  }, [selectedDate, dayAvailability]);
+  }, [selectedDate, dayAvailability, specialDates, annualSpecialDates]);
 
   useEffect(() => {
     const handleResize = () => setIsMobileCarousel(isMobileViewport());
@@ -620,6 +626,7 @@ const UserAppointmentBook: React.FC = () => {
     if (!selectedBranch) missingFields.push('Branch');
     if (!selectedDate) missingFields.push('Appointment date');
     if (selectedDate && isDateBeforeBookingLeadTime(selectedDate)) missingFields.push('Appointment date at least 2 days after today');
+    if (selectedDate && isSpecialBookingDate(selectedDate)) missingFields.push('Available appointment date');
     if (!selectedTime) missingFields.push('Time slot');
 
     const allMedicalAnswered = medicalQuestions.every(question => medicalAnswers[question.key] !== null);
@@ -682,6 +689,12 @@ const UserAppointmentBook: React.FC = () => {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  };
+
+  const isSpecialBookingDate = (date: Date | null) => {
+    const dateKey = toDateKey(date);
+    if (!dateKey) return false;
+    return specialDates.includes(dateKey) || annualSpecialDates.includes(dateKey.slice(5));
   };
 
   const getEarliestBookableDate = () => {
@@ -931,6 +944,10 @@ const UserAppointmentBook: React.FC = () => {
         showAlert('info', 'Date Too Soon', 'Please choose an appointment date at least 2 days after today.');
         return;
       }
+      if (isSpecialBookingDate(selectedDate)) {
+        showAlert('info', 'Date Unavailable', 'Please choose another date. This date is blocked for booking.');
+        return;
+      }
       setStep(symptomStep ?? medicalInfoStep);
     } else if (symptomStep && step === symptomStep) {
       setStep(medicalInfoStep);
@@ -987,7 +1004,7 @@ const UserAppointmentBook: React.FC = () => {
           owner_id:         currentUser.id,
           pet_id:           Number(selectedPet.pet_id),       // ← fix bigint error
           appointment_type: typeLabel,
-          appointment_date: selectedDate.toISOString().split('T')[0],
+          appointment_date: toDateKey(selectedDate),
           appointment_time: toDbTime(selectedTime),
           branch_id:        Number(selectedBranch.branch_id), // ← fix bigint error
           patient_reason:   patientReasonParts.join('\n'),
@@ -1574,10 +1591,9 @@ const UserAppointmentBook: React.FC = () => {
                       if (view !== 'month') return false;
 
                       const dayName = getDayName(date);
-                      const dateKey = toDateKey(date);
                       const isTooSoon = isDateBeforeBookingLeadTime(date);
                       const isEnabledDay = dayName ? Boolean(dayAvailability[dayName.toLowerCase()]) : false;
-                      const isSpecialDate = specialDates.includes(dateKey) || annualSpecialDates.includes(dateKey.slice(5));
+                      const isSpecialDate = isSpecialBookingDate(date);
 
                       return loadingAvailability || isTooSoon || !isEnabledDay || isSpecialDate;
                     }}

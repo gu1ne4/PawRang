@@ -22,8 +22,10 @@ interface User {
   lastName?: string;
   fullname?: string;
   fullName?: string;
+  profileImage?: string | null;
   userImage?: string;
   userimage?: string;
+  user_image?: string;
   role?: string;
   email?: string;
   contact_number?: string;
@@ -42,13 +44,35 @@ const UserHome: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+  const normalizeHomeUser = (raw: any): User | null => {
+    if (!raw) return null;
+    const profileImage =
+      raw.profileImage ||
+      raw.userImage ||
+      raw.userimage ||
+      raw.user_image ||
+      null;
+
+    return {
+      ...raw,
+      profileImage,
+      userImage: profileImage || undefined,
+      userimage: profileImage || undefined,
+      user_image: profileImage || undefined,
+    };
+  };
+
+  const getStoredUser = (): User | null => {
     try {
       const raw = localStorage.getItem('userSession');
-      return raw ? JSON.parse(raw) : null;
+      return normalizeHomeUser(raw ? JSON.parse(raw) : null);
     } catch {
       return null;
     }
+  };
+
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    return getStoredUser();
   });
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -68,7 +92,22 @@ const UserHome: React.FC = () => {
       .getProfile(currentUser.id)
       .then(res => {
         if (isCancelled) return;
-        const updated = { ...currentUser, ...res.user };
+        const profilePayload = res?.user || res || {};
+        const updated = normalizeHomeUser({
+          ...currentUser,
+          ...profilePayload,
+          profileImage:
+            profilePayload.profileImage ||
+            profilePayload.userImage ||
+            profilePayload.userimage ||
+            profilePayload.user_image ||
+            currentUser.profileImage ||
+            currentUser.userImage ||
+            currentUser.userimage ||
+            currentUser.user_image ||
+            null,
+        });
+        if (!updated) return;
         setCurrentUser(updated);
         localStorage.setItem('userSession', JSON.stringify(updated));
       })
@@ -78,6 +117,21 @@ const UserHome: React.FC = () => {
       isCancelled = true;
     };
   }, [currentUser?.id]);
+
+  useEffect(() => {
+    const refreshFromStorage = () => {
+      const storedUser = getStoredUser();
+      if (storedUser) setCurrentUser(storedUser);
+    };
+
+    window.addEventListener('focus', refreshFromStorage);
+    document.addEventListener('visibilitychange', refreshFromStorage);
+
+    return () => {
+      window.removeEventListener('focus', refreshFromStorage);
+      document.removeEventListener('visibilitychange', refreshFromStorage);
+    };
+  }, []);
 
   useEffect(() => {
     const homePage = document.querySelector('.user-home-page');

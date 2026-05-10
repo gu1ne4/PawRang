@@ -669,9 +669,9 @@ export default function AdminAvailSettings() {
       setEditingSpecialDateOriginalMonth(null);
       setEditingSpecialDateOriginalDay(null);
       setModalVisible2(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save special date:', error);
-      window.alert('Failed to save special date. Please try again.');
+      window.alert(error?.message || 'Failed to save special date. Please try again.');
     }
   };
 
@@ -721,9 +721,9 @@ export default function AdminAvailSettings() {
             getSpecialEventDay(event)
           );
           setSpecialDates((prev) => prev.filter((item) => getSpecialEventIdentifier(item) !== getSpecialEventIdentifier(event)));
-        } catch (error) {
+        } catch (error: any) {
           console.error('Failed to delete special date:', error);
-          window.alert('Failed to delete special date. Please try again.');
+          window.alert(error?.message || 'Failed to delete special date. Please try again.');
         }
       },
       true

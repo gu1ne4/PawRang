@@ -3001,14 +3001,12 @@ def save_emr_record_payload(data, existing_record_id=None, branch_scope=None):
             branch_scope=branch_scope,
             fallback_branch_id=visit.get("branchId") or visit.get("branch_id") or data.get("branchId") or data.get("branch_id"),
         )
-        _, branch_access_error = validate_branch_scope_access(branch_scope, visit_branch_id)
-        can_save_branchless_emr_visit = (
-            branch_access_error == "Branch is required"
-            and branch_scope
-            and branch_scope.get("can_access_all")
-            and visit_branch_id is None
+        _, branch_access_error = validate_branch_scope_access(
+            branch_scope,
+            visit_branch_id,
+            allow_unassigned=True,
         )
-        if branch_access_error and not can_save_branchless_emr_visit:
+        if branch_access_error:
             raise ValueError(branch_access_error)
 
         visit_payload = {
@@ -5702,6 +5700,25 @@ def validate_patient_appointment_lead_time(appointment_date_value, label="Appoin
     if selected_date < earliest_allowed:
         raise ValueError(f"{label} must be at least 2 days after today.")
 
+    validate_appointment_date_not_special(selected_date.isoformat(), label)
+    return selected_date
+
+
+def validate_appointment_date_not_special(appointment_date_value, label="Appointment date"):
+    try:
+        selected_date = datetime.strptime(str(appointment_date_value or ""), "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError(f"{label} must be a valid date.")
+
+    try:
+        special_dates = supabase_admin.table('special_dates').select('*').execute().data or []
+    except Exception as e:
+        print(f"Special date validation warning: {e}")
+        return selected_date
+
+    if is_special_date_blocked(selected_date, special_dates):
+        raise ValueError(f"{label} is blocked by clinic special dates. Please choose another date.")
+
     return selected_date
 
 
@@ -5714,6 +5731,7 @@ def validate_admin_appointment_not_same_day(appointment_date_value, label="Appoi
     if selected_date <= get_current_manila_date():
         raise ValueError(f"{label} cannot be today or in the past. Please choose tomorrow or a later date.")
 
+    validate_appointment_date_not_special(selected_date.isoformat(), label)
     return selected_date
 
 
@@ -7558,6 +7576,11 @@ def create_appointment_record(data, allow_walk_in=False, branch_scope=None):
         if missing_guest_fields:
             raise ValueError(format_missing_required_fields(missing_guest_fields))
 
+        validate_appointment_date_not_special(
+            data.get('appointment_date') or data.get('date'),
+            "Appointment date"
+        )
+
         walk_in_email = data.get('walk_in_email') or ''
         walk_in_phone = data.get('walk_in_phone') or ''
         response = supabase_admin.table('walkin_appointments').insert({
@@ -7653,6 +7676,8 @@ def create_appointment_record(data, allow_walk_in=False, branch_scope=None):
     missing = [label for label, value in required_fields.items() if value in (None, "")]
     if missing:
         raise ValueError(format_missing_required_fields(missing))
+
+    validate_appointment_date_not_special(appointment_date, "Appointment date")
 
     response = supabase_admin.table('appointments').insert({
         "owner_id": owner_id,
@@ -8460,7 +8485,11 @@ def update_emr_lab_result_owner_visibility(lab_result_id):
         if branch_error:
             return jsonify({"error": branch_error}), 400
         visit_row = get_single_row("medical_record_visits", "medical_record_visit_id", existing_row.get("medical_record_visit_id"))
-        _, branch_access_error = validate_branch_scope_access(branch_scope, (visit_row or {}).get("branch_id"))
+        _, branch_access_error = validate_branch_scope_access(
+            branch_scope,
+            (visit_row or {}).get("branch_id"),
+            allow_unassigned=True,
+        )
         if branch_access_error:
             return jsonify({"error": branch_access_error}), 403
 
@@ -8550,7 +8579,11 @@ def update_emr_vaccination_owner_visibility(vaccination_id):
         if branch_error:
             return jsonify({"error": branch_error}), 400
         visit_row = get_single_row("medical_record_visits", "medical_record_visit_id", existing_row.get("medical_record_visit_id"))
-        _, branch_access_error = validate_branch_scope_access(branch_scope, (visit_row or {}).get("branch_id"))
+        _, branch_access_error = validate_branch_scope_access(
+            branch_scope,
+            (visit_row or {}).get("branch_id"),
+            allow_unassigned=True,
+        )
         if branch_access_error:
             return jsonify({"error": branch_access_error}), 403
 
@@ -8929,9 +8962,11 @@ def require_actor_branch_scope(data=None):
     return get_actor_branch_scope(actor_id)
 
 
-def validate_branch_scope_access(scope, branch_id):
+def validate_branch_scope_access(scope, branch_id, allow_unassigned=False):
     normalized_branch_id = parse_branch_id(branch_id)
     if normalized_branch_id is None:
+        if allow_unassigned and (not scope or scope.get("can_access_all")):
+            return None, None
         return None, "Branch is required"
     if scope and not scope.get("can_access_all") and scope.get("branch_id") != normalized_branch_id:
         return None, "You can only access records from your assigned branch"
@@ -9665,9 +9700,15 @@ def create_billing_invoice():
             minimum=1,
             allow_none=True,
         )
+        if branch_id is None:
+            branch_id = resolve_billing_source_branch_id(source_record_type, source_record_id)
         if branch_id is None and branch_scope and not branch_scope.get("can_access_all"):
             branch_id = branch_scope.get("branch_id")
-        branch_id, branch_access_error = validate_branch_scope_access(branch_scope, branch_id)
+        branch_id, branch_access_error = validate_branch_scope_access(
+            branch_scope,
+            branch_id,
+            allow_unassigned=True,
+        )
         if branch_access_error:
             return jsonify({"error": branch_access_error}), 403
 
@@ -10079,7 +10120,11 @@ def record_billing_invoice_payment(invoice_id):
                 status="Failed",
             )
             return jsonify({"error": "Invoice not found"}), 404
-        _, branch_access_error = validate_branch_scope_access(branch_scope, invoice_record.get("branch_id"))
+        _, branch_access_error = validate_branch_scope_access(
+            branch_scope,
+            invoice_record.get("branch_id"),
+            allow_unassigned=True,
+        )
         if branch_access_error:
             return jsonify({"error": branch_access_error}), 403
 
@@ -10267,7 +10312,11 @@ def delete_billing_invoices():
             context="Fetch billing invoices for delete audit",
         ).data or []
         for invoice in invoice_rows:
-            _, branch_access_error = validate_branch_scope_access(branch_scope, invoice.get("branch_id"))
+            _, branch_access_error = validate_branch_scope_access(
+                branch_scope,
+                invoice.get("branch_id"),
+                allow_unassigned=True,
+            )
             if branch_access_error:
                 return jsonify({"error": branch_access_error}), 403
 
@@ -10838,7 +10887,11 @@ def read_admin_notification(notification_id):
         branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
         if branch_error:
             return jsonify({"error": branch_error}), 400
-        _, branch_access_error = validate_branch_scope_access(branch_scope, notification.get('branch_id'))
+        _, branch_access_error = validate_branch_scope_access(
+            branch_scope,
+            notification.get('branch_id'),
+            allow_unassigned=True,
+        )
         if branch_access_error:
             return jsonify({"error": branch_access_error}), 403
 
@@ -10860,7 +10913,11 @@ def ensure_admin_notification_access(notification, branch_scope):
         return 'Notification not found', 404
     if branch_scope and branch_scope.get('can_access_all'):
         return None, None
-    _, branch_error = validate_branch_scope_access(branch_scope, notification.get('branch_id'))
+    _, branch_error = validate_branch_scope_access(
+        branch_scope,
+        notification.get('branch_id'),
+        allow_unassigned=True,
+    )
     if branch_error:
         return branch_error, 403
     return None, None
@@ -10881,7 +10938,11 @@ def get_accessible_admin_notifications(notification_ids, branch_scope):
         return notifications, None, None
 
     for notification in notifications:
-        _, branch_error = validate_branch_scope_access(branch_scope, notification.get('branch_id'))
+        _, branch_error = validate_branch_scope_access(
+            branch_scope,
+            notification.get('branch_id'),
+            allow_unassigned=True,
+        )
         if branch_error:
             return notifications, branch_error, 403
 
@@ -12372,7 +12433,7 @@ def build_billing_source_records(actor_id=None):
                 "services": service_names,
                 "serviceItems": service_items,
                 "amount": amount,
-                "branchId": None,
+                "branchId": visit.get("branchId") or visit.get("branch_id"),
                 "status": "completed",
                 "billingInvoiceId": visit.get("billingInvoiceId"),
                 "billingInvoiceNumber": visit.get("billingInvoiceNumber"),
@@ -12565,6 +12626,26 @@ def build_billing_source_records(actor_id=None):
         "appointments": appointments,
         "walkins": walkins,
     }
+
+
+def resolve_billing_source_branch_id(source_record_type, source_record_id):
+    normalized_type = str(source_record_type or "").strip().lower()
+    if normalized_type in {"walk-in", "walkin_appointment"}:
+        normalized_type = "walkin"
+    if normalized_type not in {"appointment", "walkin", "visit"} or source_record_id in (None, ""):
+        return None
+
+    try:
+        if normalized_type == "appointment":
+            source_record = get_single_row("appointments", "appointment_id", source_record_id)
+        elif normalized_type == "walkin":
+            source_record = get_single_row("walkin_appointments", "walkin_id", source_record_id)
+        else:
+            source_record = get_single_row("medical_record_visits", "medical_record_visit_id", source_record_id)
+        return parse_branch_id((source_record or {}).get("branch_id"))
+    except Exception as source_error:
+        print(f"Billing source branch lookup error: {source_error}")
+        return None
 
 
 def generate_billing_invoice_number():
@@ -14849,6 +14930,11 @@ def choose_another_date(token):
             "Please choose a date within the current month or next month only."
         )
 
+    try:
+        validate_appointment_date_not_special(selected_preferred_date.isoformat(), "Preferred date")
+    except ValueError as value_error:
+        return render_choose_another_date_page(req, str(value_error))
+
     combined_note = build_patient_preference_note(
         preferred_date,
         preferred_time,
@@ -14900,12 +14986,12 @@ def choose_another_date(token):
 
 @app.route('/api/available-time-slots', methods=['GET'])
 def get_available_time_slots():
-    date = (request.args.get('date') or '').strip()
-    if not date:
+    date_param = (request.args.get('date') or '').strip()
+    if not date_param:
         return jsonify({"timeSlots": []}), 200
 
     try:
-        selected_date = datetime.strptime(date, "%Y-%m-%d").date()
+        selected_date = datetime.strptime(date_param, "%Y-%m-%d").date()
     except ValueError:
         return jsonify({"error": "Invalid date format. Expected YYYY-MM-DD."}), 400
 

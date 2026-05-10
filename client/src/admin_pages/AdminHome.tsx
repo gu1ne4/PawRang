@@ -62,6 +62,10 @@ interface CurrentUser {
   fullName?: string;
   role: string;
   userImage?: string;
+  userimage?: string;
+  user_image?: string;
+  profileImage?: string;
+  employee_image?: string;
   branch_id?: number | string | null;
   branch_name?: string;
   branchName?: string;
@@ -138,6 +142,26 @@ const isBothBranchesLabel = (value?: string): boolean => {
   return name.includes('both') || name.includes('main') || name.includes('all branches');
 };
 
+const normalizeAdminHomeUser = (raw: any): CurrentUser | null => {
+  if (!raw) return null;
+  const profileImage =
+    raw.profileImage ||
+    raw.employee_image ||
+    raw.userImage ||
+    raw.userimage ||
+    raw.user_image ||
+    '';
+
+  return {
+    ...raw,
+    profileImage,
+    employee_image: profileImage || undefined,
+    userImage: profileImage || undefined,
+    userimage: profileImage || undefined,
+    user_image: profileImage || undefined,
+  };
+};
+
 const AdminHome: React.FC = () => {
   const navigate = useNavigate();
 
@@ -212,7 +236,7 @@ const AdminHome: React.FC = () => {
       const session = localStorage.getItem('userSession');
       
       if (session) {
-        setCurrentUser(JSON.parse(session));
+        setCurrentUser(normalizeAdminHomeUser(JSON.parse(session)));
       } else {
         // 🛑 TEMPORARILY DISABLED: The Bouncer is asleep
         // navigate('/login', { replace: true });
@@ -229,7 +253,7 @@ const AdminHome: React.FC = () => {
   const getStoredAdminId = (): string => {
     try {
       const session = localStorage.getItem('userSession');
-      const parsed = session ? JSON.parse(session) : null;
+      const parsed = normalizeAdminHomeUser(session ? JSON.parse(session) : null);
       return parsed?.id || parsed?.pk || '';
     } catch {
       return '';
