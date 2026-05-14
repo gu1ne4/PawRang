@@ -871,7 +871,7 @@ export default function UserDetailsView({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div>
-                  <span style={{ fontSize: '14px', color: '#666' }}>Assigned Doctor: </span>
+                  <span style={{ fontSize: '14px', color: '#666' }}>Reserved Doctor: </span>
                   <strong style={{ color: assignedDoctor === 'Not Assigned' ? '#f57c00' : '#333' }}>{assignedDoctor}</strong>
                 </div>
                 <div>
@@ -917,7 +917,7 @@ export default function UserDetailsView({
                   }}
                 >
                   <IoMedical size={14} />
-                  <span>{assignedDoctor === 'Not Assigned' ? 'Assign Doctor' : 'Change Doctor'}</span>
+                  <span>{assignedDoctor === 'Not Assigned' ? 'Assign Doctor' : 'Override Doctor'}</span>
                 </button>
               )}
             </div>

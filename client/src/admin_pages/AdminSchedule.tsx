@@ -1463,12 +1463,17 @@ const AssignDoctorModal = ({ visible, onClose, appointment, doctors, onAssign }:
         <div className="modalOverlay">
             <div className="modalContainer" style={{ width: '60%', maxWidth: '600px', display: 'flex', flexDirection: 'column', padding: '30px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <h2 style={{ fontSize: '24px', fontWeight: 'bold' }}>Assign Doctor</h2>
+                    <h2 style={{ fontSize: '24px', fontWeight: 'bold' }}>{appointment?.assignedDoctor ? 'Override Doctor' : 'Assign Doctor'}</h2>
                     <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><IoClose size={24} color="#333" /></button>
                 </div>
 
                 <div style={{ overflowY: 'auto', flex: 1 }}>
-                    <p style={{ fontSize: '16px', marginBottom: '20px', color: '#555' }}>Assign a doctor to <strong style={{color: '#333'}}>{appointment?.petName}'s</strong> appointment</p>
+                    <p style={{ fontSize: '16px', marginBottom: '20px', color: '#555' }}>
+                        {appointment?.assignedDoctor
+                            ? <>This appointment already has a reserved doctor slot. Override it only for schedule corrections or staff changes.</>
+                            : <>Assign a doctor to <strong style={{color: '#333'}}>{appointment?.petName}'s</strong> appointment.</>
+                        }
+                    </p>
 
                     <div style={{ backgroundColor: '#f9f9f9', padding: '15px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #eee' }}>
                         <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '10px' }}>Appointment Details</h4>
@@ -1515,7 +1520,7 @@ const AssignDoctorModal = ({ visible, onClose, appointment, doctors, onAssign }:
                         disabled={!selectedDoctorId || loading} 
                         style={{ padding: '10px 25px', backgroundColor: (!selectedDoctorId) ? '#ccc' : '#3d67ee', border: 'none', borderRadius: '8px', cursor: (!selectedDoctorId || loading) ? 'not-allowed' : 'pointer', color: 'white', fontWeight: '600' }}
                     >
-                        {loading ? 'Assigning...' : 'Assign Doctor'}
+                        {loading ? 'Saving...' : appointment?.assignedDoctor ? 'Save Override' : 'Assign Doctor'}
                     </button>
                 </div>
             </div>
@@ -2661,7 +2666,9 @@ export default function Schedule({ viewerRole = 'admin', readOnly = false, hideB
                     message={confirmationType === 'cancel'
                         ? 'Are you sure you want to cancel this appointment? This will move it to history.'
                         : confirmationType === 'accept'
-                            ? 'Accept this appointment and mark it as confirmed?'
+                            ? selectedAppointmentForAction?.assignedDoctor
+                                ? `Accept this appointment and mark it as confirmed? The reserved doctor is ${selectedAppointmentForAction.doctor || 'already assigned'}.`
+                                : 'Accept this appointment and mark it as confirmed? No reserved doctor is shown yet, so confirm the schedule before accepting.'
                             : 'Mark this appointment as completed? It will be moved to history.'
                     }
                     confirmText={

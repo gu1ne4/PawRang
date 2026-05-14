@@ -59,6 +59,12 @@ interface TimeSlotRecord {
   start_time: string;
   end_time: string;
   is_available?: boolean;
+  capacity?: number;
+  bookedCount?: number;
+  booked_count?: number;
+  availableSlots?: number;
+  available_slots?: number;
+  displayText?: string;
 }
 
 interface SpecialDateRecord {
@@ -523,15 +529,42 @@ const UserAppointmentBook: React.FC = () => {
     }
 
     let isCancelled = false;
+    const capacityManagedServiceIds = new Set([2, 3, 6, 7, 8, 9]);
+    const shouldUseCapacity =
+      Boolean(selectedBranch && selectedService && capacityManagedServiceIds.has(selectedService.id));
+    const capacityServiceName =
+      selectedService?.id === 8 && selectedLabOptions.length === 1
+        ? selectedLabOptions[0].name
+        : selectedService?.name;
+    const slotParams = new URLSearchParams({
+      date: toDateKey(selectedDate),
+    });
+
+    if (shouldUseCapacity && selectedBranch && capacityServiceName) {
+      slotParams.set('branch_id', String(selectedBranch.branch_id));
+      slotParams.set('service', capacityServiceName);
+    }
+
     setLoadingTimeSlots(true);
-    requestJson<{ timeSlots?: TimeSlotRecord[] }>(`${API_URL}/api/available-time-slots?date=${encodeURIComponent(toDateKey(selectedDate))}`)
+    requestJson<{ timeSlots?: TimeSlotRecord[] }>(`${API_URL}/api/available-time-slots?${slotParams.toString()}`)
       .then(data => {
         if (isCancelled) return;
 
         const rawSlots = Array.isArray(data?.timeSlots) ? data.timeSlots : [];
         const formattedSlots = rawSlots
           .filter((slot: TimeSlotRecord) => slot?.start_time && slot?.end_time && slot?.is_available !== false)
-          .map((slot: any) => slot?.displayText || `${formatSlotTime(slot.start_time)} - ${formatSlotTime(slot.end_time)}`);
+          .filter((slot: TimeSlotRecord) => {
+            if (!shouldUseCapacity) return true;
+            const availableSlots = Number(slot.availableSlots ?? slot.available_slots ?? 0);
+            return availableSlots > 0;
+          })
+          .map((slot: TimeSlotRecord) => {
+            const displayText = slot.displayText || `${formatSlotTime(slot.start_time)} - ${formatSlotTime(slot.end_time)}`;
+            if (!shouldUseCapacity) return displayText;
+            const availableSlots = Number(slot.availableSlots ?? slot.available_slots ?? 0);
+            const capacity = Number(slot.capacity ?? 0);
+            return capacity > 0 ? `${displayText} (${availableSlots}/${capacity} slots)` : displayText;
+          });
 
         setDayTimeSlots(formattedSlots);
         setSelectedTime(prev => (prev && formattedSlots.includes(prev) ? prev : null));
@@ -549,7 +582,7 @@ const UserAppointmentBook: React.FC = () => {
     return () => {
       isCancelled = true;
     };
-  }, [selectedDate, dayAvailability, specialDates, annualSpecialDates]);
+  }, [selectedDate, selectedBranch, selectedService, selectedLabOptions, dayAvailability, specialDates, annualSpecialDates]);
 
   useEffect(() => {
     const handleResize = () => setIsMobileCarousel(isMobileViewport());
@@ -587,7 +620,7 @@ const UserAppointmentBook: React.FC = () => {
 
   /** Converts a display slot like "1:00PM - 2:00PM" → "13:00:00" */
   const toDbTime = (slot: string): string => {
-    const start = slot.split(' - ')[0].trim();           // "1:00PM"
+    const start = slot.split(' - ')[0].replace(/\s*\(.+\)$/, '').trim();           // "1:00PM"
     const [time, meridiem] = start.split(/(AM|PM)/i);   // ["1:00", "PM"]
     let [hours, minutes]   = time.split(':').map(Number);
     if (meridiem.toUpperCase() === 'PM' && hours !== 12) hours += 12;
