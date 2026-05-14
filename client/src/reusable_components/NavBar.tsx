@@ -83,9 +83,12 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
     !isAdminWorkspace &&
     (location.pathname.startsWith('/doctor') || isDoctorRole(normalizedRole));
   const homePath = isDoctorWorkspace ? '/doctor/home' : '/admin/home';
-  const appointmentsPath = isDoctorWorkspace ? '/doctor/appointments' : '/admin/schedule';
+  const appointmentSchedulePath = isDoctorWorkspace ? '/doctor/appointments/schedule' : '/admin/schedule';
+  const appointmentAvailabilityPath = isDoctorWorkspace ? '/doctor/appointments/availability' : '/admin/availability';
+  const appointmentHistoryPath = isDoctorWorkspace ? '/doctor/appointments/history' : '/admin/history';
   const recordsPath = isDoctorWorkspace ? '/doctor/medical-records' : '/patient-records';
   const inventoryPath = isDoctorWorkspace ? '/doctor/inventory' : '/inventory';
+  const settingsPath = isDoctorWorkspace ? '/doctor/settings' : '/admin/settings';
   const profileImage =
     currentUser?.profileImage ||
     currentUser?.employee_image ||
@@ -102,7 +105,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
 
   const isAppointmentsActive = (): boolean => {
     if (isDoctorWorkspace) {
-      return isActive('/doctor/appointments');
+      return location.pathname === '/doctor/appointments' || location.pathname.startsWith('/doctor/appointments/');
     }
     return isActive('/admin/schedule') || isActive('/admin/availability') || isActive('/admin/history');
   };
@@ -473,17 +476,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
               )}
 
               <div className="navMenuSection" ref={appointmentsDropdownRef}>
-                {isDoctorWorkspace ? (
-                  <button 
-                    className={`navBtn ${isAppointmentsActive() ? 'active' : ''}`}
-                    onClick={() => handleNavigate(appointmentsPath)}
-                    onMouseEnter={(e) => handleMouseEnter(e, 'Appointments')}
-                    onMouseLeave={handleMouseLeave}
-                  >
-                    <IoCalendarClearOutline size={isCollapsed ? 20 : 16} />
-                    {!isCollapsed && <span>Appointments</span>}
-                  </button>
-                ) : !isCollapsed ? (
+                {!isCollapsed || isMobile ? (
                   <>
                     <button 
                       className={`navBtn ${isAppointmentsActive() ? 'active' : ''}`}
@@ -497,22 +490,22 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                     {showAppointmentsDropdown && (
                       <div className="navSubMenu">
                         <button 
-                          className={`navBtn subNavBtn ${isActive('/admin/schedule') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/admin/schedule')}
+                          className={`navBtn subNavBtn ${isActive(appointmentSchedulePath) || (isDoctorWorkspace && isActive('/doctor/appointments')) ? 'active' : ''}`}
+                          onClick={() => handleNavigate(appointmentSchedulePath)}
                         >
                           <IoCalendarOutline size={14} />
                           <span>Schedule</span>
                         </button>
                         <button 
-                          className={`navBtn subNavBtn ${isActive('/admin/availability') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/admin/availability')}
+                          className={`navBtn subNavBtn ${isActive(appointmentAvailabilityPath) ? 'active' : ''}`}
+                          onClick={() => handleNavigate(appointmentAvailabilityPath)}
                         >
                           <IoTodayOutline size={14} />
                           <span>Availability Settings</span>
                         </button>
                         <button 
-                          className={`navBtn subNavBtn ${isActive('/admin/history') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/admin/history')}
+                          className={`navBtn subNavBtn ${isActive(appointmentHistoryPath) ? 'active' : ''}`}
+                          onClick={() => handleNavigate(appointmentHistoryPath)}
                         >
                           <IoTimeOutline size={14} />
                           <span>History</span>
@@ -533,19 +526,19 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                     {showAppointmentsDropdown && (
                       <div className="collapsedDropdown">
                         <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/admin/schedule', () => setShowAppointmentsDropdown(false));
+                          handleNavigate(appointmentSchedulePath, () => setShowAppointmentsDropdown(false));
                         }}>
                           <IoCalendarOutline size={14} />
                           <span>Schedule</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/admin/availability', () => setShowAppointmentsDropdown(false));
+                          handleNavigate(appointmentAvailabilityPath, () => setShowAppointmentsDropdown(false));
                         }}>
                           <IoTodayOutline size={14} />
                           <span>Availability Settings</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/admin/history', () => setShowAppointmentsDropdown(false));
+                          handleNavigate(appointmentHistoryPath, () => setShowAppointmentsDropdown(false));
                         }}>
                           <IoTimeOutline size={14} />
                           <span>History</span>
@@ -708,19 +701,17 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                 </div>
               )}
 
-              {!isDoctorWorkspace && (
-                <div className="navMenuSection">
-                  <button 
-                    className={`navBtn ${isActive('/admin/settings') ? 'active' : ''}`} 
-                    onClick={() => handleNavigate('/admin/settings')}
-                    onMouseEnter={(e) => handleMouseEnter(e, 'Settings')}
-                    onMouseLeave={handleMouseLeave}
-                  >
-                    <IoSettingsOutline size={isCollapsed ? 20 : 16} />
-                    {!isCollapsed && <span>Settings</span>}
-                  </button>
-                </div>
-              )}
+              <div className="navMenuSection">
+                <button
+                  className={`navBtn ${isActive(settingsPath) ? 'active' : ''}`}
+                  onClick={() => handleNavigate(settingsPath)}
+                  onMouseEnter={(e) => handleMouseEnter(e, 'Settings')}
+                  onMouseLeave={handleMouseLeave}
+                >
+                  <IoSettingsOutline size={isCollapsed ? 20 : 16} />
+                  {!isCollapsed && <span>Settings</span>}
+                </button>
+              </div>
             </div>
           </div>
 

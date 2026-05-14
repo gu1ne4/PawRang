@@ -1542,7 +1542,8 @@ const TableView = ({
   setTableSearchQuery,
   doctors,
   userData,
-  handleCreateAppointment
+  handleCreateAppointment,
+  canCreateAppointment = true
 }: any) => {
   const hasActiveFilters = Boolean(
     service ||
@@ -1589,10 +1590,12 @@ const TableView = ({
           </p>
         </div>
         
-        <button onClick={handleCreateAppointment} className="blackBtn" style={{ backgroundColor: '#3d67ee', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <IoAddCircle size={20} color="#fff" />
-          <span>Create Appointment</span>
-        </button>
+        {canCreateAppointment && (
+          <button onClick={handleCreateAppointment} className="blackBtn" style={{ backgroundColor: '#3d67ee', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <IoAddCircle size={20} color="#fff" />
+            <span>Create Appointment</span>
+          </button>
+        )}
       </div>
       
       {loading ? (
@@ -1842,9 +1845,22 @@ const TableView = ({
 // ==========================================
 //  6. MAIN COMPONENT (SCHEDULE)
 // ==========================================
-export default function Schedule() {
+type AppointmentViewerRole = 'admin' | 'doctor';
+
+type ScheduleProps = {
+    viewerRole?: AppointmentViewerRole;
+    readOnly?: boolean;
+    hideBillingActions?: boolean;
+    allowCreateAppointment?: boolean;
+};
+
+export default function Schedule({ viewerRole = 'admin', readOnly = false, hideBillingActions = false, allowCreateAppointment = false }: ScheduleProps = {}) {
     const navigate = useNavigate();
     const location = useLocation();
+    const isDoctorMode = viewerRole === 'doctor';
+    const isReadOnly = readOnly;
+    const canCreateAppointments = !isReadOnly || allowCreateAppointment;
+    const shouldHideBillingActions = hideBillingActions || isDoctorMode;
 
     const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
     const [service, setService] = useState('');
@@ -1955,6 +1971,7 @@ export default function Schedule() {
     };
 
     const openDoctorModal = (appointment: any) => {
+        if (isReadOnly) return;
         setSelectedAppointment(appointment);
         setShowDoctorModal(true);
     };
@@ -1966,6 +1983,7 @@ export default function Schedule() {
     };
 
     const handleAssignDoctor = async (appointmentId: any, doctorId: any, recordType: string = 'appointment') => {
+        if (isReadOnly) return;
         try {
             const result = await apiService.assignDoctor(appointmentId, doctorId, recordType);
             const updatedUserData = userData.map(appointment => {
@@ -2006,6 +2024,7 @@ export default function Schedule() {
     };
 
     const handleCancelAppointment = (appointment: any) => {
+        if (isReadOnly) return;
         if (!appointment || !appointment.id) {
             showAlert('error', 'Cancel Appointment Failed', 'Invalid appointment data.');
             return;
@@ -2015,6 +2034,7 @@ export default function Schedule() {
     };
 
     const handleCancelWithReason = async (cancellationData: any) => {
+        if (isReadOnly) return;
         try {
             setLoading(true);
             beginAppointmentAction('cancel', selectedAppointmentForCancel);
@@ -2054,6 +2074,7 @@ export default function Schedule() {
     };
 
     const handleRescheduleAppointment = (appointment: any) => {
+        if (isReadOnly) return;
         if (!appointment || !appointment.id) {
             showAlert('error', 'Reschedule Failed', 'Invalid appointment data.');
             return;
@@ -2071,6 +2092,7 @@ export default function Schedule() {
     };
 
     const handleRescheduleSubmit = async (rescheduleData: any) => {
+        if (isReadOnly) return;
         try {
             setLoading(true);
             beginAppointmentAction('reschedule', selectedAppointmentForReschedule);
@@ -2097,6 +2119,7 @@ export default function Schedule() {
     };
 
     const handleAcceptClientPreference = async (appointment: any, requestDetails: any) => {
+        if (isReadOnly) return;
         if (!requestDetails?.request_id) {
             showAlert('error', 'Preference Review Failed', 'Missing reschedule request details.');
             return;
@@ -2129,6 +2152,7 @@ export default function Schedule() {
     };
 
     const handleDeclineClientPreference = (appointment: any, requestDetails: any) => {
+        if (isReadOnly) return;
         if (!requestDetails?.request_id) {
             showAlert('error', 'Preference Review Failed', 'Missing reschedule request details.');
             return;
@@ -2140,6 +2164,7 @@ export default function Schedule() {
     };
 
     const handleDeclineClientPreferenceSubmit = async (declineReason: string) => {
+        if (isReadOnly) return;
         if (!selectedPreferenceRequest?.request_id) {
             showAlert('error', 'Preference Review Failed', 'Missing reschedule request details.');
             return;
@@ -2171,6 +2196,7 @@ export default function Schedule() {
     };
 
     const handleAcceptAppointment = (appointment: any) => {
+        if (isReadOnly) return;
         if (!appointment || !appointment.id) {
             showAlert('error', 'Accept Appointment Failed', 'Invalid appointment data.');
             return;
@@ -2213,6 +2239,7 @@ export default function Schedule() {
     };
 
     const handleCompleteAppointment = (appointment: any) => {
+        if (isReadOnly) return;
         if (!appointment || !appointment.id) {
             showAlert('error', 'Complete Appointment Failed', 'Invalid appointment data.');
             return;
@@ -2235,7 +2262,13 @@ export default function Schedule() {
                         setCurrentView('table');
                         setSelectedUser(null);
                     }
-                    showAlert('success', 'Appointment Completed', 'Appointment marked as completed, moved to history, and is ready for billing.');
+                    showAlert(
+                        'success',
+                        'Appointment Completed',
+                        shouldHideBillingActions
+                            ? 'Appointment marked as completed and moved to history.'
+                            : 'Appointment marked as completed, moved to history, and is ready for billing.'
+                    );
                 }
             } catch (error: any) {
                 showAlert('error', 'Complete Appointment Failed', error.message || 'Failed to complete appointment.');
@@ -2249,6 +2282,7 @@ export default function Schedule() {
     };
 
     const handleProceedToBilling = (appointment: any) => {
+        if (shouldHideBillingActions) return;
         if (!appointment) {
             showAlert('error', 'Billing Unavailable', 'Appointment details are unavailable.');
             return;
@@ -2275,7 +2309,10 @@ export default function Schedule() {
         });
     };
 
-    const handleCreateAppointment = () => setShowCreateModal(true);
+    const handleCreateAppointment = () => {
+        if (!canCreateAppointments) return;
+        setShowCreateModal(true);
+    };
 
     useEffect(() => {
         selectedUserRef.current = selectedUser;
@@ -2287,7 +2324,7 @@ export default function Schedule() {
         if (indicateRefresh) setRefreshingDetails(true);
         
         try {
-            const response = await apiService.getAppointmentsForTable();
+            const response = await apiService.getAppointmentsForTable(undefined, isDoctorMode ? { scope: 'all' } : {});
             const formattedData = response.appointments || response || [];
 
             setUserData(formattedData);
@@ -2319,7 +2356,7 @@ export default function Schedule() {
             if (!silent) setLoading(false);
             if (indicateRefresh) setRefreshingDetails(false);
         }
-    }, []);
+    }, [isDoctorMode]);
 
     const handleManualRefresh = async () => {
         await loadAppointments({ silent: true, indicateRefresh: true });
@@ -2327,7 +2364,7 @@ export default function Schedule() {
 
     const loadDoctors = async () => {
         try {
-            const doctorsList = await apiService.getDoctors();
+            const doctorsList = await apiService.getDoctors(undefined, isDoctorMode ? { scope: 'all' } : {});
             const formattedDoctors = doctorsList
                 .filter((doctor: any) => {
                     const normalizedRole = (doctor.role || '').toString().trim().toLowerCase();
@@ -2552,6 +2589,7 @@ export default function Schedule() {
                                 doctors={doctors}
                                 userData={userData}
                                 handleCreateAppointment={handleCreateAppointment}
+                                canCreateAppointment={canCreateAppointments}
                             />
                         ) : (
                             <UserDetailsView 
@@ -2568,59 +2606,77 @@ export default function Schedule() {
                                 onRefresh={handleManualRefresh}
                                 refreshing={refreshingDetails}
                                 actionBusyType={appointmentActionLoading?.type || null}
+                                readOnly={isReadOnly}
+                                hideBillingActions={shouldHideBillingActions}
+                                showMedicalRecordsAction={isDoctorMode}
+                                onOpenMedicalRecords={(appointment) => navigate('/doctor/medical-records', {
+                                    state: {
+                                        appointmentId: appointment.dbId ?? appointment.id,
+                                        recordType: appointment.recordType || (appointment.is_walk_in ? 'walkin' : 'appointment'),
+                                        petName: appointment.petName || appointment.pet_name,
+                                    }
+                                })}
+                                showInventoryAction={isDoctorMode}
+                                onOpenInventory={() => navigate('/doctor/inventory')}
                             />
                         )}
                     </div>
                 </div>
             </div>
 
-            <AssignDoctorModal 
-                visible={showDoctorModal}
-                onClose={() => setShowDoctorModal(false)}
-                appointment={selectedAppointment}
-                doctors={doctors}
-                onAssign={handleAssignDoctor}
-            />
+            {!isReadOnly && (
+                <AssignDoctorModal
+                    visible={showDoctorModal}
+                    onClose={() => setShowDoctorModal(false)}
+                    appointment={selectedAppointment}
+                    doctors={doctors}
+                    onAssign={handleAssignDoctor}
+                />
+            )}
 
-            <CreateAppointmentModal 
-                visible={showCreateModal}
-                onClose={handleCloseModal}
-                onSubmit={handleSubmitAppointment}
-                branches={branches}
-            />
+            {canCreateAppointments && (
+                <CreateAppointmentModal
+                    visible={showCreateModal}
+                    onClose={handleCloseModal}
+                    onSubmit={handleSubmitAppointment}
+                    branches={branches}
+                />
+            )}
 
-            <ConfirmationModal 
-                visible={showConfirmationModal}
-                onClose={() => {
-                    setShowConfirmationModal(false);
-                    setSelectedAppointmentForAction(null);
-                }}
-                onConfirm={confirmationAction}
-                title={
-                    confirmationType === 'cancel'
-                        ? 'Cancel Appointment'
+            {!isReadOnly && (
+                <ConfirmationModal
+                    visible={showConfirmationModal}
+                    onClose={() => {
+                        setShowConfirmationModal(false);
+                        setSelectedAppointmentForAction(null);
+                    }}
+                    onConfirm={confirmationAction}
+                    title={
+                        confirmationType === 'cancel'
+                            ? 'Cancel Appointment'
+                            : confirmationType === 'accept'
+                                ? 'Accept Appointment'
+                                : 'Complete Appointment'
+                    }
+                    message={confirmationType === 'cancel'
+                        ? 'Are you sure you want to cancel this appointment? This will move it to history.'
                         : confirmationType === 'accept'
-                            ? 'Accept Appointment'
-                            : 'Complete Appointment'
-                }
-                message={confirmationType === 'cancel' 
-                    ? 'Are you sure you want to cancel this appointment? This will move it to history.'
-                    : confirmationType === 'accept'
-                        ? 'Accept this appointment and mark it as confirmed?'
-                        : 'Mark this appointment as completed? It will be moved to history.'
-                }
-                confirmText={
-                    confirmationType === 'cancel'
-                        ? 'Yes, Cancel'
-                        : confirmationType === 'accept'
-                            ? 'Yes, Accept'
-                            : 'Yes, Complete'
-                }
-                cancelText="No"
-                type={confirmationType}
-            />
+                            ? 'Accept this appointment and mark it as confirmed?'
+                            : 'Mark this appointment as completed? It will be moved to history.'
+                    }
+                    confirmText={
+                        confirmationType === 'cancel'
+                            ? 'Yes, Cancel'
+                            : confirmationType === 'accept'
+                                ? 'Yes, Accept'
+                                : 'Yes, Complete'
+                    }
+                    cancelText="No"
+                    type={confirmationType}
+                />
+            )}
 
-            {showCancelModal && (
+            {!isReadOnly && showCancelModal && (
                 <AdminCancelAppointmentModal 
                     visible={showCancelModal}
                     onClose={() => { setShowCancelModal(false); setSelectedAppointmentForCancel(null); }}
@@ -2630,7 +2686,7 @@ export default function Schedule() {
                 />
             )}
 
-            {showRescheduleModal && (
+            {!isReadOnly && showRescheduleModal && (
                 <AdminRescheduleModal 
                     visible={showRescheduleModal}
                     onClose={() => { setShowRescheduleModal(false); setSelectedAppointmentForReschedule(null); }}
@@ -2640,7 +2696,7 @@ export default function Schedule() {
                 />
             )}
 
-            {showDeclinePreferenceModal && (
+            {!isReadOnly && showDeclinePreferenceModal && (
                 <DeclinePreferenceModal
                     visible={showDeclinePreferenceModal}
                     onClose={closeDeclinePreferenceModal}

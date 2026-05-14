@@ -23,7 +23,6 @@ import {
   IoLocationOutline,
   IoImageOutline,
   IoCamera,
-  IoPersonCircleOutline,
   IoCheckmarkCircleOutline,
   IoCloseCircleOutline,
   IoAlertCircleOutline,
@@ -32,6 +31,8 @@ import Notifications from '../reusable_components/Notifications';
 import pawRangLogomarkWhite from '../assets/PawRang Logomark White.png';
 import branchLP from '../assets/branchLP.jpg';
 import branchTaguig from '../assets/branchTaguig.jpg';
+import defaultUserImg from '../assets/userImg.jpg';
+import { getProfileImageFromRecord, resolveProfileImage } from '../utils/profileImage';
 
 interface User {
   id?: string; 
@@ -42,7 +43,12 @@ interface User {
   email: string;
   role: string;
   status: string;
-  employee_image?: string; 
+  employee_image?: string;
+  profileImage?: string;
+  image?: string;
+  userImage?: string;
+  userimage?: string;
+  user_image?: string;
   created_at?: string;
   branch_id?: number | string | null;
   branch_name?: string;
@@ -161,6 +167,9 @@ const normalizeAdminHomeUser = (raw: any): CurrentUser | null => {
     user_image: profileImage || undefined,
   };
 };
+
+const getEmployeeProfileImage = (user?: User | null): string =>
+  getProfileImageFromRecord(user, defaultUserImg);
 
 const AdminHome: React.FC = () => {
   const navigate = useNavigate();
@@ -474,8 +483,7 @@ const AdminHome: React.FC = () => {
     setNewBranchId(getEmployeeFormBranchId(user));
     setNewStatus((user.status as Status) || 'Active');
     
-    let img = user.employee_image;
-    if (img && !img.startsWith('data:image')) img = `data:image/jpeg;base64,${img}`;
+    const img = getProfileImageFromRecord(user, '');
     setUserImage(img || null);
     
     setEditAccountVisible(true);
@@ -835,17 +843,12 @@ const AdminHome: React.FC = () => {
                       const uName = user.username;
                       const uContact = user.contact_number;
                       
-                      let uImage = user.employee_image;
-                      if (uImage && !uImage.startsWith('data:image')) {
-                          uImage = `data:image/jpeg;base64,${uImage}`;
-                      }
-
                       return (
                         <tr key={user.id || Math.random()}>
                           <td>
                             <div className="userCell">
                               <img 
-                                src={uImage || '../assets/userImg.jpg'} 
+                                src={getEmployeeProfileImage(user)}
                                 alt={uName}
                                 className="userAvatar"
                               />
@@ -936,7 +939,7 @@ const AdminHome: React.FC = () => {
                 <div className="accountAvatarField">
                   <button className="uploadBtn" onClick={pickImage}>
                     {userImage ? (
-                      <img src={userImage} alt="User" className="uploadedImage" />
+                      <img src={resolveProfileImage(userImage, defaultUserImg)} alt="User" className="uploadedImage" />
                     ) : (
                       <div className="uploadPlaceholder">
                         <IoImageOutline size={16} />
@@ -1104,7 +1107,7 @@ const AdminHome: React.FC = () => {
                 <div className="accountAvatarField">
                   <button className="uploadBtn" onClick={pickImage}>
                     {userImage ? (
-                      <img src={userImage} alt="User" className="uploadedImage" />
+                      <img src={resolveProfileImage(userImage, defaultUserImg)} alt="User" className="uploadedImage" />
                     ) : (
                       <div className="uploadPlaceholder">
                         <IoImageOutline size={16} />
@@ -1295,19 +1298,11 @@ const AdminHome: React.FC = () => {
                 <label>Employee Photo</label>
                 <div className="accountAvatarField">
                   <div className="uploadBtn" style={{ cursor: 'default' }}>
-                    {((selectedAccount as User).employee_image) ? (
-                      <img
-                        src={((selectedAccount as User).employee_image?.startsWith('data:image')
-                          ? (selectedAccount as User).employee_image
-                          : `data:image/jpeg;base64,${(selectedAccount as User).employee_image}`)}
-                        alt="Employee Avatar"
-                        className="uploadedImage"
-                      />
-                    ) : (
-                      <div className="uploadPlaceholder">
-                        <IoPersonCircleOutline size={46} color="#3d67ee" />
-                      </div>
-                    )}
+                    <img
+                      src={getEmployeeProfileImage(selectedAccount as User)}
+                      alt="Employee Avatar"
+                      className="uploadedImage"
+                    />
                   </div>
                   <div>
                     <h3>{`${(selectedAccount as User).first_name || ''} ${(selectedAccount as User).last_name || ''}`.trim() || 'Employee Profile'}</h3>

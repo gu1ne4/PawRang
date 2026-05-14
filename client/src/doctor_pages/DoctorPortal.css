@@ -15,6 +15,361 @@
     overflow-y: auto;
 }
 
+.doctorDashboardShell {
+    background-color: #f8fafc;
+    min-height: 100vh;
+}
+
+.doctorDashboardBody {
+    padding-right: 10px;
+    background-color: #f8fafc;
+}
+
+.doctorDashboardLayout {
+    overflow: visible;
+}
+
+.doctorDashboardLeft {
+    padding-right: 15px;
+    padding-left: 10px;
+    overflow: visible;
+}
+
+.doctorDashboardRight {
+    flex: 0.7;
+    gap: 12px;
+    overflow-y: visible;
+    padding-left: 2px;
+}
+
+.doctorDashboardProfile {
+    margin-bottom: 20px;
+    min-height: 140px;
+    background-color: #f4f4f4;
+}
+
+.doctorDashboardProfileHeader {
+    min-height: 100px;
+    padding: 15px;
+}
+
+.doctorDashboardProfileName {
+    margin-left: 140px;
+}
+
+.doctorDashboardAvatar {
+    bottom: -15px;
+}
+
+.doctorDashboardAvatar .doctorAvatar {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 4px solid white;
+}
+
+.doctorDashboardSection {
+    margin-bottom: 20px;
+}
+
+.doctorDashboardSection .sectionTitle {
+    font-size: 15px;
+    margin: 0 0 2px 0;
+}
+
+.doctorDashboardSection .sectionSubtitle {
+    font-size: 11px;
+    margin-bottom: 0;
+}
+
+.doctorDashboardQuickActions .sectionSubtitle {
+    margin-bottom: 16px;
+}
+
+.doctorDashboardSectionHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.doctorDashboardLivePill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background-color: #3d67ee10;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 10px;
+    color: #3d67ee;
+    white-space: nowrap;
+}
+
+.doctorDashboardKpiGrid {
+    display: grid;
+    gap: 12px;
+}
+
+.doctorDashboardKpiCard {
+    background-color: #ffffff;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border: 1px solid #f0f2f5;
+}
+
+.doctorDashboardKpiHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.doctorDashboardKpiHeader span {
+    font-size: 13px;
+    font-weight: 500;
+    color: #64748b;
+}
+
+.doctorDashboardKpiIcon {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.doctorDashboardKpiValue {
+    font-size: 28px;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 8px;
+}
+
+.doctorDashboardKpiHelper {
+    color: #64748b;
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.doctorDashboardActionGrid {
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+}
+
+.doctorDashboardActionGrid .dashboardActionCard span {
+    font-size: 10px;
+    font-weight: 500;
+    text-align: center;
+}
+
+.doctorDashboardCases {
+    padding: 15px;
+    margin-top: 35px;
+    margin-bottom: 15px;
+    background-color: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border: 1px solid #f0f2f5;
+    display: flex;
+    flex-direction: column;
+    max-height: 430px;
+    min-height: 0;
+}
+
+.doctorDashboardCases .cardTitle {
+    font-size: 14px;
+    margin: 0;
+}
+
+.doctorDashboardCases .cardHeader {
+    flex-shrink: 0;
+}
+
+.doctorDashboardCases .viewAllBtn {
+    font-size: 11px;
+}
+
+.doctorDashboardCases .appointmentTotal {
+    font-size: 12px;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+}
+
+.doctorDashboardCases .doctorList {
+    max-height: 310px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+    min-height: 0;
+}
+
+.doctorDashboardCases .doctorList::-webkit-scrollbar,
+.doctorDashboardNotificationsList::-webkit-scrollbar {
+    width: 6px;
+}
+
+.doctorDashboardCases .doctorList::-webkit-scrollbar-track,
+.doctorDashboardNotificationsList::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.doctorDashboardCases .doctorList::-webkit-scrollbar-thumb,
+.doctorDashboardNotificationsList::-webkit-scrollbar-thumb {
+    background: #d8e2f2;
+    border-radius: 999px;
+}
+
+.doctorDashboardCases .doctorList::-webkit-scrollbar-thumb:hover,
+.doctorDashboardNotificationsList::-webkit-scrollbar-thumb:hover {
+    background: #b9c8df;
+}
+
+.doctorDashboardCaseRow {
+    border-radius: 12px;
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+
+.doctorDashboardCalendar {
+    margin-top: 0;
+    width: 100%;
+}
+
+.doctorDashboardCalendar .calendarGradient {
+    padding: 8px;
+    border-radius: 16px;
+}
+
+.doctorDashboardWidget {
+    background-color: #ffffff;
+    border-radius: 16px;
+    padding: 15px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border: 1px solid #f0f2f5;
+}
+
+.doctorDashboardWidgetHeader {
+    margin-bottom: 12px;
+}
+
+.doctorDashboardWidgetHeader h3 {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #1e293b;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.doctorDashboardWidgetList {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.doctorDashboardWidgetList div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    padding: 10px;
+    border-radius: 10px;
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+}
+
+.doctorDashboardWidgetList span {
+    color: #64748b;
+    font-size: 11px;
+}
+
+.doctorDashboardWidgetList strong {
+    color: #1e293b;
+    font-size: 12px;
+    text-align: right;
+}
+
+.doctorDashboardNotifications {
+    flex: initial;
+    height: auto;
+    max-height: 320px;
+    padding: 12px;
+    background-color: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border: 1px solid #f0f2f5;
+}
+
+.doctorDashboardNotificationsHeader {
+    gap: 16px;
+    margin-bottom: 10px;
+}
+
+.doctorDashboardNotificationsTitle {
+    min-width: auto;
+    gap: 6px;
+}
+
+.doctorDashboardNotificationsTitle h3 {
+    font-size: 13px;
+}
+
+.doctorDashboardNotifications .viewAllBtn {
+    font-size: 10px;
+}
+
+.doctorDashboardNotificationsList {
+    gap: 6px;
+    max-height: 245px;
+    overflow-y: auto;
+    padding-right: 3px;
+}
+
+.doctorDashboardNotificationItem {
+    padding: 8px;
+    gap: 8px;
+    background-color: #f8fafc;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+}
+
+.doctorDashboardNotificationItem.unread {
+    background-color: #eff6ff;
+}
+
+.doctorDashboardNotificationIcon {
+    padding: 5px;
+    border-radius: 8px;
+}
+
+.doctorDashboardNotifications .notificationTitle {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.doctorDashboardNotifications .notificationDesc {
+    font-size: 9px;
+    color: #666666;
+    line-height: 1.35;
+}
+
+.doctorDashboardNotifications .notificationTime {
+    color: #999999;
+    font-size: 9px;
+    white-space: nowrap;
+}
+
+.doctorDashboardNotificationEmpty {
+    color: #94a3b8;
+    font-size: 12px;
+    text-align: center;
+    padding: 24px;
+}
+
 .doctorSidebar {
     position: fixed;
     top: 0;
@@ -549,6 +904,28 @@
     }
 }
 
+@media (max-width: 900px) {
+    .doctorDashboardBody {
+        padding-right: 0;
+    }
+
+    .doctorDashboardLeft,
+    .doctorDashboardRight {
+        width: 100%;
+        padding-left: 0;
+        padding-right: 0;
+        overflow: visible;
+    }
+
+    .doctorDashboardProfileName {
+        margin-left: 0;
+    }
+
+    .doctorDashboardCases {
+        margin-top: 18px;
+    }
+}
+
 @media (max-width: 640px) {
     .doctorStatCard {
         grid-column: span 12;
@@ -567,5 +944,14 @@
     .doctorSelect {
         min-width: 0;
         width: 100%;
+    }
+
+    .doctorDashboardSectionHeader {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .doctorDashboardActionGrid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }

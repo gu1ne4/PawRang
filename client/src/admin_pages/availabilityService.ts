@@ -36,6 +36,26 @@ function withAuditActor<T extends Record<string, any>>(payload: T): T & Record<s
   };
 }
 
+function withUserIdQuery(path: string): string {
+  const currentUser = getCurrentAuditUser();
+  const userId = currentUser?.id || currentUser?.pk;
+  if (!userId) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}userId=${encodeURIComponent(String(userId))}`;
+}
+
+function withQueryParams(path: string, params: Record<string, string | number | boolean | null | undefined>): string {
+  const entries = Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '');
+  if (entries.length === 0) return path;
+  const query = entries
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join('&');
+  return `${path}${path.includes('?') ? '&' : '?'}${query}`;
+}
+
+type AppointmentReadOptions = {
+  scope?: 'all';
+};
+
 export const availabilityService = {
   // Get day availability (all 7 days)
   async getDayAvailability(): Promise<any> {
@@ -297,9 +317,10 @@ export const availabilityService = {
   },
 
   // Get all appointments for the schedule table
-  async getAppointmentsForTable(): Promise<any[]> {
+  async getAppointmentsForTable(options: AppointmentReadOptions = {}): Promise<any[]> {
     try {
-      const response = await fetch(`${API_URL}/api/appointments/table`);
+      const path = withQueryParams(withUserIdQuery('/api/appointments/table'), { scope: options.scope });
+      const response = await fetch(`${API_URL}${path}`);
       if (!response.ok) throw new Error('Failed to load appointments');
       const data = await response.json();
       return data.appointments || [];
@@ -608,12 +629,10 @@ export const availabilityService = {
   },
 
   // Get completed/cancelled appointments for history
-  async getAppointmentHistory(): Promise<any[]> {
+  async getAppointmentHistory(options: AppointmentReadOptions = {}): Promise<any[]> {
     try {
-      const currentUser = getCurrentAuditUser();
-      const userId = currentUser?.id || currentUser?.pk;
-      const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
-      const response = await fetch(`${API_URL}/api/appointments/history${query}`);
+      const path = withQueryParams(withUserIdQuery('/api/appointments/history'), { scope: options.scope });
+      const response = await fetch(`${API_URL}${path}`);
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || 'Failed to load appointment history');

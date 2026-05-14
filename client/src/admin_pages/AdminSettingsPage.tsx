@@ -33,9 +33,13 @@ import { recordSettingsAuditLog } from './auditLogService';
 interface CurrentUser {
   id?: string | number;
   pk?: string | number;
+  employee_id?: string | number;
+  employeeId?: string | number;
+  account_id?: string | number;
   username: string;
   fullName?: string;
   fullname?: string;
+  name?: string;
   firstName?: string;
   lastName?: string;
   role: string;
@@ -157,6 +161,11 @@ type PasswordRequirement = {
   label: string;
   isMet: boolean;
 };
+type SettingsMode = 'admin' | 'doctor';
+
+interface AdminSettingsPageProps {
+  settingsMode?: SettingsMode;
+}
 
 const showFutureDefenseSettings = false;
 const futureDefenseSettingsPanels = new Set<SettingsPanel>(['developer', 'homepage', 'announcements']);
@@ -387,7 +396,7 @@ const createGoogleMapsSearchUrl = (address: string) => `https://www.google.com/m
 const formatPeso = (value: string) => `PHP ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const getSettingsUserId = (user?: CurrentUser | null): string => {
-  const id = user?.id ?? user?.pk;
+  const id = user?.id ?? user?.pk ?? user?.employee_id ?? user?.employeeId ?? user?.account_id;
   return id === undefined || id === null ? '' : String(id);
 };
 
@@ -442,9 +451,11 @@ const normalizeSettingsUser = (
     profileData.fullName ||
     profileData.fullname ||
     profileData.full_name ||
+    profileData.name ||
     [firstName, lastName].filter(Boolean).join(' ') ||
     fallbackData.fullName ||
     fallbackData.fullname ||
+    fallbackData.name ||
     '';
 
   return {
@@ -452,6 +463,9 @@ const normalizeSettingsUser = (
     ...profile,
     id: profileData.id ?? fallbackData.id,
     pk: profileData.pk ?? fallbackData.pk,
+    employee_id: profileData.employee_id ?? fallbackData.employee_id,
+    employeeId: profileData.employeeId ?? profileData.employee_id ?? fallbackData.employeeId ?? fallbackData.employee_id,
+    account_id: profileData.account_id ?? fallbackData.account_id,
     username: profileData.username || fallbackData.username || '',
     fullName,
     fullname: fullName,
@@ -575,11 +589,27 @@ const summarizeServiceChanges = (previousService: ServiceItem, nextService: Serv
   return changes.length > 0 ? changes.join('; ') : 'Service details were reviewed with no field changes.';
 };
 
-export default function AdminSettingsPage() {
+export default function AdminSettingsPage({ settingsMode = 'admin' }: AdminSettingsPageProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const announcementImageInputRef = useRef<HTMLInputElement>(null);
+  const isDoctorSettings = settingsMode === 'doctor' || location.pathname.startsWith('/doctor');
+  const fallbackSettingsUser = useMemo<CurrentUser>(
+    () => ({
+      ...defaultSessionUser,
+      role: isDoctorSettings ? 'Veterinarian' : 'Administrator'
+    }),
+    [isDoctorSettings]
+  );
+  const settingsHeroCopy = useMemo(() => ({
+    eyebrow: isDoctorSettings ? 'Doctor Settings' : 'Admin Control Center',
+    title: 'Manage account profile and security.',
+    description: isDoctorSettings
+      ? 'This Settings page focuses on your doctor profile details and security controls.'
+      : 'This Settings page focuses on the account details and security controls needed for the current defense.',
+    securityTitle: isDoctorSettings ? 'Protect the doctor account' : 'Protect the admin account'
+  }), [isDoctorSettings]);
 
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -667,7 +697,7 @@ export default function AdminSettingsPage() {
         }
 
         const parsed = JSON.parse(session) as CurrentUser;
-        const sessionUser = normalizeSettingsUser(parsed, defaultSessionUser);
+        const sessionUser = normalizeSettingsUser(parsed, fallbackSettingsUser);
         if (!isMounted) return;
 
         setCurrentUser(sessionUser);
@@ -688,6 +718,9 @@ export default function AdminSettingsPage() {
           ...profilePayload,
           id: normalizedProfile.id,
           pk: normalizedProfile.pk,
+          employee_id: normalizedProfile.employee_id,
+          employeeId: normalizedProfile.employeeId,
+          account_id: normalizedProfile.account_id,
           username: normalizedProfile.username,
           fullName: normalizedProfile.fullName,
           fullname: normalizedProfile.fullName,
@@ -726,7 +759,7 @@ export default function AdminSettingsPage() {
     return () => {
       isMounted = false;
     };
-  }, [navigate]);
+  }, [fallbackSettingsUser, navigate]);
 
   useEffect(() => {
     if (!showFutureDefenseSettings && futureDefenseSettingsPanels.has(activePanel)) {
@@ -997,7 +1030,7 @@ export default function AdminSettingsPage() {
             contactNumber: formattedContactNumber,
             userImage: profileForm.userImage
           },
-          currentUser || defaultSessionUser
+          currentUser || fallbackSettingsUser
         );
         const rawSession = localStorage.getItem('userSession');
         const existingSession = rawSession ? JSON.parse(rawSession) : {};
@@ -1007,6 +1040,9 @@ export default function AdminSettingsPage() {
           username: normalizedProfile.username,
           fullName: normalizedProfile.fullName,
           fullname: normalizedProfile.fullName,
+          employee_id: normalizedProfile.employee_id,
+          employeeId: normalizedProfile.employeeId,
+          account_id: normalizedProfile.account_id,
           firstName: normalizedProfile.firstName,
           lastName: normalizedProfile.lastName,
           contactNumber: normalizedProfile.contactNumber,
@@ -1161,14 +1197,17 @@ export default function AdminSettingsPage() {
           ...responsePayload,
           email: pendingEmail
         },
-        currentUser || defaultSessionUser
+        currentUser || fallbackSettingsUser
       );
       const rawSession = localStorage.getItem('userSession');
       const existingSession = rawSession ? JSON.parse(rawSession) : {};
       localStorage.setItem('userSession', JSON.stringify({
         ...existingSession,
         ...responsePayload,
-        email: pendingEmail
+        email: pendingEmail,
+        employee_id: normalizedProfile.employee_id,
+        employeeId: normalizedProfile.employeeId,
+        account_id: normalizedProfile.account_id
       }));
       setCurrentUser(normalizedProfile);
       setProfileForm(prev => buildProfileFormFromUser(normalizedProfile, prev.branch));
@@ -1243,7 +1282,7 @@ export default function AdminSettingsPage() {
             profileImage: uploadedPhotoUrl,
             employee_image: uploadedPhotoUrl
           },
-          currentUser || defaultSessionUser
+          currentUser || fallbackSettingsUser
         );
         const rawSession = localStorage.getItem('userSession');
         const existingSession = rawSession ? JSON.parse(rawSession) : {};
@@ -1253,6 +1292,9 @@ export default function AdminSettingsPage() {
           username: normalizedProfile.username,
           fullName: normalizedProfile.fullName,
           fullname: normalizedProfile.fullName,
+          employee_id: normalizedProfile.employee_id,
+          employeeId: normalizedProfile.employeeId,
+          account_id: normalizedProfile.account_id,
           firstName: normalizedProfile.firstName,
           lastName: normalizedProfile.lastName,
           contactNumber: normalizedProfile.contactNumber,
@@ -1269,8 +1311,9 @@ export default function AdminSettingsPage() {
         setProfileForm(prev => buildProfileFormFromUser(normalizedProfile, prev.branch));
         setCurrentUser(normalizedProfile);
         setProfileErrors(prev => {
-          const { userImage, ...rest } = prev;
-          return rest;
+          const nextErrors = { ...prev };
+          delete nextErrors.userImage;
+          return nextErrors;
         });
         recordSettingsAuditLog({
           module: 'Settings',
@@ -1919,30 +1962,32 @@ export default function AdminSettingsPage() {
 
           </div>
 
-          <div className="subTopContainer notificationContainer settingsNotificationContainer">
-            <Notifications
-              buttonClassName="iconButton"
-              iconClassName="blueIcon"
-              onViewAll={() => {
-                console.log('View all notifications');
-              }}
-              onNotificationClick={(notification) => {
-                const notificationLink = notification.link;
-                if (notificationLink) {
-                  handleProtectedSettingsNavigation(notificationLink, () => navigate(notificationLink));
-                }
-              }}
-            />
-          </div>
+          {!isDoctorSettings && (
+            <div className="subTopContainer notificationContainer settingsNotificationContainer">
+              <Notifications
+                buttonClassName="iconButton"
+                iconClassName="blueIcon"
+                onViewAll={() => {
+                  console.log('View all notifications');
+                }}
+                onNotificationClick={(notification) => {
+                  const notificationLink = notification.link;
+                  if (notificationLink) {
+                    handleProtectedSettingsNavigation(notificationLink, () => navigate(notificationLink));
+                  }
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <div className="tableContainer settingsTableContainer settingsTableNoHeader">
           <div className={`settingsHero ${showFutureDefenseSettings ? '' : 'settingsHeroDefenseMode'}`}>
             <div className="settingsHeroPanel">
-              <span className="settingsHeroEyebrow">Admin Control Center</span>
-              <h2>Manage account profile and security.</h2>
+              <span className="settingsHeroEyebrow">{settingsHeroCopy.eyebrow}</span>
+              <h2>{settingsHeroCopy.title}</h2>
               <p>
-                This Settings page focuses on the account details and security controls needed for the current defense.
+                {settingsHeroCopy.description}
               </p>
               <div className="settingsHeroPills">
                 <span>Editable profile image</span>
@@ -2098,7 +2143,7 @@ export default function AdminSettingsPage() {
                 <div className="settingsSectionHeader">
                   <div>
                     <span className="settingsSectionEyebrow">Change Password</span>
-                    <h3>Protect the admin account</h3>
+                    <h3>{settingsHeroCopy.securityTitle}</h3>
                   </div>
                   <button className="settingsPrimaryBtn" onClick={handlePasswordSave} disabled={passwordSaving}>
                     {passwordSaving ? 'Updating...' : 'Update Password'}

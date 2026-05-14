@@ -73,6 +73,19 @@ function withUserIdQuery(path: string, userId?: string | number | null): string 
   return `${path}${path.includes('?') ? '&' : '?'}userId=${encodeURIComponent(String(resolvedUserId))}`;
 }
 
+function withQueryParams(path: string, params: Record<string, string | number | boolean | null | undefined>): string {
+  const entries = Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '');
+  if (entries.length === 0) return path;
+  const query = entries
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join('&');
+  return `${path}${path.includes('?') ? '&' : '?'}${query}`;
+}
+
+type AppointmentReadOptions = {
+  scope?: 'all';
+};
+
 async function request<T = any>(
   path: string,
   options: RequestInit = {}
@@ -257,13 +270,17 @@ export const apiService = {
 
 // ─── Admin Schedule & Appointment Endpoints ───────────────────────────────
 
-  getAppointmentsForTable(userId?: string | number | null) {
-    return request(withUserIdQuery('/api/appointments/table', userId));
+  getAppointmentsForTable(userId?: string | number | null, options: AppointmentReadOptions = {}) {
+    return request(withQueryParams(withUserIdQuery('/api/appointments/table', userId), {
+      scope: options.scope,
+    }));
   },
 
-  getDoctors(userId?: string | number | null) {
+  getDoctors(userId?: string | number | null, options: AppointmentReadOptions = {}) {
     // In your app.py, /accounts and /api/doctors both route to get_accounts()
-    return request(withUserIdQuery('/api/doctors', userId));
+    return request(withQueryParams(withUserIdQuery('/api/doctors', userId), {
+      scope: options.scope,
+    }));
   },
 
   updateAppointmentStatus(appointmentId: string | number, status: string, recordType: string) {

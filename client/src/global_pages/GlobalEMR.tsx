@@ -1081,11 +1081,10 @@ const MOCK_RECORDS: MedicalRecord[] = [
 ];
 
 
-const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMode = 'admin', doctorMode = false }) => {
+const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, doctorMode = false }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = location.state as { autoOpenAddMode?: boolean } | null;
-  const isDoctorLayout = layoutMode === 'doctor';
 
   // State
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -2480,6 +2479,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
     setDoctorAiSummary(null);
     setDoctorAiError('');
     setDoctorAiCollapsed(false);
+    clearVisitFilters();
     setPrescriptionRemarks('');
     setSelectedPrimaryServiceId('');
     setSelectedServices([]);
@@ -3083,6 +3083,7 @@ useEffect(() => {
     const matchesDoctor = visitDoctorFilter === '' || visit.veterinarian === visitDoctorFilter;
     return matchesSearch && matchesDate && matchesDoctor;
   });
+  const canShowVisitBillingActions = !doctorMode;
 
   const todayAppointmentDate = getCurrentDateInTimeZone('Asia/Manila');
   const filteredAppointmentRecords = appointmentRecords.filter((appointment) => {
@@ -3512,7 +3513,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
           <div className="emrSubTopContainer">
             <div className="emrSubTopLeft">
               <CiMedicalClipboard size={20} className="emrBlueIcon" />
-              <span className="emrBlueText">{isDoctorLayout ? 'Doctor Medical Records' : 'Medical Records'}</span>
+              <span className="emrBlueText">Medical Records</span>
             </div>
           </div>
           <div className="emrSubTopContainer emrNotificationContainer">
@@ -4810,28 +4811,29 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                     </span>
                                   )}
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                  {/* Create Invoice Button */}
-                                  <button 
-                                    className="emrCreateInvoiceBtn"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleCreateInvoice(visit);
-                                    }}
-                                    disabled={billingNavigationVisitId !== null}
-                                    title={visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
-                                  >
-                                    {isOpeningBilling ? (
-                                      <>
-                                        <span className="emrBtnSpinner" aria-hidden="true"></span>
-                                        Opening Billing...
-                                      </>
-                                    ) : (
-                                      <>
-                                        <IoReceipt size={14} /> {visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
-                                      </>
-                                    )}
-                                  </button>
+                                <div className="emrVisitHeaderActions">
+                                  {canShowVisitBillingActions && (
+                                    <button
+                                      className="emrCreateInvoiceBtn"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCreateInvoice(visit);
+                                      }}
+                                      disabled={billingNavigationVisitId !== null}
+                                      title={visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
+                                    >
+                                      {isOpeningBilling ? (
+                                        <>
+                                          <span className="emrBtnSpinner" aria-hidden="true"></span>
+                                          Opening Billing...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <IoReceipt size={14} /> {visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
                                   
                                   {(visit.prescriptions && visit.prescriptions.length > 0 && 
                                     visit.prescriptions.some(p => p.medicationName && p.medicationName.trim() !== '')) && (

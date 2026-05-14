@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import AdminHome from './admin_pages/AdminHome'
 import DoctorHome from './doctor_pages/DoctorHome'
 import DoctorAppointments from './doctor_pages/DoctorAppointments'
+import DoctorSettings from './doctor_pages/DoctorSettings'
 import UserHome from './user_pages/UserHome'
 import UserAppointmentBook from './user_pages/UserAppointmentBook'
 import UserPetProfile from './user_pages/UserPetProfile'
@@ -97,9 +98,13 @@ function App() {
 
         <Route element={<ProtectedRoute allowedRoles={['Admin', 'Administrator', 'Doctor', 'Vet', 'Veterinarian']} />}>
           <Route path="/doctor/home" element={<DoctorHome />} />
-          <Route path="/doctor/appointments" element={<DoctorAppointments />} />
+          <Route path="/doctor/appointments" element={<Navigate to="/doctor/appointments/schedule" replace />} />
+          <Route path="/doctor/appointments/schedule" element={<DoctorAppointments />} />
+          <Route path="/doctor/appointments/availability" element={<AdminAvailSettings viewerRole="doctor" readOnly />} />
+          <Route path="/doctor/appointments/history" element={<AdminHistory viewerRole="doctor" hideBillingActions />} />
           <Route path="/doctor/inventory" element={<GlobalInventory layoutMode="doctor" readOnly />} />
           <Route path="/doctor/medical-records" element={<GlobalEMR layoutMode="doctor" doctorMode />} />
+          <Route path="/doctor/settings" element={<DoctorSettings />} />
           <Route path="/doctor-home" element={<Navigate to="/doctor/home" replace />} />
         </Route>
 

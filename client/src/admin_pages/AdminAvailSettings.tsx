@@ -38,6 +38,13 @@ interface ModalConfigType {
   showCancel: boolean;
 }
 
+type AppointmentViewerRole = 'admin' | 'doctor';
+
+type AdminAvailSettingsProps = {
+  viewerRole?: AppointmentViewerRole;
+  readOnly?: boolean;
+};
+
 // ==========================================
 //  0. CUSTOM CALENDAR COMPONENT (Restored)
 // ==========================================
@@ -323,10 +330,12 @@ const getSpecialEventIdentifier = (event: any) => {
 // ==========================================
 //  MAIN COMPONENT
 // ==========================================
-export default function AdminAvailSettings() {
+export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = false }: AdminAvailSettingsProps = {}) {
   const navigate = useNavigate();
   const location = useLocation();
   const isActive = location.pathname === '/AvailSettings';
+  const isDoctorMode = viewerRole === 'doctor';
+  const isViewOnly = readOnly || isDoctorMode;
 
   const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 
@@ -486,7 +495,7 @@ export default function AdminAvailSettings() {
 
   const loadAppointmentsForCalendar = async () => {
     try {
-      const appointments = await availabilityService.getAppointmentsForTable();
+      const appointments = await availabilityService.getAppointmentsForTable(isDoctorMode ? { scope: 'all' } : {});
       const booked: any = {};
       appointments.forEach((app: any) => {
         const dateTimeParts = app.date_time.split(' - ');
@@ -508,6 +517,7 @@ export default function AdminAvailSettings() {
   };
 
   const handleDayToggle = async (dayName: string) => {
+    if (isViewOnly) return;
     const dayKey = dayName.toLowerCase();
     const newValue = !dayAvailability[dayKey];
     
@@ -545,6 +555,7 @@ export default function AdminAvailSettings() {
   };
 
   const addSlot = () => {
+    if (isViewOnly) return;
     if (!currentEditingDay || !startTime.trim() || !endTime.trim()) {
       window.alert('Please select both a start time and an end time.');
       return;
@@ -603,6 +614,7 @@ export default function AdminAvailSettings() {
   };
 
   const addEvent = async () => {
+    if (isViewOnly) return;
     const trimmedEventName = eventName.trim();
     const trimmedDescription = eventDescription.trim();
     const isEditing = Boolean(editingSpecialDateOriginalDate);
@@ -676,6 +688,7 @@ export default function AdminAvailSettings() {
   };
 
   const openAddSpecialDateModal = () => {
+    if (isViewOnly) return;
     setEventName('');
     setEventDate('');
     setEventDescription('');
@@ -688,6 +701,7 @@ export default function AdminAvailSettings() {
   };
 
   const openEditSpecialDateModal = (event: any) => {
+    if (isViewOnly) return;
     const dateKey = getSpecialEventDate(event);
     const recurrence = getSpecialEventRecurrence(event);
     const month = getSpecialEventMonth(event);
@@ -704,6 +718,7 @@ export default function AdminAvailSettings() {
   };
 
   const deleteSpecialDate = async (event: any) => {
+    if (isViewOnly) return;
     const dateKey = getSpecialEventDate(event) || getSpecialEventIdentifier(event);
     const eventTitle = getSpecialEventName(event);
     if (!dateKey) return;
@@ -743,6 +758,7 @@ export default function AdminAvailSettings() {
   };
 
   const deleteSlot = (slotId: any) => {
+    if (isViewOnly) return;
     if (!currentEditingDay) return;
     const slot = timeSlotsByDay[currentEditingDay].find((s: any) => s.id === slotId);
     if (!slot) return;
@@ -752,6 +768,7 @@ export default function AdminAvailSettings() {
   };
 
   const confirmDeleteSlot = async () => {
+    if (isViewOnly) return;
     if (!slotToDelete) return;
     const slotId = slotToDelete.id;
     
@@ -777,6 +794,7 @@ export default function AdminAvailSettings() {
 
   // 🟢 RESTORED: Fixed Database Save function with 24-hour conversion & Temp ID blocking
   const saveTimeSlotsToDatabase = async () => {
+    if (isViewOnly) return;
     if (!currentEditingDay) { setModalVisible(false); return; }
     
     try {
@@ -871,7 +889,7 @@ export default function AdminAvailSettings() {
                     availableDays={dayAvailability} /* 🟢 NEW: Grays out toggled-off days! */
                 />
                 <div style={{ marginTop: '15px', fontSize: '12px', color: '#888', fontStyle: 'italic' }}>
-                    <p>Use this reference tool to see which dates have active appointments before closing slots.</p>
+                    <p>{isViewOnly ? 'Use this reference tool to see booked and unavailable dates.' : 'Use this reference tool to see which dates have active appointments before closing slots.'}</p>
                 </div>
             </div>
 
@@ -885,12 +903,12 @@ export default function AdminAvailSettings() {
                         <tr>
                             <th style={{ textAlign: 'left', paddingBottom: '10px', borderBottom: '1px solid #eee' }}>Event</th>
                             <th style={{ textAlign: 'right', paddingBottom: '10px', borderBottom: '1px solid #eee' }}>Date</th>
-                            <th style={{ textAlign: 'right', paddingBottom: '10px', borderBottom: '1px solid #eee' }}>Actions</th>
+                            {!isViewOnly && <th style={{ textAlign: 'right', paddingBottom: '10px', borderBottom: '1px solid #eee' }}>Actions</th>}
                         </tr>
                     </thead>
                     <tbody>
                         {specialDates.length === 0 ? (
-                            <tr><td colSpan={3} style={{ textAlign: 'center', padding: '20px', color: '#999', fontStyle: 'italic' }}>No special dates added.</td></tr>
+                            <tr><td colSpan={isViewOnly ? 2 : 3} style={{ textAlign: 'center', padding: '20px', color: '#999', fontStyle: 'italic' }}>No special dates added.</td></tr>
                         ) : (
                             specialDates.map((item, index) => {
                               const description = getSpecialEventDescription(item);
@@ -910,26 +928,28 @@ export default function AdminAvailSettings() {
                                         {getSpecialEventRecurrence(item) === 'annual' ? 'Every year' : 'One-time'}
                                       </div>
                                     </td>
-                                    <td style={{ padding: '10px 0', textAlign: 'right' }}>
-                                      <div style={{ display: 'inline-flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                        <button
-                                          type="button"
-                                          onClick={() => openEditSpecialDateModal(item)}
-                                          title="Edit special date"
-                                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
-                                        >
-                                          <IoCreateOutline size={18} color="#3d67ee" />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => deleteSpecialDate(item)}
-                                          title="Delete special date"
-                                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
-                                        >
-                                          <IoTrashOutline size={18} color="#d32f2f" />
-                                        </button>
-                                      </div>
-                                    </td>
+                                    {!isViewOnly && (
+                                      <td style={{ padding: '10px 0', textAlign: 'right' }}>
+                                        <div style={{ display: 'inline-flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                          <button
+                                            type="button"
+                                            onClick={() => openEditSpecialDateModal(item)}
+                                            title="Edit special date"
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+                                          >
+                                            <IoCreateOutline size={18} color="#3d67ee" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => deleteSpecialDate(item)}
+                                            title="Delete special date"
+                                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
+                                          >
+                                            <IoTrashOutline size={18} color="#d32f2f" />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    )}
                                 </tr>
                               );
                             })
@@ -938,20 +958,31 @@ export default function AdminAvailSettings() {
                 </table>
               </div>
 
-              <button 
-                onClick={openAddSpecialDateModal}
-                className="gradientBtn submitBtn" 
-                style={{ width: '100%', padding: '12px', margin: 0 }}
-              >
-                + Add Special Date
-              </button>
+              {!isViewOnly && (
+                <button
+                  onClick={openAddSpecialDateModal}
+                  className="gradientBtn submitBtn"
+                  style={{ width: '100%', padding: '12px', margin: 0 }}
+                >
+                  + Add Special Date
+                </button>
+              )}
             </div>
           </div>
 
           {/* RIGHT SIDE (Availability Toggles) */}
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', flex: 2, overflowY: 'auto', boxShadow: '0 0 18px rgba(0,0,0,0.05)' }}>
-            <h2 style={{ fontSize: '28px', fontWeight: '700', margin: 0 }}>Availability Settings</h2>
-            <p style={{ fontSize: '14px', marginTop: '10px', color: '#888' }}>Manage available days, working hours, and appointment slots for vet bookings.</p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+              <h2 style={{ fontSize: '28px', fontWeight: '700', margin: 0 }}>Availability Settings</h2>
+              {isViewOnly && (
+                <span style={{ border: '1px solid #cdd8ff', borderRadius: '999px', color: '#3d67ee', backgroundColor: '#f4f7ff', padding: '6px 12px', fontSize: '12px', fontWeight: 700 }}>
+                  View Only
+                </span>
+              )}
+            </div>
+            <p style={{ fontSize: '14px', marginTop: '10px', color: '#888' }}>
+              {isViewOnly ? 'View available days, working hours, and appointment slots for vet bookings.' : 'Manage available days, working hours, and appointment slots for vet bookings.'}
+            </p>
 
             <div style={{ marginTop: '20px' }}>
               {DAYS_OF_WEEK.map((day) => (
@@ -961,6 +992,7 @@ export default function AdminAvailSettings() {
                       <input 
                         type="checkbox" 
                         checked={dayAvailability[day]} 
+                        disabled={isViewOnly}
                         onChange={() => handleDayToggle(day)} 
                       />
                       <span className="slider"></span>
@@ -980,7 +1012,7 @@ export default function AdminAvailSettings() {
                             fontWeight: '600', fontSize: '15px'
                         }}
                         >
-                        <span>Time Slot</span>
+                        <span>{isViewOnly ? 'View Slots' : 'Time Slot'}</span>
                         <IoTimeOutline size={18} style={{ marginLeft: '8px' }} />
                         </button>
                     </div>
@@ -1011,39 +1043,43 @@ export default function AdminAvailSettings() {
                 <div style={{ display: 'flex', flexDirection: 'row', gap: '30px', flex: 1, overflow: 'hidden' }}>
                   
                   {/* Left Section: Time Inputs */}
-                  <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
-                    <TimeSelector label="Start Time" value={startTime} onChange={setStartTime} />
-                    <TimeSelector label="End Time" value={endTime} onChange={setEndTime} />
-                    
-                    <button onClick={addSlot} className="gradientBtn submitBtn" style={{ width: '100%', margin: 0, marginTop: '10px' }}>
-                      + Add Slot
-                    </button>
-                  </div>
+                  {!isViewOnly && (
+                    <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
+                      <TimeSelector label="Start Time" value={startTime} onChange={setStartTime} />
+                      <TimeSelector label="End Time" value={endTime} onChange={setEndTime} />
+
+                      <button onClick={addSlot} className="gradientBtn submitBtn" style={{ width: '100%', margin: 0, marginTop: '10px' }}>
+                        + Add Slot
+                      </button>
+                    </div>
+                  )}
 
                   {/* Right Section: Slots Table */}
-                  <div style={{ flex: 1.5, display: 'flex', flexDirection: 'column', borderLeft: '1px solid #eee', paddingLeft: '30px' }}>
+                  <div style={{ flex: isViewOnly ? 1 : 1.5, display: 'flex', flexDirection: 'column', borderLeft: isViewOnly ? 'none' : '1px solid #eee', paddingLeft: isViewOnly ? 0 : '30px' }}>
                     <div style={{ flex: 1, overflowY: 'auto' }}>
                       <table className="dataTable" style={{ width: '100%' }}>
                         <thead>
                           <tr>
                             <th style={{ textAlign: 'left' }}>Start</th>
                             <th style={{ textAlign: 'left' }}>End</th>
-                            <th style={{ textAlign: 'right' }}>Action</th>
+                            {!isViewOnly && <th style={{ textAlign: 'right' }}>Action</th>}
                           </tr>
                         </thead>
                         <tbody>
                           {timeSlotsByDay[currentEditingDay]?.length === 0 ? (
-                            <tr><td colSpan={3} style={{ textAlign: 'center', padding: '30px', color: '#999', fontStyle: 'italic' }}>No time slots configured</td></tr>
+                            <tr><td colSpan={isViewOnly ? 2 : 3} style={{ textAlign: 'center', padding: '30px', color: '#999', fontStyle: 'italic' }}>No time slots configured</td></tr>
                           ) : (
                             timeSlotsByDay[currentEditingDay]?.map((item: any) => (
                               <tr key={item.id}>
                                 <td>{formatToAMPM(item.startTime)}</td>
                                 <td>{formatToAMPM(item.endTime)}</td>
-                                <td style={{ textAlign: 'right' }}>
-                                  <button onClick={() => deleteSlot(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-                                    <IoTrashOutline size={20} color="#d32f2f" />
-                                  </button>
-                                </td>
+                                {!isViewOnly && (
+                                  <td style={{ textAlign: 'right' }}>
+                                    <button onClick={() => deleteSlot(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                                      <IoTrashOutline size={20} color="#d32f2f" />
+                                    </button>
+                                  </td>
+                                )}
                               </tr>
                             ))
                           )}
@@ -1061,15 +1097,17 @@ export default function AdminAvailSettings() {
 
               {/* Modal Actions */}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px', marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #eee' }}>
-                <button onClick={cancelTimeSlotEditing} style={{ padding: '10px 25px', backgroundColor: '#f5f5f5', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#d32f2f', fontWeight: '600' }}>Cancel</button>
-                <button onClick={saveTimeSlotsToDatabase} style={{ padding: '10px 25px', backgroundColor: '#3d67ee', border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'white', fontWeight: '600' }}>Save Changes</button>
+                <button onClick={cancelTimeSlotEditing} style={{ padding: '10px 25px', backgroundColor: '#f5f5f5', border: 'none', borderRadius: '8px', cursor: 'pointer', color: isViewOnly ? '#3d67ee' : '#d32f2f', fontWeight: '600' }}>{isViewOnly ? 'Close' : 'Cancel'}</button>
+                {!isViewOnly && (
+                  <button onClick={saveTimeSlotsToDatabase} style={{ padding: '10px 25px', backgroundColor: '#3d67ee', border: 'none', borderRadius: '8px', cursor: 'pointer', color: 'white', fontWeight: '600' }}>Save Changes</button>
+                )}
               </div>
             </div>
           </div>
         )}
 
         {/* ADD SPECIAL DATE MODAL */}
-        {modalVisible2 && (
+        {modalVisible2 && !isViewOnly && (
           <div className="modalOverlay">
             <div className="modalContainer" style={{ width: '430px', maxWidth: '92vw', maxHeight: '90vh', overflowY: 'auto', padding: '30px' }}>
               <h2 style={{ fontSize: '22px', fontWeight: '700', marginBottom: '20px' }}>
@@ -1131,7 +1169,7 @@ export default function AdminAvailSettings() {
         )}
 
         {/* DELETE CONFIRMATION MODAL */}
-        {deleteConfirmationVisible && (
+        {deleteConfirmationVisible && !isViewOnly && (
           <div className="modalOverlay">
             <div className="modalContainer" style={{ width: '40%', maxWidth: '400px', padding: '30px' }}>
               <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '15px' }}>Delete Time Slot</h2>

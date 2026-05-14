@@ -3,6 +3,7 @@ import './AdminStyles.css';
 import {
   IoArrowBack,
   IoAlertCircleOutline,
+  IoAlbumsOutline,
   IoCalendarClearOutline,
   IoCheckmarkCircleOutline,
   IoChevronDownOutline,
@@ -22,6 +23,8 @@ import { apiService } from '../apiService';
 
 // 🟢 FIX: We added all our new variable names to the blueprint so TypeScript stops complaining!
 type AppointmentLike = {
+  id?: string | number;
+  dbId?: string | number;
   name?: string;
   patient_email?: string;
   patientEmail?: string;
@@ -62,6 +65,7 @@ type AppointmentLike = {
   medicalInformation?: any;
   medical_information?: any;
   recordType?: string;
+  is_walk_in?: boolean;
   linkedVisitId?: string | number | null;
   billingSourceType?: string | null;
   billingSourceId?: string | number | null;
@@ -96,6 +100,11 @@ type UserDetailsViewProps = {
   readOnly?: boolean;
   backLabel?: string;
   billingActionLoading?: boolean;
+  hideBillingActions?: boolean;
+  showMedicalRecordsAction?: boolean;
+  onOpenMedicalRecords?: (user: AppointmentLike) => void;
+  showInventoryAction?: boolean;
+  onOpenInventory?: (user: AppointmentLike) => void;
 };
 
 const AI_BUSY_FALLBACK_MESSAGE = 'Server is busy. Please try again later.';
@@ -141,6 +150,11 @@ export default function UserDetailsView({
   readOnly = false,
   backLabel = 'Back to Appointments',
   billingActionLoading = false,
+  hideBillingActions = false,
+  showMedicalRecordsAction = false,
+  onOpenMedicalRecords,
+  showInventoryAction = false,
+  onOpenInventory,
 }: UserDetailsViewProps) {
   const [aiSummary, setAiSummary] = useState<AdminAiSummary | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -321,12 +335,14 @@ export default function UserDetailsView({
     latestRescheduleRequest?.patient_response_type
   );
   const hasBillingInvoice = Boolean(user.hasBillingInvoice && user.billingInvoiceId);
-  const canShowBillingAction = Boolean(hasBillingInvoice || user.canProceedToBilling);
-  const billingStatusMeta = hasBillingInvoice
-    ? { label: 'Invoiced', bg: '#eef2ff', color: '#3d67ee' }
-    : user.canProceedToBilling
-      ? { label: 'Ready for Billing', bg: '#fff7e6', color: '#b26a00' }
-      : null;
+  const canShowBillingAction = !hideBillingActions && Boolean(hasBillingInvoice || user.canProceedToBilling);
+  const billingStatusMeta = !hideBillingActions
+    ? hasBillingInvoice
+      ? { label: 'Invoiced', bg: '#eef2ff', color: '#3d67ee' }
+      : user.canProceedToBilling
+        ? { label: 'Ready for Billing', bg: '#fff7e6', color: '#b26a00' }
+        : null
+    : null;
   const canReviewClientPreference =
     !readOnly &&
     latestRescheduleRequest?.status === 'needs_new_schedule' &&
@@ -1000,8 +1016,54 @@ export default function UserDetailsView({
           </div>
         )}
 
-        {(!readOnly || canShowBillingAction) && (
+        {(!readOnly || canShowBillingAction || showMedicalRecordsAction || showInventoryAction) && (
           <div style={{ display: 'flex', justifyContent: showBottomLifecycleActions ? 'space-around' : 'center', padding: '20px 0', borderTop: '1px solid #eee', gap: '20px', flexWrap: 'wrap' }}>
+            {showMedicalRecordsAction && (
+              <button
+                onClick={() => onOpenMedicalRecords?.(user)}
+                disabled={isAnyActionBusy}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 20px',
+                  backgroundColor: '#f4f7ff',
+                  color: '#3d67ee',
+                  border: '1px solid #cdd8ff',
+                  borderRadius: '8px',
+                  fontWeight: '600',
+                  cursor: isAnyActionBusy ? 'not-allowed' : 'pointer',
+                  opacity: isAnyActionBusy ? 0.68 : 1,
+                }}
+              >
+                <IoDocumentTextOutline size={18} />
+                <span>Open Medical Records</span>
+              </button>
+            )}
+
+            {showInventoryAction && (
+              <button
+                onClick={() => onOpenInventory?.(user)}
+                disabled={isAnyActionBusy}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 20px',
+                  backgroundColor: '#f8fbff',
+                  color: '#315f9f',
+                  border: '1px solid #cfe0f5',
+                  borderRadius: '8px',
+                  fontWeight: '600',
+                  cursor: isAnyActionBusy ? 'not-allowed' : 'pointer',
+                  opacity: isAnyActionBusy ? 0.68 : 1,
+                }}
+              >
+                <IoAlbumsOutline size={18} />
+                <span>Check Inventory</span>
+              </button>
+            )}
+
             {!readOnly && (
               <button
                 onClick={() => onReschedule(user)}
