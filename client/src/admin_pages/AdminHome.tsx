@@ -21,6 +21,7 @@ import {
   IoMailOutline,
   IoBriefcaseOutline,
   IoLocationOutline,
+  IoCalendarClearOutline,
   IoImageOutline,
   IoCamera,
   IoPersonCircleOutline,
@@ -73,6 +74,41 @@ interface ModalConfig {
   message: string | React.ReactNode;
   onConfirm?: () => void;
   showCancel: boolean;
+}
+
+interface MedicalServiceOption {
+  id?: number | string;
+  serviceId?: number | string;
+  service_id?: number | string;
+  name?: string;
+  serviceName?: string;
+  service_name?: string;
+  appointmentDurationMinutes?: number;
+  appointment_duration_minutes?: number;
+}
+
+interface DoctorWeekdayOption {
+  key?: string;
+  label?: string;
+}
+
+interface DoctorSchedulingSettings {
+  reservedForWalkins?: boolean;
+  reserved_for_walkins?: boolean;
+  availableWeekdays?: string[];
+  available_weekdays?: string[];
+  serviceCapabilityIds?: Array<number | string>;
+  service_capability_ids?: Array<number | string>;
+}
+
+interface DoctorSchedulingResponse {
+  doctorSetup?: {
+    weekdays?: DoctorWeekdayOption[];
+    medicalServices?: MedicalServiceOption[];
+    slotMinutes?: number;
+  };
+  settings?: DoctorSchedulingSettings;
+  error?: string;
 }
 
 type Role = 'Admin' | 'Veterinarian' | 'Clinic Staff' | 'Moderator';
@@ -138,6 +174,20 @@ const isBothBranchesLabel = (value?: string): boolean => {
   return name.includes('both') || name.includes('main') || name.includes('all branches');
 };
 
+const getEmployeeProfileImage = (user?: User | null): string =>
+  user?.employee_image || '../assets/userImg.jpg';
+
+const isDoctorAccount = (user?: User | null): boolean =>
+  /doctor|vet|veterinarian/i.test(user?.role || '');
+
+const getServiceOptionId = (service: MedicalServiceOption): number | string =>
+  service.serviceId ?? service.service_id ?? service.id ?? '';
+
+const getServiceOptionName = (service: MedicalServiceOption): string =>
+  service.name ?? service.serviceName ?? service.service_name ?? 'Medical service';
+
+const getServiceOptionDuration = (service: MedicalServiceOption): number | undefined =>
+  service.appointmentDurationMinutes ?? service.appointment_duration_minutes;
 const AdminHome: React.FC = () => {
   const navigate = useNavigate();
 
@@ -162,6 +212,15 @@ const AdminHome: React.FC = () => {
   const [editAccountVisible, setEditAccountVisible] = useState<boolean>(false);
   const [viewAccountVisible, setViewAccountVisible] = useState<boolean>(false);
   const [selectedAccount, setSelectedAccount] = useState<User | {}>({});
+  const [doctorScheduleVisible, setDoctorScheduleVisible] = useState<boolean>(false);
+  const [doctorScheduleAccount, setDoctorScheduleAccount] = useState<User | null>(null);
+  const [doctorScheduleLoading, setDoctorScheduleLoading] = useState<boolean>(false);
+  const [doctorScheduleSaving, setDoctorScheduleSaving] = useState<boolean>(false);
+  const [doctorWeekdayOptions, setDoctorWeekdayOptions] = useState<DoctorWeekdayOption[]>([]);
+  const [doctorMedicalServices, setDoctorMedicalServices] = useState<MedicalServiceOption[]>([]);
+  const [doctorAvailableWeekdays, setDoctorAvailableWeekdays] = useState<string[]>([]);
+  const [doctorServiceCapabilityIds, setDoctorServiceCapabilityIds] = useState<Array<number | string>>([]);
+  const [doctorReservedForWalkins, setDoctorReservedForWalkins] = useState<boolean>(false);
 
   // Unified Modal State
   const [modalVisible, setModalVisible] = useState<boolean>(false);
@@ -460,6 +519,96 @@ const AdminHome: React.FC = () => {
   const handleViewDetails = (user: User): void => {
     setSelectedAccount(user);
     setViewAccountVisible(true);
+  };
+
+  const openDoctorScheduleModal = async (user: User): Promise<void> => {
+    if (!user.id) {
+      showAlert('error', 'Scheduling Unavailable', 'This doctor account is missing an employee id.');
+      return;
+    }
+
+    setDoctorScheduleAccount(user);
+    setDoctorScheduleVisible(true);
+    setDoctorScheduleLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/api/employees/${encodeURIComponent(user.id)}/appointment-settings`);
+      const data: DoctorSchedulingResponse = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Failed to load doctor scheduling settings.');
+
+      const setup = data.doctorSetup || {};
+      const settings = data.settings || {};
+      setDoctorWeekdayOptions(setup.weekdays || []);
+      setDoctorMedicalServices(setup.medicalServices || []);
+      setDoctorAvailableWeekdays(settings.availableWeekdays || settings.available_weekdays || []);
+      setDoctorServiceCapabilityIds(settings.serviceCapabilityIds || settings.service_capability_ids || []);
+      setDoctorReservedForWalkins(Boolean(settings.reservedForWalkins ?? settings.reserved_for_walkins ?? false));
+    } catch (error: any) {
+      setDoctorScheduleVisible(false);
+      showAlert('error', 'Scheduling Failed', error.message || 'Unable to load doctor scheduling settings.');
+    } finally {
+      setDoctorScheduleLoading(false);
+    }
+  };
+
+  const toggleDoctorWeekday = (weekdayKey: string): void => {
+    setDoctorAvailableWeekdays(prev =>
+      prev.includes(weekdayKey)
+        ? prev.filter(day => day !== weekdayKey)
+        : [...prev, weekdayKey]
+    );
+  };
+
+  const toggleDoctorServiceCapability = (serviceId: number | string): void => {
+    setDoctorServiceCapabilityIds(prev => {
+      const exists = prev.some(id => String(id) === String(serviceId));
+      return exists ? prev.filter(id => String(id) !== String(serviceId)) : [...prev, serviceId];
+    });
+  };
+
+  const closeDoctorScheduleModal = (): void => {
+    if (doctorScheduleSaving) return;
+    setDoctorScheduleVisible(false);
+    setDoctorScheduleAccount(null);
+    setDoctorWeekdayOptions([]);
+    setDoctorMedicalServices([]);
+    setDoctorAvailableWeekdays([]);
+    setDoctorServiceCapabilityIds([]);
+    setDoctorReservedForWalkins(false);
+  };
+
+  const saveDoctorScheduleSettings = async (): Promise<void> => {
+    if (!doctorScheduleAccount?.id) return;
+    if (doctorAvailableWeekdays.length === 0) {
+      showAlert('error', 'Missing Weekday', 'Select at least one available weekday.');
+      return;
+    }
+    if (doctorServiceCapabilityIds.length === 0) {
+      showAlert('error', 'Missing Service', 'Select at least one medical service capability.');
+      return;
+    }
+
+    setDoctorScheduleSaving(true);
+    try {
+      const response = await fetch(`${API_URL}/api/employees/${encodeURIComponent(doctorScheduleAccount.id)}/appointment-settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          availableWeekdays: doctorAvailableWeekdays,
+          serviceCapabilityIds: doctorServiceCapabilityIds,
+          reservedForWalkins: doctorReservedForWalkins,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Failed to save doctor scheduling settings.');
+
+      setDoctorScheduleVisible(false);
+      setDoctorScheduleAccount(null);
+      showAlert('success', 'Scheduling Saved', 'Doctor appointment capacity settings were updated.');
+    } catch (error: any) {
+      showAlert('error', 'Save Failed', error.message || 'Unable to save doctor scheduling settings.');
+    } finally {
+      setDoctorScheduleSaving(false);
+    }
   };
 
   const validateEmployeeForm = (mode: 'create' | 'edit'): boolean => {
@@ -802,6 +951,7 @@ const AdminHome: React.FC = () => {
                     <th style={{flex: 1.5}}>Status</th>
                     <th style={{flex: 1}}>View</th>
                     <th style={{flex: 1}}>Edit</th>
+                    <th style={{flex: 1}}>Schedule</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -847,12 +997,26 @@ const AdminHome: React.FC = () => {
                               <IoPencilSharp size={15} className="blueIcon" />
                             </button>
                           </td>
+                          <td>
+                            {isDoctorAccount(user) ? (
+                              <button
+                                className="iconButton"
+                                onClick={() => openDoctorScheduleModal(user)}
+                                title="Appointment capacity settings"
+                                aria-label="Appointment capacity settings"
+                              >
+                                <IoCalendarClearOutline size={15} className="blueIcon" />
+                              </button>
+                            ) : (
+                              <span style={{ color: '#cbd5e1', fontSize: 12 }}>-</span>
+                            )}
+                          </td>
                         </tr>
                       );
                     })
                   ) : (
                     <tr>
-                      <td colSpan={8} className="noData">
+                      <td colSpan={9} className="noData">
                         {noMatchFilters ? "Showing all users (no filters applied)" : "No users found"}
                       </td>
                     </tr>
@@ -1375,6 +1539,108 @@ const AdminHome: React.FC = () => {
         </div>
       )}
 
+      {/* DOCTOR SCHEDULING MODAL */}
+      {doctorScheduleVisible && (
+        <div className="modalOverlay" onClick={closeDoctorScheduleModal}>
+          <div className="modalContainer doctorScheduleModal" onClick={(e) => e.stopPropagation()}>
+            <div className="modalHeader accountModalHeader doctorScheduleHeader">
+              <div>
+                <h2>Doctor Appointment Settings</h2>
+                <p>Choose which doctor capacity rules count for online medical appointment booking.</p>
+              </div>
+              <button className="accountModalClose" onClick={closeDoctorScheduleModal} aria-label="Close doctor appointment settings">
+                <IoCloseCircleSharp size={22} />
+              </button>
+            </div>
+
+            {doctorScheduleLoading ? (
+              <div className="doctorScheduleLoading">
+                <div className="spinner"></div>
+              </div>
+            ) : (
+              <div className="doctorScheduleBody">
+                <div className="doctorScheduleIdentity">
+                  <img src={getEmployeeProfileImage(doctorScheduleAccount)} alt="Doctor avatar" />
+                  <div>
+                    <h3>{`${doctorScheduleAccount?.first_name || ''} ${doctorScheduleAccount?.last_name || ''}`.trim() || doctorScheduleAccount?.username || 'Doctor'}</h3>
+                    <p>{doctorScheduleAccount ? getEmployeeBranchLabel(doctorScheduleAccount) : 'No branch selected'}</p>
+                  </div>
+                </div>
+
+                <label className="doctorScheduleToggle">
+                  <input
+                    type="checkbox"
+                    checked={doctorReservedForWalkins}
+                    onChange={(event) => setDoctorReservedForWalkins(event.target.checked)}
+                  />
+                  <span>
+                    <strong>Reserved for walk-ins</strong>
+                    <small>This doctor will not count toward online appointment capacity.</small>
+                  </span>
+                </label>
+
+                <div className="doctorScheduleSection">
+                  <h3>Available Days</h3>
+                  <div className="doctorScheduleGrid weekdayGrid">
+                    {doctorWeekdayOptions.map(day => {
+                      const key = String(day.key || '').toLowerCase();
+                      const checked = doctorAvailableWeekdays.includes(key);
+                      return (
+                        <label key={key} className={`doctorScheduleOption ${checked ? 'selected' : ''}`}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleDoctorWeekday(key)}
+                          />
+                          <span>{day.label || key}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="doctorScheduleSection">
+                  <h3>Medical Services</h3>
+                  <div className="doctorScheduleGrid serviceGrid">
+                    {doctorMedicalServices.map(service => {
+                      const serviceId = getServiceOptionId(service);
+                      const checked = doctorServiceCapabilityIds.some(id => String(id) === String(serviceId));
+                      const duration = getServiceOptionDuration(service);
+                      return (
+                        <label key={String(serviceId)} className={`doctorScheduleOption serviceOption ${checked ? 'selected' : ''}`}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleDoctorServiceCapability(serviceId)}
+                          />
+                          <span>
+                            <strong>{getServiceOptionName(service)}</strong>
+                            {duration ? <small>{duration} min</small> : null}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="modalFooter accountModalFooter">
+              <button className="cancelBtn" onClick={closeDoctorScheduleModal} disabled={doctorScheduleSaving}>
+                Cancel
+              </button>
+              <button
+                className="submitBtn gradientBtn"
+                onClick={saveDoctorScheduleSettings}
+                disabled={doctorScheduleLoading || doctorScheduleSaving}
+              >
+                {doctorScheduleSaving ? 'Saving...' : 'Save Settings'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* UNIFIED ALERT MODAL */}
       {modalVisible && (
         <div className="modalOverlay">
@@ -1405,3 +1671,4 @@ const AdminHome: React.FC = () => {
 };
 
 export default AdminHome;
+
