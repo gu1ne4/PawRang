@@ -2460,6 +2460,20 @@
     background-color: #f0f0f0;
 }
 
+.time-slot-btn.disabled,
+.time-slot-btn:disabled {
+    background-color: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #94a3b8;
+    cursor: not-allowed;
+    opacity: 0.85;
+}
+
+.time-slot-btn.disabled:hover,
+.time-slot-btn:disabled:hover {
+    background-color: #f1f5f9;
+}
+
 .time-slots-empty {
     padding: 20px;
     text-align: center;

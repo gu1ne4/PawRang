@@ -67,6 +67,12 @@ interface TimeSlotRecord {
   displayText?: string;
 }
 
+interface TimeSlotView {
+  value: string;
+  label: string;
+  disabled: boolean;
+}
+
 interface SpecialDateRecord {
   event_date?: string;
   event_recurrence?: string;
@@ -324,7 +330,7 @@ const UserAppointmentBook: React.FC = () => {
   const [dayAvailability,         setDayAvailability]         = useState<DayAvailabilityMap>({});
   const [specialDates,            setSpecialDates]            = useState<string[]>([]);
   const [annualSpecialDates,      setAnnualSpecialDates]      = useState<string[]>([]);
-  const [dayTimeSlots,            setDayTimeSlots]            = useState<string[]>([]);
+  const [dayTimeSlots,            setDayTimeSlots]            = useState<TimeSlotView[]>([]);
   const [loadingAvailability,     setLoadingAvailability]     = useState(false);
   const [loadingTimeSlots,        setLoadingTimeSlots]        = useState(false);
 
@@ -552,22 +558,33 @@ const UserAppointmentBook: React.FC = () => {
 
         const rawSlots = Array.isArray(data?.timeSlots) ? data.timeSlots : [];
         const formattedSlots = rawSlots
-          .filter((slot: TimeSlotRecord) => slot?.start_time && slot?.end_time && slot?.is_available !== false)
-          .filter((slot: TimeSlotRecord) => {
-            if (!shouldUseCapacity) return true;
-            const availableSlots = Number(slot.availableSlots ?? slot.available_slots ?? 0);
-            return availableSlots > 0;
-          })
+          .filter((slot: TimeSlotRecord) => slot?.start_time && slot?.end_time)
+          .filter((slot: TimeSlotRecord) => shouldUseCapacity || slot?.is_available !== false)
           .map((slot: TimeSlotRecord) => {
             const displayText = slot.displayText || `${formatSlotTime(slot.start_time)} - ${formatSlotTime(slot.end_time)}`;
-            if (!shouldUseCapacity) return displayText;
+            if (!shouldUseCapacity) {
+              return {
+                value: displayText,
+                label: displayText,
+                disabled: false,
+              };
+            }
+
             const availableSlots = Number(slot.availableSlots ?? slot.available_slots ?? 0);
             const capacity = Number(slot.capacity ?? 0);
-            return capacity > 0 ? `${displayText} (${availableSlots}/${capacity} slots)` : displayText;
+            const isFull = slot.is_available === false || availableSlots <= 0;
+            return {
+              value: displayText,
+              label: capacity > 0 ? `${displayText} (${Math.max(availableSlots, 0)}/${capacity} slots)` : displayText,
+              disabled: isFull,
+            };
           });
 
         setDayTimeSlots(formattedSlots);
-        setSelectedTime(prev => (prev && formattedSlots.includes(prev) ? prev : null));
+        setSelectedTime(prev => {
+          const selectedSlot = formattedSlots.find(slot => slot.value === prev);
+          return selectedSlot && !selectedSlot.disabled ? prev : null;
+        });
       })
       .catch(() => {
         if (!isCancelled) {
@@ -1641,8 +1658,18 @@ const UserAppointmentBook: React.FC = () => {
                     ? <div className="time-slots-empty"><p>Loading time slots…</p></div>
                   : timeSlots.length > 0
                     ? <div className="time-slots-grid">
-                        {timeSlots.map((t,i) => (
-                          <button key={i} className={`time-slot-btn ${selectedTime===t?'selected':''}`} onClick={() => setSelectedTime(t)}>{t}</button>
+                        {timeSlots.map((slot,i) => (
+                          <button
+                            key={`${slot.value}-${i}`}
+                            className={`time-slot-btn ${selectedTime===slot.value?'selected':''} ${slot.disabled ? 'disabled' : ''}`}
+                            onClick={() => {
+                              if (!slot.disabled) setSelectedTime(slot.value);
+                            }}
+                            disabled={slot.disabled}
+                            title={slot.disabled ? 'This time slot is fully booked' : undefined}
+                          >
+                            {slot.label}
+                          </button>
                         ))}
                       </div>
                     : <div className="time-slots-empty"><p>No configured time slots for this date</p></div>
