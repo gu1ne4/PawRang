@@ -1748,6 +1748,126 @@ input:checked + .slider:before {
   border-radius: 50%;
 }
 
+.doctorScheduleModal {
+  width: min(860px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  padding: 0;
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+}
+
+.doctorScheduleHeader {
+  grid-column: auto;
+  padding: 26px 30px 14px;
+  border-bottom: 1px solid #edf1f7;
+}
+
+.doctorScheduleBody {
+  display: grid;
+  gap: 18px;
+  padding: 18px 30px 4px;
+  overflow-y: auto;
+}
+
+.doctorScheduleLoading {
+  min-height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.doctorScheduleIdentity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e8eef8;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+.doctorScheduleIdentity img {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.doctorScheduleIdentity h3,
+.doctorScheduleSection h3 {
+  margin: 0;
+  color: #172033;
+  font-size: 15px;
+}
+
+.doctorScheduleIdentity p {
+  margin: 4px 0 0;
+  color: #657084;
+  font-size: 12px;
+}
+
+.doctorScheduleToggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e8eef8;
+  border-radius: 12px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.doctorScheduleToggle small,
+.doctorScheduleOption small {
+  display: block;
+  margin-top: 3px;
+  color: #657084;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.doctorScheduleSection {
+  display: grid;
+  gap: 10px;
+}
+
+.doctorScheduleGrid {
+  display: grid;
+  gap: 8px;
+}
+
+.doctorScheduleGrid.weekdayGrid {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.doctorScheduleGrid.serviceGrid {
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+}
+
+.doctorScheduleOption {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #172033;
+  cursor: pointer;
+}
+
+.doctorScheduleOption.selected {
+  border-color: #3d67ee;
+  background: #eef4ff;
+}
+
+.doctorScheduleOption.serviceOption {
+  align-items: flex-start;
+}
+
 .accountProfileModal .uploadBtn {
   position: relative;
   z-index: 2;
