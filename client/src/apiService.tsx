@@ -196,6 +196,42 @@ function withAuditActor<T extends Record<string, any>>(payload: T): T & Record<s
   };
 }
 
+type MedicalRecordPdfExportMode = 'full' | 'specific_visit' | 'date_range' | 'summary';
+
+type MedicalRecordPdfExportAuditPayload = {
+  userId?: string | number | null;
+  actorId?: string | number | null;
+  userRole?: string;
+  medicalRecordId: string | number | null;
+  exportMode: MedicalRecordPdfExportMode;
+  petId?: string | number | null;
+  petName?: string;
+  ownerName?: string;
+  visitId?: string | number | null;
+  dateFrom?: string;
+  dateTo?: string;
+  generatedFrom?: string;
+  viewerMode?: 'admin' | 'doctor' | string;
+  exportedVisitCount?: number;
+  totalVisitCount?: number;
+  patientId?: string;
+};
+
+function withPdfExportAuditActor(payload: MedicalRecordPdfExportAuditPayload): MedicalRecordPdfExportAuditPayload & Record<string, any> {
+  const currentUser = getCurrentAuditUser();
+  const userId = payload.userId || payload.actorId || currentUser?.id || currentUser?.pk;
+  const userRole = payload.userRole || currentUser?.role;
+
+  return {
+    ...payload,
+    actorId: payload.actorId || userId,
+    userId: payload.userId || userId,
+    userRole,
+    role: userRole,
+    username: currentUser?.username || currentUser?.fullName || currentUser?.fullname,
+  };
+}
+
 export const apiService = {
 
   login(payload: { identifier: string; password: string }) {
@@ -211,6 +247,23 @@ export const apiService = {
     username: string;
   }) {
     return request('/signup', { method: 'POST', body: JSON.stringify(payload) });
+  },
+
+  getPatients() {
+    return request('/patients');
+  },
+
+  registerPatientAccount(payload: {
+    fullName: string;
+    contactNumber: string;
+    email: string;
+    status?: string;
+    userImage?: string | null;
+  }) {
+    return request('/patient-register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   },
 
   forgotPassword(email: string) {
@@ -599,6 +652,13 @@ export const apiService = {
 
   getEmrRecord(recordId: number | string) {
     return request(withUserIdQuery(`/api/emr/records/${recordId}`));
+  },
+
+  recordMedicalRecordPdfExport(payload: MedicalRecordPdfExportAuditPayload) {
+    return request('/api/audit/medical-record-pdf-export', {
+      method: 'POST',
+      body: JSON.stringify(withPdfExportAuditActor(payload)),
+    });
   },
 
   createEmrRecord(payload: any) {
