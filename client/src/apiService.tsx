@@ -740,8 +740,11 @@ export const apiService = {
     );
   },
 
-  getAvailableTimeSlots(date: string) {
-    return request(`/api/available-time-slots?date=${encodeURIComponent(date)}`).then(
+  getAvailableTimeSlots(date: string, options: { branchId?: string | number | null; service?: string | null } = {}) {
+    const params = new URLSearchParams({ date });
+    if (options.branchId) params.set('branch_id', String(options.branchId));
+    if (options.service) params.set('service', String(options.service));
+    return request(`/api/available-time-slots?${params.toString()}`).then(
       (data: any) => data?.timeSlots || []
     );
   },

@@ -51,6 +51,18 @@ const getTomorrowDateKey = () => {
 };
 
 // ── Custom Calendar (same as AdminSchedule) ──────────────────────────
+const getAppointmentBranchId = (appointment: any) =>
+    appointment?.branch_id || appointment?.branchId || appointment?.branchID || '';
+
+const getAppointmentServiceName = (appointment: any) => {
+    const service = String(appointment?.service || appointment?.appointment_type || appointment?.typeLabel || '').trim();
+    if (service.toLowerCase().includes('laboratory tests')) {
+        const match = service.match(/\(([^)]+)\)/);
+        if (match?.[1] && !match[1].includes(',')) return match[1].trim();
+    }
+    return service.replace(/\s*\(.+\)\s*$/, '').trim();
+};
+
 const CustomCalendar = ({ selectedDate, onSelectDate, availableDays = null, disablePastDates = false, minDateKey = '' }: any) => {
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const todayDate = new Date();
@@ -177,30 +189,37 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
 
     useEffect(() => {
         if (!selectedDate) { setTimeSlots([]); return; }
-        const dayNamesList = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
-        const dayName = dayNamesList[new Date(selectedDate).getDay()];
         setLoadingSlots(true);
         setSelectedTimeSlot(null);
-        availabilityService.getTimeSlotsForDay(dayName)
+        availabilityService.getAvailableTimeSlots(selectedDate, {
+            branchId: getAppointmentBranchId(appointment),
+            service: getAppointmentServiceName(appointment),
+        })
             .then(slots => {
-                const formatted = slots.map((s: any) => {
+                const formatted = slots
+                    .filter((s: any) => s?.start_time && s?.end_time)
+                    .map((s: any) => {
                     const fmt = (t: string) => {
                         if (!t) return '';
                         const [h, m] = t.split(':');
                         const hr = parseInt(h, 10);
                         return `${hr % 12 || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`;
                     };
+                    const availableSlots = Number(s.availableSlots ?? s.available_slots ?? 0);
+                    const capacity = Number(s.capacity ?? 0);
+                    const displayText = s.displayText || `${fmt(s.start_time)} - ${fmt(s.end_time)}`;
                     return {
                         id: s.id,
-                        displayText: `${fmt(s.start_time)} - ${fmt(s.end_time)}`,
+                        displayText: capacity > 0 ? `${displayText} (${Math.max(availableSlots, 0)}/${capacity} slots)` : displayText,
                         startTime: s.start_time,
+                        disabled: s.is_available === false || (capacity > 0 && availableSlots <= 0),
                     };
                 });
                 setTimeSlots(formatted);
             })
             .catch(console.error)
             .finally(() => setLoadingSlots(false));
-    }, [selectedDate]);
+    }, [selectedDate, appointment]);
 
     const toDbTime = (t: string) => {
         if (!t) return '';
@@ -312,12 +331,20 @@ const AdminRescheduleModal = ({ visible, onClose, appointment, onSubmit, current
                         ) : (
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                                 {timeSlots.map(slot => (
-                                    <button key={slot.id} type="button" onClick={() => setSelectedTimeSlot(slot)}
+                                    <button
+                                        key={slot.id}
+                                        type="button"
+                                        onClick={() => {
+                                            if (!slot.disabled) setSelectedTimeSlot(slot);
+                                        }}
+                                        disabled={slot.disabled}
+                                        title={slot.disabled ? 'This time slot is fully booked' : undefined}
                                         style={{ padding: '12px', borderRadius: '8px',
-                                            border: selectedTimeSlot?.id === slot.id ? 'none' : '1px solid #ccc',
-                                            backgroundColor: selectedTimeSlot?.id === slot.id ? '#3d67ee' : 'white',
-                                            color: selectedTimeSlot?.id === slot.id ? 'white' : '#555',
-                                            fontWeight: '600', cursor: 'pointer', fontSize: '13px',
+                                            border: selectedTimeSlot?.id === slot.id ? 'none' : `1px solid ${slot.disabled ? '#cbd5e1' : '#ccc'}`,
+                                            backgroundColor: slot.disabled ? '#f1f5f9' : selectedTimeSlot?.id === slot.id ? '#3d67ee' : 'white',
+                                            color: slot.disabled ? '#94a3b8' : selectedTimeSlot?.id === slot.id ? 'white' : '#555',
+                                            fontWeight: '600', cursor: slot.disabled ? 'not-allowed' : 'pointer', fontSize: '13px',
+                                            opacity: slot.disabled ? 0.85 : 1,
                                             boxShadow: selectedTimeSlot?.id === slot.id ? '0 4px 10px rgba(61,103,238,0.3)' : 'none'
                                         }}>
                                         {slot.displayText}

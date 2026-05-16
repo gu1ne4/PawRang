@@ -468,6 +468,14 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
         { id: 8, name: 'Laboratory Tests', hasOptions: true, options: ['Complete Blood Count', 'Blood Chemistry', 'Urinalysis', 'Fecal Examination', 'X-Ray', 'Ultrasound'] },
         { id: 9, name: 'Vaccinations', hasOptions: false }
     ];
+    const capacityManagedServiceIds = new Set([2, 3, 5, 6, 7, 8, 9]);
+    const selectedServiceConfig = servicesList.find(item => item.name === service);
+    const shouldUseCapacity = Boolean(
+        branchId &&
+        selectedServiceConfig &&
+        capacityManagedServiceIds.has(selectedServiceConfig.id)
+    );
+    const capacityServiceName = service === 'Laboratory Tests' && subService ? subService : service;
 
     const resetFormState = () => {
         setFirstName(''); setLastName(''); setEmail(''); setPhone(''); setReason('');
@@ -528,10 +536,30 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
                 return;
             }
 
-            apiService.getAvailableTimeSlots(date)
+            apiService.getAvailableTimeSlots(date, {
+                branchId: shouldUseCapacity ? branchId : null,
+                service: shouldUseCapacity ? capacityServiceName : null,
+            })
                 .then(slots => {
-                    const formatted = slots.map((s: any) => {
-                        return s.displayText || `${formatTimeStr(s.start_time)} - ${formatTimeStr(s.end_time)}`;
+                    const formatted = slots
+                        .filter((s: any) => s?.start_time && s?.end_time)
+                        .filter((s: any) => shouldUseCapacity || s?.is_available !== false)
+                        .map((s: any) => {
+                        const displayText = s.displayText || `${formatTimeStr(s.start_time)} - ${formatTimeStr(s.end_time)}`;
+                        if (!shouldUseCapacity) {
+                            return {
+                                value: displayText,
+                                label: displayText,
+                                disabled: false,
+                            };
+                        }
+                        const availableSlots = Number(s.availableSlots ?? s.available_slots ?? 0);
+                        const capacity = Number(s.capacity ?? 0);
+                        return {
+                            value: displayText,
+                            label: capacity > 0 ? `${displayText} (${Math.max(availableSlots, 0)}/${capacity} slots)` : displayText,
+                            disabled: s.is_available === false || availableSlots <= 0,
+                        };
                     });
                     setTimeSlots(formatted);
                     setTime(''); // Reset time selection when date changes
@@ -540,7 +568,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
         } else {
             setTimeSlots([]);
         }
-    }, [date, specialDates]);
+    }, [date, specialDates, branchId, service, subService, shouldUseCapacity, capacityServiceName]);
 
     // Auto-calculate exact age
     useEffect(() => {
@@ -1031,19 +1059,24 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                                         {timeSlots.map((slot, index) => (
                                             <button
-                                                key={index}
+                                                key={`${slot.value}-${index}`}
                                                 type="button"
-                                                onClick={() => setTime(slot)}
+                                                onClick={() => {
+                                                    if (!slot.disabled) setTime(slot.value);
+                                                }}
+                                                disabled={slot.disabled}
+                                                title={slot.disabled ? 'This time slot is fully booked' : undefined}
                                                 style={{
                                                     padding: '15px 10px', borderRadius: '8px', 
-                                                    border: time === slot ? 'none' : '1px solid #ccc', 
-                                                    backgroundColor: time === slot ? '#3d67ee' : 'white', 
-                                                    color: time === slot ? 'white' : '#555', 
-                                                    fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s',
-                                                    boxShadow: time === slot ? '0 4px 10px rgba(61, 103, 238, 0.3)' : 'none'
+                                                    border: time === slot.value ? 'none' : `1px solid ${slot.disabled ? '#cbd5e1' : '#ccc'}`, 
+                                                    backgroundColor: slot.disabled ? '#f1f5f9' : time === slot.value ? '#3d67ee' : 'white', 
+                                                    color: slot.disabled ? '#94a3b8' : time === slot.value ? 'white' : '#555', 
+                                                    fontWeight: '600', cursor: slot.disabled ? 'not-allowed' : 'pointer', transition: 'all 0.2s',
+                                                    boxShadow: time === slot.value ? '0 4px 10px rgba(61, 103, 238, 0.3)' : 'none',
+                                                    opacity: slot.disabled ? 0.85 : 1
                                                 }}
                                             >
-                                                {slot}
+                                                {slot.label}
                                             </button>
                                         ))}
                                     </div>

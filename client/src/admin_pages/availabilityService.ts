@@ -446,9 +446,12 @@ export const availabilityService = {
   },
 
   // Get available time slots for a specific date
-  async getAvailableTimeSlots(date: string): Promise<any[]> {
+  async getAvailableTimeSlots(date: string, options: { branchId?: string | number | null; service?: string | null } = {}): Promise<any[]> {
     try {
-      const response = await fetch(`${API_URL}/api/available-time-slots?date=${date}`);
+      const params = new URLSearchParams({ date });
+      if (options.branchId) params.set('branch_id', String(options.branchId));
+      if (options.service) params.set('service', String(options.service));
+      const response = await fetch(`${API_URL}/api/available-time-slots?${params.toString()}`);
       if (!response.ok) throw new Error('Failed to load available time slots');
       const data = await response.json();
       return data.timeSlots || [];
