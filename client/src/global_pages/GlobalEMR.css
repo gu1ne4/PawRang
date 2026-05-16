@@ -642,6 +642,122 @@
   padding: 20px;
 }
 
+.emrPdfOptionsModal {
+  max-width: 620px;
+}
+
+.emrPdfOptionsList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.emrPdfOptionCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #dfe4ef;
+  border-radius: 8px;
+  background-color: #ffffff;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.emrPdfOptionCard:hover {
+  border-color: #3d67ee;
+  background-color: #f7f9ff;
+}
+
+.emrPdfOptionCard input {
+  margin-top: 2px;
+}
+
+.emrPdfOptionCard span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.emrPdfOptionCard strong {
+  font-size: 13px;
+  color: #273142;
+}
+
+.emrPdfOptionCard small {
+  font-size: 11px;
+  color: #667085;
+  line-height: 1.35;
+}
+
+.emrPdfOptionActive {
+  border-color: #3d67ee;
+  background-color: #f0f4ff;
+  box-shadow: 0 0 0 2px rgba(61, 103, 238, 0.08);
+}
+
+.emrPdfOptionDisabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  background-color: #f6f7f9;
+}
+
+.emrPdfOptionDisabled:hover {
+  border-color: #dfe4ef;
+  background-color: #f6f7f9;
+}
+
+.emrPdfOptionFields {
+  padding: 0 4px 4px 32px;
+}
+
+.emrPdfOptionFields label,
+.emrPdfRangeFields label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #333333;
+}
+
+.emrPdfRangeFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 4px 4px 32px;
+}
+
+.emrPdfNotice {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #f3d08a;
+  border-radius: 8px;
+  background-color: #fff8e8;
+  color: #7a5200;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.emrPdfErrorText {
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.emrPdfModalActions {
+  margin-top: 18px;
+}
+
+@media (max-width: 600px) {
+  .emrPdfRangeFields {
+    grid-template-columns: 1fr;
+    padding-left: 0;
+  }
+
+  .emrPdfOptionFields {
+    padding-left: 0;
+  }
+}
+
 .emrSearchInputWrapper {
   display: flex;
   gap: 10px;

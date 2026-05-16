@@ -2193,6 +2193,10 @@ export default function Schedule() {
                                 onDeclineClientPreference={handleDeclineClientPreference}
                                 onRefresh={handleManualRefresh}
                                 refreshing={refreshingDetails}
+                                actionBusyType={appointmentActionLoading?.type || null}
+                                readOnly={isReadOnly}
+                                hideBillingActions={shouldHideBillingActions}
+
                             />
                         )}
                     </div>
@@ -2309,3 +2313,5 @@ export default function Schedule() {
         </div>
     );
 }
+
+

@@ -396,7 +396,13 @@ interface AppointmentRecord {
   veterinarian: string;
   reason: string;
   services: ServiceItem[];
-  status: 'scheduled' | 'completed' | 'cancelled';
+  status: string;
+  rawStatus?: string;
+  raw_status?: string;
+  appointmentStatus?: string;
+  appointment_status?: string;
+  displayStatus?: string;
+  display_status?: string;
   medicalInformation?: MedicalInformation | null;
 }
 
@@ -425,6 +431,7 @@ interface ServiceItem {
 type ViewMode = 'list' | 'add' | 'edit';
 type Species = 'Dog' | 'Cat';
 type Gender = 'Male' | 'Female';
+type PdfExportOption = 'full' | 'specific' | 'range' | 'summary';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 const PH_PHONE_TOTAL_DIGITS = 12;
@@ -567,8 +574,8 @@ const VETERINARIANS = [
   'Dr. James Wilson'
 ];
 
-const normalizeVisitHistoryForSnapshot = (history: VisitHistory[]) =>
-  history.map((visit) => ({
+const normalizeVisitHistoryForSnapshot = (history: VisitHistory[] = []) =>
+  (Array.isArray(history) ? history : []).map((visit) => ({
     id: visit.id,
     date: visit.date,
     time: visit.time,
@@ -716,7 +723,7 @@ const MOCK_APPOINTMENTS: AppointmentRecord[] = [
     veterinarian: 'Dr. Sarah Johnson',
     reason: 'Routine Checkup',
     services: [{ id: 's1', name: 'Consultation', price: 500 }],
-    status: 'scheduled'
+    status: 'confirmed'
   },
   {
     id: 'app2',
@@ -728,7 +735,7 @@ const MOCK_APPOINTMENTS: AppointmentRecord[] = [
       { id: 's1', name: 'Consultation', price: 500 },
       { id: 's2', name: 'Vaccination', price: 800 }
     ],
-    status: 'scheduled'
+    status: 'confirmed'
   },
   {
     id: 'app3',
@@ -737,7 +744,7 @@ const MOCK_APPOINTMENTS: AppointmentRecord[] = [
     veterinarian: 'Dr. Emily Rodriguez',
     reason: 'Follow-up',
     services: [{ id: 's1', name: 'Consultation', price: 500 }],
-    status: 'scheduled'
+    status: 'confirmed'
   }
 ];
 
@@ -785,13 +792,91 @@ const normalizeAppointmentDateValue = (dateRaw?: string, displayDate?: string): 
   return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 };
 
+const normalizeVisitDateForPdf = (dateValue?: string): string => {
+  const normalizedDate = (dateValue || '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) {
+    return normalizedDate;
+  }
+
+  const slashDateMatch = normalizedDate.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slashDateMatch) {
+    const [, month, day, year] = slashDateMatch;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+
+  const parsedDate = new Date(normalizedDate);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return '';
+  }
+
+  const year = parsedDate.getFullYear();
+  const month = `${parsedDate.getMonth() + 1}`.padStart(2, '0');
+  const day = `${parsedDate.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatPdfDateRangeLabel = (dateValue: string): string => {
+  if (!dateValue) return '';
+
+  const [year, month, day] = dateValue.split('-');
+  if (!year || !month || !day) {
+    return dateValue;
+  }
+
+  return `${month}/${day}/${year}`;
+};
+
+const getPdfVisitKey = (visit: VisitHistory, index: number): string =>
+  visit.id ? `visit-${visit.id}` : `visit-index-${index}`;
+
+const getPdfVisitLabel = (visit: VisitHistory, index: number): string => {
+  const dateLabel = visit.date || 'Undated visit';
+  const timeLabel = visit.time ? ` at ${visit.time}` : '';
+  const detailLabel = [visit.reason, visit.veterinarian].filter(Boolean).join(' - ');
+  return `${index + 1}. ${dateLabel}${timeLabel}${detailLabel ? ` - ${detailLabel}` : ''}`;
+};
+
+const getPdfAuditExportMode = (option: PdfExportOption): 'full' | 'specific_visit' | 'date_range' | 'summary' => {
+  switch (option) {
+    case 'specific':
+      return 'specific_visit';
+    case 'range':
+      return 'date_range';
+    case 'summary':
+      return 'summary';
+    case 'full':
+    default:
+      return 'full';
+  }
+};
+
+const normalizeAppointmentStatusValue = (value?: unknown): string =>
+  String(value ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+
+const getAppointmentStatusValue = (appointment?: Partial<AppointmentRecord> | null): string => {
+  if (!appointment) return '';
+
+  return normalizeAppointmentStatusValue(
+    appointment.rawStatus ??
+    appointment.raw_status ??
+    appointment.appointmentStatus ??
+    appointment.appointment_status ??
+    appointment.displayStatus ??
+    appointment.display_status ??
+    appointment.status
+  );
+};
+
+const isConfirmedAppointment = (appointment?: Partial<AppointmentRecord> | null): boolean =>
+  getAppointmentStatusValue(appointment) === 'confirmed';
+
 const getAppointmentEmptyStateMessage = (filter: AppointmentDateFilter): string => {
   switch (filter) {
     case 'future':
-      return 'No future scheduled appointments found.';
+      return 'No future confirmed appointments found.';
     case 'today':
     default:
-      return 'No scheduled appointments found for today.';
+      return 'No confirmed appointments found for today.';
   }
 };
 
@@ -1177,6 +1262,13 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
     showCancel: false
   });
   const [ownerShareActionKey, setOwnerShareActionKey] = useState<string>('');
+  const [showPdfOptionsModal, setShowPdfOptionsModal] = useState<boolean>(false);
+  const [pdfExportOption, setPdfExportOption] = useState<PdfExportOption>('full');
+  const [pdfSelectedVisitKey, setPdfSelectedVisitKey] = useState<string>('');
+  const [pdfRangeStart, setPdfRangeStart] = useState<string>('');
+  const [pdfRangeEnd, setPdfRangeEnd] = useState<string>('');
+  const [pdfExportError, setPdfExportError] = useState<string>('');
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
 
   // Filter States
   const [dateFilter, setDateFilter] = useState<string>('');
@@ -1306,6 +1398,8 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
     reasonForVisit: string;
     reasonOther: string;
     visitHistory: VisitHistory[];
+    petSearchQuery: string;
+    editModeEnabled: boolean;
   }): string =>
     JSON.stringify({
       ...data,
@@ -1339,6 +1433,8 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
       reasonForVisit: REASONS[0],
       reasonOther: '',
       visitHistory: [],
+      petSearchQuery: '',
+      editModeEnabled: false,
     });
 
   const buildCurrentFormSnapshot = (): string =>
@@ -1368,7 +1464,40 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
       reasonForVisit,
       reasonOther,
       visitHistory,
+      petSearchQuery,
+      editModeEnabled,
     });
+
+  const isUntouchedNewRecordForm = (): boolean =>
+    viewMode === 'add' &&
+    editingId === null &&
+    selectedPetId === null &&
+    patientId === '' &&
+    petName === '' &&
+    species === 'Dog' &&
+    breed === '' &&
+    breedOther === '' &&
+    gender === 'Male' &&
+    dateOfBirth === '' &&
+    age === '' &&
+    weight === '' &&
+    weightUnit === 'kg' &&
+    colorMarkings === '' &&
+    !neutered &&
+    !deceased &&
+    !vaccinated &&
+    vaccinationProof === '' &&
+    petImage === '' &&
+    ownerFirstName === '' &&
+    ownerLastName === '' &&
+    ownerEmail === '' &&
+    ownerContact === '' &&
+    doctorAssigned === (veterinarianOptions[0] || DEFAULT_VETERINARIAN) &&
+    reasonForVisit === REASONS[0] &&
+    reasonOther === '' &&
+    visitHistory.length === 0 &&
+    petSearchQuery === '' &&
+    !editModeEnabled;
 
   const buildFormSnapshotWithVisitHistory = (nextVisitHistory: VisitHistory[]): string =>
     serializeFormSnapshot({
@@ -1397,6 +1526,8 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
       reasonForVisit,
       reasonOther,
       visitHistory: nextVisitHistory,
+      petSearchQuery,
+      editModeEnabled,
     });
 
   const buildRecordFormSnapshot = (record: MedicalRecord): string =>
@@ -1422,13 +1553,58 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
       ownerLastName: record.ownerLastName || '',
       ownerEmail: record.ownerEmail || '',
       ownerContact: formatPhoneNumber(record.ownerContact || ''),
-      doctorAssigned: formatVeterinarianName(record.veterinarian) || DEFAULT_VETERINARIAN,
+      doctorAssigned: formatVeterinarianName(record.veterinarian) || veterinarianOptions[0] || DEFAULT_VETERINARIAN,
       reasonForVisit: record.reason || REASONS[0],
       reasonOther: '',
       visitHistory: record.visitHistory || [],
+      petSearchQuery: '',
+      editModeEnabled: false,
     });
 
+  const isOnlyLoadedRecordDefaultDoctorMismatch = (): boolean => {
+    if (viewMode !== 'edit' || editModeEnabled || visitHistory.length > 0 || !formBaselineSnapshot) {
+      return false;
+    }
+
+    try {
+      const currentSnapshot = buildCurrentFormSnapshot();
+      const current = JSON.parse(currentSnapshot);
+      const baseline = JSON.parse(formBaselineSnapshot);
+      const currentWithBaselineDoctor = {
+        ...current,
+        doctorAssigned: baseline.doctorAssigned,
+      };
+
+      return (
+        currentSnapshot !== formBaselineSnapshot &&
+        JSON.stringify(currentWithBaselineDoctor) === formBaselineSnapshot &&
+        baseline.doctorAssigned === DEFAULT_VETERINARIAN &&
+        current.doctorAssigned === (veterinarianOptions[0] || DEFAULT_VETERINARIAN)
+      );
+    } catch {
+      return false;
+    }
+  };
+
   const hasUnsavedChanges = viewMode !== 'list' && buildCurrentFormSnapshot() !== formBaselineSnapshot;
+
+  useEffect(() => {
+    if (!isUntouchedNewRecordForm()) return;
+
+    const currentSnapshot = buildCurrentFormSnapshot();
+    setFormBaselineSnapshot((previousSnapshot) =>
+      previousSnapshot === currentSnapshot ? previousSnapshot : currentSnapshot
+    );
+  });
+
+  useEffect(() => {
+    if (!isOnlyLoadedRecordDefaultDoctorMismatch()) return;
+
+    const currentSnapshot = buildCurrentFormSnapshot();
+    setFormBaselineSnapshot((previousSnapshot) =>
+      previousSnapshot === currentSnapshot ? previousSnapshot : currentSnapshot
+    );
+  });
 
   const confirmLeaveCurrentView = (
     onProceed: () => void,
@@ -1661,6 +1837,8 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
               reasonForVisit: REASONS[0],
               reasonOther: '',
               visitHistory: [],
+              petSearchQuery: '',
+              editModeEnabled: false,
             })
           );
         }
@@ -2064,8 +2242,121 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
     }
   };
 
+  const openPdfOptionsModal = () => {
+    setPdfExportOption('full');
+    setPdfSelectedVisitKey(visitHistory.length > 0 ? getPdfVisitKey(visitHistory[0], 0) : '');
+    setPdfRangeStart('');
+    setPdfRangeEnd('');
+    setPdfExportError('');
+    setShowPdfOptionsModal(true);
+  };
+
+  const closePdfOptionsModal = () => {
+    if (isGeneratingPdf) {
+      return;
+    }
+
+    setShowPdfOptionsModal(false);
+    setPdfExportError('');
+  };
+
+  const handlePdfExportOptionChange = (option: PdfExportOption) => {
+    if ((option === 'specific' || option === 'range') && visitHistory.length === 0) {
+      return;
+    }
+
+    setPdfExportOption(option);
+    setPdfExportError('');
+
+    if (option === 'specific' && !pdfSelectedVisitKey && visitHistory.length > 0) {
+      setPdfSelectedVisitKey(getPdfVisitKey(visitHistory[0], 0));
+    }
+  };
+
+  const buildMedicalHistorySummaryForPdf = () => {
+    const latestVisit = visitHistory.length > 0 ? visitHistory[visitHistory.length - 1] : null;
+
+    return {
+      totalVisits: visitHistory.length,
+      labResults: visitHistory.reduce((total, visit) => total + (visit.labResults || []).length, 0),
+      prescriptions: visitHistory.reduce(
+        (total, visit) =>
+          total + (visit.prescriptions || []).filter((prescription) => (prescription.medicationName || '').trim() !== '').length,
+        0
+      ),
+      vaccinations: visitHistory.filter((visit) => !!visit.vaccinationDetails).length,
+      services: visitHistory.reduce((total, visit) => total + (visit.selectedServices || []).length, 0),
+      latestVisitLabel: latestVisit
+        ? `${latestVisit.date || 'Undated visit'}${latestVisit.time ? ` at ${latestVisit.time}` : ''}`
+        : '',
+      latestVisitReason: latestVisit?.reason || '',
+    };
+  };
+
   const handleGeneratePDF = async () => {
     try {
+      setPdfExportError('');
+
+      let selectedVisits = [...visitHistory];
+      let reportTitle = 'Medical Record';
+      let reportSubtitle = 'Full Medical Record';
+      let visitSectionTitle = `Visit History (${selectedVisits.length} visit${selectedVisits.length !== 1 ? 's' : ''})`;
+      let emptyVisitMessage = 'No visit records available';
+      let selectedVisitIdForAudit: string | number | null = null;
+      let dateFromForAudit = '';
+      let dateToForAudit = '';
+
+      if (pdfExportOption === 'specific') {
+        const selectedVisit = visitHistory.find((visit, index) => getPdfVisitKey(visit, index) === pdfSelectedVisitKey);
+
+        if (!selectedVisit) {
+          setPdfExportError('Choose a visit before generating a specific visit PDF.');
+          return;
+        }
+
+        selectedVisits = [selectedVisit];
+        reportTitle = 'Medical Record - Specific Visit';
+        reportSubtitle = `${selectedVisit.date || 'Selected visit'}${selectedVisit.time ? ` at ${selectedVisit.time}` : ''}`;
+        visitSectionTitle = 'Selected Visit';
+        selectedVisitIdForAudit = selectedVisit.id || null;
+      } else if (pdfExportOption === 'range') {
+        if (!pdfRangeStart || !pdfRangeEnd) {
+          setPdfExportError('Choose both a start date and an end date for the visit date range.');
+          return;
+        }
+
+        if (pdfRangeStart > pdfRangeEnd) {
+          setPdfExportError('Start date must be before or the same as the end date.');
+          return;
+        }
+
+        selectedVisits = visitHistory.filter((visit) => {
+          const normalizedVisitDate = normalizeVisitDateForPdf(visit.date);
+          return normalizedVisitDate !== '' && normalizedVisitDate >= pdfRangeStart && normalizedVisitDate <= pdfRangeEnd;
+        });
+
+        if (selectedVisits.length === 0) {
+          setPdfExportError('No visit records were found in the selected date range.');
+          return;
+        }
+
+        const startLabel = formatPdfDateRangeLabel(pdfRangeStart);
+        const endLabel = formatPdfDateRangeLabel(pdfRangeEnd);
+        reportTitle = 'Medical Record - Visit Date Range';
+        reportSubtitle = `${startLabel} to ${endLabel}`;
+        visitSectionTitle = `Visits from ${startLabel} to ${endLabel} (${selectedVisits.length} visit${selectedVisits.length !== 1 ? 's' : ''})`;
+        dateFromForAudit = pdfRangeStart;
+        dateToForAudit = pdfRangeEnd;
+      } else if (pdfExportOption === 'summary') {
+        const latestVisit = visitHistory.length > 0 ? visitHistory[visitHistory.length - 1] : null;
+        selectedVisits = latestVisit ? [latestVisit] : [];
+        reportTitle = 'Medical Record Summary';
+        reportSubtitle = 'Summary Only';
+        visitSectionTitle = latestVisit ? 'Latest Visit Summary' : 'Latest Visit Summary';
+        emptyVisitMessage = 'No visit records available for this summary.';
+      }
+
+      setIsGeneratingPdf(true);
 
       const pdfData = {
         petDetails: {
@@ -2086,7 +2377,13 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
         ownerEmail: ownerEmail,
         ownerContact: ownerContact,
         patientId: patientId,
-        visitHistory: visitHistory,
+        visitHistory: selectedVisits,
+        reportTitle,
+        reportSubtitle,
+        visitSectionTitle,
+        emptyVisitMessage,
+        summaryOnly: pdfExportOption === 'summary',
+        medicalHistorySummary: pdfExportOption === 'summary' ? buildMedicalHistorySummaryForPdf() : undefined,
       };
 
       const blob = await pdf(<MedicalRecordPDF {...pdfData} />).toBlob();
@@ -2097,11 +2394,40 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
       setTimeout(() => {
         URL.revokeObjectURL(url);
       }, 100);
+
+      const exportModeForAudit = getPdfAuditExportMode(pdfExportOption);
+      const viewerMode = doctorMode || layoutMode === 'doctor' ? 'doctor' : 'admin';
+      const actorId = currentUser?.id || currentUser?.pk || null;
+      const ownerNameForAudit = `${ownerFirstName} ${ownerLastName}`.trim();
+
+      void apiService.recordMedicalRecordPdfExport({
+        actorId,
+        userId: actorId,
+        userRole: currentUser?.role || viewerMode,
+        medicalRecordId: editingId,
+        exportMode: exportModeForAudit,
+        petId: selectedPetId,
+        petName,
+        ownerName: ownerNameForAudit,
+        ...(exportModeForAudit === 'specific_visit' ? { visitId: selectedVisitIdForAudit } : {}),
+        ...(exportModeForAudit === 'date_range' ? { dateFrom: dateFromForAudit, dateTo: dateToForAudit } : {}),
+        generatedFrom: 'Medical Records',
+        viewerMode,
+        exportedVisitCount: selectedVisits.length,
+        totalVisitCount: visitHistory.length,
+        patientId,
+      }).catch((error) => {
+        console.warn('Medical record PDF export audit logging failed:', error);
+      });
+
       
+      setShowPdfOptionsModal(false);
       showAlert('success', 'Success', 'PDF opened in new tab!');
     } catch (error) {
       console.error('PDF generation error:', error);
       showAlert('error', 'Error', 'Failed to generate PDF. Please try again.');
+    } finally {
+      setIsGeneratingPdf(false);
     }
   };
 
@@ -2209,7 +2535,9 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
     }
 
     if (visitType === 'appointment' && !selectedAppointment) {
-      errors.appointment = 'Select a scheduled appointment from the current filter.';
+      errors.appointment = 'Select a confirmed appointment from the current filter.';
+    } else if (visitType === 'appointment' && !isConfirmedAppointment(selectedAppointment)) {
+      errors.appointment = 'Only confirmed appointments can be converted into visit records.';
     }
 
     if (visitType === 'walkin' && !selectedPrimaryServiceId) {
@@ -2616,7 +2944,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
 
     const todayDate = getCurrentDateInTimeZone('Asia/Manila');
     const selectedStillVisible = appointmentRecords.some((appointment) => {
-      if (appointment.id !== selectedAppointment.id || appointment.status !== 'scheduled') {
+      if (appointment.id !== selectedAppointment.id || !isConfirmedAppointment(appointment)) {
         return false;
       }
 
@@ -2675,6 +3003,8 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
     setPetImageFile(null);
     setEditingId(null);
     setFormErrors({});
+    setPetSearchQuery('');
+    setSearchResults(allSearchResults);
     setEditModeEnabled(false);
     setShowModeOverlay(true);
     setActiveTab('info');
@@ -2898,10 +3228,90 @@ useEffect(() => {
     return true;
   };
 
+  const findPatientByEmail = async (email: string): Promise<any | null> => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return null;
+
+    const patients = await apiService.getPatients();
+    return (Array.isArray(patients) ? patients : []).find((patient: any) =>
+      String(patient?.email || '').trim().toLowerCase() === normalizedEmail
+    ) || null;
+  };
+
+  const getPatientAccountId = (patient: any): string => String(patient?.id || patient?.pk || '').trim();
+
+  const resolveManualOwnerAccount = async (): Promise<any> => {
+    const existingOwner = await findPatientByEmail(ownerEmail);
+    if (existingOwner) return existingOwner;
+
+    try {
+      const response = await apiService.registerPatientAccount({
+        fullName: `${ownerFirstName.trim()} ${ownerLastName.trim()}`.trim(),
+        contactNumber: toStoredPhoneNumber(ownerContact),
+        email: ownerEmail.trim(),
+        status: 'active',
+      });
+      return response?.account || response;
+    } catch (error: any) {
+      const message = getApiErrorMessage(error, '');
+      if (message.toLowerCase().includes('email') && message.toLowerCase().includes('exists')) {
+        const fallbackOwner = await findPatientByEmail(ownerEmail);
+        if (fallbackOwner) return fallbackOwner;
+      }
+      throw error;
+    }
+  };
+
+  const getManualPetWeightKg = (): string => {
+    const parsedWeight = Number(weight);
+    if (!Number.isFinite(parsedWeight) || parsedWeight <= 0) return '';
+    return String(weightUnit === 'lbs' ? Number((parsedWeight * 0.45359237).toFixed(2)) : parsedWeight);
+  };
+
+  const createManualPetProfile = async (ownerId: string, finalBreed: string): Promise<number> => {
+    const response = await apiService.addPet({
+      owner_id: ownerId,
+      pet_name: petName.trim(),
+      pet_type: species,
+      breed: finalBreed,
+      pet_size: 'Not specified',
+      gender,
+      birthday: dateOfBirth || undefined,
+      age: age || undefined,
+      weight_kg: getManualPetWeightKg() || undefined,
+      pet_photo_url: petImage || undefined,
+      is_vaccinated: vaccinated,
+      vaccination_urls: vaccinationProof ? [vaccinationProof] : undefined,
+    });
+
+    const createdPet = response?.pet || response;
+    const createdPetId = Number(createdPet?.pet_id || createdPet?.id || createdPet?.pk);
+    if (!Number.isFinite(createdPetId) || createdPetId <= 0) {
+      throw new Error('Pet profile was created, but the new pet ID was not returned.');
+    }
+
+    return createdPetId;
+  };
+
+  const resolvePetIdForSave = async (finalBreed: string): Promise<number> => {
+    if (selectedPetId) return selectedPetId;
+
+    const ownerAccount = await resolveManualOwnerAccount();
+    const ownerId = getPatientAccountId(ownerAccount);
+    if (!ownerId) {
+      throw new Error('Owner account was created, but the owner ID was not returned.');
+    }
+
+    const createdPetId = await createManualPetProfile(ownerId, finalBreed);
+    setSelectedPetId(createdPetId);
+    setPatientId(buildPatientDisplayId(createdPetId));
+    return createdPetId;
+  };
+
   const handleSaveRecord = async (): Promise<void> => {
     if (isSavingRecord) return;
     if (!validateForm()) return;
-    if (!selectedPetId) {
+    if (viewMode === 'edit' && !selectedPetId) {
       showAlert('error', 'Pet Profile Required', 'Please search and select an existing pet profile before saving a medical record.');
       return;
     }
@@ -2910,54 +3320,63 @@ useEffect(() => {
       return;
     }
 
-    const finalBreed = breed === 'Others' ? breedOther : breed;
-
-    const recordData = {
-      petId: selectedPetId,
-      patientId: patientId || buildPatientDisplayId(selectedPetId),
-      petName,
-      ownerName: `${ownerFirstName} ${ownerLastName}`,
-      ownerFirstName,
-      ownerLastName,
-      ownerEmail,
-      ownerContact: toStoredPhoneNumber(ownerContact),
-      lastVisit: new Date().toISOString().split('T')[0],
-      veterinarian: doctorAssigned,
-      reason: reasonForVisit === 'Others' ? reasonOther : reasonForVisit,
-      deceased,
-      visitHistory: viewMode === 'edit' ? visitHistory : [],
-      petDetails: {
-        name: petName,
-        breed: finalBreed,
-        species,
-        gender,
-        dateOfBirth,
-        age,
-        weight: parseFloat(weight),
-        weightUnit,
-        colorMarkings,
-        neutered,
-        deceased,
-        vaccinated,
-        vaccinationProof,
-        image: petImage,
-        doctorRemarks,
-        doctorAssigned,
-        reasonForVisit: reasonForVisit === 'Others' ? reasonOther : reasonForVisit
-      }
-    };
+    const finalBreed = breed === 'Others' ? breedOther.trim() : breed.trim();
 
     showAlert('confirm', viewMode === 'add' ? 'Create Record' : 'Save Changes', 
       `Are you sure you want to ${viewMode === 'add' ? 'create this medical record' : 'save changes to this record'}?`, 
       async () => {
         setIsSavingRecord(true);
+        let hasAppointmentVisit = false;
         try {
+          const resolvedPetId = await resolvePetIdForSave(finalBreed);
+          const recordData = {
+            petId: resolvedPetId,
+            patientId: patientId || buildPatientDisplayId(resolvedPetId),
+            petName,
+            ownerName: `${ownerFirstName} ${ownerLastName}`,
+            ownerFirstName,
+            ownerLastName,
+            ownerEmail,
+            ownerContact: toStoredPhoneNumber(ownerContact),
+            lastVisit: new Date().toISOString().split('T')[0],
+            veterinarian: doctorAssigned,
+            reason: reasonForVisit === 'Others' ? reasonOther : reasonForVisit,
+            deceased,
+            visitHistory: viewMode === 'edit' ? visitHistory : [],
+            petDetails: {
+              name: petName,
+              breed: finalBreed,
+              species,
+              gender,
+              dateOfBirth,
+              age,
+              weight: parseFloat(weight),
+              weightUnit,
+              colorMarkings,
+              neutered,
+              deceased,
+              vaccinated,
+              vaccinationProof,
+              image: petImage,
+              doctorRemarks,
+              doctorAssigned,
+              reasonForVisit: reasonForVisit === 'Others' ? reasonOther : reasonForVisit
+            }
+          };
+          hasAppointmentVisit = recordData.visitHistory.some((visit) =>
+            visit.sourceType === 'appointment' && Boolean(visit.sourceId || visit.appointmentId)
+          );
+
           if (viewMode === 'add') {
             await apiService.createEmrRecord(recordData);
           } else {
             await apiService.updateEmrRecord(editingId || 0, recordData);
           }
-          await Promise.all([fetchRecords(), fetchSearchPets()]);
+          const refreshTasks: Promise<void>[] = [fetchRecords(), fetchSearchPets()];
+          if (resolvedPetId) {
+            refreshTasks.push(fetchAppointmentsForPet(resolvedPetId));
+          }
+          await Promise.all(refreshTasks);
           setViewMode('list');
           setShowModeOverlay(false);
           setSelectedRecords(new Set());
@@ -2967,7 +3386,16 @@ useEffect(() => {
           );
         } catch (error: any) {
           console.error('Failed to save medical record:', error);
-          showAlert('error', 'Error', getApiErrorMessage(error, 'Failed to save medical record.'));
+          const errorMessage = getApiErrorMessage(error, 'Failed to save medical record.');
+          if (hasAppointmentVisit) {
+            showAlert(
+              'error',
+              'Appointment Visit Not Saved',
+              `The selected appointment could not be converted into a visit record. ${errorMessage}`
+            );
+          } else {
+            showAlert('error', 'Error', errorMessage);
+          }
         } finally {
           setIsSavingRecord(false);
         }
@@ -3056,7 +3484,7 @@ useEffect(() => {
 
   const todayAppointmentDate = getCurrentDateInTimeZone('Asia/Manila');
   const filteredAppointmentRecords = appointmentRecords.filter((appointment) => {
-    if (appointment.status !== 'scheduled') {
+    if (!isConfirmedAppointment(appointment)) {
       return false;
     }
 
@@ -3583,11 +4011,9 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       <IoArrowBackOutline size={14} /> Return
                     </button>
                   )}
-                  {!doctorMode && (
-                    <button className="emrBlackBtn" onClick={() => { resetForm(); setViewMode('add'); setShowModeOverlay(true); }}>
-                      <IoAdd size={14} /> New Record
-                    </button>
-                  )}
+                  <button className="emrBlackBtn" onClick={() => { resetForm(); setViewMode('add'); setShowModeOverlay(true); }}>
+                    <IoAdd size={14} /> New Record
+                  </button>
                 </div>
               </div>
 
@@ -3717,7 +4143,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                 </div>
               )}
             </>
-          ) : viewMode === 'add' && !doctorMode ? (
+          ) : viewMode === 'add' ? (
             <div className="emrFormContainer">
               <div className="emrFormHeader">
                 <div className="emrFormHeaderLeft">
@@ -5284,7 +5710,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
               </div>
 
               <div className="emrFormActions">
-                <button className="emrReturnBtn" onClick={handleGeneratePDF}>
+                <button className="emrReturnBtn" onClick={openPdfOptionsModal}>
                   <FaFilePdf size={14} /> Generate PDF Medical Record
                 </button>
                 <div style={{ flex: 1 }} />
@@ -5300,6 +5726,147 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
           )}
         </div>
       </div>
+
+      {/* PDF Options Modal */}
+      {showPdfOptionsModal && (
+        <div className="emrModalOverlay" onClick={closePdfOptionsModal}>
+          <div className="emrSearchModal emrPdfOptionsModal" onClick={e => e.stopPropagation()}>
+            <div className="emrModalHeader">
+              <h4>Generate PDF Medical Record</h4>
+              <button className="emrModalClose" onClick={closePdfOptionsModal} disabled={isGeneratingPdf}>×</button>
+            </div>
+            <div className="emrSearchModalContent">
+              <div className="emrPdfOptionsList">
+                <label className={`emrPdfOptionCard ${pdfExportOption === 'full' ? 'emrPdfOptionActive' : ''}`}>
+                  <input
+                    type="radio"
+                    name="pdfExportOption"
+                    value="full"
+                    checked={pdfExportOption === 'full'}
+                    onChange={() => handlePdfExportOptionChange('full')}
+                  />
+                  <span>
+                    <strong>Full Medical Record</strong>
+                    <small>Pet and owner information, medical history, and all visit records.</small>
+                  </span>
+                </label>
+
+                <label className={`emrPdfOptionCard ${pdfExportOption === 'specific' ? 'emrPdfOptionActive' : ''} ${visitHistory.length === 0 ? 'emrPdfOptionDisabled' : ''}`}>
+                  <input
+                    type="radio"
+                    name="pdfExportOption"
+                    value="specific"
+                    checked={pdfExportOption === 'specific'}
+                    disabled={visitHistory.length === 0}
+                    onChange={() => handlePdfExportOptionChange('specific')}
+                  />
+                  <span>
+                    <strong>Specific Visit Only</strong>
+                    <small>Pet and owner information with one selected visit record.</small>
+                  </span>
+                </label>
+
+                {pdfExportOption === 'specific' && visitHistory.length > 0 && (
+                  <div className="emrPdfOptionFields">
+                    <label>Visit <span className="emrRequired">*</span></label>
+                    <select
+                      className="emrFormSelect"
+                      value={pdfSelectedVisitKey}
+                      onChange={(e) => {
+                        setPdfSelectedVisitKey(e.target.value);
+                        setPdfExportError('');
+                      }}
+                    >
+                      <option value="">Select a visit</option>
+                      {visitHistory.map((visit, index) => (
+                        <option key={getPdfVisitKey(visit, index)} value={getPdfVisitKey(visit, index)}>
+                          {getPdfVisitLabel(visit, index)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <label className={`emrPdfOptionCard ${pdfExportOption === 'range' ? 'emrPdfOptionActive' : ''} ${visitHistory.length === 0 ? 'emrPdfOptionDisabled' : ''}`}>
+                  <input
+                    type="radio"
+                    name="pdfExportOption"
+                    value="range"
+                    checked={pdfExportOption === 'range'}
+                    disabled={visitHistory.length === 0}
+                    onChange={() => handlePdfExportOptionChange('range')}
+                  />
+                  <span>
+                    <strong>Visit Date Range</strong>
+                    <small>Pet and owner information with visits between selected dates.</small>
+                  </span>
+                </label>
+
+                {pdfExportOption === 'range' && visitHistory.length > 0 && (
+                  <div className="emrPdfRangeFields">
+                    <div className="emrFormGroup">
+                      <label>Start Date <span className="emrRequired">*</span></label>
+                      <input
+                        type="date"
+                        value={pdfRangeStart}
+                        onChange={(e) => {
+                          setPdfRangeStart(e.target.value);
+                          setPdfExportError('');
+                        }}
+                        className="emrFormInput"
+                      />
+                    </div>
+                    <div className="emrFormGroup">
+                      <label>End Date <span className="emrRequired">*</span></label>
+                      <input
+                        type="date"
+                        value={pdfRangeEnd}
+                        onChange={(e) => {
+                          setPdfRangeEnd(e.target.value);
+                          setPdfExportError('');
+                        }}
+                        className="emrFormInput"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <label className={`emrPdfOptionCard ${pdfExportOption === 'summary' ? 'emrPdfOptionActive' : ''}`}>
+                  <input
+                    type="radio"
+                    name="pdfExportOption"
+                    value="summary"
+                    checked={pdfExportOption === 'summary'}
+                    onChange={() => handlePdfExportOptionChange('summary')}
+                  />
+                  <span>
+                    <strong>Summary Only</strong>
+                    <small>Pet and owner information, medical history summary, and latest visit summary.</small>
+                  </span>
+                </label>
+              </div>
+
+              {visitHistory.length === 0 && (
+                <div className="emrPdfNotice">
+                  This record has no visit records yet, so visit-specific PDF options are unavailable.
+                </div>
+              )}
+
+              {pdfExportError && <div className="emrErrorText emrPdfErrorText">{pdfExportError}</div>}
+
+              <div className="emrFormActions emrPdfModalActions">
+                <button className="emrCancelBtn" onClick={closePdfOptionsModal} disabled={isGeneratingPdf}>
+                  Cancel
+                </button>
+                <button className="emrSubmitBtn" onClick={handleGeneratePDF} disabled={isGeneratingPdf}>
+                  {isGeneratingPdf && <span className="emrBtnSpinner" aria-hidden="true"></span>}
+                  {isGeneratingPdf ? 'Generating...' : 'Generate PDF'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Pet Search Modal */}
       {showPetSearch && (
@@ -6630,3 +7197,5 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
 };
 
 export default GlobalEMR;
+
+
