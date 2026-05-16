@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiService } from '../apiService';
 import ClientNavBar from '../reusable_components/ClientNavBar';
+import petshieldLogo from '../assets/PetshieldLogo.png';
+import pawRangLogo from '../assets/PawRang Logomark White.png';
 import {
   IoCalendar, IoClose, IoSearchOutline, IoTimeOutline, IoEllipse,
   IoCutOutline, IoDocumentTextOutline, IoAlertCircleOutline,
@@ -9,8 +11,11 @@ import {
   IoInformationCircleOutline, IoMedicalOutline, IoBugOutline,
   IoShieldCheckmarkOutline, IoHeartOutline, IoPersonOutline,
   IoLocationOutline, IoChevronBack, IoChevronForward,
+  IoMailOutline, IoCallOutline, IoCalendarOutline,
 } from 'react-icons/io5';
 import './UserStyles2.css';
+import './UserAppointmentViewStyles.css';
+import './UserSharedFooterStyles.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -399,7 +404,7 @@ const UserAppointmentView: React.FC = () => {
   const [isMobileView,       setIsMobileView]       = useState(isMobileViewport);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [alertRestoreModal, setAlertRestoreModal] = useState<AppointmentModalLayer | null>(null);
-  const itemsPerPage = 5;
+  const itemsPerPage = 10;
 
   // ── Cancel modal ──────────────────────────────────────────────────────────
   const [cancelModalVisible,       setCancelModalVisible]       = useState(false);
@@ -635,7 +640,7 @@ const UserAppointmentView: React.FC = () => {
   const handleLogout = () => {
     localStorage.removeItem('userSession');
     localStorage.removeItem('access_token');
-    navigate('/login');
+    navigate('/user/home', { replace: true, state: { authMode: 'login' } });
   };
 
   const formatDate = (s?: string | null) => {
@@ -724,8 +729,15 @@ const UserAppointmentView: React.FC = () => {
     return true;
   });
 
-  const totalPages   = Math.ceil(filtered.length / itemsPerPage);
+  const totalPages   = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
   const currentItems = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const activeCount = appointments.filter(a => a.status === 'confirmed').length;
+  const pendingCount = appointments.filter(a => a.status === 'pending').length;
+  const filterCounts = {
+    All: appointments.length,
+    Active: activeCount,
+    Pending: pendingCount,
+  } as const;
   const selectedOpenRescheduleRequest = selectedForDetails ? getOpenRescheduleRequest(selectedForDetails) : null;
   const isSelectedRescheduleLocked = Boolean(selectedOpenRescheduleRequest);
   const canWithdrawSelectedReschedule = selectedForDetails ? canWithdrawRescheduleRequest(selectedForDetails) : false;
@@ -741,6 +753,10 @@ const UserAppointmentView: React.FC = () => {
       : selectedOpenRescheduleRequest?.status === 'needs_new_schedule'
         ? 'Your preferred schedule is already under clinic review. Please wait for their response before making another change.'
         : RESCHEDULE_LOCK_MESSAGE;
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Cancel
@@ -1196,6 +1212,33 @@ const UserAppointmentView: React.FC = () => {
     );
   };
 
+  const getServiceDisplay = (serviceName: string) => {
+    const trimmed = serviceName.trim();
+    const parenthesized = trimmed.match(/^(.+?)\s*\((.+)\)$/);
+    const separated = trimmed.match(/^(.+?)\s+(?:-|:)\s+(.+)$/);
+
+    if (parenthesized?.[1] && parenthesized?.[2]) {
+      return { service: parenthesized[1].trim(), subservice: parenthesized[2].trim() };
+    }
+
+    if (separated?.[1] && separated?.[2]) {
+      return { service: separated[1].trim(), subservice: separated[2].trim() };
+    }
+
+    return { service: trimmed, subservice: '' };
+  };
+
+  const renderServiceDisplay = (serviceName: string) => {
+    const { service, subservice } = getServiceDisplay(serviceName);
+
+    return (
+      <span className="app-service-display">
+        <span className="app-service-primary">{service}</span>
+        {subservice && <span className="app-service-sub">({subservice})</span>}
+      </span>
+    );
+  };
+
   const renderAppointmentDetailsContent = (appointment: Appointment) => (
     (() => {
       const pet = getAppointmentPetData(appointment);
@@ -1209,14 +1252,14 @@ const UserAppointmentView: React.FC = () => {
         />
         <div className="app-pet-name-badge">
           <h4>{pet.name}</h4>
-          <p>{appointment.appointment_type}</p>
+          <p>{renderServiceDisplay(appointment.appointment_type)}</p>
         </div>
       </div>
 
       <div className="app-info-row">
         <IoCutOutline size={18} color="#3d67ee" />
         <span className="app-info-label">Service:</span>
-        <span className="app-info-value">{appointment.appointment_type}</span>
+        <span className="app-info-value">{renderServiceDisplay(appointment.appointment_type)}</span>
       </div>
       <div className="app-info-row">
         <IoCalendar size={18} color="#3d67ee" />
@@ -1271,12 +1314,12 @@ const UserAppointmentView: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="app-view-root">
+    <div className="app-view-root user-page-surface">
 
       {/* ── Alert ── */}
       {alertVisible && (
         <div className="app-modal-overlay" onClick={() => closeAlert()}>
-          <div className="app-modal-base" onClick={e => e.stopPropagation()}>
+          <div className="app-modal-base app-alert-modal" onClick={e => e.stopPropagation()}>
             {alertConfig.type === 'success' ? <IoCheckmarkCircleOutline size={55} color="#2e9e0c" />
               : alertConfig.type === 'error' ? <IoCloseCircleOutline size={55} color="#d93025" />
               : <IoAlertCircleOutline size={55} color="#3d67ee" />}
@@ -1315,7 +1358,13 @@ const UserAppointmentView: React.FC = () => {
 
         {/* ════════ LEFT: List ════════ */}
         <div className="app-list-panel">
-          <div className="app-list-header"><h2>Your Appointments</h2></div>
+          <div className="app-list-header">
+            <span className="app-list-header-icon"><IoCalendarOutline size={22} /></span>
+            <div>
+              <h2>Your Appointments</h2>
+              <p>Check your pet visits, clinic updates, and schedule requests at a glance. 🐾</p>
+            </div>
+          </div>
 
           <div className="app-search-wrapper">
             <IoSearchOutline size={20} color="#3d67ee" />
@@ -1340,7 +1389,8 @@ const UserAppointmentView: React.FC = () => {
                 className={`app-filter-option ${activeFilter === f ? 'active' : ''}`}
                 onClick={() => { setActiveFilter(f); setCurrentPage(1); }}
               >
-                {f}
+                <span>{f}</span>
+                <strong>{filterCounts[f]}</strong>
               </button>
             ))}
           </div>
@@ -1364,10 +1414,10 @@ const UserAppointmentView: React.FC = () => {
                       className={`app-table-row ${selectedForDetails?.appointment_id === item.appointment_id ? 'selected' : ''}`}
                       onClick={() => openAppointmentDetails(item)}
                     >
-                      <div className="app-table-cell app-service-cell" style={{flex:1.2}} title={item.appointment_type}>
-                        {item.appointment_type}
+                      <div className="app-table-cell app-service-cell" style={{flex:1.2}} title={item.appointment_type} data-label="Service">
+                        {renderServiceDisplay(item.appointment_type)}
                       </div>
-                      <div className="app-table-cell app-pet-cell" style={{flex:1}}>
+                      <div className="app-table-cell app-pet-cell" style={{flex:1}} data-label="Pet">
                         <img
                           src={pet.photoUrl}
                           alt={pet.name}
@@ -1378,11 +1428,11 @@ const UserAppointmentView: React.FC = () => {
                           <div className="app-pet-card-breed">{pet.breed}</div>
                         </div>
                       </div>
-                      <div className="app-table-cell app-schedule-cell" style={{flex:1.5}}>
+                      <div className="app-table-cell app-schedule-cell" style={{flex:1.5}} data-label="Schedule">
                         <div className="app-schedule-date">{formatDate(item.appointment_date)}</div>
                         <div className="app-time-cell">{formatTime(item.appointment_time)}</div>
                       </div>
-                      <div className="app-table-cell" style={{flex:0.9}}>
+                      <div className="app-table-cell" style={{flex:0.9}} data-label="Status">
                         <span className="app-status-pill" style={{ backgroundColor: getStatusColor(item.status)+'20', color: getStatusColor(item.status) }}>
                           {capitalize(item.status)}
                         </span>
@@ -1431,11 +1481,11 @@ const UserAppointmentView: React.FC = () => {
                   />
                   <div className="app-pet-name-badge">
                     <h4>{pet.name}</h4>
-                    <p>{selectedForDetails.appointment_type}</p>
+                    <p>{renderServiceDisplay(selectedForDetails.appointment_type)}</p>
                   </div>
                 </div>
 
-                <div className="app-info-row"><IoCutOutline size={18} color="#3d67ee" /><span className="app-info-label">Service:</span><span className="app-info-value">{selectedForDetails.appointment_type}</span></div>
+                <div className="app-info-row"><IoCutOutline size={18} color="#3d67ee" /><span className="app-info-label">Service:</span><span className="app-info-value">{renderServiceDisplay(selectedForDetails.appointment_type)}</span></div>
                 <div className="app-info-row"><IoCalendar size={18} color="#3d67ee" /><span className="app-info-label">Date:</span><span className="app-info-value">{formatDate(selectedForDetails.appointment_date)}</span></div>
                 <div className="app-info-row"><IoTimeOutline size={18} color="#3d67ee" /><span className="app-info-label">Time:</span><span className="app-info-value">{formatTime(selectedForDetails.appointment_time)}</span></div>
                 <div className="app-info-row"><IoLocationOutline size={18} color="#3d67ee" /><span className="app-info-label">Branch:</span><span className="app-info-value">{getAppointmentBranchName(selectedForDetails)}</span></div>
@@ -1506,6 +1556,52 @@ const UserAppointmentView: React.FC = () => {
       {/* ════════════════════════════════════════════
           CANCEL MODAL
       ════════════════════════════════════════════ */}
+      <footer className="user-page-footer" aria-label="Petshield footer">
+        <div className="home-footer-main">
+          <div className="home-footer-brand">
+            <img src={petshieldLogo} alt="Petshield" />
+            <div>
+              <h2>Petshield</h2>
+              <p>Veterinary Clinic & Grooming Center</p>
+            </div>
+          </div>
+          <div className="home-footer-branches">
+            <div className="home-footer-branch">
+              <h3>Petshield Las Pinas</h3>
+              <p>Las Pinas City, Metro Manila</p>
+              <div className="home-footer-contact-actions">
+                <a href="mailto:petshield@gmail.com"><IoMailOutline size={17} />petshield@gmail.com</a>
+                <a href="tel:+639123456789"><IoCallOutline size={17} />+63 912 345 6789</a>
+              </div>
+            </div>
+            <div className="home-footer-branch">
+              <h3>Petshield Taguig</h3>
+              <p>Taguig City, Metro Manila</p>
+              <div className="home-footer-contact-actions">
+                <a href="mailto:petshieldtaguig@gmail.com"><IoMailOutline size={17} />petshieldtaguig@gmail.com</a>
+                <a href="tel:+639987654321"><IoCallOutline size={17} />+63 998 765 4321</a>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="home-footer-powered">
+          <span>Powered by</span>
+          <img src={pawRangLogo} alt="PawRang" />
+        </div>
+      </footer>
+
+      <button
+        type="button"
+        className="home-booking-toast app-view-booking-toast"
+        onClick={() => navigate('/user/book-appointment')}
+        aria-label="Book an appointment"
+      >
+        <span className="home-booking-toast-icon">
+          <IoCalendarOutline size={22} />
+        </span>
+        <span className="home-booking-toast-copy">Book an Appointment now!</span>
+      </button>
+
       {detailsModalVisible && selectedForDetails && (
         <div className="app-modal-overlay app-details-modal-overlay" onClick={() => setDetailsModalVisible(false)}>
           <div className="app-modal-base app-modal-wide app-details-modal" onClick={e => e.stopPropagation()}>
@@ -1595,7 +1691,7 @@ const UserAppointmentView: React.FC = () => {
                     <div className="app-card-header"><IoCalendar size={18} color="#3d67ee" /><h4>Appointment Details</h4></div>
                     <div className="app-card-body">
                       <div className="app-summary-line"><span className="app-summary-tag">Pet:</span><span className="app-summary-data">{getAppointmentPetData(cancelTarget).name}</span></div>
-                      <div className="app-summary-line"><span className="app-summary-tag">Service:</span><span className="app-summary-data">{cancelTarget.appointment_type}</span></div>
+                      <div className="app-summary-line"><span className="app-summary-tag">Service:</span><span className="app-summary-data">{renderServiceDisplay(cancelTarget.appointment_type)}</span></div>
                       <div className="app-summary-line"><span className="app-summary-tag">Date:</span><span className="app-summary-data">{formatDate(cancelTarget.appointment_date)}</span></div>
                       <div className="app-summary-line"><span className="app-summary-tag">Time:</span><span className="app-summary-data">{formatTime(cancelTarget.appointment_time)}</span></div>
                       <div className="app-summary-line"><span className="app-summary-tag">Doctor:</span><span className="app-summary-data">{getAppointmentDoctorName(cancelTarget)}</span></div>

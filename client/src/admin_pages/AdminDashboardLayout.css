@@ -390,7 +390,6 @@
 
 .quickActionBtn span {
     font-size: 10px;
-    font-weight: 500;
     text-align: center;
 }
 
@@ -755,15 +754,7 @@
 .calendarCard {
     border-radius: 16px;
     margin-top: 20px;
-    height: 400px;
     box-shadow: 0 0 18px rgba(0, 0, 0, 0.15);
-}
-
-.calendarGradient {
-    background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9, #0f3bca, #3db6ee);
-    padding: 20px;
-    border-radius: 16px;
-    height: 100%;
 }
 
 .calendarHeader {
@@ -1107,5 +1098,1659 @@
 
     .calendarCard .react-calendar__tile {
         font-size: 11px !important;
+    }
+}
+
+/* Admin dashboard refresh */
+.adminDashboardBody {
+    padding-bottom: 0 !important;
+}
+
+.adminDashboardGrid.doctorTableContainer {
+    height: auto;
+    min-height: 0;
+    align-items: flex-start;
+    overflow: visible;
+}
+
+.adminDashboardMain.leftContainer,
+.adminDashboardSide.rightContainer {
+    overflow: visible;
+}
+
+.adminDashboardMain.leftContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+.adminDashboardSide.rightContainer {
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    padding-top: 0;
+}
+
+.dashboardAdminHero {
+    position: relative;
+    min-height: 170px;
+    padding: 26px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 24px;
+    background:
+        radial-gradient(circle at 16% 18%, rgba(61, 182, 238, 0.22), transparent 24%),
+        radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.18), transparent 26%),
+        linear-gradient(135deg, #0b1732 0%, #071126 58%, #040815 100%);
+    box-shadow: 0 24px 54px rgba(4, 8, 42, 0.2);
+    color: #ffffff;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 22px;
+    align-items: center;
+    overflow: hidden;
+}
+
+.dashboardAdminHeroGlow {
+    position: absolute;
+    inset: auto -80px -100px 24%;
+    height: 160px;
+    background: radial-gradient(circle, rgba(61, 182, 238, 0.24), transparent 64%);
+    pointer-events: none;
+}
+
+.dashboardAdminHeroAvatar {
+    position: relative;
+    z-index: 1;
+    width: 96px;
+    height: 96px;
+    padding: 5px;
+    border-radius: 24px;
+    background: linear-gradient(135deg, rgba(61, 182, 238, 0.45), rgba(250, 43, 36, 0.32));
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.22);
+}
+
+.dashboardAdminHeroAvatar img {
+    width: 100%;
+    height: 100%;
+    border: 3px solid rgba(255, 255, 255, 0.82);
+    border-radius: 20px;
+    object-fit: cover;
+    background: #ffffff;
+}
+
+.dashboardAdminHeroCopy,
+.dashboardAdminHeroActions {
+    position: relative;
+    z-index: 1;
+}
+
+.dashboardAdminHeroCopy h1 {
+    margin: 0;
+    color: #ffffff;
+    font-size: clamp(1.6rem, 2.4vw, 2.35rem);
+    font-weight: 760;
+    line-height: 1.05;
+}
+
+.dashboardAdminHeroCopy p {
+    margin: 8px 0 0;
+    color: rgba(255, 255, 255, 0.66);
+    font-size: 0.9rem;
+}
+
+.dashboardAdminHero .dashboardHeroEyebrow {
+    margin-bottom: 10px;
+    color: #7ed8ff;
+}
+
+.dashboardAdminHeroActions {
+    display: grid;
+    justify-items: end;
+    gap: 12px;
+}
+
+.dashboardAdminHeroTime,
+.dashboardAdminEditBtn {
+    min-height: 38px;
+    padding: 0 14px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.76rem;
+    font-weight: 680;
+}
+
+.dashboardAdminHeroTime {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.78);
+}
+
+.dashboardAdminEditBtn {
+    border: 1px solid rgba(61, 182, 238, 0.28);
+    background: rgba(61, 182, 238, 0.14);
+    color: #ffffff;
+    cursor: pointer;
+    transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.dashboardAdminEditBtn:hover {
+    background: rgba(61, 182, 238, 0.22);
+    transform: translateY(-1px);
+}
+
+.adminDashboardMain .dashboardSectionShell,
+.adminDashboardMain .dashboardSoftCard,
+.adminDashboardSide .dashboardSoftCard {
+    border: 1px solid rgba(157, 171, 195, 0.24) !important;
+    border-radius: 20px !important;
+    background:
+        radial-gradient(circle at 0% 0%, rgba(250, 43, 36, 0.05), transparent 32%),
+        radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.06), transparent 32%),
+        rgba(255, 255, 255, 0.86) !important;
+    box-shadow: 0 18px 42px rgba(10, 17, 86, 0.08) !important;
+}
+
+.adminDashboardMain .dashboardSectionShell {
+    padding: 20px;
+}
+
+.adminDashboardMain .dashboardActionShell {
+    margin-bottom: 0;
+}
+
+.adminDashboardMain .dashboardActionCard {
+    min-height: 86px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.74) !important;
+}
+
+.adminDashboardMain .dashboardChartCard {
+    border-color: rgba(157, 171, 195, 0.22);
+    border-radius: 18px;
+}
+
+.adminDashboardSide .notificationsCard {
+    max-height: none !important;
+}
+
+@media (max-width: 1100px) {
+    .dashboardAdminHero {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .dashboardAdminHeroActions {
+        grid-column: 1 / -1;
+        grid-template-columns: repeat(2, max-content);
+        justify-content: start;
+        justify-items: start;
+    }
+
+    .adminDashboardSide.rightContainer {
+        position: static;
+    }
+}
+
+@media (max-width: 700px) {
+    .dashboardAdminHero {
+        grid-template-columns: 1fr;
+        justify-items: center;
+        text-align: center;
+        padding: 22px;
+    }
+
+    .dashboardAdminHeroActions {
+        grid-template-columns: 1fr;
+        justify-items: center;
+    }
+}
+
+/* Compact admin dashboard pass */
+.adminDashboardBody {
+    padding-top: 22px !important;
+}
+
+.adminDashboardGrid.doctorTableContainer {
+    gap: 16px !important;
+}
+
+.adminDashboardMain.leftContainer {
+    gap: 16px;
+}
+
+.dashboardAdminHero {
+    min-height: 126px;
+    padding: 18px 20px;
+    border-color: rgba(8, 24, 160, 0.14);
+    background:
+        radial-gradient(circle at 0% 0%, rgba(250, 43, 36, 0.08), transparent 30%),
+        radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.1), transparent 34%),
+        #ffffff;
+    box-shadow: 0 16px 36px rgba(10, 17, 86, 0.08);
+    color: #0a1156;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 16px;
+}
+
+.dashboardAdminHeroGlow {
+    display: none;
+}
+
+.dashboardAdminHeroAvatar {
+    width: 72px;
+    height: 72px;
+    padding: 4px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, rgba(8, 24, 160, 0.18), rgba(250, 43, 36, 0.14));
+    box-shadow: 0 12px 24px rgba(10, 17, 86, 0.12);
+}
+
+.dashboardAdminHeroAvatar img {
+    border-width: 2px;
+    border-radius: 15px;
+}
+
+.dashboardAdminHeroCopy h1 {
+    color: #0a1156;
+    font-size: clamp(1.35rem, 2vw, 1.85rem);
+    line-height: 1.1;
+}
+
+.dashboardAdminHeroCopy p {
+    margin-top: 6px;
+    color: #4a5872;
+    font-size: 0.8rem;
+}
+
+.dashboardAdminHero .dashboardHeroEyebrow,
+.sectionTitle,
+.cardTitle,
+.notificationsTitle h3 {
+    color: #0a1156 !important;
+}
+
+.dashboardAdminHero .dashboardHeroEyebrow {
+    margin-bottom: 6px;
+    font-size: 0.64rem;
+}
+
+.sectionSubtitle {
+    color: #4a5872 !important;
+}
+
+.dashboardAdminHeroActions {
+    gap: 8px;
+}
+
+.dashboardAdminHeroTime,
+.dashboardAdminEditBtn {
+    min-height: 32px;
+    padding: 0 11px;
+    font-size: 0.7rem;
+}
+
+.dashboardAdminHeroTime {
+    border-color: rgba(8, 24, 160, 0.12);
+    background: rgba(8, 24, 160, 0.06);
+    color: #0a1156;
+}
+
+.dashboardAdminEditBtn {
+    border-color: rgba(8, 24, 160, 0.18);
+    background: #0a1156;
+    color: #ffffff;
+}
+
+.dashboardAdminEditBtn:hover {
+    background: #0818a0;
+}
+
+.adminDashboardMain .dashboardSectionShell,
+.adminDashboardMain .dashboardSoftCard,
+.adminDashboardSide .dashboardSoftCard {
+    border-color: rgba(157, 171, 195, 0.22) !important;
+    background: #ffffff !important;
+    box-shadow: 0 12px 28px rgba(10, 17, 86, 0.06) !important;
+}
+
+.adminDashboardMain .dashboardSectionShell {
+    padding: 16px;
+}
+
+.adminDashboardMain .dashboardActionCard {
+    min-height: 62px;
+    padding: 9px 8px;
+    border-radius: 12px;
+}
+
+.adminDashboardMain .dashboardActionCard svg {
+    width: 18px;
+    height: 18px;
+}
+
+.adminDashboardMain .dashboardActionCard span {
+    color: #0a1156 !important;
+    font-size: 0.68rem !important;
+    font-weight: 550 !important;
+}
+
+.adminDashboardSide.rightContainer {
+    gap: 10px !important;
+}
+
+.adminDashboardSide .notificationsCard {
+    padding: 10px !important;
+    border-radius: 14px !important;
+}
+
+.adminDashboardSide .notificationsHeader {
+    margin-bottom: 8px !important;
+    gap: 14px !important;
+}
+
+.adminDashboardSide .notificationsTitle h3 {
+    font-size: 0.78rem !important;
+}
+
+.adminDashboardSide .notificationsList {
+    max-height: 238px;
+    gap: 5px !important;
+}
+
+.adminDashboardSide .notificationItem {
+    padding: 6px !important;
+    gap: 6px !important;
+    border-radius: 10px !important;
+}
+
+.adminDashboardSide .notificationIcon {
+    padding: 4px !important;
+    border-radius: 7px !important;
+}
+
+.adminDashboardSide .notificationTitle {
+    color: #0a1156 !important;
+    font-size: 0.66rem !important;
+}
+
+.adminDashboardSide .notificationDesc,
+.adminDashboardSide .notificationTime {
+    font-size: 0.58rem !important;
+}
+
+.adminDashboardSide .calendarCard {
+    width: 100%;
+    margin-top: 0;
+    border-radius: 14px !important;
+    background: #ffffff !important;
+}
+
+.adminDashboardSide .calendarGradient {
+    padding: 0;
+    border-radius: 12px;
+    background:
+        radial-gradient(circle at 0% 0%, rgba(250, 43, 36, 0.05), transparent 32%),
+        radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.06), transparent 34%),
+        #ffffff;
+}
+
+.adminDashboardSide .calendarCard .react-calendar {
+    background: transparent !important;
+    color: #0a1156 !important;
+}
+
+.adminDashboardSide .calendarCard .react-calendar__navigation {
+    min-height: 34px !important;
+    margin-bottom: 6px !important;
+}
+
+.adminDashboardSide .calendarCard .react-calendar__navigation button,
+.adminDashboardSide .calendarCard .react-calendar__navigation__label,
+.adminDashboardSide .calendarCard .react-calendar__month-view__weekdays {
+    color: #0a1156 !important;
+}
+
+.adminDashboardSide .calendarCard .react-calendar__tile {
+    height: 32px !important;
+    color: #0a1156 !important;
+    border-radius: 8px !important;
+}
+
+.adminDashboardSide .calendarCard .react-calendar__tile:enabled:hover,
+.adminDashboardSide .calendarCard .react-calendar__tile:enabled:focus {
+    background: rgba(8, 24, 160, 0.08) !important;
+}
+
+.adminDashboardSide .calendarCard .react-calendar__tile--now {
+    background: rgba(250, 43, 36, 0.1) !important;
+    color: #b91d28 !important;
+}
+
+.adminDashboardSide .calendarCard .react-calendar__tile--active {
+    background: #0a1156 !important;
+    color: #ffffff !important;
+}
+
+@media (max-width: 700px) {
+    .dashboardAdminHero {
+        min-height: 0;
+        padding: 18px;
+    }
+}
+
+/* Dashboard tuning after review */
+.dashboardAdminHero {
+    min-height: 136px;
+    padding: 19px 22px;
+    border-color: rgba(255, 255, 255, 0.12);
+    background:
+        radial-gradient(circle at 16% 18%, rgba(61, 182, 238, 0.2), transparent 24%),
+        radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.16), transparent 26%),
+        linear-gradient(135deg, #0b1732 0%, #071126 58%, #040815 100%);
+    box-shadow: 0 20px 46px rgba(4, 8, 42, 0.18);
+    color: #ffffff;
+}
+
+.dashboardAdminHeroGlow {
+    display: block;
+    height: 120px;
+}
+
+.dashboardAdminHeroAvatar {
+    width: 78px;
+    height: 78px;
+    padding: 4px;
+    border-radius: 19px;
+    background: linear-gradient(135deg, rgba(61, 182, 238, 0.44), rgba(250, 43, 36, 0.3));
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.2);
+}
+
+.dashboardAdminHeroAvatar img {
+    border-color: rgba(255, 255, 255, 0.82);
+}
+
+.dashboardAdminHeroCopy h1 {
+    color: #ffffff;
+    font-size: clamp(1.45rem, 2vw, 1.95rem);
+}
+
+.dashboardAdminHeroCopy p {
+    color: rgba(255, 255, 255, 0.68);
+}
+
+.dashboardAdminHero .dashboardHeroEyebrow {
+    color: rgba(255, 255, 255, 0.72) !important;
+}
+
+.dashboardAdminHeroTime {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.78);
+}
+
+.dashboardAdminEditBtn {
+    border-color: rgba(61, 182, 238, 0.28);
+    background: rgba(61, 182, 238, 0.14);
+}
+
+.dashboardAdminEditBtn:hover {
+    background: rgba(61, 182, 238, 0.22);
+}
+
+.adminDashboardMain .dashboardActionCard {
+    background: var(--dashboard-action-bg, rgba(8, 24, 160, 0.06)) !important;
+}
+
+.adminDashboardMain .dashboardActionCard:hover {
+    background: var(--dashboard-action-hover-bg, rgba(8, 24, 160, 0.11)) !important;
+}
+
+.adminDashboardSide .notificationsCard {
+    padding: 14px !important;
+}
+
+.adminDashboardSide .notificationsList {
+    padding-right: 3px;
+}
+
+.adminDashboardSide .notificationsList::-webkit-scrollbar {
+    width: 3px;
+}
+
+.adminDashboardSide .notificationsList::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(8, 24, 160, 0.28);
+}
+
+.adminDashboardSide .calendarGradient {
+    padding: 10px;
+}
+
+.adminDashboardSide .calendarCard .react-calendar__navigation {
+    min-height: 30px !important;
+    margin-bottom: 2px !important;
+}
+
+.adminDashboardSide .calendarCard .react-calendar__month-view__weekdays {
+    margin-bottom: 0 !important;
+}
+
+.adminDashboardSide .calendarCard .react-calendar__tile {
+    height: 10px !important;
+    font-size: 0.66rem !important;
+}
+
+.adminDashboardSide .calendarCard .react-calendar__month-view__days {
+    row-gap: 1px !important;
+}
+
+.adminDashboardSide .calendarCard {
+    background:
+        radial-gradient(circle at 16% 18%, rgba(61, 182, 238, 0.2), transparent 24%),
+        radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.16), transparent 26%),
+        linear-gradient(135deg, #0b1732 0%, #071126 58%, #040815 100%) !important;
+    box-shadow: 0 18px 38px rgba(4, 8, 42, 0.16) !important;
+}
+
+.adminDashboardSide .calendarGradient {
+    background: transparent !important;
+}
+
+.adminDashboardSide .calendarCard .react-calendar {
+    color: #ffffff !important;
+}
+
+.adminDashboardSide .calendarCard .react-calendar__navigation button,
+.adminDashboardSide .calendarCard .react-calendar__navigation__label,
+.adminDashboardSide .calendarCard .react-calendar__month-view__weekdays {
+    color: rgba(255, 255, 255, 0.82) !important;
+}
+
+.adminDashboardSide .calendarCard .react-calendar__tile {
+    color: rgba(255, 255, 255, 0.78) !important;
+}
+
+.adminDashboardSide .calendarCard .react-calendar__tile:enabled:hover,
+.adminDashboardSide .calendarCard .react-calendar__tile:enabled:focus {
+    background: rgba(255, 255, 255, 0.12) !important;
+}
+
+.adminDashboardSide .calendarCard .react-calendar__tile--now {
+    background: rgba(250, 43, 36, 0.22) !important;
+    color: #ffffff !important;
+}
+
+.adminDashboardSide .calendarCard .react-calendar__tile--active {
+    background: rgba(61, 182, 238, 0.26) !important;
+    color: #ffffff !important;
+    box-shadow: inset 0 0 0 1px rgba(61, 182, 238, 0.42);
+}
+
+/* Extra depth for dashboard content surfaces */
+.adminDashboardMain .dashboardSectionShell {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(8, 24, 160, 0.12) !important;
+    background:transparent !important;
+    box-shadow:
+        0 18px 42px rgba(10, 17, 86, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.85) !important;
+}
+
+.adminDashboardMain .dashboardSectionShell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.74), rgba(255, 255, 255, 0) 36%);
+}
+
+.adminDashboardMain .dashboardSectionShell > * {
+    position: relative;
+    z-index: 1;
+}
+
+.dashboardKpiCard {
+    border: 1px solid rgba(8, 24, 160, 0.11) !important;
+    background:         radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.08), transparent 38%),
+        radial-gradient(circle at 0% 100%, rgba(250, 43, 36, 0.06), transparent 36%),
+        linear-gradient(180deg, #ffffff 0%, #f8fbff44 10%) !important;
+    box-shadow:
+        0 14px 32px rgba(10, 17, 86, 0.07),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+    transform: translateY(0);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.dashboardKpiCard:hover {
+    border-color: rgba(8, 24, 160, 0.2) !important;
+    box-shadow:
+        0 20px 42px rgba(10, 17, 86, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+    transform: translateY(-3px);
+}
+
+.dashboardKpiCard > div:first-child span {
+    color: #4a5872 !important;
+}
+
+.dashboardKpiCard > div:nth-child(2) {
+    color: #0a1156 !important;
+}
+
+.adminDashboardMain .dashboardChartCard {
+    border: 1px solid rgba(8, 24, 160, 0.12) !important;
+    background:
+        linear-gradient(180deg, #ffffff 0%, #f9fbff 100%),
+        radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.06), transparent 32%) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.adminDashboardMain .appointmentsCard.dashboardSoftCard,
+.adminDashboardSide .notificationsCard.dashboardSoftCard {
+    border: 1px solid rgba(8, 24, 160, 0.12) !important;
+    background:
+        radial-gradient(circle at 0% 0%, rgba(250, 43, 36, 0.06), transparent 34%),
+        radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.07), transparent 36%),
+        linear-gradient(180deg, #ffffff 0%, #f9fbff 100%) !important;
+    box-shadow:
+        0 16px 34px rgba(10, 17, 86, 0.075),
+        inset 0 1px 0 rgba(255, 255, 255, 0.86) !important;
+}
+
+.adminDashboardMain .inventoryLogsHeader {
+    border: 1px solid rgba(8, 24, 160, 0.1);
+    background:
+        linear-gradient(135deg, rgba(8, 24, 160, 0.08), rgba(61, 182, 238, 0.08)) !important;
+    color: #0a1156 !important;
+}
+
+.adminDashboardMain .inventoryLogRow,
+.adminDashboardSide .notificationItem {
+    border-color: rgba(8, 24, 160, 0.08) !important;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.92)) !important;
+    box-shadow: 0 6px 16px rgba(10, 17, 86, 0.035);
+}
+
+.adminDashboardSide .notificationItem:not(:last-child) {
+    margin-bottom: 4px;
+}
+
+/* Admin dashboard full redesign */
+.dashboardLegacyHidden {
+    display: none !important;
+}
+
+.adminDashboardRedesign {
+    padding: 22px 18px 0 18px !important;
+    overflow-y: auto !important;
+    background:
+        radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.08), transparent 28%),
+        linear-gradient(180deg, #f6f8fc 0%, #eef3fb 100%);
+}
+
+.adminDashboardRedesign .adminDashboardGrid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+    align-items: start;
+    gap: 18px !important;
+    height: auto;
+    min-height: 0;
+    overflow: visible !important;
+}
+
+.adminDashboardRedesign .adminDashboardMain,
+.adminDashboardRedesign .adminDashboardSide {
+    padding: 0 !important;
+    overflow: visible !important;
+}
+
+.adminDashboardRedesign .adminDashboardMain {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.adminDashboardRedesign .adminDashboardSide {
+    position: sticky;
+    top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px !important;
+}
+
+.dashboardOpsHeader,
+.dashboardOpsPanel,
+.dashboardOpsSnapshot .dashboardKpiCard {
+    border: 1px solid rgba(8, 24, 160, 0.12) !important;
+    box-shadow: 0 18px 42px rgba(10, 17, 86, 0.08) !important;
+}
+
+.dashboardOpsHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    min-height: 132px;
+    padding: 22px;
+    border-radius: 22px;
+    background:
+        radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.16), transparent 34%),
+        linear-gradient(135deg, #0b1732 0%, #071126 62%, #040815 100%) !important;
+    overflow: hidden;
+}
+
+.dashboardOpsIdentity {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+}
+
+.dashboardOpsAvatar,
+.dashboardSideProfileTop img {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background: #ffffff;
+}
+
+.dashboardOpsAvatar {
+    width: 72px;
+    height: 72px;
+    border: 3px solid rgba(255, 255, 255, 0.78);
+    border-radius: 20px;
+    box-shadow: 0 16px 28px rgba(0, 0, 0, 0.22);
+}
+
+.dashboardOpsAvatar img,
+.dashboardSideProfileTop img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.dashboardOpsHeader .dashboardHeroEyebrow {
+    color: rgba(255, 255, 255, 0.68) !important;
+    margin-bottom: 8px;
+}
+
+.dashboardOpsHeader h1,
+.dashboardPanelHeader h2,
+.dashboardSideProfile h2 {
+    margin: 0;
+    color: #0a1156;
+    letter-spacing: 0;
+}
+
+.dashboardOpsHeader h1 {
+    max-width: 720px;
+    color: #ffffff;
+    font-size: clamp(1.55rem, 2.5vw, 2.3rem);
+    line-height: 1.08;
+    font-weight: 760;
+}
+
+.dashboardOpsHeader p,
+.dashboardPanelHeader p,
+.dashboardSideProfile p {
+    margin: 6px 0 0;
+    color: #64748b;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.dashboardOpsHeader p {
+    color: rgba(255, 255, 255, 0.68);
+}
+
+.dashboardOpsControls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.dashboardOpsClock,
+.dashboardStatusPill,
+.dashboardAdminEditBtn {
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 999px;
+    padding: 0 14px;
+    font-size: 0.76rem;
+    font-weight: 720;
+    white-space: nowrap;
+}
+
+.dashboardOpsClock {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.78);
+}
+
+.dashboardOpsClock strong {
+    color: #ffffff;
+    font-weight: 760;
+}
+
+.adminDashboardRedesign .dashboardAdminEditBtn {
+    border: 1px solid rgba(250, 43, 36, 0.28);
+    background: linear-gradient(135deg, #fa2b24 0%, #c9162b 100%);
+    color: #ffffff;
+    cursor: pointer;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.adminDashboardRedesign .dashboardAdminEditBtn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 24px rgba(201, 22, 43, 0.22);
+}
+
+.dashboardOpsSnapshot {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.dashboardOpsSnapshot .dashboardKpiCard {
+    min-height: 132px;
+    border-radius: 18px !important;
+    padding: 16px !important;
+    transform: none !important;
+}
+
+.dashboardOpsSnapshot .dashboardKpiCard:hover {
+    transform: translateY(-2px) !important;
+}
+
+.dashboardOpsPanel {
+    border-radius: 20px;
+    padding: 18px;
+}
+
+.dashboardPanelHeader {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 14px;
+}
+
+.dashboardPanelHeader h2,
+.dashboardSideProfile h2 {
+    font-size: 1rem;
+    font-weight: 760;
+}
+
+.dashboardStatusPill {
+    min-height: 30px;
+    padding: 0 11px;
+    border: 1px solid rgba(15, 118, 110, 0.18);
+    background: rgba(15, 118, 110, 0.09);
+    color: #0f766e;
+    font-size: 0.7rem;
+}
+
+.adminDashboardRedesign .dashboardActionGrid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.adminDashboardRedesign .dashboardActionCard {
+    min-height: 74px;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 10px;
+    border: 1px solid rgba(8, 24, 160, 0.1) !important;
+    border-radius: 14px;
+    padding: 12px;
+    background: var(--dashboard-action-bg, #f8fafc) !important;
+    color: var(--dashboard-action-color, #0a1156);
+    box-shadow: none !important;
+}
+
+.adminDashboardRedesign .dashboardActionCard:hover {
+    background: var(--dashboard-action-hover-bg, #eef2ff) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 12px 24px rgba(10, 17, 86, 0.08) !important;
+}
+
+.dashboardActionIcon {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.adminDashboardRedesign .dashboardActionCard span:last-child {
+    font-size: 0.76rem !important;
+    font-weight: 720 !important;
+    color: #0a1156 !important;
+    text-align: left !important;
+}
+
+.adminDashboardRedesign .dashboardChartCard {
+    padding: 12px;
+    border: 1px solid rgba(8, 24, 160, 0.1) !important;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+.adminDashboardRedesign .inventoryLogsList,
+.adminDashboardRedesign .notificationsList {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.adminDashboardRedesign .inventoryLogsHeader,
+.adminDashboardRedesign .inventoryLogRow {
+    display: grid;
+    grid-template-columns: 58px minmax(160px, 1.5fr) 80px minmax(120px, 1fr) 90px;
+    align-items: center;
+    gap: 10px;
+}
+
+.adminDashboardRedesign .inventoryLogsHeader {
+    padding: 9px 12px;
+    border: 1px solid rgba(8, 24, 160, 0.08);
+    border-radius: 12px;
+    background: #f2f6ff !important;
+    color: #0a1156 !important;
+    font-size: 0.68rem;
+    font-weight: 780;
+    text-transform: uppercase;
+}
+
+.adminDashboardRedesign .inventoryLogRow {
+    padding: 11px 12px !important;
+    border: 1px solid rgba(8, 24, 160, 0.07) !important;
+    border-radius: 13px;
+    background: #ffffff !important;
+    color: #344054;
+    font-size: 0.76rem !important;
+    box-shadow: 0 8px 18px rgba(10, 17, 86, 0.04);
+}
+
+.adminDashboardRedesign .inventoryLogRow span:nth-child(2) {
+    color: #0a1156;
+    font-weight: 720;
+}
+
+.adminDashboardRedesign .inventoryLogRow span:last-child,
+.adminDashboardRedesign .inventoryLogRow span:nth-child(4) {
+    color: #64748b;
+    font-size: 0.72rem;
+}
+
+.inventoryMovementIcon {
+    width: 30px;
+    height: 30px;
+    display: inline-grid;
+    place-items: center;
+    border-radius: 10px;
+}
+
+.inventoryMovementIcon.isIn {
+    background: rgba(15, 118, 110, 0.12);
+    color: #0f766e;
+}
+
+.inventoryMovementIcon.isOut {
+    background: rgba(239, 68, 68, 0.12);
+    color: #b91c1c;
+}
+
+.inventoryQtyIn {
+    color: #0f766e !important;
+    font-weight: 760;
+}
+
+.inventoryQtyOut {
+    color: #b91c1c !important;
+    font-weight: 760;
+}
+
+.dashboardEmptyState {
+    padding: 24px;
+    border: 1px dashed rgba(8, 24, 160, 0.16);
+    border-radius: 14px;
+    color: #64748b;
+    font-size: 0.82rem;
+    text-align: center;
+}
+
+.dashboardSideProfile {
+    background:
+        radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.12), transparent 34%),
+        #ffffff !important;
+}
+
+.dashboardSideProfileTop {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.dashboardSideProfileTop img {
+    width: 48px;
+    height: 48px;
+    border: 2px solid rgba(8, 24, 160, 0.1);
+    border-radius: 15px;
+}
+
+.dashboardSideStats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.dashboardSideStats div {
+    padding: 12px;
+    border: 1px solid rgba(8, 24, 160, 0.08);
+    border-radius: 14px;
+    background: #f8fafc;
+}
+
+.dashboardSideStats span {
+    display: block;
+    color: #64748b;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.dashboardSideStats strong {
+    display: block;
+    margin-top: 4px;
+    color: #0a1156;
+    font-size: 1.35rem;
+    line-height: 1;
+}
+
+.adminDashboardRedesign .notificationsHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px !important;
+    margin-bottom: 12px !important;
+}
+
+.adminDashboardRedesign .notificationsTitle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px !important;
+    color: #0a1156;
+}
+
+.adminDashboardRedesign .notificationsTitle h3 {
+    margin: 0;
+    color: #0a1156 !important;
+    font-size: 0.95rem !important;
+}
+
+.adminDashboardRedesign .notificationItem {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px !important;
+    padding: 10px !important;
+    border: 1px solid rgba(8, 24, 160, 0.08) !important;
+    border-radius: 14px !important;
+    background: #ffffff !important;
+    cursor: pointer;
+    text-align: left;
+}
+
+.adminDashboardRedesign .notificationItem.isUnread {
+    border-color: rgba(250, 43, 36, 0.18) !important;
+    background: linear-gradient(180deg, #fffafa 0%, #ffffff 100%) !important;
+}
+
+.adminDashboardRedesign .notificationIcon {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 11px !important;
+    padding: 0 !important;
+}
+
+.adminDashboardRedesign .notificationContent {
+    min-width: 0;
+}
+
+.adminDashboardRedesign .notificationTitle,
+.adminDashboardRedesign .notificationDesc {
+    display: block;
+}
+
+.adminDashboardRedesign .notificationTitle {
+    color: #0a1156 !important;
+    font-size: 0.76rem !important;
+    font-weight: 760 !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.adminDashboardRedesign .notificationDesc {
+    margin-top: 2px;
+    color: #64748b !important;
+    font-size: 0.68rem !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.adminDashboardRedesign .notificationTime {
+    color: #94a3b8 !important;
+    font-size: 0.65rem !important;
+    white-space: nowrap;
+}
+
+.adminDashboardRedesign .viewAllBtn {
+    min-height: 30px;
+    padding: 0 12px;
+    border: 1px solid rgba(250, 43, 36, 0.16);
+    border-radius: 999px;
+    background: rgba(250, 43, 36, 0.08);
+    color: #b91c1c;
+    font-size: 0.72rem !important;
+    font-weight: 760;
+    cursor: pointer;
+}
+
+.adminDashboardRedesign .calendarCard {
+    width: 100%;
+    margin: 0;
+    background: #ffffff !important;
+}
+
+.adminDashboardRedesign .calendarGradient {
+    padding: 0;
+    background: transparent !important;
+}
+
+.adminDashboardRedesign .calendarCard .react-calendar {
+    width: 100%;
+    border: 0 !important;
+    background: transparent !important;
+    color: #0a1156 !important;
+}
+
+.adminDashboardRedesign .calendarCard .react-calendar__navigation {
+    min-height: 34px !important;
+    margin-bottom: 6px !important;
+}
+
+.adminDashboardRedesign .calendarCard .react-calendar__navigation button,
+.adminDashboardRedesign .calendarCard .react-calendar__navigation__label,
+.adminDashboardRedesign .calendarCard .react-calendar__month-view__weekdays {
+    color: #0a1156 !important;
+}
+
+.adminDashboardRedesign .calendarCard .react-calendar__tile {
+    height: 34px !important;
+    border-radius: 10px !important;
+    color: #0a1156 !important;
+    font-size: 0.72rem !important;
+}
+
+.adminDashboardRedesign .calendarCard .react-calendar__tile:enabled:hover,
+.adminDashboardRedesign .calendarCard .react-calendar__tile:enabled:focus {
+    background: rgba(8, 24, 160, 0.08) !important;
+}
+
+.adminDashboardRedesign .calendarCard .react-calendar__tile--now {
+    background: rgba(250, 43, 36, 0.1) !important;
+    color: #b91c1c !important;
+}
+
+.adminDashboardRedesign .calendarCard .react-calendar__tile--active {
+    background: #0a1156 !important;
+    color: #ffffff !important;
+}
+
+@media (max-width: 1180px) {
+    .adminDashboardRedesign .adminDashboardGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .adminDashboardRedesign .adminDashboardSide {
+        position: static;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .adminDashboardRedesign .dashboardSideProfile {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 920px) {
+    .dashboardOpsHeader {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .dashboardOpsControls {
+        justify-content: flex-start;
+    }
+
+    .dashboardOpsSnapshot,
+    .adminDashboardRedesign .dashboardActionGrid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .adminDashboardRedesign .adminDashboardSide {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .adminDashboardRedesign {
+        padding: 14px 10px 0 10px !important;
+    }
+
+    .dashboardOpsHeader,
+    .dashboardOpsPanel {
+        border-radius: 16px;
+        padding: 14px;
+    }
+
+    .dashboardOpsIdentity {
+        align-items: flex-start;
+    }
+
+    .dashboardOpsAvatar {
+        width: 54px;
+        height: 54px;
+        border-radius: 16px;
+    }
+
+    .dashboardOpsHeader h1 {
+        font-size: 1.35rem;
+    }
+
+    .dashboardOpsSnapshot,
+    .adminDashboardRedesign .dashboardActionGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .adminDashboardRedesign .inventoryLogsHeader {
+        display: none;
+    }
+
+    .adminDashboardRedesign .inventoryLogRow {
+        grid-template-columns: 36px 1fr auto;
+    }
+
+    .adminDashboardRedesign .inventoryLogRow span:nth-child(4),
+    .adminDashboardRedesign .inventoryLogRow span:last-child {
+        grid-column: 2 / -1;
+    }
+}
+
+/* Restored admin dashboard right-panel polish */
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardAdminHero {
+    min-height: 112px;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(10, 17, 86, 0.12) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #0a1156;
+    padding: 8px 4px 18px;
+    border-radius: 0;
+    margin-bottom: 10px;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardAdminHeroGlow,
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardAdminHeroTime {
+    display: none !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardAdminHeroCopy h1 {
+      background:
+    radial-gradient(circle at 20% 18%, rgba(61, 182, 238, 0.35), transparent 36%, rgba(255, 15, 15, 0.708)),
+    linear-gradient(135deg, #0b1732 0%, #071126 64%, #040815 100%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent !important;
+    -webkit-text-fill-color: transparent;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardAdminHeroCopy p {
+    color: #4a5872 !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardAdminHero .dashboardHeroEyebrow {
+    color: #b91c1c !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardAdminHeroAvatar {
+    box-shadow: none;
+    background: rgba(250, 43, 36, 0.1);
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardAdminEditBtn {
+    border-color: rgba(10, 17, 86, 0.12);
+    background: #0a1156;
+    color: #ffffff;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .dashboardWelcomeCard,
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationsCard,
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .calendarCard {
+    border: 0 !important;
+    border-radius: 0 !important;
+    background:
+        radial-gradient(circle at 20% 10%, rgba(61, 182, 238, 0.35) 0%, transparent 62%, rgba(255, 15, 15, 0.28) 100%),
+        linear-gradient(135deg, #0b1732 0%, #071126 64%, #040815 100%);
+    box-shadow: none !important;
+    color: #ffffff;
+}
+
+.dashboardWelcomeCard {
+    position: relative;
+    padding: 16px;
+    border-radius: 16px;
+    overflow: hidden;
+    background:
+        linear-gradient(135deg, rgba(4, 8, 21, 0.88), rgba(7, 17, 38, 0.86)),
+        var(--welcome-branch-image) center/cover !important;
+}
+
+.dashboardWelcomeCard span {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-bottom: 8px;
+    color: rgba(255, 255, 255, 0.68);
+    font-size: 0.68rem;
+    font-weight: 760;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.dashboardWelcomeCard span img {
+    width: 40px;
+    max-height: 24px;
+    object-fit: contain;
+    padding: 0px 0px;
+    border-radius: 999px;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide {
+    gap: 0 !important;
+    border-radius: 18px;
+    overflow: hidden !important;
+    background:
+        radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.2), transparent 32%),
+        linear-gradient(135deg, #0b1732 0%, #071126 58%, #040815 100%);
+    box-shadow: 0 18px 38px rgba(4, 8, 42, 0.16);
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .dashboardWelcomeCard,
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationsCard {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.66) !important;
+}
+
+.dashboardWelcomeCard h3 {
+    position: relative;
+    z-index: 1;
+    margin: 0;
+    color: #ffffff;
+    font-size: 1.05rem;
+    line-height: 1.2;
+}
+
+.dashboardWelcomeCard p {
+    position: relative;
+    z-index: 1;
+    margin: 8px 0 0;
+    color: rgba(255, 255, 255, 0.68);
+    font-size: 0.76rem;
+    line-height: 1.45;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationsTitle,
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationsTitle h3,
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .calendarCard .react-calendar,
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .calendarCard .react-calendar__navigation button,
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .calendarCard .react-calendar__navigation__label,
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .calendarCard .react-calendar__month-view__weekdays {
+    color: #ffffff !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationsTitle svg {
+    color: #ffffff;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .viewAllBtn {
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+    border-radius: 999px;
+    padding: 5px 10px;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationItem {
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    box-shadow: none !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationTitle {
+    color: #ffffff !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationDesc,
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationTime {
+    color: rgba(255, 255, 255, 0.62) !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationsList {
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationsList::-webkit-scrollbar {
+    display: none;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationContent {
+    min-width: 0;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationTitle,
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationDesc {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .calendarGradient {
+    background: transparent !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .calendarCard .react-calendar__tile {
+    color: rgba(255, 255, 255, 0.78) !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .calendarCard .react-calendar__tile:enabled:hover,
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .calendarCard .react-calendar__tile:enabled:focus {
+    background: rgba(255, 255, 255, 0.12) !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .calendarCard .react-calendar__tile--now {
+    background: rgba(250, 43, 36, 0.24) !important;
+    color: #ffffff !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .calendarCard .react-calendar__tile--active {
+    background: rgba(61, 182, 238, 0.26) !important;
+    color: #ffffff !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardActionShell {
+    display: grid;
+    grid-template-columns: minmax(150px, 0.35fr) minmax(0, 1fr);
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardActionShellOld {
+    display: none !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardActionIntro {
+    min-width: 0;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardActionCard {
+    color: var(--dashboard-action-color, #0a1156) !important;
+    box-shadow: 0 0 18px color-mix(in srgb, var(--dashboard-action-color, #0a1156) 16%, transparent) !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardActionCard span {
+    color: var(--dashboard-action-color, #0a1156) !important;
+    font-weight: 650 !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardGrid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 310px);
+    align-items: start;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardMain {
+    min-width: 0;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide {
+    width: 100%;
+    max-width: 310px;
+    justify-self: end;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardSectionShell:has(.dashboardKpiCard) {
+    padding: 14px !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardSectionShell:has(.dashboardKpiCard) > div:last-child {
+    gap: 9px !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardKpiCard {
+    min-height: 104px;
+    padding: 12px !important;
+    border-radius: 14px !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardKpiCard > div:first-child {
+    margin-bottom: 8px !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardKpiCard > div:first-child > div {
+    width: 30px !important;
+    height: 30px !important;
+    border-radius: 10px !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardKpiCard > div:nth-child(2) {
+    font-size: 21px !important;
+    margin-bottom: 6px !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .dashboardKpiCard > div:nth-child(2) span {
+    font-size: 14px !important;
+}
+
+/* Separate side-card glow restore */
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide {
+    gap: 12px !important;
+    overflow: visible !important;
+    border-radius: 0;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .dashboardWelcomeCard,
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationsCard,
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .calendarCard {
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    border-radius: 16px !important;
+    box-shadow:
+        0 0 20px rgba(148, 163, 184, 0.12),
+        0 14px 30px rgba(4, 8, 42, 0.14) !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .dashboardWelcomeCard {
+    box-shadow:
+        0 0 22px rgba(250, 43, 36, 0.14),
+        0 14px 30px rgba(4, 8, 42, 0.14) !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationsCard {
+    box-shadow:
+        0 0 22px rgba(61, 182, 238, 0.12),
+        0 14px 30px rgba(4, 8, 42, 0.14) !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .calendarCard {
+    box-shadow:
+        0 0 22px rgba(148, 163, 184, 0.14),
+        0 14px 30px rgba(4, 8, 42, 0.14) !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .dashboardWelcomeCard,
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationsCard {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14) !important;
+}
+
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .dashboardWelcomeCard,
+.adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide .notificationsCard {
+    background:
+        radial-gradient(circle at 10% 2%, rgba(61, 182, 238, 0.212) 0%, transparent 60%, rgba(255, 15, 15, 0.28) 100%),
+        linear-gradient(135deg, #0b1732 10%, #071126 64%, #040815 100%) !important;
+}
+
+@media (max-width: 760px) {
+    .adminDashboardBody:not(.adminDashboardRedesign) .dashboardActionShell {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+
+    .adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .adminDashboardBody:not(.adminDashboardRedesign) .adminDashboardSide {
+        max-width: none;
+        justify-self: stretch;
     }
 }

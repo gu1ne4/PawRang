@@ -569,3 +569,82 @@
         width: 100%;
     }
 }
+
+/* Shared PetShield workspace background/footer for doctor-only pages */
+.doctorPortalShell {
+    background:
+        radial-gradient(circle at 14% 8%, rgba(250, 43, 36, 0.1), transparent 28%),
+        radial-gradient(circle at 84% 0%, rgba(8, 24, 160, 0.16), transparent 32%),
+        linear-gradient(180deg, #f8faff 0%, #f3f6ff 42%, #eef3ff 100%);
+}
+
+.doctorPortalContent {
+    position: relative;
+    padding-bottom: 0;
+    background:
+        radial-gradient(circle at 18% 0%, rgba(250, 43, 36, 0.08), transparent 28%),
+        radial-gradient(circle at 86% 0%, rgba(8, 24, 160, 0.12), transparent 30%),
+        linear-gradient(180deg, #f8faff 0%, #f3f6ff 48%, #eef3ff 100%);
+    color: #0a1156;
+}
+
+.doctorPortalContent::after {
+    content: "Petshield\A Veterinary Clinic & Grooming Center\A\A Petshield Las Pinas\A Las Pinas City, Metro Manila\A petshield@gmail.com  |  +63 912 345 6789\A\A Petshield Taguig\A Taguig City, Metro Manila\A petshieldtaguig@gmail.com  |  +63 998 765 4321\A\A Powered by PawRang";
+    display: grid;
+    min-height: 360px;
+    margin: 56px -28px 0;
+    padding: 250px 24px 22px;
+    place-items: center;
+    background:
+        linear-gradient(180deg, rgba(8, 24, 160, 0) 0%, rgba(8, 24, 160, 0.05) 22%, rgba(8, 24, 160, 0.18) 38%, rgba(8, 24, 160, 0.5) 56%, rgba(10, 17, 86, 0.88) 78%, #050816 100%),
+        linear-gradient(115deg, rgba(250, 43, 36, 0.32) 8%, rgba(8, 24, 160, 0.18) 48%, rgba(255, 255, 255, 0.08) 100%),
+        #0a1156;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 0.9rem;
+    font-weight: 650;
+    line-height: 1.8;
+    text-align: center;
+    white-space: pre-line;
+}
+
+@media (max-width: 900px) {
+    .doctorPortalContent::after {
+        margin-right: -14px;
+        margin-left: -14px;
+    }
+}
+
+.doctorPortalContent::after {
+    content: none !important;
+    display: none !important;
+}
+
+.doctorPortalContent > .admin-body-footer.user-page-footer {
+    flex: 0 0 auto;
+    margin: 56px -28px 0;
+}
+
+@media (max-width: 900px) {
+    .doctorPortalContent > .admin-body-footer.user-page-footer {
+        margin-right: -14px;
+        margin-left: -14px;
+    }
+}
+
+.doctorPortalShell {
+    background:
+        linear-gradient(180deg, rgba(243, 246, 255, 0) calc(100% - 250px), rgba(201, 211, 242, 0.9) calc(100% - 220px), rgba(111, 126, 198, 0.84) calc(100% - 180px), rgba(8, 24, 160, 0.92) calc(100% - 122px), #0b1687 calc(100% - 72px), #050816 100%),
+        radial-gradient(circle at 18% 0%, rgba(250, 43, 36, 0.08), transparent 28%),
+        radial-gradient(circle at 86% 0%, rgba(8, 24, 160, 0.12), transparent 30%),
+        linear-gradient(180deg, #f8faff 0%, #f3f6ff 48%, #eef3ff 100%);
+}
+
+.doctorPortalContent > .admin-body-footer.user-page-footer.petshield-footer--compact {
+    margin: 36px -28px 0;
+}
+
+@media (max-width: 900px) {
+    .doctorPortalContent > .admin-body-footer.user-page-footer.petshield-footer--compact {
+        margin: 32px -14px 0;
+    }
+}

@@ -4,17 +4,20 @@ import { useNavigate, useLocation } from 'react-router-dom';
 // Web icons equivalent to Ionicons
 import { 
   IoHomeOutline, IoPeopleOutline, IoChevronDownOutline, IoChevronUpOutline,
-  IoPersonOutline, IoMedkitOutline, IoCalendarClearOutline, IoCalendarOutline,
+  IoPersonOutline, IoCalendarClearOutline, IoCalendarOutline,
   IoTodayOutline, IoTimeOutline, IoDocumentTextOutline, IoSettingsOutline,
-  IoLogOutOutline, IoNotifications, IoCheckmarkCircleOutline, IoCloseCircleOutline,
+  IoLogOutOutline, IoCheckmarkCircleOutline, IoCloseCircleOutline,
   IoAlertCircleOutline, IoSearchSharp, IoFilterSharp, IoCloseCircleSharp,
-  IoImageOutline, IoCamera, IoEye, IoPersonCircleOutline, IoMailOutline, IoCallOutline
+  IoImageOutline, IoCamera, IoEye, IoPersonCircleOutline, IoMailOutline, IoCallOutline,
+  IoChevronBackOutline, IoChevronForwardOutline
 } from 'react-icons/io5';
 import { RiListSettingsLine } from "react-icons/ri";
+import { PiUsersThree } from "react-icons/pi";
 
 // Import your merged CSS file
 import './AdminStyles.css';
 import Navbar from '../reusable_components/NavBar';
+import Notifications from '../reusable_components/Notifications';
 
 // Using standard imports for Vite images
 import logoImg from '../assets/AgsikapLogo-Temp.png';
@@ -69,15 +72,11 @@ export default function UserAccPage() {
   const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 
   // UI State
-  const [searchVisible, setSearchVisible] = useState(false);
-  const [filterVisible, setFilterVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [addAccountVisible, setAddAccountVisible] = useState(false);
   const [editAccountVisible, setEditAccountVisible] = useState(false);
   const [viewAccountVisible, setViewAccountVisible] = useState(false);
   const [showAccountDropdown, setShowAccountDropdown] = useState(true); // Default open since we are inside it
-  const [searchHovered, setSearchHovered] = useState(false);
-  const [filterHovered, setFilterHovered] = useState(false);
   const [togglingStatus, setTogglingStatus] = useState(false);
   const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [sortOption, setSortOption] = useState<UserSortOption>('nameAZ');
@@ -209,11 +208,11 @@ export default function UserAccPage() {
     const accountName = account.fullName || account.fullname || account.username;
     
     const messageJSX = (
-      <div>
-        <p style={{marginBottom: '8px'}}>
-          Are you sure you want to <strong style={{color: nextStatus === 'Active' ? 'green' : 'red'}}>{action}</strong> this account?
+      <div className="statusConfirmMessage">
+        <p>
+          Are you sure you want to <strong className={nextStatus === 'Active' ? 'confirmActionActive' : 'confirmActionDisabled'}>{action}</strong> this account?
         </p>
-        <p style={{fontStyle: 'italic', color: '#666'}}>
+        <p className="statusConfirmAccount">
           Account: {accountName}
         </p>
       </div>
@@ -445,13 +444,44 @@ export default function UserAccPage() {
       <div className="bodyContainer accountOverviewBodyContainer">
         <div className="topContainer accountOverviewTopContainer">
           <div className="subTopContainer accountOverviewSubTopContainer">
-            <IoMedkitOutline size={23} color="#3d67ee" style={{ marginTop: '4px' }} />
-            <span className="blueText" style={{ marginLeft: '10px' }}>Account Overview / Patients</span>
+            <div className="accountOverviewHeroIcon">
+              <PiUsersThree size={26} />
+            </div>
+            <div className="accountOverviewHeroCopy">
+              <span>Account Overview</span>
+              <h1>Users</h1>
+              <p>Manage user profiles, contact details, and account status.</p>
+            </div>
           </div>
-          <div className="subTopContainer notificationContainer accountOverviewNotificationContainer">
-            <button style={{ background: 'none', border: 'none', cursor: 'pointer' }} onClick={fetchAccounts}>
-              <IoNotifications size={21} color="#3d67ee" style={{ marginTop: '3px' }} />
-            </button>
+          <div className="accountOverviewHeaderActions userAccountHeaderActions">
+            <div className="accountSearchRow accountHeaderSearchRow">
+              <div className="toolbarItem accountToolbarStaticIcon">
+                <IoSearchSharp size={18} className="iconDefault" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search patients..."
+                value={searchQuery}
+                onChange={(e) => {setSearchQuery(e.target.value); setPage(0);}}
+                className="searchInput accountHeaderSearchInput"
+                maxLength={60}
+              />
+            </div>
+            <div className="accountHeaderDivider" aria-hidden="true" />
+            <div className="subTopContainer notificationContainer accountOverviewNotificationContainer">
+              <Notifications
+                buttonClassName="invIconButton"
+                iconClassName="invBlueIcon"
+                onViewAll={() => {
+                  console.log('View all notifications');
+                }}
+                onNotificationClick={(notification) => {
+                  if (notification.link) {
+                    navigate(notification.link);
+                  }
+                }}
+              />
+            </div>
           </div>
         </div>
 
@@ -459,87 +489,67 @@ export default function UserAccPage() {
         <div className="tableContainer accountOverviewTableContainer">
           <div className="tableToolbar">
              <div className="searchFilterSection">
-                <div className="toolbarItem" onMouseEnter={() => setSearchHovered(true)} onMouseLeave={() => setSearchHovered(false)}>
-                    <button className="iconButton" onClick={() => setSearchVisible(!searchVisible)}>
-                      <IoSearchSharp size={25} color={searchVisible ? "#afccf8" : "#3d67ee"} />
-                    </button>
-                    {searchHovered && <div className="tooltip">Search</div>}
-                </div>
-                
-                {searchVisible && (
-                  <input 
-                    type="text" 
-                    placeholder="Search..." 
-                    value={searchQuery} 
-                    onChange={(e) => {setSearchQuery(e.target.value); setPage(0);}} 
-                    className="searchInput" 
-                    maxLength={60} 
-                  />
-                )}
-                
-                <div className="toolbarItem" onMouseEnter={() => setFilterHovered(true)} onMouseLeave={() => setFilterHovered(false)}>
-                    <button className="iconButton" onClick={() => setFilterVisible(!filterVisible)}>
-                      <IoFilterSharp size={25} color={filterVisible ? "#afccf8" : "#3d67ee"} />
-                    </button>
-                    {filterHovered && <div className="tooltip">Filter</div>}
-                </div>
-
-                {filterVisible && (
-                   <div className="filterSection">
-                       <select 
-                         value={status} 
-                         className="filterSelect" 
-                         onChange={(e) => {setStatus(e.target.value); setPage(0);}}
-                       >
-                          <option value="defaultStatus" style={{color: '#a8a8a8'}}>Status</option>
-                          <option value="Active">Active</option>
-                          <option value="Disabled">Disabled</option>
-                       </select>
-                       <button onClick={() => { setStatus("defaultStatus"); setSearchQuery(""); setPage(0); }} className="clearFilterBtn">
-                          <IoCloseCircleSharp size={15} color="#ffffff" style={{ marginTop: '1px' }} />
-                          <span>Clear Filters</span>
-                       </button>
-                   </div>
-                )}
-                <div className="accountSettingsDropdownContainer">
-                  <div className="toolbarItem">
-                    <button
-                      className="iconButton"
-                      onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
-                      aria-label="User table settings"
-                    >
-                      <RiListSettingsLine size={23} className={showSettingsDropdown ? "iconActive" : "iconDefault"} />
-                    </button>
+                <div className="accountFilterRow">
+                  <div className="toolbarItem accountToolbarStaticIcon">
+                    <IoFilterSharp size={18} className="iconDefault" />
                   </div>
-                  {showSettingsDropdown && (
-                    <div className="accountSettingsDropdown">
-                      <div className="accountSettingsSection">
-                        <label>Sort By</label>
-                        <select
-                          value={sortOption}
-                          onChange={(e) => { setSortOption(e.target.value as UserSortOption); setPage(0); }}
-                          className="accountSettingsSelect"
+
+                  <div className="filterSection">
+                    <select 
+                      value={status} 
+                      className="filterSelect" 
+                      onChange={(e) => {setStatus(e.target.value); setPage(0);}}
+                    >
+                      <option value="defaultStatus" style={{color: '#a8a8a8'}}>Status</option>
+                      <option value="Active">Active</option>
+                      <option value="Disabled">Disabled</option>
+                    </select>
+                    <button onClick={() => { setStatus("defaultStatus"); setSearchQuery(""); setPage(0); }} className="clearFilterBtn">
+                      <IoCloseCircleSharp size={15} color="#ffffff" style={{ marginTop: '1px' }} />
+                      <span>Clear Filters</span>
+                    </button>
+                    <div className="accountFilterDivider" aria-hidden="true" />
+                    <div className="accountSettingsDropdownContainer">
+                      <div className="toolbarItem">
+                        <button
+                          className="iconButton accountSortIconButton"
+                          onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
+                          aria-label="User table settings"
                         >
-                          {USER_SORT_OPTIONS.map(option => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                          ))}
-                        </select>
+                          <RiListSettingsLine size={19} className={showSettingsDropdown ? "iconActive" : "iconDefault"} />
+                        </button>
                       </div>
-                      <div className="accountSettingsDivider" />
-                      <div className="accountSettingsSection">
-                        <label>Rows Per Page</label>
-                        <select
-                          value={rowsPerPage}
-                          onChange={(e) => handleRowsPerPageChange(parseInt(e.target.value, 10))}
-                          className="accountSettingsSelect"
-                        >
-                          {ROWS_PER_PAGE_OPTIONS.map(option => (
-                            <option key={option} value={option}>{option} per page</option>
-                          ))}
-                        </select>
-                      </div>
+                      {showSettingsDropdown && (
+                        <div className="accountSettingsDropdown">
+                          <div className="accountSettingsSection">
+                            <label>Sort By</label>
+                            <select
+                              value={sortOption}
+                              onChange={(e) => { setSortOption(e.target.value as UserSortOption); setPage(0); }}
+                              className="accountSettingsSelect"
+                            >
+                              {USER_SORT_OPTIONS.map(option => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="accountSettingsDivider" />
+                          <div className="accountSettingsSection">
+                            <label>Rows Per Page</label>
+                            <select
+                              value={rowsPerPage}
+                              onChange={(e) => handleRowsPerPageChange(parseInt(e.target.value, 10))}
+                              className="accountSettingsSelect"
+                            >
+                              {ROWS_PER_PAGE_OPTIONS.map(option => (
+                                <option key={option} value={option}>{option} per page</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
              </div>
           </div>
@@ -577,8 +587,8 @@ export default function UserAccPage() {
                               </div>
                           </td>
                           <td style={{textAlign: 'center'}}>
-                              <button style={{background: 'none', border: 'none', cursor: 'pointer'}} onClick={() => handleViewDetails(u)}>
-                                <IoEye size={18} color="#3d67ee"/>
+                              <button className="iconButton" onClick={() => handleViewDetails(u)} aria-label="View patient details">
+                                <IoEye size={18} className="blueIcon"/>
                               </button>
                           </td>
                           <td style={{textAlign: 'center'}}>
@@ -608,11 +618,17 @@ export default function UserAccPage() {
               {/* Web Pagination */}
               {totalPages > 0 && (
                 <div className="pagination accountPagination">
-                  <button className="paginationBtn" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>Previous</button>
+                  <button className="paginationBtn paginationPrevBtn" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>
+                    <IoChevronBackOutline size={15} />
+                    <span>Previous</span>
+                  </button>
                   <span className="paginationInfo">
                     Showing {sortedUsers.length === 0 ? 0 : page * itemsPerPage + 1} to {Math.min((page + 1) * itemsPerPage, sortedUsers.length)} of {sortedUsers.length} items
                   </span>
-                  <button className="paginationBtn" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}>Next</button>
+                  <button className="paginationBtn paginationNextBtn" onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}>
+                    <span>Next</span>
+                    <IoChevronForwardOutline size={15} />
+                  </button>
                 </div>
               )}
             </div>
@@ -786,7 +802,7 @@ export default function UserAccPage() {
                 <IoCloseCircleSharp size={22} />
               </button>
             </div>
-            <div className="imageUploadSection">
+            <div className="imageUploadSection accountCreateVisual">
               <div className="accountVisualPanelContent">
                 <div className="accountPoweredBy">
                   <span>Powered by</span>
@@ -804,7 +820,7 @@ export default function UserAccPage() {
                       <img src={selectedAccount.userImage || selectedAccount.userimage} className="uploadedImage" alt="Patient Avatar" />
                     ) : (
                       <div className="uploadPlaceholder">
-                        <IoPersonCircleOutline size={46} color="#3d67ee" />
+                        <IoPersonCircleOutline size={46} color="#0a1156" />
                       </div>
                     )}
                   </div>
@@ -815,15 +831,36 @@ export default function UserAccPage() {
                 </div>
               </div>
               <div className="formColumn">
-                <div className="detailGroup"><label>Full Name</label><div className="detailValue">{selectedAccount.fullName || selectedAccount.fullname}</div></div>
-                <div className="detailGroup"><label>Contact Number</label><div className="detailValue">{selectedAccount.contactNumber || selectedAccount.contactnumber}</div></div>
-                <div className="detailGroup"><label>Account Creation Date</label><div className="detailValue">{selectedAccount.dateCreated || selectedAccount.datecreated || 'N/A'}</div></div>
+                <div className="formGroup">
+                  <label>Full Name</label>
+                  <div className="inputWithIcon">
+                    <IoPersonOutline className="fieldIcon" size={17} />
+                    <input type="text" className="formInput" value={selectedAccount.fullName || selectedAccount.fullname || ''} readOnly />
+                  </div>
+                </div>
+                <div className="formGroup">
+                  <label>Contact Number</label>
+                  <div className="inputWithIcon">
+                    <IoCallOutline className="fieldIcon" size={17} />
+                    <input type="text" className="formInput" value={selectedAccount.contactNumber || selectedAccount.contactnumber || ''} readOnly />
+                  </div>
+                </div>
+                <div className="formGroup">
+                  <label>Account Creation Date</label>
+                  <input type="text" className="formInput" value={selectedAccount.dateCreated || selectedAccount.datecreated || 'N/A'} readOnly />
+                </div>
               </div>
               <div className="formColumn">
-                <div className="detailGroup"><label>E-Mail</label><div className="detailValue">{selectedAccount.email}</div></div>
-                <div className="detailGroup">
+                <div className="formGroup">
+                  <label>E-Mail</label>
+                  <div className="inputWithIcon">
+                    <IoMailOutline className="fieldIcon" size={17} />
+                    <input type="email" className="formInput" value={selectedAccount.email || ''} readOnly />
+                  </div>
+                </div>
+                <div className="formGroup" style={{ marginTop: '10px' }}>
                   <label>Status</label>
-                  <div className={`statusBadge ${selectedAccount.status === 'Active' ? 'activeBadge' : 'inactiveBadge'}`}>
+                  <div className={`statusBadge ${selectedAccount.status === 'Active' ? 'activeBadge' : 'inactiveBadge'}`} style={{ display: 'inline-flex', padding: '6px 16px' }}>
                     <span className={`statusText ${selectedAccount.status === 'Active' ? 'activeText' : ''}`}>{selectedAccount.status || 'Active'}</span>
                   </div>
                 </div>
@@ -841,16 +878,16 @@ export default function UserAccPage() {
         <div className="modalOverlay">
           <div className="alertModal">
              <div className="alertIcon">
-               {modalConfig.type === 'success' ? <IoCheckmarkCircleOutline size={55} color="#2e9e0c" /> : 
-                modalConfig.type === 'error' ? <IoCloseCircleOutline size={55} color="#d93025" /> : 
-                <IoAlertCircleOutline size={55} color="#3d67ee" />}
+               {modalConfig.type === 'success' ? <IoCheckmarkCircleOutline size={55} color="#166534" /> : 
+                modalConfig.type === 'error' ? <IoCloseCircleOutline size={55} color="#991b1b" /> : 
+                <IoAlertCircleOutline size={55} color="#0a1156" />}
              </div>
              <h3 className="alertTitle">{modalConfig.title}</h3>
              
              {typeof modalConfig.message === 'string' ? (
                <p className="alertMessage">{modalConfig.message}</p>
              ) : (
-               <div style={{ marginBottom: '25px' }}>{modalConfig.message}</div>
+               <div className="alertMessage alertMessageNode">{modalConfig.message}</div>
              )}
              
              <div className="alertActions">

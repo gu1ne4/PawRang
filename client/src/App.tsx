@@ -40,14 +40,14 @@ function App() {
       <GlobalAlert />
       <Routes>
         <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/user/home" element={<UserHome />} />
+        <Route path="/UserHome" element={<Navigate to="/user/home" replace />} />
 
         <Route element={<ProtectedRoute allowedRoles={['User', 'Patient']} />}>
-          <Route path="/user/home" element={<UserHome />} />
           <Route path="/user/pet-profile" element={<UserPetProfile />} />
           <Route path="/user/appointments" element={<UserAppointmentView />} />
           <Route path="/user/book-appointment" element={<UserAppointmentBook />} />
           <Route path="/user/profile" element={<UserProfile />} />
-          <Route path="/UserHome" element={<Navigate to="/user/home" replace />} />
           <Route path="/user/appointment-book" element={<Navigate to="/user/book-appointment" replace />} />
           <Route path="/user/appointment-view" element={<Navigate to="/user/appointments" replace />} />
         </Route>

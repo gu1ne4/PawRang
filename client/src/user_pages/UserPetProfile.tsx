@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { apiService } from '../apiService';
 import profileHeader from '../assets/ProfileHeader.png';
 import petsPeeking from '../assets/PetsPeeking.png';
+import petshieldLogo from '../assets/PetshieldLogo.png';
+import pawRangLogo from '../assets/PawRang Logomark White.png';
 import ClientNavBar from '../reusable_components/ClientNavBar';
 import { formatPetAge } from '../utils/formatPetAge';
 import { ImLab } from 'react-icons/im';
@@ -12,8 +14,10 @@ import {
   IoHappy, IoInformationCircleOutline, IoMedicalOutline, IoFolderOutline,
   IoCheckmarkCircle, IoAdd, IoPencil,
   IoAlertCircleOutline, IoCheckmarkCircleOutline, IoCloseCircleOutline,
+  IoRefreshOutline, IoMailOutline, IoCallOutline, IoCalendarOutline,
 } from 'react-icons/io5';
 import './UserStyles.css';
+import './UserSharedFooterStyles.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1078,7 +1082,8 @@ const UserPetProfile: React.FC = () => {
             onClick={() => { void fetchSharedRecords(pet.pet_id, true); }}
             disabled={isLoadingSharedRecords}
           >
-            {isLoadingSharedRecords ? 'Refreshing...' : 'Refresh'}
+            <IoRefreshOutline size={16} />
+            <span>{isLoadingSharedRecords ? 'Refreshing...' : 'Refresh'}</span>
           </button>
         </div>
         <p className="records-note">
@@ -1307,12 +1312,12 @@ const UserPetProfile: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="user-container">
+    <div className="user-container pet-profile-page user-page-surface">
 
       {/* ── Alert Modal ── */}
       {alertVisible && (
         <div className="modal-overlay" onClick={() => closeAlert()}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
+          <div className="modal-content user-alert-modal" onClick={e => e.stopPropagation()}>
             {alertConfig.type === 'success'
               ? <IoCheckmarkCircleOutline size={55} color="#2e9e0c" />
               : alertConfig.type === 'error'
@@ -1397,7 +1402,7 @@ const UserPetProfile: React.FC = () => {
         onLogout={() => {
           localStorage.removeItem('userSession');
           localStorage.removeItem('access_token');
-          navigate('/login');
+          navigate('/user/home', { replace: true, state: { authMode: 'login' } });
         }}
         onViewProfile={() => navigate('/user/profile')}
         onMyPets={() => navigate('/user/pet-profile')}
@@ -1409,14 +1414,15 @@ const UserPetProfile: React.FC = () => {
         {/* ════════ LEFT SIDEBAR ════════ */}
         <div className="pets-sidebar" ref={leftRef}>
           <div className="sidebar-header">
-            <img src={profileHeader} alt="Header" className="sidebar-header-image" />
+            <img src={petshieldLogo} alt="Petshield" className="sidebar-header-image" />
             <div className="sidebar-header-text">
-              <h2>Pet Profiles</h2>
+              <h2><IoPaw size={19} />Pet Profiles</h2>
               <p>View your pet's profile and medical records!</p>
             </div>
             <img src={petsPeeking} alt="Pets" className="sidebar-pets-image" />
           </div>
 
+          <div className="pets-list-shell">
           <div className="pets-list-header">
             <h3>Your Pets</h3>
             <button className="add-pet-btn" onClick={() => setAddModalOpen(true)}>
@@ -1454,6 +1460,7 @@ const UserPetProfile: React.FC = () => {
                 </div>
               ))
             )}
+          </div>
           </div>
         </div>
 
@@ -1500,7 +1507,8 @@ const UserPetProfile: React.FC = () => {
                     className={`tab-btn ${activeTab === tab ? 'active' : ''}`}
                     onClick={() => setActiveTab(tab)}
                   >
-                    {tab === 'records' ? 'Shared Vet Records' : 'Profile'}
+                    {tab === 'records' ? <IoFolderOutline size={18} /> : <IoInformationCircleOutline size={18} />}
+                    <span>{tab === 'records' ? 'Shared Vet Records' : 'Profile'}</span>
                   </button>
                 ))}
               </div>
@@ -1579,7 +1587,7 @@ const UserPetProfile: React.FC = () => {
 
       {addModalOpen && (
         <div className="modal-overlay" onClick={() => { setAddModalOpen(false); resetAddForm(); }}>
-          <div className="modal-content wide" onClick={e => e.stopPropagation()}>
+          <div className="modal-content wide pet-form-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Add a New Pet! 🐕</h2>
               <button className="modal-close-btn" onClick={() => { setAddModalOpen(false); resetAddForm(); }}>
@@ -1603,7 +1611,7 @@ const UserPetProfile: React.FC = () => {
                   ? <img src={addImage.preview} alt="Pet" className="upload-preview-img" />
                   : (
                     <div className="upload-placeholder">
-                      <IoCameraOutline size={40} color="#3d67ee" />
+                      <IoCameraOutline size={25} color="#3d67ee" />
                       <p>Upload Pet Photo</p>
                     </div>
                   )}
@@ -1783,6 +1791,7 @@ const UserPetProfile: React.FC = () => {
                     className={`size-btn ${addForm.isVaccinated === option.value ? 'selected' : ''}`}
                     onClick={() => {
                       setAddForm(f => ({ ...f, isVaccinated: option.value }));
+                      if (option.value === false) setAddVaccFiles([]);
                       setAddErrors(prev => ({ ...prev, isVaccinated: '' }));
                     }}
                   >
@@ -1792,46 +1801,42 @@ const UserPetProfile: React.FC = () => {
               </div>
               {addErrors.isVaccinated && <span className="error-message">{addErrors.isVaccinated}</span>}
 
-              {/* Vaccination upload */}
-              <label className="form-label">Vaccination Records</label>
-              <button
-                className="upload-area-btn"
-                onClick={() => {
-                  if (addForm.isVaccinated === false) {
-                    setVaccinationConfirmChecked(false);
-                    setVaccinationConfirmContext({ source: 'add-form' });
-                    return;
-                  }
+              {addForm.isVaccinated === true && (
+                <>
+                  {/* Vaccination upload */}
+                  <label className="form-label">Vaccination Records</label>
+                  <button
+                    className="upload-area-btn"
+                    onClick={launchVaccinationUploadForAddForm}
+                  >
+                    <IoCloudUploadOutline size={30} color="#3d67ee" />
+                    <span>Upload Vaccination Proof</span>
+                  </button>
 
-                  launchVaccinationUploadForAddForm();
-                }}
-              >
-                <IoCloudUploadOutline size={30} color="#3d67ee" />
-                <span>Upload Vaccination Proof</span>
-              </button>
-
-              {addVaccFiles.length > 0 && (
-                <div className="uploaded-files">
-                  {addVaccFiles.map(v => (
-                    <div key={v.id} className="uploaded-file-item">
-                      <div className="file-info">
-                        <IoDocumentText size={20} color="#3d67ee" />
-                        <span className="file-name">{v.name}</span>
-                      </div>
-                      <div className="file-actions">
-                        <IoCheckmarkCircle size={20} color="#4CAF50" />
-                        <button
-                          className="delete-file-btn"
-                          onClick={() =>
-                            setAddVaccFiles(prev => prev.filter(x => x.id !== v.id))
-                          }
-                        >
-                          <IoTrashOutline size={18} color="#ff4444" />
-                        </button>
-                      </div>
+                  {addVaccFiles.length > 0 && (
+                    <div className="uploaded-files">
+                      {addVaccFiles.map(v => (
+                        <div key={v.id} className="uploaded-file-item">
+                          <div className="file-info">
+                            <IoDocumentText size={20} color="#3d67ee" />
+                            <span className="file-name">{v.name}</span>
+                          </div>
+                          <div className="file-actions">
+                            <IoCheckmarkCircle size={20} color="#4CAF50" />
+                            <button
+                              className="delete-file-btn"
+                              onClick={() =>
+                                setAddVaccFiles(prev => prev.filter(x => x.id !== v.id))
+                              }
+                            >
+                              <IoTrashOutline size={18} color="#ff4444" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
 
               <button className="submit-btn" onClick={handleAddPet} disabled={isSaving}>
@@ -1847,7 +1852,7 @@ const UserPetProfile: React.FC = () => {
       ════════════════════════════════════════════ */}
       {editModalOpen && (
         <div className="modal-overlay" onClick={() => closeEditModal()}>
-          <div className="modal-content wide" onClick={e => e.stopPropagation()}>
+          <div className="modal-content wide pet-form-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Edit Pet Information 🐈</h2>
               <button className="modal-close-btn" onClick={() => closeEditModal()}>
@@ -1971,6 +1976,67 @@ const UserPetProfile: React.FC = () => {
           </div>
         </div>
       )}
+
+      <footer className="user-page-footer" aria-label="Petshield footer">
+        <div className="home-footer-main">
+          <div className="home-footer-brand">
+            <img src={petshieldLogo} alt="Petshield" />
+            <div>
+              <h2>Petshield</h2>
+              <p>Veterinary Clinic & Grooming Center</p>
+            </div>
+          </div>
+
+          <div className="home-footer-branches">
+            <div className="home-footer-branch">
+              <h3>Petshield Las Pinas</h3>
+              <p>Las Pinas City, Metro Manila</p>
+              <div className="home-footer-contact-actions">
+                <a href="mailto:petshield@gmail.com">
+                  <IoMailOutline size={17} />
+                  petshield@gmail.com
+                </a>
+                <a href="tel:+639123456789">
+                  <IoCallOutline size={17} />
+                  +63 912 345 6789
+                </a>
+              </div>
+            </div>
+
+            <div className="home-footer-branch">
+              <h3>Petshield Taguig</h3>
+              <p>Taguig City, Metro Manila</p>
+              <div className="home-footer-contact-actions">
+                <a href="mailto:petshieldtaguig@gmail.com">
+                  <IoMailOutline size={17} />
+                  petshieldtaguig@gmail.com
+                </a>
+                <a href="tel:+639987654321">
+                  <IoCallOutline size={17} />
+                  +63 998 765 4321
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="home-footer-powered">
+          <span>Powered by</span>
+          <img src={pawRangLogo} alt="PawRang" />
+        </div>
+      </footer>
+
+      <button
+        type="button"
+        className="home-booking-toast pet-profile-booking-toast"
+        onClick={() => navigate('/user/book-appointment')}
+        aria-label="Book an appointment"
+      >
+        <span className="home-booking-toast-icon">
+          <IoCalendarOutline size={22} />
+        </span>
+        <span className="home-booking-toast-copy">Book an Appointment now!</span>
+      </button>
 
     </div>
   );

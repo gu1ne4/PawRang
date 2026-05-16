@@ -27,6 +27,8 @@ import {
   IoCheckmarkCircleOutline,
   IoCloseCircleOutline,
   IoAlertCircleOutline,
+  IoChevronBackOutline,
+  IoChevronForwardOutline,
 } from 'react-icons/io5';
 import Notifications from '../reusable_components/Notifications';
 import pawRangLogomarkWhite from '../assets/PawRang Logomark White.png';
@@ -148,11 +150,7 @@ const AdminHome: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   
   // UI State
-  const [searchVisible, setSearchVisible] = useState<boolean>(false);
-  const [filterVisible, setFilterVisible] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [searchHovered, setSearchHovered] = useState<boolean>(false);
-  const [filterHovered, setFilterHovered] = useState<boolean>(false);
   const [showSettingsDropdown, setShowSettingsDropdown] = useState<boolean>(false);
   const [sortOption, setSortOption] = useState<AccountSortOption>('nameAZ');
   const [rowsPerPage, setRowsPerPage] = useState<number>(8);
@@ -628,66 +626,67 @@ const AdminHome: React.FC = () => {
       <div className="bodyContainer accountOverviewBodyContainer">
         <div className="topContainer accountOverviewTopContainer">
           <div className="subTopContainer accountOverviewSubTopContainer">
-            <IoPeopleOutline size={23} className="blueIcon" />
-            <span className="blueText">Account Overview / Employees</span>
+            <div className="accountOverviewHeroIcon">
+              <IoPeopleOutline size={25} />
+            </div>
+            <div className="accountOverviewHeroCopy">
+              <span>Account Overview</span>
+              <h1>Employees</h1>
+              <p>Manage staff access, branch assignment, roles, and account status.</p>
+            </div>
           </div>
-          <div className="subTopContainer notificationContainer accountOverviewNotificationContainer">
-            <Notifications 
-              buttonClassName="invIconButton"
-              iconClassName="invBlueIcon"
-              onViewAll={() => {
-                // Handle view all notifications
-                console.log('View all notifications');
-              }}
-              onNotificationClick={(notification) => {
-                // Handle individual notification click
-                if (notification.link) {
-                  navigate(notification.link);
-                }
-              }}
-            />
+          <div className="accountOverviewHeaderActions">
+            <div className="accountSearchRow accountHeaderSearchRow">
+              <div className="toolbarItem accountToolbarStaticIcon">
+                <IoSearchSharp size={18} className="iconDefault" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search employees..."
+                value={searchQuery}
+                onChange={(e) => {setSearchQuery(e.target.value); setPage(0);}}
+                className="searchInput accountHeaderSearchInput"
+                maxLength={60}
+              />
+            </div>
+            <div className="accountHeaderDivider" aria-hidden="true" />
+            <select
+              value={branchFilter}
+              onChange={(e) => { setBranchFilter(e.target.value); setPage(0); }}
+              className="accountOverviewBranchSelect"
+            >
+              <option value="defaultBranch">All Branches</option>
+              <option value="Both Branches">Both Branches</option>
+              <option value="Las Piñas">Las Piñas</option>
+              <option value="Taguig">Taguig</option>
+            </select>
+            <div className="subTopContainer notificationContainer accountOverviewNotificationContainer">
+              <Notifications
+                buttonClassName="invIconButton"
+                iconClassName="invBlueIcon"
+                onViewAll={() => {
+                  // Handle view all notifications
+                  console.log('View all notifications');
+                }}
+                onNotificationClick={(notification) => {
+                  // Handle individual notification click
+                  if (notification.link) {
+                    navigate(notification.link);
+                  }
+                }}
+              />
+            </div>
           </div>
         </div>
 
         <div className="tableContainer accountOverviewTableContainer">
           <div className="tableToolbar">
             <div className="searchFilterSection">
-              <div className="toolbarItem">
-                <button 
-                  className="iconButton"
-                  onMouseEnter={() => setSearchHovered(true)}
-                  onMouseLeave={() => setSearchHovered(false)}
-                  onClick={() => setSearchVisible(!searchVisible)}
-                >
-                  <IoSearchSharp size={25} className={searchVisible ? "iconActive" : "iconDefault"} />
-                </button>
-                {searchHovered && <div className="tooltip">Search</div>}
-              </div>
+              <div className="accountFilterRow">
+                <div className="toolbarItem accountToolbarStaticIcon">
+                  <IoFilterSharp size={18} className="iconDefault" />
+                </div>
 
-              {searchVisible && (
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  value={searchQuery}
-                  onChange={(e) => {setSearchQuery(e.target.value); setPage(0);}}
-                  className="searchInput"
-                  maxLength={60}
-                />
-              )}
-
-              <div className="toolbarItem">
-                <button 
-                  className="iconButton"
-                  onMouseEnter={() => setFilterHovered(true)}
-                  onMouseLeave={() => setFilterHovered(false)}
-                  onClick={() => setFilterVisible(!filterVisible)}
-                >
-                  <IoFilterSharp size={25} className={filterVisible ? "iconActive" : "iconDefault"} />
-                </button>
-                {filterHovered && <div className="tooltip">Filter</div>}
-              </div>
-              
-              {filterVisible && (
                 <div className="filterSection">
                   <select 
                     value={status} 
@@ -734,47 +733,48 @@ const AdminHome: React.FC = () => {
                     <IoCloseCircleSharp size={15} />
                     <span>Clear Filters</span>
                   </button>
-                </div>
-              )}
-              <div className="accountSettingsDropdownContainer">
-                <div className="toolbarItem">
-                  <button
-                    className="iconButton"
-                    onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
-                    aria-label="Account table settings"
-                  >
-                    <RiListSettingsLine size={23} className={showSettingsDropdown ? "iconActive" : "iconDefault"} />
-                  </button>
-                </div>
-                {showSettingsDropdown && (
-                  <div className="accountSettingsDropdown">
-                    <div className="accountSettingsSection">
-                      <label>Sort By</label>
-                      <select
-                        value={sortOption}
-                        onChange={(e) => { setSortOption(e.target.value as AccountSortOption); setPage(0); }}
-                        className="accountSettingsSelect"
+                  <div className="accountFilterDivider" aria-hidden="true" />
+                  <div className="accountSettingsDropdownContainer">
+                    <div className="toolbarItem">
+                      <button
+                        className="iconButton accountSortIconButton"
+                        onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
+                        aria-label="Account table settings"
                       >
-                        {ACCOUNT_SORT_OPTIONS.map(option => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
+                        <RiListSettingsLine size={19} className={showSettingsDropdown ? "iconActive" : "iconDefault"} />
+                      </button>
                     </div>
-                    <div className="accountSettingsDivider" />
-                    <div className="accountSettingsSection">
-                      <label>Rows Per Page</label>
-                      <select
-                        value={rowsPerPage}
-                        onChange={(e) => handleRowsPerPageChange(parseInt(e.target.value, 10))}
-                        className="accountSettingsSelect"
-                      >
-                        {ROWS_PER_PAGE_OPTIONS.map(option => (
-                          <option key={option} value={option}>{option} per page</option>
-                        ))}
-                      </select>
-                    </div>
+                    {showSettingsDropdown && (
+                      <div className="accountSettingsDropdown">
+                        <div className="accountSettingsSection">
+                          <label>Sort By</label>
+                          <select
+                            value={sortOption}
+                            onChange={(e) => { setSortOption(e.target.value as AccountSortOption); setPage(0); }}
+                            className="accountSettingsSelect"
+                          >
+                            {ACCOUNT_SORT_OPTIONS.map(option => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="accountSettingsDivider" />
+                        <div className="accountSettingsSection">
+                          <label>Rows Per Page</label>
+                          <select
+                            value={rowsPerPage}
+                            onChange={(e) => handleRowsPerPageChange(parseInt(e.target.value, 10))}
+                            className="accountSettingsSelect"
+                          >
+                            {ROWS_PER_PAGE_OPTIONS.map(option => (
+                              <option key={option} value={option}>{option} per page</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             </div>
 
@@ -864,9 +864,10 @@ const AdminHome: React.FC = () => {
                 <button 
                   onClick={() => setPage(Math.max(0, page - 1))}
                   disabled={page === 0}
-                  className="paginationBtn"
+                  className="paginationBtn paginationPrevBtn"
                 >
-                  Previous
+                  <IoChevronBackOutline size={15} />
+                  <span>Previous</span>
                 </button>
                 <span className="paginationInfo">
                   Showing {sortedUsers.length === 0 ? 0 : page * itemsPerPage + 1} to {Math.min((page + 1) * itemsPerPage, sortedUsers.length)} of {sortedUsers.length} items
@@ -874,9 +875,10 @@ const AdminHome: React.FC = () => {
                 <button 
                   onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
                   disabled={page >= totalPages - 1}
-                  className="paginationBtn"
+                  className="paginationBtn paginationNextBtn"
                 >
-                  Next
+                  <span>Next</span>
+                  <IoChevronForwardOutline size={15} />
                 </button>
               </div>
             </div>
@@ -897,7 +899,7 @@ const AdminHome: React.FC = () => {
                 <IoCloseCircleSharp size={22} />
               </button>
             </div>
-            <div className="imageUploadSection">
+            <div className="imageUploadSection accountCreateVisual">
               <div className="accountVisualPanelContent">
                 <div className="accountPoweredBy">
                   <span>Powered by</span>
@@ -916,7 +918,6 @@ const AdminHome: React.FC = () => {
                     ) : (
                       <div className="uploadPlaceholder">
                         <IoImageOutline size={16} />
-                        <span>Upload</span>
                       </div>
                     )}
                     <div className="cameraIcon">
@@ -1065,7 +1066,7 @@ const AdminHome: React.FC = () => {
                 <IoCloseCircleSharp size={22} />
               </button>
             </div>
-            <div className="imageUploadSection" style={getBranchPanelStyle(newBranchId)}>
+            <div className="imageUploadSection accountBranchVisual" style={getBranchPanelStyle(newBranchId)}>
               <div className="accountVisualPanelContent">
                 <div className="accountPoweredBy">
                   <span>Powered by</span>
@@ -1251,7 +1252,7 @@ const AdminHome: React.FC = () => {
             </div>
             
             <div
-              className="imageUploadSection"
+              className="imageUploadSection accountBranchVisual"
               style={getBranchPanelStyle(
                 (selectedAccount as User).branch_id,
                 getBranchLabelForUser(selectedAccount as User)
@@ -1380,9 +1381,9 @@ const AdminHome: React.FC = () => {
         <div className="modalOverlay">
           <div className="alertModal">
             <div className="alertIcon">
-              {modalConfig.type === 'success' && <IoCheckmarkCircleOutline size={55} color="#2e9e0c" />}
-              {modalConfig.type === 'error' && <IoCloseCircleOutline size={55} color="#d93025" />}
-              {modalConfig.type !== 'success' && modalConfig.type !== 'error' && <IoAlertCircleOutline size={55} color="#3d67ee" />}
+              {modalConfig.type === 'success' && <IoCheckmarkCircleOutline size={55} color="#166534" />}
+              {modalConfig.type === 'error' && <IoCloseCircleOutline size={55} color="#991b1b" />}
+              {modalConfig.type !== 'success' && modalConfig.type !== 'error' && <IoAlertCircleOutline size={55} color="#0a1156" />}
             </div>
             <h3 className="alertTitle">{modalConfig.title}</h3>
             <div className="alertMessage">{modalConfig.message}</div>

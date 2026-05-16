@@ -8,7 +8,12 @@ import petShieldLogo from '../assets/PetshieldLogo.png'
 
 type ButtonState = 'default' | 'loading' | 'success' | 'error'
 
-export default function Registration() {
+interface RegistrationProps {
+    modalMode?: boolean
+    onLoginClick?: () => void
+}
+
+export default function Registration({ modalMode = false, onLoginClick }: RegistrationProps) {
     const nav = useNavigate()
     const [getFirstName, setFirstName] = useState('')
     const [getLastName, setLastName] = useState('')
@@ -233,7 +238,7 @@ export default function Registration() {
 
     return (
         <>
-            <div className="main">
+            <div className={modalMode ? 'main authModalMain' : 'main'}>
                 <div className="authContainer">
                     <div className='divisionContainers' id='divisionContainer1'>
                         <UserAuthVisual />
@@ -339,8 +344,8 @@ export default function Registration() {
                                 </div>
 
                                 {/* Terms & Conditions Checkbox */}
-                                <div className="inputContainer" style={{ marginTop: '20px', alignItems: 'center', marginBottom: '10px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                <div className="inputContainer authTermsContainer" style={{ marginTop: '20px', alignItems: 'center', marginBottom: '10px' }}>
+                                    <div className="authTermsRow" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
                                         <input
                                             type="checkbox"
                                             id="termsCheckbox"
@@ -348,15 +353,16 @@ export default function Registration() {
                                             onChange={(e) => handleTermsChange(e.target.checked)}
                                             style={{ marginTop: '2px', width: '16px', height: '16px', cursor: 'pointer' }}
                                         />
-                                        <label htmlFor="termsCheckbox" style={{ fontSize: '13px', color: '#585858', lineHeight: '1.4', cursor: 'pointer' }}>
+                                        <label htmlFor="termsCheckbox" className="authTermsText" style={{ fontSize: '13px', color: '#585858', lineHeight: '1.4', cursor: 'pointer' }}>
                                             I agree to the{' '}
                                             <button
                                                 type="button"
+                                                className="authTermsLink"
                                                 onClick={() => setShowTermsModal(true)}
                                                 style={{
                                                     background: 'none',
                                                     border: 'none',
-                                                    color: '#3d67ee',
+                                                    color: '#0818a0',
                                                     fontWeight: 'bold',
                                                     cursor: 'pointer',
                                                     padding: 0,
@@ -369,11 +375,12 @@ export default function Registration() {
                                             {' '}and{' '}
                                             <button
                                                 type="button"
+                                                className="authTermsLink"
                                                 onClick={() => setShowPrivacyModal(true)}
                                                 style={{
                                                     background: 'none',
                                                     border: 'none',
-                                                    color: '#3d67ee',
+                                                    color: '#0818a0',
                                                     fontWeight: 'bold',
                                                     cursor: 'pointer',
                                                     padding: 0,
@@ -393,8 +400,8 @@ export default function Registration() {
                                 </button>
 
                                 <div className="authNavigatorGroup">
-                                    <button className='pageNavigator' onClick={() => nav("/login")}>
-                                        <p>Already have an account? <strong style={{ color: '#3d67ee' }}>Login</strong></p>
+                                    <button className='pageNavigator' onClick={() => (onLoginClick ? onLoginClick() : nav("/login"))}>
+                                        <p>Already have an account? <strong style={{ color: '#0818a0' }}>Login</strong></p>
                                     </button>
                                 </div>
                             </div>

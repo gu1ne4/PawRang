@@ -4,6 +4,9 @@ import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import './AdminDashboardLayout.css'; 
 import userImg from '../assets/userAvatar.jpg';
+import petshieldLogo from '../assets/PetshieldLogo.png';
+import branchLP from '../assets/branchLP.jpg';
+import branchTaguig from '../assets/branchTaguig.jpg';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Line, Legend, ComposedChart
@@ -26,9 +29,6 @@ import {
   IoWarningOutline,
   IoArrowUp,
   IoArrowDown,
-  IoVideocamOutline,
-  IoMedkitOutline,
-  IoCalendarNumberOutline,
   IoSparkles} from 'react-icons/io5';
 
 import Navbar from '../reusable_components/NavBar';
@@ -55,15 +55,6 @@ interface InventoryMovement {
   user: string;
   timestamp: string;
   category: string;
-}
-
-interface CalendarEvent {
-  id: number;
-  title: string;
-  date: string;
-  time: string;
-  type: 'appointment' | 'meeting' | 'reminder' | 'holiday' | 'surgery' | 'training';
-  description?: string;
 }
 
 interface DashboardKpis {
@@ -360,8 +351,8 @@ const KpiCard: React.FC<KpiCardProps> = ({
   const isPositive = change && change > 0;
 
   return (
-    <div style={{ 
-      backgroundColor: 'white', 
+    <div className="dashboardKpiCard" style={{ 
+      backgroundColor: 'transparent', 
       borderRadius: '16px', 
       padding: '16px',
       boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
@@ -417,7 +408,6 @@ const AdminDashboard: React.FC = () => {
   
   // State
   const [date, setDate] = useState<Date>(new Date());
-  const [showAllEvents, setShowAllEvents] = useState<boolean>(false);
   const [viewportWidth, setViewportWidth] = useState<number>(() => window.innerWidth);
   const [currentUser, setCurrentUser] = useState<Admin>(fallbackUser);
   const [analytics, setAnalytics] = useState<AnalyticsOverview>(emptyAnalytics);
@@ -430,49 +420,9 @@ const AdminDashboard: React.FC = () => {
   // Refs
   const notificationsModalRef = useRef<NotificationsModalRef>(null);
 
-  // Upcoming Calendar Events
-  const allCalendarEvents: CalendarEvent[] = [
-    { id: 1, title: 'Vaccination Drive', date: '2026-03-20', time: '09:00 AM', type: 'appointment', description: 'Annual rabies vaccination event' },
-    { id: 2, title: 'Staff Meeting', date: '2026-03-18', time: '02:00 PM', type: 'meeting', description: 'Monthly clinic staff meeting' },
-    { id: 3, title: 'Inventory Restock', date: '2026-03-19', time: '10:00 AM', type: 'reminder', description: 'Order new supplies' },
-    { id: 4, title: 'Training Session', date: '2026-03-22', time: '01:00 PM', type: 'training', description: 'New equipment training' },
-    { id: 5, title: 'Holiday - Araw ng Kagitingan', date: '2026-04-09', time: 'All day', type: 'holiday', description: 'Clinic closed' },
-    { id: 6, title: 'Dental Check-up Event', date: '2026-03-25', time: '08:00 AM', type: 'appointment', description: 'Special dental services' },
-    { id: 7, title: 'Emergency Surgery', date: '2026-03-17', time: '03:00 PM', type: 'surgery', description: 'Canine emergency procedure' },
-    { id: 8, title: 'Vet Webinar', date: '2026-03-27', time: '07:00 PM', type: 'training', description: 'Online veterinary seminar' },
-    { id: 9, title: 'Equipment Maintenance', date: '2026-03-21', time: '11:00 AM', type: 'reminder', description: 'X-ray machine servicing' },
-    { id: 10, title: 'Client Appreciation Day', date: '2026-04-02', time: '10:00 AM', type: 'meeting', description: 'Free check-ups for loyal clients' },
-    { id: 11, title: 'Pet Adoption Event', date: '2026-04-05', time: '09:00 AM', type: 'appointment', description: 'Community pet adoption drive' },
-    { id: 12, title: 'Holy Week Break', date: '2026-03-28', time: 'All day', type: 'holiday', description: 'Clinic closed for Holy Week' },
-  ];
-
   // Weekly Data for chart
 
   // Helper functions
-  const getEventIcon = (type: string) => {
-    switch(type) {
-      case 'appointment': return <IoCalendarOutline size={14} />;
-      case 'meeting': return <IoPeople size={14} />;
-      case 'reminder': return <IoTimeOutline size={14} />;
-      case 'holiday': return <IoWarningOutline size={14} />;
-      case 'surgery': return <IoMedkitOutline size={14} />;
-      case 'training': return <IoVideocamOutline size={14} />;
-      default: return <IoCalendarOutline size={14} />;
-    }
-  };
-
-  const getEventColor = (type: string): string => {
-    switch(type) {
-      case 'appointment': return '#3d67ee';
-      case 'meeting': return '#8b5cf6';
-      case 'reminder': return '#f59e0b';
-      case 'holiday': return '#ef4444';
-      case 'surgery': return '#dc2626';
-      case 'training': return '#06b6d4';
-      default: return '#3d67ee';
-    }
-  };
-
   const formatDate = (): string => {
     return new Date().toLocaleDateString('en-US', { 
       month: 'short', 
@@ -491,15 +441,11 @@ const AdminDashboard: React.FC = () => {
   const handleLogout = (): void => {
     navigate('/login');
   };
-  
+
   const handleDateChange = (value: any) => {
     setDate(value);
   };
-
-  const handleViewAllEvents = () => {
-    setShowAllEvents(!showAllEvents);
-  };
-
+  
   const handleQuickAction = (action: () => void) => {
     action();
   };
@@ -680,6 +626,17 @@ const AdminDashboard: React.FC = () => {
   const isMobile = viewportWidth <= 900;
   const isCompact = viewportWidth <= 640;
   const displayedNotifications = notifications.slice(0, 4);
+  const welcomeMessages = [
+    'You are doing great. Keep the clinic flow steady today!',
+    'Small wins count. Hope today feels smooth and productive!',
+    'You have this. One clear task at a time!',
+    'Hope your day brings good updates and easy queues!',
+    'Fresh dashboard, fresh momentum. Have a good one!'
+  ];
+  const welcomeMessage = welcomeMessages[new Date().getDate() % welcomeMessages.length];
+  const welcomeBranchImage = new Date().getDate() % 2 === 0 ? branchLP : branchTaguig;
+  const unreadNotifications = notifications.filter(notification => !notification.read).length;
+  const recentMovementCount = inventoryMovements.length;
 
   // Custom tooltip for charts
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -700,7 +657,6 @@ const AdminDashboard: React.FC = () => {
 
   const quickActions = [
     { icon: IoCalendarOutline, label: 'Appointments', iconColor: '#3566ee', bgColor: '#3566ee13', borderColor: '#3566ee', hoverBg: '#3566ee25', action: () => navigate('/schedule') },
-    { icon: IoCalendarNumberOutline, label: 'Calendar', iconColor: '#06b6d4', bgColor: '#06b6d413', borderColor: '#06b6d4', hoverBg: '#06b6d425', action: () => console.log('Calendar feature coming soon') },
     { 
       icon: IoNotificationsOutline, 
       label: 'Notifications', 
@@ -723,50 +679,309 @@ const AdminDashboard: React.FC = () => {
     { icon: IoLayersOutline, label: 'Inventory', iconColor: '#ff2222', bgColor: '#ff222213', borderColor: '#ff2222', hoverBg: '#ff222225', action: () => navigate('/inventory') },
   ];
 
-  const today = new Date().toISOString().split('T')[0];
-  const upcomingEvents = allCalendarEvents
-    .filter(event => event.date >= today)
-    .sort((a, b) => a.date.localeCompare(b.date));
-  
-  const displayedEvents = showAllEvents ? upcomingEvents : upcomingEvents.slice(0, 5);
-
   return (
     <div className="biContainer" style={{ backgroundColor: '#f8fafc', minHeight: '100vh' }}>
       <Navbar currentUser={currentUser} onLogout={handleLogout} />
 
-      {/* Main Content */}
-      <div className="bodyContainer" style={{ paddingRight: isMobile ? '0' : '10px' }}>
-        <div className="doctorTableContainer" style={{ flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '16px' : '20px', overflow: 'visible' }}>
-          {/* Left Column */}
-          <div className="leftContainer" style={{ paddingRight: isMobile ? '0' : '15px', paddingLeft: isMobile ? '0' : '10px', overflow: 'visible' }}>
-            {/* Doctor Profile Card */}
-            <div className="profileCard dashboardProfileCard" style={{ marginBottom: '20px', minHeight: '140px', backgroundColor: '#f4f4f4'}}>
-              <div className="profileHeader" style={{ minHeight: '100px', padding: '15px' }}>
-                <div className="profileInfo">
-                  <div className="profileNameSection" style={{ marginLeft: '140px' }}>
-                    <h2 className="doctorName" style={{ fontSize: '18px' }}>{currentUser.name}</h2>
-                    <p className="doctorUsername" style={{ fontSize: '11px' }}>@{currentUser.username}</p>
-                    <p className="doctorRole" style={{ fontSize: '12px', marginTop: '12px' }}>{currentUser.role}</p>
-                  </div>
-                  <div className="profileDateTime">
-                    <div className="profileGlassContainer" style={{ padding: '4px 12px' }}>
-                      <span className="dateTimeText" style={{ fontSize: '11px' }}>
-                        {formatDate()} - {formatTime()}
-                      </span>
-                    </div>
-                    <button className="editProfileBtn" style={{ marginTop: '15px' }}>
-                      <IoCreateOutline size={16} />
-                    </button>
-                  </div>
+      <div className="bodyContainer adminDashboardBody adminDashboardRedesign dashboardLegacyHidden">
+        <div className="doctorTableContainer adminDashboardGrid">
+          <main className="leftContainer adminDashboardMain">
+            <section className="dashboardOpsHeader">
+              <div className="dashboardOpsIdentity">
+                <div className="dashboardOpsAvatar">
+                  <img src={currentUser.image || userImg} alt={currentUser.name} />
+                </div>
+                <div>
+                  <span className="dashboardHeroEyebrow">Admin Dashboard</span>
+                  <h1>Welcome back, {currentUser.name}</h1>
+                  <p>@{currentUser.username} · {currentUser.role}</p>
                 </div>
               </div>
-              <div className="profileAvatar" style={{ bottom: '-15px' }}>
-                <img
-                  src={currentUser.image || '../assets/AgsikapLogo-Temp.png'}
-                  alt={currentUser.name}
-                  className="doctorAvatar"
-                  style={{ width: '100px', height: '100px', borderRadius: '50%', objectFit: 'cover', border: '4px solid white' }}
+
+              <div className="dashboardOpsControls">
+                <div className="dashboardOpsClock">
+                  <IoTimeOutline size={16} />
+                  <span>{formatDate()}</span>
+                  <strong>{formatTime()}</strong>
+                </div>
+                <button className="dashboardAdminEditBtn" onClick={() => navigate('/admin/settings')} aria-label="Edit profile">
+                  <IoCreateOutline size={16} />
+                  <span>Settings</span>
+                </button>
+              </div>
+            </section>
+
+            <section className="dashboardOpsSnapshot">
+              <KpiCard
+                title="Total Users"
+                value={patientsCount}
+                icon={<IoPeople size={18} color="#0a1156" />}
+                iconBgColor="#eef2ff"
+              />
+              <KpiCard
+                title="Appointments"
+                value={analytics.kpis.completedAppointments}
+                change={analytics.kpis.completedAppointmentsChange}
+                icon={<IoCalendarClearOutline size={18} color="#0f766e" />}
+                iconBgColor="#ccfbf1"
+              />
+              <KpiCard
+                title="Inventory Items"
+                value={inventoryItemsCount}
+                icon={<IoLayersOutline size={18} color="#b45309" />}
+                iconBgColor="#ffedd5"
+              />
+              <KpiCard
+                title="Revenue"
+                value={Math.round(analytics.kpis.totalRevenue)}
+                prefix="PHP "
+                change={analytics.kpis.totalRevenueChange}
+                icon={<IoPawOutline size={18} color="#b91c1c" />}
+                iconBgColor="#fee2e2"
+              />
+            </section>
+
+            <section className="dashboardOpsPanel dashboardOpsActionsPanel">
+              <div className="dashboardPanelHeader">
+                <div>
+                  <h2>Quick Actions</h2>
+                  <p>Shortcuts for the work you open most often.</p>
+                </div>
+                <span className="dashboardStatusPill">
+                  <IoSparkles size={13} />
+                  Live
+                </span>
+              </div>
+
+              <div className="dashboardActionGrid">
+                {quickActions.map((action, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleQuickAction(action.action)}
+                    className="dashboardActionCard"
+                    style={{
+                      ['--dashboard-action-color' as string]: action.iconColor,
+                      ['--dashboard-action-bg' as string]: action.bgColor,
+                      ['--dashboard-action-hover-bg' as string]: action.hoverBg
+                    }}
+                  >
+                    <span className="dashboardActionIcon">
+                      <action.icon size={20} color={action.iconColor} />
+                    </span>
+                    <span>{action.label}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="dashboardOpsPanel dashboardActivityPanel">
+              <div className="dashboardPanelHeader">
+                <div>
+                  <h2>Weekly Activity</h2>
+                  <p>Walk-ins, appointments, and total user activity.</p>
+                </div>
+              </div>
+
+              <div className="dashboardChartCard">
+                <ResponsiveContainer width="100%" height={isCompact ? 220 : 280}>
+                  <ComposedChart data={weeklyActivityData} margin={{ top: 10, right: 14, left: -14, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e8edf6" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#64748b' }} />
+                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend />
+                    <Line type="monotone" dataKey="walkIns" name="Walk-ins" stroke="#ef4444" strokeWidth={2.5} strokeDasharray="6 6" dot={{ r: 4, fill: '#ef4444' }} activeDot={{ r: 6 }} />
+                    <Line type="monotone" dataKey="appointments" name="Appointments" stroke="#0a1156" strokeWidth={2.5} dot={{ r: 4, fill: '#0a1156' }} activeDot={{ r: 6 }} />
+                    <Line type="monotone" dataKey="patients" name="Users" stroke="#0f766e" strokeWidth={2.5} dot={{ r: 4, fill: '#0f766e' }} activeDot={{ r: 6 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </section>
+
+            <section className="dashboardOpsPanel dashboardInventoryPanel">
+              <div className="dashboardPanelHeader">
+                <div>
+                  <h2>Inventory Movement Logs</h2>
+                  <p>{recentMovementCount} recent movement{recentMovementCount === 1 ? '' : 's'} loaded.</p>
+                </div>
+                <button className="viewAllBtn" onClick={() => navigate('/inventory-logs')}>View All</button>
+              </div>
+
+              <div className="inventoryLogsList">
+                <div className="inventoryLogsHeader">
+                  <span>Type</span>
+                  <span>Item</span>
+                  <span>Qty</span>
+                  <span>User</span>
+                  <span>Time</span>
+                </div>
+                {inventoryMovements.length > 0 ? inventoryMovements.slice(0, 5).map(movement => (
+                  <div key={movement.id} className="inventoryLogRow">
+                    <span>
+                      <span className={`inventoryMovementIcon ${movement.type === 'IN' ? 'isIn' : 'isOut'}`}>
+                        {movement.type === 'IN' ? <IoArrowDown size={13} /> : <IoArrowUp size={13} />}
+                      </span>
+                    </span>
+                    <span>{movement.itemName}</span>
+                    <span className={movement.type === 'IN' ? 'inventoryQtyIn' : 'inventoryQtyOut'}>
+                      {movement.type === 'IN' ? '+' : '-'}{movement.quantity}
+                    </span>
+                    <span>{movement.user}</span>
+                    <span>{movement.timestamp}</span>
+                  </div>
+                )) : (
+                  <div className="dashboardEmptyState">No inventory movement logs yet</div>
+                )}
+              </div>
+            </section>
+          </main>
+
+          <aside className="rightContainer adminDashboardSide">
+            <section className="dashboardOpsPanel dashboardSideProfile">
+              <div className="dashboardSideProfileTop">
+                <img src={currentUser.image || userImg} alt={currentUser.name} />
+                <div>
+                  <h2>{currentUser.name}</h2>
+                  <p>{currentUser.role}</p>
+                </div>
+              </div>
+              <div className="dashboardSideStats">
+                <div>
+                  <span>Unread</span>
+                  <strong>{unreadNotifications}</strong>
+                </div>
+                <div>
+                  <span>Inventory</span>
+                  <strong>{inventoryItemsCount}</strong>
+                </div>
+              </div>
+            </section>
+
+            <section className="notificationsCard dashboardOpsPanel">
+              <div className="notificationsHeader">
+                <div className="notificationsTitle">
+                  <IoNotificationsOutline size={16} />
+                  <h3>Notifications</h3>
+                </div>
+                <button className="viewAllBtn" onClick={() => notificationsModalRef.current?.openModal()}>
+                  View All
+                </button>
+              </div>
+              <div className="notificationsList">
+                {displayedNotifications.length > 0 ? displayedNotifications.map(notif => {
+                  const meta = getNotificationMeta(notif.type);
+                  return (
+                    <button
+                      type="button"
+                      key={notif.id}
+                      className={`notificationItem ${notif.read ? 'isRead' : 'isUnread'}`}
+                      onClick={() => notif.link && navigate(notif.link)}
+                    >
+                      <span className="notificationIcon" style={{ backgroundColor: `${meta.color}18`, color: meta.color }}>
+                        {meta.icon}
+                      </span>
+                      <span className="notificationContent">
+                        <span className="notificationTitle">{notif.title}</span>
+                        <span className="notificationDesc">{notif.message}</span>
+                      </span>
+                      <span className="notificationTime">{formatRelativeTimestamp(notif.timestamp.toISOString())}</span>
+                    </button>
+                  );
+                }) : (
+                  <div className="dashboardEmptyState">No notifications yet</div>
+                )}
+              </div>
+            </section>
+
+            <section className="calendarCard dashboardCalendarCard dashboardOpsPanel">
+              <div className="dashboardPanelHeader">
+                <div>
+                  <h2>Calendar</h2>
+                  <p>Selected clinic date.</p>
+                </div>
+              </div>
+              <div className="calendarGradient">
+                <Calendar
+                  onChange={handleDateChange}
+                  value={date}
+                  tileClassName={({ date, view }) =>
+                    view === 'month' && date.toDateString() === new Date().toDateString()
+                      ? 'today'
+                      : ''
+                  }
+                  formatShortWeekday={(_locale, date) =>
+                    ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][date.getDay()]
+                  }
                 />
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="bodyContainer adminDashboardBody" style={{ paddingRight: isMobile ? '0' : '10px' }}>
+        <div className="doctorTableContainer adminDashboardGrid" style={{ flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '16px' : '20px', overflow: 'visible' }}>
+          {/* Left Column */}
+          <div className="leftContainer adminDashboardMain" style={{ paddingRight: isMobile ? '0' : '15px', paddingLeft: isMobile ? '0' : '10px', overflow: 'visible' }}>
+            <section className="dashboardAdminHero">
+              <div className="dashboardAdminHeroGlow" />
+              <div className="dashboardAdminHeroAvatar">
+                <img src={currentUser.image || '../assets/AgsikapLogo-Temp.png'} alt={currentUser.name} />
+              </div>
+              <div className="dashboardAdminHeroCopy">
+                <span className="dashboardHeroEyebrow">Admin Workspace</span>
+                <h1>{currentUser.name}</h1>
+                <p>@{currentUser.username} · {currentUser.role}</p>
+              </div>
+              <div className="dashboardAdminHeroActions">
+                <div className="dashboardAdminHeroTime">
+                  <IoTimeOutline size={15} />
+                  <span>{formatDate()} · {formatTime()}</span>
+                </div>
+                <button className="dashboardAdminEditBtn" onClick={() => navigate('/admin/settings')} aria-label="Edit profile">
+                  <IoCreateOutline size={16} />
+                  <span>Settings</span>
+                </button>
+              </div>
+            </section>
+
+            <div className="dashboardSectionShell dashboardActionShell">
+              <div className="dashboardActionIntro">
+                <h3 className="sectionTitle" style={{ fontSize: '15px', marginBottom: '2px', marginTop: '0' }}>Quick Actions</h3>
+                <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '0' }}>Frequently used tasks</p>
+              </div>
+              
+              <div className="dashboardActionGrid" style={{ 
+                gridTemplateColumns: isCompact ? 'repeat(2, minmax(0, 1fr))' : 'repeat(auto-fit, minmax(100px, 1fr))'
+              }}>
+                {quickActions.map((action, index) => (
+                  <button 
+                    key={index}
+                    onClick={() => handleQuickAction(action.action)}
+                    className="dashboardActionCard"
+                    style={{
+                      borderColor: action.borderColor,
+                      backgroundColor: action.bgColor,
+                      ['--dashboard-action-color' as string]: action.iconColor,
+                      ['--dashboard-action-bg' as string]: action.bgColor,
+                      ['--dashboard-action-hover-bg' as string]: action.hoverBg
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = action.hoverBg;
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = `0 6px 16px ${action.borderColor}35`;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = action.bgColor;
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = `0 0 18px ${action.borderColor}16`;
+                    }}
+                  >
+                    <action.icon size={22} color={action.iconColor} />
+                    <span style={{ fontSize: '10px', fontWeight: 400, color: action.iconColor, textAlign: 'center' }}>{action.label}</span>
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -835,7 +1050,7 @@ const AdminDashboard: React.FC = () => {
               </div>
             </div>
 
-            <div className="dashboardSectionShell dashboardActionShell">
+            <div className="dashboardSectionShell dashboardActionShell dashboardActionShellOld">
               <h3 className="sectionTitle" style={{ fontSize: '15px', marginBottom: '2px', marginTop: '0' }}>Quick Actions</h3>
               <p className="sectionSubtitle" style={{ fontSize: '11px', marginBottom: '12px' }}>Frequently used tasks</p>
               
@@ -847,9 +1062,11 @@ const AdminDashboard: React.FC = () => {
                     key={index}
                     onClick={() => handleQuickAction(action.action)}
                     className="dashboardActionCard"
-                    style={{ 
+                    style={{
                       borderColor: action.borderColor,
-                      backgroundColor: action.bgColor
+                      backgroundColor: action.bgColor,
+                      ['--dashboard-action-bg' as string]: action.bgColor,
+                      ['--dashboard-action-hover-bg' as string]: action.hoverBg
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.backgroundColor = action.hoverBg;
@@ -863,7 +1080,7 @@ const AdminDashboard: React.FC = () => {
                     }}
                   >
                     <action.icon size={22} color={action.iconColor} />
-                    <span style={{ fontSize: '10px', fontWeight: 500, color: action.iconColor, textAlign: 'center' }}>{action.label}</span>
+                    <span style={{ fontSize: '10px', fontWeight: 400, color: action.iconColor, textAlign: 'center' }}>{action.label}</span>
                   </button>
                 ))}
               </div>
@@ -888,7 +1105,7 @@ const AdminDashboard: React.FC = () => {
                     <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend />
-                    <Line type="monotone" dataKey="walkIns" name="Walk-ins" stroke="#f59e0b" strokeWidth={2.5} strokeDasharray="6 6" dot={{ r: 4, fill: '#f59e0b' }} activeDot={{ r: 6 }} />
+                    <Line type="monotone" dataKey="walkIns" name="Walk-ins" stroke="#1b0bf5" strokeWidth={2.5} strokeDasharray="6 6" dot={{ r: 4, fill: '#f59e0b' }} activeDot={{ r: 6 }} />
                     <Line type="monotone" dataKey="appointments" name="Appointments" stroke="#3d67ee" strokeWidth={2.5} dot={{ r: 4, fill: '#3d67ee' }} activeDot={{ r: 6 }} />
                     <Line type="monotone" dataKey="patients" name="Patients" stroke="#10b981" strokeWidth={2.5} dot={{ r: 4, fill: '#10b981' }} activeDot={{ r: 6 }} />
                   </ComposedChart>
@@ -897,7 +1114,7 @@ const AdminDashboard: React.FC = () => {
             </div>
 
             {/* Inventory Movement Logs */}
-            <div className="appointmentsCard dashboardSoftCard" style={{ padding: '15px', marginTop: isMobile ? '18px' : '35px', marginBottom: '15px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f0f2f5' }}>
+            <div className="appointmentsCard dashboardSoftCard" style={{ padding: '15px', marginTop: isMobile ? '18px' : '10px', marginBottom: '15px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f0f2f5' }}>
               <div className="cardHeader" style={{ marginBottom: '8px' }}>
                 <h3 className="cardTitle" style={{ fontSize: '14px', margin: 0 }}>Inventory Movement Logs</h3>
                 <button className="viewAllBtn" style={{ fontSize: '11px' }} onClick={() => navigate('/inventory-logs')}>View All</button>
@@ -957,7 +1174,16 @@ const AdminDashboard: React.FC = () => {
           </div>
 
           {/* Right Column */}
-          <div className="rightContainer" style={{ gap: '12px', flex: isMobile ? '1' : '0.7', overflowY: 'visible', paddingLeft: isMobile ? '0' : '2px' }}>
+            <div className="rightContainer adminDashboardSide" style={{ gap: '12px', flex: isMobile ? '1' : '0.7', overflowY: 'visible', paddingLeft: isMobile ? '0' : '2px' }}>
+            <div
+              className="dashboardWelcomeCard dashboardSoftCard"
+              style={{ ['--welcome-branch-image' as string]: `url(${welcomeBranchImage})` }}
+            >
+              <span>Welcome to <img src={petshieldLogo} alt="Petshield" />,</span>
+              <h3>{currentUser.name}</h3>
+              <p>{welcomeMessage}</p>
+            </div>
+
             {/* Notifications Section */}
             <div className="notificationsCard dashboardSoftCard" style={{ padding: '12px', height: 'auto', maxHeight: isMobile ? 'none' : '320px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f0f2f5' }}>
               <div className="notificationsHeader" style={{ marginBottom: '10px', gap: '40px' }}>
@@ -996,115 +1222,20 @@ const AdminDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Calendar Component */}
-            <div className="calendarCard dashboardCalendarCard" style={{ marginTop: '0', width: '100%' }}>
-              <div className="calendarGradient" style={{ padding: '8px', borderRadius: '16px' }}>
+            <div className="calendarCard dashboardCalendarCard dashboardSoftCard">
+              <div className="calendarGradient">
                 <Calendar
                   onChange={handleDateChange}
                   value={date}
-                  tileClassName={({ date, view }) => 
-                    view === 'month' && date.toDateString() === new Date().toDateString() 
-                      ? 'today' 
+                  tileClassName={({ date, view }) =>
+                    view === 'month' && date.toDateString() === new Date().toDateString()
+                      ? 'today'
                       : ''
                   }
-                  formatShortWeekday={(_locale, date) => 
+                  formatShortWeekday={(_locale, date) =>
                     ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][date.getDay()]
                   }
                 />
-              </div>
-            </div>
-
-            {/* Upcoming Events */}
-            <div className="dashboardSoftCard" style={{ 
-              backgroundColor: 'white',
-              borderRadius: '16px',
-              padding: '15px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-              border: '1px solid #f0f2f5'
-            }}>
-              <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ 
-                  fontSize: '13px', 
-                  margin: 0, 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '8px', 
-                  color: '#1e293b',
-                  fontWeight: 600
-                }}>
-                  <IoCalendarNumberOutline size={16} color="#3d67ee" />
-                  <span>Upcoming Events</span>
-                  <span style={{ 
-                    fontSize: '10px', 
-                    backgroundColor: '#ebf4ff', 
-                    padding: '2px 8px', 
-                    borderRadius: '12px', 
-                    color: '#3d67ee'
-                  }}>
-                    {upcomingEvents.length}
-                  </span>
-                </h3>
-                <button 
-                  onClick={handleViewAllEvents}
-                  style={{ 
-                    background: 'none', 
-                    border: 'none', 
-                    color: '#3d67ee', 
-                    fontSize: '10px', 
-                    padding: '4px 12px',
-                    borderRadius: '15px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    fontWeight: 500
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#ebf4ff'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
-                >
-                  {showAllEvents ? 'Show Less' : 'View All'}
-                </button>
-              </div>
-              <div className="upcomingEventsList" style={{ maxHeight: isMobile ? 'none' : '350px', overflowY: 'auto' }}>
-                {displayedEvents.length > 0 ? (
-                  displayedEvents.map(event => {
-                    const eventDate = new Date(event.date);
-                    const formattedDate = eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    const isPast = event.date < today;
-                    return (
-                      <div key={event.id} style={{ 
-                        backgroundColor: '#f8fafc', 
-                        borderRadius: '10px', 
-                        padding: '10px', 
-                        marginBottom: '8px',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s ease',
-                        opacity: isPast ? 0.6 : 1,
-                        border: '1px solid #e2e8f0'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-                          <div style={{ 
-                            backgroundColor: `${getEventColor(event.type)}20`, 
-                            padding: '6px', 
-                            borderRadius: '8px', 
-                            display: 'inline-flex',
-                            color: getEventColor(event.type)
-                          }}>
-                            {getEventIcon(event.type)}
-                          </div>
-                          <span style={{ color: '#1e293b', fontSize: '11px', fontWeight: 600, lineHeight: '14px' }}>{event.title}</span>
-                        </div>
-                        <div style={{ color: '#64748b', fontSize: '10px', marginLeft: '34px', lineHeight: '14px' }}>
-                          {formattedDate} - {event.time}
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div style={{ color: '#94a3b8', fontSize: '12px', textAlign: 'center', padding: '30px' }}>
-                    No upcoming events
-                  </div>
-                )}
               </div>
             </div>
           </div>

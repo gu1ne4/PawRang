@@ -32,15 +32,6 @@ html, body {
   overflow: hidden;
 }
 
-.navbarContainer {
-  width: 280px;
-  padding: 30px;
-  padding-top: 36px;
-  padding-right: 15px;
-  background-color: #ffffff;
-  box-shadow: 0px 0px 18px rgba(0, 0, 0, 0.15);
-}
-
 .navbarContainer.collapsed {
   width: 120px;
   min-width: 80px;
@@ -98,8 +89,8 @@ html, body {
 }
 
 .navLogo {
-  width: 36px;
-  height: 36px;
+  width: 50px;
+  height: 50px;
   object-fit: contain;
   transition: opacity 0.2s ease, visibility 0.2s ease; /* Only transition opacity and visibility */
   position: relative;
@@ -123,7 +114,7 @@ html, body {
 .brandFont {
   color: #ffffff;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
   transition: all 0.3s ease-in-out;
 }
 
@@ -700,12 +691,10 @@ html, body {
   display: flex;
   flex-direction: row;
   align-items: center;
-  background-color: #ffffff;
   gap: 12px;
 }
 
 .subTopContainer {
-  background-color: #ffffff;
   border-radius: 15px;
   padding: 20px;
   display: flex;
@@ -713,7 +702,6 @@ html, body {
   align-items: center;
   min-height: 20px;
   flex: 20;
-  box-shadow: 0 0 18px rgba(0, 0, 0, 0.12);
 }
 
 .notificationContainer {
@@ -738,11 +726,2314 @@ html, body {
   border-radius: 12px;
   padding: 12px 20px;
   min-height: 0;
-  box-shadow: 0 0 12px rgba(0, 0, 0, 0.08);
 }
 
 .accountOverviewNotificationContainer {
   padding: 12px;
+}
+
+/* ===== PetShield admin / employee / doctor shell refresh ===== */
+:root {
+  --ps-admin-bg: #f3f6ff;
+  --ps-admin-ink: #0a1156;
+  --ps-admin-muted: #4a5872;
+  --ps-admin-blue: #0818a0;
+  --ps-admin-red: #fa2b24;
+  --ps-admin-cyan: #3db6ee;
+}
+
+.biContainer {
+  background:
+    radial-gradient(circle at 14% 8%, rgba(250, 43, 36, 0.1), transparent 28%),
+    radial-gradient(circle at 84% 0%, rgba(8, 24, 160, 0.16), transparent 32%),
+    linear-gradient(180deg, #f8faff 0%, var(--ps-admin-bg) 42%, #eef3ff 100%) !important;
+}
+
+.navbarContainer {
+  width: 262px;
+  padding: 22px 16px 22px 24px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.navbarContainer.collapsed {
+  width: 98px;
+  min-width: 98px;
+  padding-right: 10px;
+}
+
+.navBody {
+  padding: 12px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 14% 12%, rgba(61, 182, 238, 0.16), transparent 24%),
+    linear-gradient(180deg, #0b1732 0%, #071126 58%, #040815 100%);
+  box-shadow: 0 26px 70px rgba(4, 8, 42, 0.28);
+}
+
+.navTitle {
+  min-height: 58px;
+  padding: 10px 12px 14px;
+}
+
+.navLogo {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.brandFont {
+  color: #ffffff;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.navCollapseBtn,
+.navLogoCollapseBtn,
+.navMobileCloseBtn {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.glassContainer,
+.navGlassContainer {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: none;
+}
+
+.navBrandText {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  line-height: 1;
+}
+
+.brandFont {
+  font-weight: 680;
+}
+
+.navBrandSubtitle {
+  max-width: 138px;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 0.56rem;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.navAccountContainer {
+  margin-top: 4px;
+  padding: 9px;
+}
+
+.navAccount {
+  gap: 10px;
+}
+
+.navAvatar {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(61, 182, 238, 0.44);
+  border-radius: 10px;
+}
+
+.navUserName {
+  max-width: 140px;
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navUserRole {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.66rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.navOverview {
+  display: none;
+}
+
+.navMenu {
+  gap: 1px;
+}
+
+.navBtn {
+  min-height: 30px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.78rem;
+  font-weight: 650;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.navBtn svg {
+  color: currentColor;
+}
+
+.navBtn:hover {
+  transform: translateX(2px);
+  background: rgba(255, 255, 255, 0.075);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.navBtn.active {
+  border: 1px solid rgba(61, 182, 238, 0.34);
+  background:
+    linear-gradient(135deg, rgba(61, 182, 238, 0.22), rgba(8, 24, 160, 0.18)),
+    rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  box-shadow:
+    inset 3px 0 0 var(--ps-admin-cyan),
+    0 10px 24px rgba(0, 0, 0, 0.16);
+}
+
+.navBtn.active::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-radius: 999px;
+  background: var(--ps-admin-red);
+  box-shadow: 0 0 0 4px rgba(250, 43, 36, 0.12);
+}
+
+.subNavBtn {
+  width: calc(100% - 20px) !important;
+  margin-left: 20px;
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 0.72rem;
+}
+
+.navSubMenu {
+  margin: 2px 0 4px 4px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(61, 182, 238, 0.22);
+}
+
+.scrollable-nav {
+  max-height: calc(100vh - 230px);
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  scrollbar-color: rgba(61, 182, 238, 0.62) transparent;
+}
+
+.scrollable-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollable-nav::-webkit-scrollbar-thumb {
+  background: rgba(61, 182, 238, 0.72);
+}
+
+.navFooter {
+  flex: 0 0 auto;
+  margin-top: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.navLogoutBtn {
+  border-color: rgba(250, 43, 36, 0.18);
+  background: rgba(250, 43, 36, 0.1);
+  min-height: 30px;
+  padding: 6px 9px;
+}
+
+.navLogoutBtn:hover {
+  background: rgba(250, 43, 36, 0.18);
+}
+
+.navPoweredBy {
+  margin: 0 0 2px;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 0.62rem;
+  font-weight: 650;
+}
+
+.navPoweredByLogo {
+  height: 16px;
+}
+
+.navbarContainer.collapsed .navGlassContainer,
+.navbarContainer.collapsed .navAccountContainer {
+  border-radius: 10px;
+}
+
+.navbarContainer.collapsed .navBtn {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+}
+
+.navbarContainer.collapsed .navBody {
+  border-radius: 18px;
+}
+
+.navbarContainer.collapsed .navBtn.active {
+  box-shadow:
+    inset 0 -3px 0 var(--ps-admin-cyan),
+    0 10px 24px rgba(0, 0, 0, 0.16);
+}
+
+.navbarContainer.collapsed .navBtn.active::after {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  margin-left: 0;
+}
+
+.collapsedDropdown {
+  left: 96px;
+  border-radius: 10px;
+  border-color: rgba(61, 182, 238, 0.2);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 28%),
+    linear-gradient(180deg, #0b1732 0%, #071126 100%);
+  box-shadow: 0 22px 50px rgba(4, 8, 42, 0.34);
+}
+
+.collapsedDropdownItem {
+  min-height: 34px;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.collapsedDropdownItem:hover {
+  transform: translateX(2px);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.hoverTooltip {
+  border: 1px solid rgba(61, 182, 238, 0.2);
+  border-radius: 8px;
+  background: #071126;
+  box-shadow: 0 16px 34px rgba(4, 8, 42, 0.28);
+}
+
+.mobileNavToggle {
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, rgba(250, 43, 36, 0.9), rgba(8, 24, 160, 0.96));
+}
+
+.bodyContainer {
+  position: relative;
+  padding: 28px 28px 0 16px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(250, 43, 36, 0.08), transparent 28%),
+    radial-gradient(circle at 86% 0%, rgba(8, 24, 160, 0.12), transparent 30%),
+    linear-gradient(180deg, #f8faff 0%, var(--ps-admin-bg) 48%, #eef3ff 100%);
+  color: var(--ps-admin-ink);
+}
+
+.bodyContainer::after {
+  content: "PetShield Veterinary Clinic & Grooming Center\A Las Pinas City, Metro Manila  |  Taguig City, Metro Manila\A Powered by PawRang";
+  display: grid;
+  min-height: 190px;
+  margin: 56px -28px 0 -16px;
+  padding: 250px 24px 22px;
+  place-items: center;
+  background:
+    linear-gradient(180deg, rgba(8, 24, 160, 0) 0%, rgba(8, 24, 160, 0.05) 22%, rgba(8, 24, 160, 0.18) 38%, rgba(8, 24, 160, 0.5) 56%, rgba(10, 17, 86, 0.88) 78%, #050816 100%),
+    linear-gradient(115deg, rgba(250, 43, 36, 0.32) 8%, rgba(8, 24, 160, 0.18) 48%, rgba(255, 255, 255, 0.08) 100%),
+    #0a1156;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.8;
+  text-align: center;
+  white-space: pre-line;
+}
+
+.profileCard,
+.dashboardCard,
+.calendarCard,
+.analytics-card,
+.settings-card,
+.tableContainer,
+.formContainer {
+  border-color: rgba(157, 171, 195, 0.28);
+  box-shadow: 0 18px 42px rgba(10, 17, 86, 0.08);
+}
+
+@media (max-width: 900px) {
+  .navbarContainer.mobile {
+    padding: 14px;
+  }
+
+  .navbarContainer.mobile .navBody {
+    height: calc(100vh - 28px);
+    border-radius: 16px;
+  }
+
+  .bodyContainer {
+    padding: 78px 14px 0;
+    background:
+      radial-gradient(circle at 18% 0%, rgba(250, 43, 36, 0.08), transparent 28%),
+      radial-gradient(circle at 86% 0%, rgba(8, 24, 160, 0.12), transparent 30%),
+      linear-gradient(180deg, #f8faff 0%, var(--ps-admin-bg) 48%, #eef3ff 100%);
+  }
+
+  .bodyContainer::after {
+    margin: 44px -14px 0;
+  }
+}
+
+/* Real shared footer component, replacing the old CSS pseudo-footer. */
+.bodyContainer::after {
+  content: none !important;
+  display: none !important;
+}
+
+.bodyContainer > .admin-body-footer.user-page-footer {
+  flex: 0 0 auto;
+  margin: 56px -28px 0 -16px;
+}
+
+@media (max-width: 900px) {
+  .bodyContainer > .admin-body-footer.user-page-footer {
+    margin: 44px -14px 0;
+  }
+}
+
+/* Keep Account Overview content and footer in document order. */
+.accountOverviewTopContainer {
+  order: 1;
+}
+
+.accountOverviewStats,
+.accountOverviewStatsRow {
+  display: none !important;
+}
+
+.accountOverviewTableContainer {
+  order: 2;
+}
+
+.accountOverviewBodyContainer > .admin-body-footer.user-page-footer,
+.accountOverviewBodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+  order: 99;
+  position: relative;
+  z-index: 0;
+  flex: 0 0 auto;
+  margin-top: 48px !important;
+}
+
+/* Square notification button on Account Overview header */
+.accountOverviewTopContainer > .accountOverviewNotificationContainer.subTopContainer.notificationContainer {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  max-height: 40px !important;
+  flex: 0 0 40px !important;
+  margin-left: 0 !important;
+  padding: 0 !important;
+  border-radius: 999px;
+  display: grid !important;
+  place-items: center !important;
+}
+
+.accountOverviewNotificationContainer .notifButtonWrapper,
+.accountOverviewNotificationContainer .notifButton,
+.accountOverviewNotificationContainer .invIconButton {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  min-height: 34px !important;
+}
+
+.accountOverviewNotificationContainer .notifButton,
+.accountOverviewNotificationContainer .invIconButton {
+  padding: 0 !important;
+  border-radius: 999px !important;
+}
+
+/* Header branch control beside notification */
+.accountOverviewHeaderActions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  align-self: center;
+}
+
+.accountHeaderDivider,
+.accountFilterDivider {
+  width: 1px;
+  height: 24px;
+  flex: 0 0 1px;
+  border-radius: 999px;
+  background: rgba(8, 24, 160, 0.16);
+}
+
+.accountHeaderSearchRow {
+  min-width: 0;
+}
+
+.accountOverviewHeaderActions .accountToolbarStaticIcon {
+  width: 34px;
+  height: 34px;
+}
+
+.accountOverviewHeaderActions .accountHeaderSearchInput {
+  width: clamp(210px, 20vw, 300px);
+  height: 34px;
+  min-height: 34px;
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+  font-size: 0.76rem;
+}
+
+.accountOverviewHeaderActions .accountHeaderSearchInput:focus {
+  outline: none;
+  border-color: rgba(8, 24, 160, 0.42);
+  box-shadow: 0 0 0 3px rgba(61, 182, 238, 0.14);
+}
+
+.accountOverviewBranchSelect {
+  min-width: 158px;
+  min-height: 34px;
+  padding: 0 36px 0 14px;
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+  font-size: 0.78rem;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.accountOverviewBranchSelect:hover,
+.accountOverviewBranchSelect:focus {
+  border-color: rgba(8, 24, 160, 0.32);
+  background: #f7fbff;
+  box-shadow: 0 10px 24px rgba(10, 17, 86, 0.1);
+}
+
+.accountOverviewHeaderActions .accountOverviewNotificationContainer.subTopContainer.notificationContainer {
+  width: 34px !important;
+  min-width: 34px !important;
+  max-width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  flex: 0 0 34px !important;
+  margin-left: 0 !important;
+  padding: 0 !important;
+}
+
+/* Exposed Account Overview search and filters */
+.accountOverviewTableContainer .searchFilterSection {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.accountSearchRow {
+  grid-area: search;
+}
+
+.accountFilterRow {
+  grid-area: filters;
+}
+
+.accountToolbarStaticIcon {
+  width: 30px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(8, 24, 160, 0.06);
+  display: grid;
+  place-items: center;
+}
+
+.accountSearchRow,
+.accountFilterRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.accountOverviewTableContainer .accountSearchRow > .searchInput {
+  width: min(420px, 80%);
+  flex: 1 1 360px;
+}
+
+.accountOverviewTableContainer .accountFilterRow > .filterSection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.accountOverviewTableContainer .accountFilterRow > .filterSection .filterSelect {
+  width: 100px;
+}
+
+.accountOverviewTableContainer .accountFilterRow > .filterSection .clearFilterBtn {
+  width: auto;
+  white-space: nowrap;
+}
+
+.accountOverviewTableContainer .accountFilterRow > .filterSection .accountSettingsDropdownContainer {
+  flex: 0 0 auto;
+}
+
+.accountOverviewTableContainer .accountFilterRow .toolbarItem .accountSortIconButton {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.05), transparent 34%),
+    rgba(8, 24, 160, 0.06);
+}
+
+.accountOverviewTableContainer .accountFilterRow .toolbarItem .accountSortIconButton:hover,
+.accountOverviewTableContainer .accountFilterRow .toolbarItem .accountSortIconButton:has(.iconActive) {
+  border-color: rgba(8, 24, 160, 0.28);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.08), transparent 34%),
+    #f7fbff;
+  box-shadow: 0 10px 20px rgba(10, 17, 86, 0.08);
+}
+
+.accountOverviewTableContainer .accountFilterRow > .filterSection .filterSelect:nth-of-type(3) {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .accountOverviewHeaderActions {
+    align-self: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .accountHeaderDivider {
+    display: none;
+  }
+
+  .accountHeaderSearchRow {
+    flex: 1 1 100%;
+  }
+
+  .accountOverviewHeaderActions .accountHeaderSearchInput {
+    width: 100%;
+    flex: 1 1 auto;
+  }
+
+  .accountOverviewBranchSelect {
+    min-width: 0;
+    width: 158px;
+  }
+
+  .accountOverviewTableContainer .searchFilterSection {
+    width: 100%;
+  }
+
+  .accountSearchRow,
+  .accountFilterRow {
+    align-items: stretch;
+  }
+
+  .accountOverviewTableContainer .accountSearchRow > .searchInput,
+  .accountOverviewTableContainer .accountFilterRow > .filterSection,
+  .accountOverviewTableContainer .accountFilterRow > .filterSection .filterSelect,
+  .accountOverviewTableContainer .accountFilterRow > .filterSection .clearFilterBtn {
+    width: 100%;
+  }
+
+  .accountFilterDivider {
+    display: none;
+  }
+
+  .accountOverviewTableContainer .accountFilterRow > .filterSection .accountSettingsDropdownContainer {
+    width: 100%;
+  }
+
+  .accountOverviewTableContainer .accountFilterRow .toolbarItem .accountSortIconButton {
+    width: 100%;
+  }
+}
+
+/* Account Overview layout parity with Analytics */
+.accountOverviewBodyContainer {
+  padding: 28px 28px 0 16px !important;
+}
+
+.accountOverviewTopContainer {
+  min-height: 96px !important;
+  height: 96px !important;
+  margin-bottom: 14px !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+.accountOverviewSubTopContainer {
+  min-height: 96px !important;
+  height: 96px !important;
+  padding: 0 2px 14px !important;
+  align-items: center !important;
+  gap: 14px !important;
+  overflow: hidden;
+}
+
+.accountOverviewHeroIcon {
+  width: 65px !important;
+  height: 65px !important;
+  flex: 0 0 65px !important;
+}
+
+.accountOverviewHeroCopy {
+  align-self: center;
+}
+
+.accountOverviewHeroCopy span {
+  margin-bottom: 0;
+}
+
+.accountOverviewHeroCopy h1 {
+  font-size: clamp(1.3rem, 1.8vw, 1.75rem) !important;
+  line-height: 1.08;
+}
+
+.accountOverviewHeroCopy p {
+  margin-top: 0;
+}
+
+.accountOverviewStats {
+  min-width: min(390px, 42%) !important;
+  align-self: center;
+  grid-template-columns: repeat(4, minmax(64px, 1fr));
+}
+
+.accountOverviewStats div {
+  min-height: 50px !important;
+  padding: 8px 9px !important;
+}
+
+.accountOverviewNotificationContainer {
+  width: 34px !important;
+  min-height: 34px !important;
+  height: 34px !important;
+  flex: 0 0 80px !important;
+  align-self: center !important;
+  padding: 0 !important;
+}
+
+.accountOverviewTableContainer {
+  margin-top: 0 !important;
+}
+
+@media (max-width: 1180px) {
+  .accountOverviewTopContainer,
+  .accountOverviewSubTopContainer {
+    height: auto !important;
+    min-height: 96px !important;
+  }
+
+  .accountOverviewSubTopContainer {
+    overflow: visible;
+  }
+
+  .accountOverviewStats {
+    margin-left: 79px !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .accountOverviewBodyContainer {
+    padding: 78px 14px 0 !important;
+  }
+
+  .accountOverviewTopContainer,
+  .accountOverviewSubTopContainer {
+    height: auto !important;
+  }
+
+  .accountOverviewStats {
+    margin-left: 0 !important;
+  }
+}
+
+/* Final Account Overview header, toolbar popup, and modal visual updates */
+.accountOverviewTopContainer {
+  height: 96px !important;
+  min-height: 96px !important;
+  margin-bottom: 14px !important;
+}
+
+.accountOverviewSubTopContainer {
+  height: 96px !important;
+  min-height: 96px !important;
+}
+
+.accountOverviewStatsRow {
+  width: min(520px, 100%);
+  min-width: 0 !important;
+  margin: -8px 0 12px 79px !important;
+  grid-template-columns: repeat(4, minmax(82px, 1fr));
+}
+
+.accountOverviewStatsRow div {
+  min-height: 42px !important;
+  padding: 7px 10px !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.accountOverviewStatsRow strong {
+  font-size: 0.88rem !important;
+}
+
+.accountOverviewStatsRow span {
+  font-size: 0.56rem !important;
+}
+
+.accountOverviewTableContainer .toolbarItem .iconButton,
+.accountOverviewTableContainer .toolbarItem .iconButton:hover,
+.accountOverviewTableContainer .toolbarItem .iconButton:has(.iconActive) {
+  border: 0 !important;
+}
+
+.accountToolbarPopup {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  z-index: 140;
+  padding: 12px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.07), transparent 34%),
+    #ffffff;
+  box-shadow: 0 18px 38px rgba(10, 17, 86, 0.16);
+}
+
+.accountSearchPopup {
+  width: 250px;
+}
+
+.accountFilterPopup {
+  width: 230px;
+}
+
+.accountToolbarPopup .filterSection {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 9px;
+}
+
+.accountToolbarPopup .searchInput,
+.accountToolbarPopup .filterSelect,
+.accountToolbarPopup .filterSelect.wide,
+.accountToolbarPopup .clearFilterBtn {
+  width: 100%;
+}
+
+.accountToolbarPopup .clearFilterBtn {
+  justify-content: center;
+}
+
+.accountSettingsDropdown {
+  border: 0 !important;
+}
+
+.accountCreateVisual {
+  background:
+    radial-gradient(circle at 18% 14%, rgba(61, 182, 238, 0.3), transparent 30%),
+    radial-gradient(circle at 86% 4%, rgba(250, 43, 36, 0.36), transparent 34%),
+    linear-gradient(145deg, #0b1732 0%, #0818a0 46%, #b91d28 100%) !important;
+}
+
+.accountBranchVisual::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(61, 182, 238, 0.24), transparent 30%),
+    radial-gradient(circle at 88% 8%, rgba(250, 43, 36, 0.3), transparent 34%),
+    linear-gradient(180deg, rgba(5, 8, 22, 0.1) 0%, rgba(5, 8, 22, 0.42) 100%);
+  pointer-events: none;
+}
+
+.accountBranchVisual::after,
+.accountCreateVisual::after {
+  z-index: 1;
+  height: 58%;
+  background: linear-gradient(180deg, rgba(8, 13, 46, 0), rgba(8, 13, 46, 0.62));
+}
+
+.accountBranchVisual .accountVisualPanelContent,
+.accountCreateVisual .accountVisualPanelContent {
+  position: relative;
+  z-index: 2;
+}
+
+@media (max-width: 900px) {
+  .accountOverviewTopContainer,
+  .accountOverviewSubTopContainer {
+    height: auto !important;
+  }
+
+  .accountOverviewStatsRow {
+    margin: 0 0 12px !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .accountToolbarPopup {
+    position: static;
+    width: 100%;
+    margin-top: 8px;
+  }
+}
+
+.accountOverviewTopContainer {
+  min-height: 82px !important;
+  margin-bottom: 10px !important;
+}
+
+.accountOverviewSubTopContainer {
+  min-height: 82px !important;
+  padding-bottom: 8px !important;
+}
+
+.accountOverviewHeroIcon {
+  width: 58px;
+  height: 58px;
+  flex-basis: 58px;
+}
+
+.accountOverviewHeroCopy h1 {
+  font-size: clamp(1.22rem, 1.6vw, 1.58rem);
+}
+
+.accountOverviewHeroCopy p {
+  font-size: 0.74rem;
+}
+
+.accountOverviewStats {
+  min-width: min(390px, 42%);
+  gap: 7px;
+}
+
+.accountOverviewStats div {
+  min-height: 52px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.055), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(248, 251, 255, 0.8));
+}
+
+.accountOverviewStats strong {
+  font-size: 0.95rem;
+}
+
+.accountOverviewStats span {
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.accountOverviewNotificationContainer {
+  width: 34px !important;
+  min-height: 34px !important;
+  flex: 0 0 80px !important;
+  border-color: rgba(8, 24, 160, 0.14);
+  background: #ffffff;
+  box-shadow: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.accountOverviewNotificationContainer:hover {
+  border-color: rgba(8, 24, 160, 0.32);
+  background: #f7fbff;
+  box-shadow: 0 10px 24px rgba(10, 17, 86, 0.1);
+}
+
+.accountOverviewNotificationContainer .invIconButton,
+.accountOverviewNotificationContainer .invBlueIcon {
+  color: #0a1156 !important;
+  width: 32px;
+}
+
+.accountOverviewTableContainer {
+  padding: 14px;
+  min-height: 520px;
+  border-radius: 18px;
+}
+
+.accountOverviewTableContainer .tableToolbar {
+  gap: 12px;
+  padding-bottom: 12px;
+}
+
+.accountOverviewTableContainer .searchFilterSection {
+  gap: 8px;
+  align-items: center;
+}
+
+.accountOverviewTableContainer .toolbarItem .iconButton {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(0, 26, 255, 0.05), transparent 34%),
+    #ffffff;
+}
+
+.accountOverviewTableContainer .toolbarItem .iconButton:hover,
+.accountOverviewTableContainer .toolbarItem .iconButton:has(.iconActive) {
+  border-color: rgba(8, 24, 160, 0.28);
+  background: #f7fbff;
+  box-shadow: 0 10px 20px rgba(10, 17, 86, 0.08);
+}
+
+.accountOverviewTableContainer .iconDefault,
+.accountOverviewTableContainer .iconActive,
+.accountOverviewTableContainer .blueIcon {
+  color: #0a1556;
+}
+
+.accountOverviewTableContainer .searchInput {
+  width: 210px;
+  height: 34px;
+  padding: 0 14px;
+  font-size: 0.76rem;
+}
+
+.accountOverviewTableContainer .filterSection {
+  align-items: center;
+}
+
+.accountOverviewTableContainer .filterSelect {
+  width: 122px;
+  height: 34px;
+  padding: 0 12px;
+  font-size: 0.74rem;
+}
+
+.accountOverviewTableContainer .filterSelect.wide {
+  width: 150px;
+}
+
+.accountOverviewTableContainer .clearFilterBtn {
+  height: 34px;
+  padding: 0 12px;
+  font-size: 0.72rem;
+}
+
+.accountOverviewTableContainer .blackBtn {
+  height: 34px;
+  padding: 0 15px;
+  font-size: 0.74rem;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+}
+
+.accountSettingsDropdown {
+  top: 40px;
+  width: 210px;
+  padding: 10px;
+}
+
+.accountSettingsSection label {
+  color: #4a5872;
+  font-size: 0.68rem;
+}
+
+.accountSettingsSelect {
+  min-height: 34px;
+  font-size: 0.73rem;
+}
+
+.accountOverviewTableContainer .tableWrapper {
+  min-height: 390px;
+  border-radius: 14px;
+}
+
+.accountOverviewTableContainer .dataTable {
+  min-width: 900px;
+}
+
+.accountOverviewTableContainer .dataTable th {
+  padding: 9px 9px;
+  font-size: 0.66rem;
+}
+
+.accountOverviewTableContainer .dataTable td {
+  padding: 8px 9px;
+  font-size: 0.72rem;
+}
+
+.accountOverviewTableContainer .userCell {
+  gap: 10px;
+}
+
+.accountOverviewTableContainer .userAvatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+}
+
+.accountOverviewTableContainer .statusBadge {
+  margin-top: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+}
+
+.accountOverviewTableContainer td .iconButton {
+  width: 26px;
+  height: 26px;
+}
+
+.accountPagination {
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding-top: 11px;
+}
+
+.accountPaginationGroup,
+.accountPaginationButtons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.accountPagination .paginationInfo {
+  min-height: 32px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #4a5872;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.accountPagination .paginationBtn {
+  min-width: 94px;
+  min-height: 32px;
+  padding: 0 13px;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.accountPagination .paginationBtn:disabled {
+  border-color: rgba(157, 171, 195, 0.22);
+  color: #9aa6ba;
+  background: rgba(255, 255, 255, 0.56);
+  opacity: 1;
+}
+
+.accountProfileModal {
+  width: min(960px, calc(100vw - 52px));
+  max-height: calc(100vh - 44px);
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.94)),
+    radial-gradient(circle at 0% 0%, rgba(250, 43, 36, 0.14), transparent 38%),
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.16), transparent 36%);
+  box-shadow: 0 32px 80px rgba(4, 8, 42, 0.34);
+}
+
+.accountProfileModal .imageUploadSection {
+  min-height: 500px;
+  border-radius: 20px;
+}
+
+.accountModalHeader {
+  padding: 26px 34px 10px;
+  background: transparent;
+}
+
+.accountModalHeader h2 {
+  color: #0a1156;
+  font-size: 1.35rem;
+}
+
+.accountModalHeader p {
+  color: #4a5872;
+  font-size: 0.76rem;
+}
+
+.accountModalClose {
+  border: 1px solid rgba(8, 24, 160, 0.1);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+}
+
+.accountModalClose:hover {
+  background: #f7fbff;
+  color: #0818a0;
+}
+
+.accountProfileModal > .accountAvatarField {
+  margin: 0 34px 10px;
+}
+
+.accountProfileModal .accountAvatarField {
+  border-color: rgba(8, 24, 160, 0.1);
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.accountProfileModal .modalForm {
+  padding: 0 34px 4px;
+  gap: 10px 14px;
+}
+
+.accountProfileModal .formGroup,
+.accountProfileModal .detailGroup {
+  margin-bottom: 10px;
+}
+
+.accountProfileModal .formGroup label,
+.accountProfileModal .detailGroup label {
+  color: #4a5872;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+}
+
+.accountProfileModal .formInput,
+.accountProfileModal .formSelect,
+.accountProfileModal .detailValue,
+.accountProfileModal .statusToggle {
+  min-height: 40px;
+  border-color: rgba(8, 24, 160, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #0a1156;
+  font-size: 0.78rem;
+}
+
+.accountProfileModal .formInput:focus,
+.accountProfileModal .formSelect:focus {
+  border-color: rgba(8, 24, 160, 0.44);
+  box-shadow: 0 0 0 3px rgba(61, 182, 238, 0.16);
+}
+
+.accountProfileModal .uploadBtn,
+.accountProfileModal .uploadedImage,
+.accountProfileModal .viewAvatar {
+  width: 48px;
+  height: 48px;
+}
+
+.accountProfileModal .uploadBtn {
+  border-color: rgba(8, 24, 160, 0.14);
+}
+
+.accountProfileModal .cameraIcon {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.2), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+  border-color: rgba(61, 182, 238, 0.28);
+}
+
+.accountModalFooter {
+  padding: 14px 34px 26px;
+  background: transparent;
+}
+
+.accountModalFooter .cancelBtn,
+.accountModalFooter .submitBtn {
+  min-width: 126px;
+  min-height: 38px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+}
+
+.accountModalFooter .cancelBtn {
+  border: 1px solid rgba(157, 171, 195, 0.34);
+  background: #ffffff;
+  color: #0a1156;
+}
+
+.accountModalFooter .submitBtn {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(135deg, #fa2b24 0%, #b91d28 44%, #0818a0 100%);
+  box-shadow: 0 16px 32px rgba(8, 24, 160, 0.2);
+}
+
+.accountViewModal .accountModalFooter .cancelBtn {
+  min-width: 150px;
+}
+
+@media (max-width: 1180px) {
+  .accountOverviewBodyContainer {
+    padding-top: 14px !important;
+  }
+
+  .accountOverviewStats {
+    min-width: 0;
+    margin-left: 68px;
+  }
+}
+
+@media (max-width: 900px) {
+  .accountOverviewBodyContainer {
+    padding-top: 78px !important;
+  }
+
+  .accountOverviewTopContainer {
+    align-items: stretch;
+  }
+
+  .accountOverviewNotificationContainer {
+    align-self: flex-start;
+  }
+
+  .accountOverviewTableContainer .tableToolbar,
+  .accountOverviewTableContainer .searchFilterSection {
+    align-items: stretch;
+  }
+
+  .accountOverviewTableContainer .searchInput,
+  .accountOverviewTableContainer .filterSelect,
+  .accountOverviewTableContainer .filterSelect.wide,
+  .accountOverviewTableContainer .clearFilterBtn,
+  .accountOverviewTableContainer .blackBtn {
+    width: 100%;
+  }
+
+  .accountPagination {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .accountPaginationGroup,
+  .accountPaginationButtons {
+    width: 100%;
+  }
+
+  .accountPaginationGroup {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .accountPaginationButtons .paginationBtn {
+    flex: 1;
+  }
+
+  .accountPagination .paginationInfo {
+    text-align: center;
+  }
+}
+
+/* Petshield modal background treatment */
+.modalOverlay {
+  background:
+    radial-gradient(circle at 22% 18%, rgba(250, 43, 36, 0.24), transparent 34%),
+    radial-gradient(circle at 78% 0%, rgba(8, 24, 160, 0.3), transparent 36%),
+    rgba(5, 8, 22, 0.64);
+  backdrop-filter: blur(6px);
+}
+
+.modalContainer {
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.94)),
+    radial-gradient(circle at 0% 0%, rgba(250, 43, 36, 0.14), transparent 38%),
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.16), transparent 36%);
+  box-shadow: 0 32px 80px rgba(4, 8, 42, 0.34);
+}
+
+.modalHeader h2 {
+  color: #0a1156;
+}
+
+.modalForm,
+.detailGroup,
+.formGroup {
+  color: #4a5872;
+}
+
+.formInput,
+.formSelect,
+.detailValue {
+  border-color: rgba(8, 24, 160, 0.14);
+  background: rgba(255, 255, 255, 0.82);
+  color: #0a1156;
+}
+
+.formInput:focus,
+.formSelect:focus {
+  border-color: rgba(8, 24, 160, 0.44);
+  box-shadow: 0 0 0 3px rgba(61, 182, 238, 0.16);
+}
+
+.cancelBtn {
+  border: 1px solid rgba(157, 171, 195, 0.34);
+  background: #ffffff;
+  color: #0a1156;
+}
+
+.cancelBtn:hover {
+  background: #f7fbff;
+}
+
+.submitBtn.gradientBtn {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(135deg, #fa2b24 0%, #b91d28 44%, #0818a0 100%);
+  box-shadow: 0 16px 32px rgba(8, 24, 160, 0.2);
+}
+
+/* Employee account overview refresh */
+.accountOverviewBodyContainer {
+  height: 100vh !important;
+  min-height: 0;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  padding: 28px 28px 0 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.accountOverviewTopContainer {
+  flex: 0 0 auto;
+  min-height: 128px;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+
+.accountOverviewSubTopContainer {
+  min-height: 128px;
+  padding: 18px 20px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.2), transparent 34%),
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 62%, #040815 100%);
+  box-shadow: 0 22px 50px rgba(4, 8, 42, 0.18);
+  color: #ffffff;
+  gap: 16px;
+}
+
+.accountOverviewHeroIcon {
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 22% 18%, rgba(61, 182, 238, 0.36), transparent 38%),
+    rgba(255, 255, 255, 0.08);
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.accountOverviewHeroCopy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.accountOverviewHeroCopy span {
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 0.68rem;
+  font-weight: 780;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.accountOverviewHeroCopy h1 {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(1.35rem, 2vw, 1.85rem);
+  line-height: 1.08;
+}
+
+.accountOverviewHeroCopy p {
+  max-width: 440px;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.accountOverviewStats {
+  margin-left: auto;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(70px, 1fr));
+  gap: 8px;
+  min-width: min(420px, 46%);
+}
+
+.accountOverviewStats div {
+  min-height: 66px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.075);
+  display: grid;
+  align-content: center;
+  gap: 3px;
+}
+
+.accountOverviewStats strong {
+  color: #ffffff;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.accountOverviewStats span {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+.accountOverviewNotificationContainer {
+  flex: 0 0 72px;
+  min-height: 128px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.08), transparent 36%),
+    rgba(255, 255, 255, 0.78);
+  box-shadow: 0 18px 42px rgba(10, 17, 86, 0.075);
+}
+
+.accountOverviewTableContainer {
+  flex: 0 0 auto;
+  height: auto !important;
+  min-height: 560px;
+  margin-top: 0;
+  padding: 16px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.07), transparent 34%),
+    radial-gradient(circle at 0% 100%, rgba(250, 43, 36, 0.055), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(249, 251, 255, 0.94) 100%);
+  box-shadow:
+    0 18px 42px rgba(10, 17, 86, 0.075),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.accountOverviewTableContainer .tableToolbar {
+  padding: 0 0 14px;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.1);
+  margin-bottom: 14px;
+}
+
+.accountOverviewTableContainer .tableWrapper {
+  min-height: 430px;
+  border: 1px solid rgba(8, 24, 160, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.accountOverviewTableContainer .tableWrapper::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.accountOverviewTableContainer .tableWrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.accountOverviewTableContainer .tableWrapper::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(8, 24, 160, 0.22);
+}
+
+.accountOverviewTableContainer .dataTable th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 12px 10px;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.1);
+  background: #f7fbff;
+  color: #0a1156;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.accountOverviewTableContainer .dataTable td {
+  padding: 11px 10px;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.07);
+  color: #34405a;
+}
+
+.accountOverviewTableContainer .dataTable tbody tr {
+  transition: background 0.18s ease;
+}
+
+.accountOverviewTableContainer .dataTable tbody tr:hover {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.08), transparent 38%),
+    rgba(255, 255, 255, 0.92);
+}
+
+.accountOverviewTableContainer .userCell {
+  gap: 12px;
+  color: #0a1156;
+  font-weight: 700;
+}
+
+.accountOverviewTableContainer .userAvatar {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 8px 16px rgba(10, 17, 86, 0.08);
+}
+
+.accountOverviewTableContainer .iconButton {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  color: #0a1156;
+  transition: background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.accountOverviewTableContainer .iconButton:hover {
+  opacity: 1;
+  background: rgba(8, 24, 160, 0.07);
+  box-shadow: 0 0 0 3px rgba(61, 182, 238, 0.1);
+}
+
+.accountOverviewTableContainer .searchInput,
+.accountOverviewTableContainer .filterSelect,
+.accountSettingsSelect {
+  min-height: 34px;
+  border-color: rgba(8, 24, 160, 0.14);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+}
+
+.accountOverviewTableContainer .searchInput:focus,
+.accountOverviewTableContainer .filterSelect:focus,
+.accountSettingsSelect:focus {
+  outline: none;
+  border-color: rgba(8, 24, 160, 0.42);
+  box-shadow: 0 0 0 3px rgba(61, 182, 238, 0.14);
+}
+
+.accountOverviewTableContainer .filterSection {
+  min-width: 0;
+  gap: 8px;
+}
+
+.accountOverviewTableContainer .clearFilterBtn,
+.accountOverviewTableContainer .blackBtn {
+  min-height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(61, 182, 238, 0.28);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(4, 8, 42, 0.12);
+}
+
+.accountOverviewTableContainer .clearFilterBtn {
+  border-color: rgba(250, 43, 36, 0.22);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+}
+
+.accountSettingsDropdown {
+  border-color: rgba(8, 24, 160, 0.12);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.07), transparent 34%),
+    #ffffff;
+  box-shadow: 0 18px 38px rgba(10, 17, 86, 0.16);
+}
+
+.activeBadge {
+  background: rgba(28, 171, 88, 0.12);
+  color: #166534;
+}
+
+.inactiveBadge {
+  background: rgba(250, 43, 36, 0.12);
+  color: #b91d28;
+}
+
+.accountPagination {
+  padding-top: 12px;
+  margin-top: 0;
+}
+
+.accountPagination .paginationBtn {
+  border-radius: 999px;
+  border-color: rgba(8, 24, 160, 0.18);
+  background: #ffffff;
+  color: #0a1156;
+}
+
+.accountPagination .paginationBtn:hover:not(:disabled) {
+  border-color: rgba(8, 24, 160, 0.34);
+  background: rgba(8, 24, 160, 0.08);
+  color: #0818a0;
+}
+
+.accountOverviewBodyContainer > .admin-body-footer.user-page-footer {
+  margin-top: 48px;
+}
+
+@media (max-width: 1180px) {
+  .accountOverviewSubTopContainer {
+    flex-wrap: wrap;
+  }
+
+  .accountOverviewStats {
+    width: 100%;
+    min-width: 0;
+    margin-left: 74px;
+  }
+}
+
+@media (max-width: 900px) {
+  .accountOverviewBodyContainer {
+    padding: 86px 16px 0;
+  }
+
+  .accountOverviewTopContainer {
+    flex-direction: column;
+  }
+
+  .accountOverviewNotificationContainer {
+    width: 100%;
+    min-height: 58px;
+    flex-basis: auto;
+  }
+
+  .accountOverviewStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-left: 0;
+  }
+
+  .accountOverviewTableContainer {
+    min-height: 520px;
+  }
+}
+
+/* Match Analytics module header style */
+.accountOverviewTopContainer {
+  min-height: 96px;
+  margin-bottom: 14px;
+  align-items: center;
+  gap: 12px;
+}
+
+.accountOverviewSubTopContainer {
+  min-height: 96px;
+  padding: 0 2px 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #0a1156;
+}
+
+.accountOverviewHeroIcon {
+  width: 65px;
+  height: 65px;
+  flex-basis: 65px;
+  border: 0;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(61, 182, 238, 0.35), transparent 36%, rgba(255, 15, 15, 0.708)),
+    linear-gradient(135deg, #0b1732 0%, #071126 64%, #040815 100%);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.accountOverviewHeroCopy {
+  gap: 5px;
+}
+
+.accountOverviewHeroCopy span {
+  color: #4a5872;
+  font-size: 0.62rem;
+}
+
+.accountOverviewHeroCopy h1 {
+  color: #0a1156;
+  font-weight: 700;
+  font-size: clamp(1.3rem, 1.8vw, 1.75rem);
+}
+
+.accountOverviewHeroCopy p {
+  max-width: 560px;
+  color: #4a5872;
+  font-size: 0.78rem;
+}
+
+.accountOverviewStats {
+  min-width: min(420px, 44%);
+  gap: 8px;
+}
+
+.accountOverviewStats div {
+  min-height: 58px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.06), transparent 34%),
+    rgba(255, 255, 255, 0.76);
+  box-shadow: 0 10px 24px rgba(10, 17, 86, 0.06);
+}
+
+.accountOverviewStats strong {
+  color: #0a1156;
+  font-size: 1rem;
+}
+
+.accountOverviewStats span {
+  color: #4a5872;
+}
+
+.accountOverviewNotificationContainer {
+  flex: 0 0 80px;
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  align-self: center;
+}
+
+@media (max-width: 1180px) {
+  .accountOverviewStats {
+    margin-left: 79px;
+  }
+}
+
+@media (max-width: 900px) {
+  .accountOverviewSubTopContainer {
+    padding-bottom: 12px;
+  }
+
+  .accountOverviewStats {
+    margin-left: 0;
+  }
+
+  .accountOverviewNotificationContainer {
+    width: 34px;
+    align-self: flex-start;
+  }
+}
+
+/* End-to-end admin background: visible behind navbar, content, and scrollbar gutter. */
+.biContainer {
+  background:
+    linear-gradient(180deg, rgba(243, 246, 255, 0) calc(100% - 250px), rgba(201, 211, 242, 0.9) calc(100% - 220px), rgba(111, 126, 198, 0.84) calc(100% - 180px), rgba(8, 24, 160, 0.92) calc(100% - 122px), #0b1687 calc(100% - 72px), #050816 100%),
+    radial-gradient(circle at 18% 0%, rgba(250, 43, 36, 0.08), transparent 28%),
+    radial-gradient(circle at 86% 0%, rgba(8, 24, 160, 0.12), transparent 30%),
+    linear-gradient(180deg, #f8faff 0%, #f3f6ff 48%, #eef3ff 100%) !important;
+}
+
+.navbarContainer,
+.bodyContainer {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.navbarContainer {
+  box-shadow: none !important;
+}
+
+.bodyContainer {
+  scrollbar-gutter: stable;
+  scrollbar-color: rgba(8, 24, 160, 0.34) transparent;
+}
+
+.bodyContainer::-webkit-scrollbar {
+  width: 12px;
+}
+
+.bodyContainer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.bodyContainer::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(8, 24, 160, 0.34);
+  background-clip: padding-box;
+}
+
+.bodyContainer::-webkit-scrollbar-thumb:hover {
+  background: rgba(8, 24, 160, 0.52);
+  background-clip: padding-box;
+}
+
+.bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+  margin: 36px -28px 0 -16px;
+}
+
+@media (max-width: 900px) {
+  .bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+    margin: 32px -14px 0;
+  }
+}
+
+/* End-to-end admin background: visible behind navbar, content, and scrollbar gutter. */
+.biContainer {
+  background:
+    linear-gradient(180deg, rgba(243, 246, 255, 0) calc(100% - 250px), rgba(201, 211, 242, 0.9) calc(100% - 220px), rgba(111, 126, 198, 0.84) calc(100% - 180px), rgba(8, 24, 160, 0.92) calc(100% - 122px), #0b1687 calc(100% - 72px), #050816 100%),
+    radial-gradient(circle at 18% 0%, rgba(250, 43, 36, 0.08), transparent 28%),
+    radial-gradient(circle at 86% 0%, rgba(8, 24, 160, 0.12), transparent 30%),
+    linear-gradient(180deg, #f8faff 0%, #f3f6ff 48%, #eef3ff 100%) !important;
+}
+
+.navbarContainer,
+.bodyContainer {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.navbarContainer {
+  box-shadow: none !important;
+}
+
+.bodyContainer {
+  scrollbar-gutter: stable;
+  scrollbar-color: rgba(8, 24, 160, 0.34) transparent;
+}
+
+.bodyContainer::-webkit-scrollbar {
+  width: 12px;
+}
+
+.bodyContainer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.bodyContainer::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(8, 24, 160, 0.34);
+  background-clip: padding-box;
+}
+
+.bodyContainer::-webkit-scrollbar-thumb:hover {
+  background: rgba(8, 24, 160, 0.52);
+  background-clip: padding-box;
+}
+
+.bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+  margin: 36px -28px 0 -16px;
+}
+
+@media (max-width: 900px) {
+  .bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+    margin: 32px -14px 0;
+  }
+}
+
+.biContainer {
+  background:
+    linear-gradient(180deg, rgba(243, 246, 255, 0) calc(100% - 250px), rgba(201, 211, 242, 0.9) calc(100% - 220px), rgba(111, 126, 198, 0.84) calc(100% - 180px), rgba(8, 24, 160, 0.92) calc(100% - 122px), #0b1687 calc(100% - 72px), #050816 100%),
+    radial-gradient(circle at 18% 0%, rgba(250, 43, 36, 0.08), transparent 28%),
+    radial-gradient(circle at 86% 0%, rgba(8, 24, 160, 0.12), transparent 30%),
+    linear-gradient(180deg, #f8faff 0%, #f3f6ff 48%, #eef3ff 100%) !important;
+}
+
+.navbarContainer {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+  margin: 36px -28px 0 -16px;
+}
+
+@media (max-width: 900px) {
+  .bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+    margin: 32px -14px 0;
+  }
+}
+
+.bodyContainer::after {
+  content: none !important;
+  display: none !important;
+}
+
+.bodyContainer > .admin-body-footer.user-page-footer {
+  flex: 0 0 auto;
+  margin: 56px -28px 0 -16px;
+}
+
+@media (max-width: 900px) {
+  .bodyContainer > .admin-body-footer.user-page-footer {
+    margin: 44px -14px 0;
+  }
+}
+
+.bodyContainer::after {
+  content: none !important;
+  display: none !important;
+}
+
+.bodyContainer > .admin-body-footer.user-page-footer {
+  flex: 0 0 auto;
+  margin: 56px -28px 0 -16px;
+}
+
+@media (max-width: 900px) {
+  .bodyContainer > .admin-body-footer.user-page-footer {
+    margin: 44px -14px 0;
+  }
+}
+
+/* Final switch alignment after legacy modal overrides. */
+.accountOverviewTableContainer .switch,
+.accountProfileModal .statusToggle .switch {
+  width: 45px !important;
+  height: 20px !important;
+}
+
+.accountOverviewTableContainer .slider:before,
+.accountProfileModal .statusToggle .slider:before {
+  width: 16px !important;
+  height: 16px !important;
+  top: 50% !important;
+  bottom: auto !important;
+  left: 2px !important;
+  transform: translateY(-50%) !important;
+}
+
+.accountOverviewTableContainer input:checked + .slider:before,
+.accountProfileModal .statusToggle input:checked + .slider:before {
+  transform: translate(25px, -50%) !important;
+}
+
+/* Final switch alignment after legacy modal overrides. */
+.accountOverviewTableContainer .switch,
+.accountProfileModal .statusToggle .switch {
+  width: 45px !important;
+  height: 20px !important;
+}
+
+.accountOverviewTableContainer .slider:before,
+.accountProfileModal .statusToggle .slider:before {
+  width: 16px !important;
+  height: 16px !important;
+  top: 50% !important;
+  bottom: auto !important;
+  left: 2px !important;
+  transform: translateY(-50%) !important;
+}
+
+.accountOverviewTableContainer input:checked + .slider:before,
+.accountProfileModal .statusToggle input:checked + .slider:before {
+  transform: translate(25px, -50%) !important;
+}
+
+/* Final switch alignment after legacy modal overrides. */
+.accountOverviewTableContainer .switch,
+.accountProfileModal .statusToggle .switch {
+  width: 45px !important;
+  height: 20px !important;
+}
+
+.accountOverviewTableContainer .slider:before,
+.accountProfileModal .statusToggle .slider:before {
+  width: 16px !important;
+  height: 16px !important;
+  top: 50% !important;
+  bottom: auto !important;
+  left: 2px !important;
+  transform: translateY(-50%) !important;
+}
+
+.accountOverviewTableContainer input:checked + .slider:before,
+.accountProfileModal .statusToggle input:checked + .slider:before {
+  transform: translate(25px, -50%) !important;
+}
+
+/* Final account overview icon and switch alignment overrides */
+.accountOverviewHeroIcon {
+  box-shadow: none !important;
+}
+
+.accountOverviewTableContainer .switch,
+.accountProfileModal .statusToggle .switch {
+  width: 45px;
+  height: 20px;
+}
+
+.accountOverviewTableContainer .slider,
+.accountProfileModal .statusToggle .slider {
+  overflow: hidden;
+}
+
+.accountOverviewTableContainer .slider:before,
+.accountProfileModal .statusToggle .slider:before {
+  width: 16px;
+  height: 16px;
+  top: 50%;
+  bottom: auto;
+  left: 2px;
+  transform: translateY(-50%);
+}
+
+.accountOverviewTableContainer input:checked + .slider:before,
+.accountProfileModal .statusToggle input:checked + .slider:before {
+  transform: translate(25px, -50%);
+}
+
+/* Account overview interaction polish */
+.accountOverviewTableContainer td .iconButton {
+  margin: 0 auto;
+  display: inline-flex;
+}
+
+.accountPagination {
+  display: grid !important;
+  grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr);
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.accountPagination .paginationInfo {
+  justify-self: center;
+  text-align: center;
+}
+
+.accountPagination .paginationBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 112px;
+  border-radius: 999px;
+  border-color: rgba(8, 24, 160, 0.2);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.12), transparent 38%),
+    #ffffff;
+  color: #0a1156;
+  box-shadow: 0 8px 18px rgba(10, 17, 86, 0.06);
+}
+
+.accountPagination .paginationPrevBtn {
+  justify-self: start;
+}
+
+.accountPagination .paginationNextBtn {
+  justify-self: end;
+}
+
+.accountPagination .paginationBtn:hover:not(:disabled) {
+  border-color: rgba(8, 24, 160, 0.36);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.18), transparent 38%),
+    #eef5ff;
+  color: #0818a0;
+  box-shadow: 0 12px 24px rgba(10, 17, 86, 0.1);
+}
+
+.accountOverviewTableContainer .switch {
+  width: 45px;
+  height: 20px;
+}
+
+.accountOverviewTableContainer .slider,
+.accountProfileModal .slider {
+  border: 1px solid rgba(153, 27, 27, 0.22);
+  background:
+    radial-gradient(circle at 0% 50%, rgba(255, 255, 255, 0.42), transparent 32%),
+    linear-gradient(135deg, #fee2e2 0%, #ef4444 100%);
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.16);
+}
+
+.accountOverviewTableContainer .slider:before,
+.accountProfileModal .slider:before {
+  width: 18px;
+  height: 18px;
+  top: -1px;
+  left: 2px;
+  bottom: 2px;
+  background: #ffffff;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.22);
+}
+
+.accountOverviewTableContainer input:checked + .slider,
+.accountProfileModal input:checked + .slider {
+  border-color: rgba(22, 101, 52, 0.28);
+  background:
+    radial-gradient(circle at 100% 50%, rgba(255, 255, 255, 0.36), transparent 34%),
+    linear-gradient(135deg, #16a34a 0%, #14532d 100%);
+}
+
+.accountOverviewTableContainer input:checked + .slider:before,
+.accountProfileModal input:checked + .slider:before {
+  transform: translateX(26px);
+  background: #ffffff;
+}
+
+.accountOverviewTableContainer .switch input:disabled + .slider {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.accountOverviewTableContainer .switch,
+.accountProfileModal .statusToggle .switch {
+  width: 45px;
+  height: 20px;
+}
+
+.accountOverviewTableContainer .slider,
+.accountProfileModal .statusToggle .slider {
+  overflow: hidden;
+}
+
+.accountOverviewTableContainer .slider:before,
+.accountProfileModal .statusToggle .slider:before {
+  width: 16px;
+  height: 16px;
+  top: 50%;
+  bottom: auto;
+  left: 2px;
+  transform: translateY(-50%);
+}
+
+.accountOverviewTableContainer input:checked + .slider:before,
+.accountProfileModal .statusToggle input:checked + .slider:before {
+  transform: translate(25px, -50%);
+}
+
+.alertIcon {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.14), transparent 38%),
+    #dbeafe;
+  border: 1px solid rgba(8, 24, 160, 0.16);
+}
+
+.alertMessageNode {
+  display: block;
+  width: 100%;
+  margin-right: auto;
+  margin-left: auto;
+  text-align: center;
+}
+
+.statusConfirmMessage {
+  width: 100%;
+  text-align: center;
+}
+
+.statusConfirmMessage p {
+  margin: 0;
+  text-align: center;
+}
+
+.statusConfirmMessage p + p {
+  margin-top: 8px;
+}
+
+.statusConfirmAccount {
+  color: #4a5872;
+  font-style: italic;
+}
+
+.confirmActionActive {
+  color: #166534;
+}
+
+.confirmActionDisabled {
+  color: #991b1b;
+}
+
+@media (max-width: 640px) {
+  .accountPagination {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .accountPagination .paginationInfo {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    width: 100%;
+  }
+
+  .accountPagination .paginationPrevBtn {
+    grid-column: 1;
+    grid-row: 2;
+    width: 100%;
+  }
+
+  .accountPagination .paginationNextBtn {
+    grid-column: 2;
+    grid-row: 2;
+    width: 100%;
+  }
+}
+
+/* Hard footer alignment override for the admin/employee/doctor sidebar */
+.navbarContainer .navBody .navFooter {
+  width: 100% !important;
+  display: flex !important;
+  flex: 0 0 auto !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  margin-top: auto !important;
+  text-align: center !important;
+}
+
+.navbarContainer .navBody .navFooter .navLogoutBtn {
+  width: 100% !important;
+  margin-right: auto !important;
+  margin-left: auto !important;
+  justify-content: center !important;
+  text-align: center !important;
+}
+
+.navbarContainer .navBody .navFooter .navPoweredBy {
+  width: 100% !important;
+  margin-right: auto !important;
+  margin-left: auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  text-align: center !important;
 }
 
 .accountOverviewTableContainer {
@@ -865,10 +3156,6 @@ html, body {
 
 .iconButton:hover {
   opacity: 0.8;
-}
-
-.iconDefault {
-  color: #3d67ee;
 }
 
 .iconActive {
@@ -1072,7 +3359,7 @@ html, body {
 }
 
 .accountPagination {
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   margin-top: 16px;
 }
@@ -1658,17 +3945,21 @@ input:checked + .slider:before {
 }
 
 .accountProfileModal .statusToggle .switch {
-  width: 38px;
+  width: 45px;
   height: 20px;
 }
 
 .accountProfileModal .statusToggle .slider:before {
   width: 16px;
   height: 16px;
+  top: 50%;
+  bottom: auto;
+  left: 2px;
+  transform: translateY(-50%);
 }
 
 .accountProfileModal .statusToggle input:checked + .slider:before {
-  transform: translateX(18px);
+  transform: translate(25px, -50%);
 }
 
 .accountDetailGrid .statusBadge {
@@ -1840,10 +4131,10 @@ input:checked + .slider:before {
 /* Alert Modal */
 .alertModal {
   background-color: white;
-  padding: 25px;
+  padding: 20px;
   border-radius: 12px;
-  width: 80%;
-  max-width: 350px;
+  width: min(88vw, 310px);
+  max-width: 310px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1851,11 +4142,16 @@ input:checked + .slider:before {
 }
 
 .alertIcon {
-  margin-bottom: 10px;
+  margin-bottom: 6px;
+}
+
+.alertIcon svg {
+  width: 44px;
+  height: 44px;
 }
 
 .alertTitle {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: bold;
   margin: 10px 0;
   color: black;
@@ -1864,23 +4160,23 @@ input:checked + .slider:before {
 .alertMessage {
   text-align: center;
   color: #666;
-  margin-bottom: 25px;
-  font-size: 14px;
+  margin-bottom: 18px;
+  font-size: 13px;
 }
 
 .alertActions {
   display: flex;
   flex-direction: row;
-  gap: 15px;
+  gap: 10px;
   width: 100%;
   justify-content: center;
 }
 
 .alertBtn {
-  padding: 10px 20px;
+  padding: 9px 16px;
   border: none;
   border-radius: 8px;
-  min-width: 100px;
+  min-width: 86px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -1905,6 +4201,98 @@ input:checked + .slider:before {
 
 .errorBtn {
   background-color: #d93025;
+}
+
+/* Petshield alert modal refresh */
+.alertModal {
+  width: min(88vw, 360px);
+  max-width: 360px;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.94)),
+    radial-gradient(circle at 0% 0%, rgba(250, 43, 36, 0.14), transparent 38%),
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.16), transparent 36%);
+  box-shadow: 0 32px 80px rgba(4, 8, 42, 0.34);
+}
+
+.alertIcon {
+  width: 58px;
+  height: 58px;
+  margin-bottom: 10px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.1), transparent 38%),
+    rgba(8, 24, 160, 0.06);
+}
+
+.alertIcon svg {
+  width: 42px;
+  height: 42px;
+}
+
+.alertTitle {
+  margin: 6px 0 8px;
+  color: #0a1156;
+  font-size: 1.08rem;
+  font-weight: 760;
+  text-align: center;
+}
+
+.alertMessage {
+  max-width: 290px;
+  margin-bottom: 20px;
+  color: #4a5872;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.alertActions {
+  gap: 10px;
+}
+
+.alertBtn {
+  min-width: 112px;
+  min-height: 38px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.cancelAlertBtn {
+  border: 1px solid rgba(157, 171, 195, 0.34);
+  background: #ffffff;
+  color: #0a1156;
+}
+
+.cancelAlertBtn:hover {
+  border-color: rgba(8, 24, 160, 0.2);
+  background: #f7fbff;
+}
+
+.confirmAlertBtn {
+  border: 1px solid rgba(61, 182, 238, 0.28);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+  color: #ffffff;
+  box-shadow: 0 14px 28px rgba(4, 8, 42, 0.14);
+}
+
+.confirmAlertBtn:hover {
+  opacity: 1;
+  box-shadow: 0 18px 34px rgba(4, 8, 42, 0.18);
+}
+
+.confirmAlertBtn.errorBtn {
+  border-color: rgba(250, 43, 36, 0.28);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(135deg, #fa2b24 0%, #b91d28 58%, #071126 100%);
 }
 
 /* Create Account Modal */
@@ -4705,6 +7093,289 @@ input:checked + .slider:before {
 
   .settingsWebsiteAnnouncementCopy h3 {
     font-size: 22px;
+  }
+}
+
+/* ===== Final PetShield admin shell override ===== */
+.biContainer {
+  background:
+    radial-gradient(circle at 14% 8%, rgba(250, 43, 36, 0.1), transparent 28%),
+    radial-gradient(circle at 84% 0%, rgba(8, 24, 160, 0.16), transparent 32%),
+    linear-gradient(180deg, #f8faff 0%, #f3f6ff 42%, #eef3ff 100%) !important;
+}
+
+.navbarContainer {
+  width: 262px;
+  padding: 22px 16px 22px 24px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.navbarContainer.collapsed {
+  width: 98px;
+  min-width: 98px;
+  padding-right: 10px;
+}
+
+.navBody {
+  padding: 12px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 14% 12%, rgba(61, 182, 238, 0.16), transparent 24%),
+    linear-gradient(180deg, #0b1732 0%, #071126 58%, #040815 100%);
+  box-shadow: 0 26px 70px rgba(4, 8, 42, 0.28);
+}
+
+.glassContainer,
+.navGlassContainer {
+  border-color: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: none;
+}
+
+.navBtn {
+  position: relative;
+  min-height: 30px;
+  padding: 6px 9px;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+.navBtn:hover {
+  transform: translateX(2px);
+  background: rgba(255, 255, 255, 0.075);
+  color: #ffffff;
+}
+
+.navBtn.active {
+  border: 1px solid rgba(61, 182, 238, 0.34);
+  background:
+    linear-gradient(135deg, rgba(61, 182, 238, 0.22), rgba(8, 24, 160, 0.18)),
+    rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  box-shadow:
+    inset 3px 0 0 #3db6ee,
+    0 10px 24px rgba(0, 0, 0, 0.16);
+}
+
+.navBtn.active::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-radius: 999px;
+  background: #fa2b24;
+  box-shadow: 0 0 0 4px rgba(250, 43, 36, 0.12);
+}
+
+.navbarContainer.collapsed .navBtn.active::after {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  margin-left: 0;
+}
+
+.collapsedDropdown {
+  left: 96px;
+  border-radius: 10px;
+  border-color: rgba(61, 182, 238, 0.2);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 28%),
+    linear-gradient(180deg, #0b1732 0%, #071126 100%);
+  box-shadow: 0 22px 50px rgba(4, 8, 42, 0.34);
+}
+
+.bodyContainer {
+  position: relative;
+  padding: 28px 28px 0 16px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(250, 43, 36, 0.08), transparent 28%),
+    radial-gradient(circle at 86% 0%, rgba(8, 24, 160, 0.12), transparent 30%),
+    linear-gradient(180deg, #f8faff 0%, #f3f6ff 48%, #eef3ff 100%);
+  color: #0a1156;
+}
+
+.navBrandText {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  line-height: 1;
+}
+
+.brandFont {
+  font-weight: 680;
+}
+
+.navBrandSubtitle {
+  max-width: 138px;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 0.56rem;
+  font-weight: 500;
+  line-height: 1.15;
+}
+
+.navOverview {
+  display: none;
+}
+
+.navAccountContainer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 6px 6px 12px;
+  padding: 8px 0 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  box-shadow: none;
+}
+
+.navAccount {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.navAccountEditBtn {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border: 1px solid rgba(61, 182, 238, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.78);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.navAccountEditBtn:hover {
+  background: rgba(61, 182, 238, 0.16);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.navbarContainer.collapsed .navAccountContainer {
+  justify-content: center;
+  margin: 6px 8px 12px;
+  padding: 8px 0 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.navMenu {
+  gap: 4px;
+}
+
+.scrollable-nav {
+  max-height: calc(100vh - 230px);
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.navSubMenu {
+  margin-top: 4px;
+  margin-bottom: 6px;
+}
+
+.navFooter {
+  margin-top: auto;
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  align-items: center;
+  justify-items: center;
+  text-align: center;
+}
+
+.navLogoutBtn {
+  width: 100%;
+  min-height: 30px;
+  padding: 6px 9px;
+  border-color: rgba(250, 43, 36, 0.18);
+  background: rgba(250, 43, 36, 0.1);
+  justify-content: center;
+}
+
+.navLogoutBtn:hover {
+  background: rgba(250, 43, 36, 0.18);
+}
+
+.navPoweredBy {
+  width: 100%;
+  margin: 0 0 2px;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 0.62rem;
+  font-weight: 650;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.navPoweredByLogo {
+  height: 16px;
+}
+
+.bodyContainer::after {
+  content: "Petshield\A Veterinary Clinic & Grooming Center\A\A Petshield Las Pinas\A Las Pinas City, Metro Manila\A petshield@gmail.com  |  +63 912 345 6789\A\A Petshield Taguig\A Taguig City, Metro Manila\A petshieldtaguig@gmail.com  |  +63 998 765 4321\A\A Powered by PawRang";
+  display: grid;
+  min-height: 360px;
+  margin: 56px -28px 0 -16px;
+  padding: 250px 24px 22px;
+  place-items: center;
+  background:
+    linear-gradient(180deg, rgba(8, 24, 160, 0) 0%, rgba(8, 24, 160, 0.05) 22%, rgba(8, 24, 160, 0.18) 38%, rgba(8, 24, 160, 0.5) 56%, rgba(10, 17, 86, 0.88) 78%, #050816 100%),
+    linear-gradient(115deg, rgba(250, 43, 36, 0.32) 8%, rgba(8, 24, 160, 0.18) 48%, rgba(255, 255, 255, 0.08) 100%),
+    #0a1156;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.8;
+  text-align: center;
+  white-space: pre-line;
+}
+
+@media (max-width: 900px) {
+  .navbarContainer.mobile {
+    padding: 14px;
+  }
+
+  .navbarContainer.mobile .navBody {
+    height: calc(100vh - 28px);
+    border-radius: 16px;
+  }
+
+  .bodyContainer {
+    padding: 78px 14px 0;
+  }
+
+  .bodyContainer::after {
+    margin: 44px -14px 0;
+  }
+}
+
+/* Real shared footer component, replacing the old CSS pseudo-footer. */
+.bodyContainer::after {
+  content: none !important;
+  display: none !important;
+}
+
+.bodyContainer > .admin-body-footer.user-page-footer {
+  flex: 0 0 auto;
+  margin: 56px -28px 0 -16px;
+}
+
+@media (max-width: 900px) {
+  .bodyContainer > .admin-body-footer.user-page-footer {
+    margin: 44px -14px 0;
   }
 }
 

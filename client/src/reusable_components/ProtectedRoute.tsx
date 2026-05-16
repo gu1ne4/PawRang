@@ -10,6 +10,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ allowedRoles }) => {
   const session = getSessionUser();
 
   if (!session) {
+    if (allowedRoles?.some(role => ['User', 'Patient'].includes(role))) {
+      return <Navigate to="/user/home" replace state={{ authMode: 'login' }} />;
+    }
+
     return <Navigate to="/login" replace />;
   }
 

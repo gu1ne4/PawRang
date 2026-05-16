@@ -6,14 +6,17 @@ import {
   IoChevronUpOutline,
   IoClose,
   IoHomeOutline,
+  IoGridOutline,
   IoInformationCircleOutline,
   IoLogOutOutline,
   IoMenuOutline,
   IoPawOutline,
   IoPersonOutline,
+  IoRibbonOutline,
 } from 'react-icons/io5';
 import './ClientNavBar.css';
 import UserNotifications from './UserNotifications';
+import petshieldLogo from '../assets/PetshieldLogo.png';
 
 interface User {
   id?: string | number;
@@ -50,6 +53,7 @@ interface ClientNavBarProps {
   onLogout: () => void;
   onViewProfile: () => void;
   onMyPets: () => void;
+  onAuthRequested?: () => void;
   onNavigateAttempt?: (action: () => void) => void;
   showAlert?: (
     type: AlertConfig['type'],
@@ -66,6 +70,7 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
   onLogout,
   onViewProfile,
   onMyPets,
+  onAuthRequested,
   onNavigateAttempt,
   showAlert,
 }) => {
@@ -97,10 +102,15 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
     ? combinedName || currentUser.fullname || currentUser.fullName || currentUser.username || 'User'
     : '';
 
-  const isHomeActive = location.pathname === '/user/home' && location.hash !== '#about';
-  const isBookActive = location.pathname === '/user/book-appointment';
-  const isPetProfilesActive = location.pathname === '/user/pet-profile';
+  const isHomeActive = location.pathname === '/user/home' && !['#about', '#services', '#certifications'].includes(location.hash);
+  const isServicesActive = location.pathname === '/user/home' && location.hash === '#services';
   const isAboutActive = location.pathname === '/user/home' && location.hash === '#about';
+  const isCertificationsActive = location.pathname === '/user/home' && location.hash === '#certifications';
+  const isPetsActive = location.pathname === '/user/pet-profile';
+  const isAppointmentsActive = location.pathname === '/user/appointments';
+  const isUserHomePage = location.pathname === '/user/home';
+  const usesTransparentNav = isUserHomePage || location.pathname === '/user/book-appointment' || location.pathname === '/user/pet-profile' || location.pathname === '/user/appointments' || location.pathname === '/user/profile';
+  const navIconColor = usesTransparentNav ? '#ffffff' : '#0a1156';
 
   const closeMobileMenu = () => setMobileMenuOpen(false);
 
@@ -119,6 +129,18 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
       return;
     }
     action();
+  };
+
+  const requestAuth = () => {
+    setDropdownVisible(false);
+    closeMobileMenu();
+
+    if (onAuthRequested) {
+      onAuthRequested();
+      return;
+    }
+
+    navigate('/user/home', { state: { authMode: 'login' } });
   };
 
   const handleViewProfile = () => {
@@ -163,6 +185,24 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
     }
 
     navigate('/user/home#about');
+  };
+
+  const navigateToServices = () => {
+    if (location.pathname === '/user/home' && location.hash === '#services') {
+      document.getElementById('services')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
+    navigate('/user/home#services');
+  };
+
+  const navigateToCertifications = () => {
+    if (location.pathname === '/user/home' && location.hash === '#certifications') {
+      document.getElementById('certifications')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
+    navigate('/user/home#certifications');
   };
 
   const confirmLogout = () => {
@@ -210,18 +250,11 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
       active: isHomeActive,
     },
     {
-      key: 'book',
-      label: 'Book an Appointment',
-      icon: <IoCalendarOutline size={20} />,
-      action: () => navigate('/user/book-appointment'),
-      active: isBookActive,
-    },
-    {
-      key: 'pets',
-      label: 'Pet Profiles',
-      icon: <IoPawOutline size={20} />,
-      action: handleMyPets,
-      active: isPetProfilesActive,
+      key: 'services',
+      label: 'Services',
+      icon: <IoGridOutline size={20} />,
+      action: navigateToServices,
+      active: isServicesActive,
     },
     {
       key: 'about',
@@ -230,81 +263,104 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
       action: navigateToAbout,
       active: isAboutActive,
     },
+    {
+      key: 'certifications',
+      label: 'Certifications',
+      icon: <IoRibbonOutline size={20} />,
+      action: navigateToCertifications,
+      active: isCertificationsActive,
+    },
   ];
 
-  return (
-    <div className="navbar-sticky client-nav-shell">
-      <div className="user-navbar">
-        <div className="mobile-nav-header">
+  const navShellClassName = `navbar-sticky client-nav-shell ${usesTransparentNav ? 'client-nav-home' : ''}`;
+  const profileDropdown = (
+    <div className="profile-dropdown-container">
+      {currentUser ? (
+        <button
+          type="button"
+          className="profile-button"
+          onClick={() => setDropdownVisible(prev => !prev)}
+        >
+          <div className="profile-section profile-section-account">
+            {avatar}
+            <div className="profile-info">
+              <span className="profile-name" title={displayName}>{displayName}</span>
+            </div>
+            {dropdownVisible ? (
+              <IoChevronUpOutline size={18} color={navIconColor} />
+            ) : (
+              <IoChevronDownOutline size={18} color={navIconColor} />
+            )}
+          </div>
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="profile-button"
+          onClick={requestAuth}
+        >
+          <div className="profile-section profile-section-auth">
+            <IoPersonOutline size={18} color={navIconColor} />
+            <span className="login-text">Login or Sign-up</span>
+          </div>
+        </button>
+      )}
+
+      {dropdownVisible && currentUser && (
+        <div className="dropdown-menu">
+          <button type="button" className="dropdown-item" onClick={handleViewProfile}>
+            <IoPersonOutline size={18} color="#3d67ee" />
+            <span>Profile Settings</span>
+          </button>
+
+          <button type="button" className="dropdown-item" onClick={handleMyPets}>
+            <IoPawOutline size={18} color="#3d67ee" />
+            <span>My Pets</span>
+          </button>
+
           <button
             type="button"
-            className="mobile-nav-toggle"
-            onClick={() => setMobileMenuOpen(true)}
-            aria-label="Open navigation menu"
+            className="dropdown-item logout-item"
+            onClick={handleLogoutClick}
           >
-            <IoMenuOutline size={28} color="#3d67ee" />
+            <IoLogOutOutline size={18} color="#ee3d5a" />
+            <span style={{ color: '#ee3d5a' }}>Logout</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className={navShellClassName}>
+      <div className="user-navbar">
+        <div className="mobile-nav-header">
+          <button type="button" className="client-nav-brand mobile-nav-brand" onClick={() => runMobileAction(navigateHome)}>
+            <img src={petshieldLogo} alt="PetShield" className="client-nav-logo" />
+            <span>PetShield</span>
           </button>
 
           <div className="mobile-nav-user">
             {avatar}
             <span className="mobile-nav-name">{displayName || 'Menu'}</span>
           </div>
+
+          <button
+            type="button"
+            className="mobile-nav-toggle"
+            onClick={() => setMobileMenuOpen(true)}
+            aria-label="Open navigation menu"
+          >
+            <IoMenuOutline size={28} color={navIconColor} />
+          </button>
         </div>
 
-        <div className="profile-dropdown-container">
-          {currentUser ? (
-            <button
-              type="button"
-              className="profile-button"
-              onClick={() => setDropdownVisible(prev => !prev)}
-            >
-              <div className="profile-section">
-                {avatar}
-                <div className="profile-info">
-                  <span className="profile-name">{displayName}</span>
-                </div>
-                {dropdownVisible ? (
-                  <IoChevronUpOutline size={18} color="#3d67ee" />
-                ) : (
-                  <IoChevronDownOutline size={18} color="#3d67ee" />
-                )}
-              </div>
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="profile-button"
-              onClick={() => navigate('/login')}
-            >
-              <div className="profile-section">
-                <IoPersonOutline size={21} color="#3d67ee" />
-                <span className="login-text">Login or Sign-up</span>
-              </div>
-            </button>
-          )}
+        <div className="client-nav-left">
+          <button type="button" className="client-nav-brand desktop-nav-brand" onClick={() => executeNavigation(navigateHome)}>
+            <img src={petshieldLogo} alt="PetShield" className="client-nav-logo" />
+          </button>
 
-          {dropdownVisible && currentUser && (
-            <div className="dropdown-menu">
-              <button type="button" className="dropdown-item" onClick={handleViewProfile}>
-                <IoPersonOutline size={18} color="#3d67ee" />
-                <span>View Profile</span>
-              </button>
-
-              <button type="button" className="dropdown-item" onClick={handleMyPets}>
-                <IoPawOutline size={18} color="#3d67ee" />
-                <span>My Pets</span>
-              </button>
-
-              <button
-                type="button"
-                className="dropdown-item logout-item"
-                onClick={handleLogoutClick}
-              >
-                <IoLogOutOutline size={18} color="#ee3d5a" />
-                <span style={{ color: '#ee3d5a' }}>Logout</span>
-              </button>
-            </div>
-          )}
+          {profileDropdown}
         </div>
 
         <div className="nav-center">
@@ -318,17 +374,10 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
             </button>
             <button
               type="button"
-              className={`nav-link ${isBookActive ? 'active' : ''}`}
-              onClick={() => executeNavigation(() => navigate('/user/book-appointment'))}
+              className={`nav-link ${isServicesActive ? 'active' : ''}`}
+              onClick={() => executeNavigation(navigateToServices)}
             >
-              Book an Appointment
-            </button>
-            <button
-              type="button"
-              className={`nav-link ${isPetProfilesActive ? 'active' : ''}`}
-              onClick={handleMyPets}
-            >
-              Pet Profiles
+              Services
             </button>
             <button
               type="button"
@@ -337,31 +386,39 @@ const ClientNavBar: React.FC<ClientNavBarProps> = ({
             >
               About Us
             </button>
+            <button
+              type="button"
+              className={`nav-link ${isCertificationsActive ? 'active' : ''}`}
+              onClick={() => executeNavigation(navigateToCertifications)}
+            >
+              Certifications
+            </button>
           </div>
         </div>
 
         <div className="nav-icons">
           <button
             type="button"
-            className="icon-button"
+            className={`icon-button ${isPetsActive ? 'active' : ''}`}
             onClick={() => executeNavigation(() => navigate('/user/pet-profile'))}
             aria-label="Open pet profile"
           >
-            <IoPawOutline size={21} color="#3d67ee" />
+            <IoPawOutline size={21} color={navIconColor} />
           </button>
 
           <button
             type="button"
-            className="icon-button"
+            className={`icon-button ${isAppointmentsActive ? 'active' : ''}`}
             onClick={() => executeNavigation(() => navigate('/user/appointments'))}
             aria-label="Open appointments"
           >
-            <IoCalendarOutline size={21} color="#3d67ee" />
+            <IoCalendarOutline size={21} color={navIconColor} />
           </button>
 
           <UserNotifications
             userId={currentUser?.id || currentUser?.pk}
             onOpenAppointments={() => executeNavigation(() => navigate('/user/appointments'))}
+            iconColor={navIconColor}
           />
         </div>
       </div>

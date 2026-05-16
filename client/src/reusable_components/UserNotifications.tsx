@@ -14,6 +14,7 @@ type UserNotificationType = 'success' | 'warning' | 'info';
 interface UserNotificationsProps {
   userId?: string | number;
   onOpenAppointments?: () => void;
+  iconColor?: string;
 }
 
 interface UserNotification {
@@ -125,7 +126,7 @@ const getNotificationIcon = (type: UserNotificationType) => {
   return <IoHourglassOutline size={18} />;
 };
 
-const UserNotifications: React.FC<UserNotificationsProps> = ({ userId, onOpenAppointments }) => {
+const UserNotifications: React.FC<UserNotificationsProps> = ({ userId, onOpenAppointments, iconColor = 'currentColor' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<UserNotification[]>([]);
   const [readIds, setReadIds] = useState<string[]>(() => getReadIds());
@@ -191,7 +192,7 @@ const UserNotifications: React.FC<UserNotificationsProps> = ({ userId, onOpenApp
   return (
     <div className="client-notification-shell" ref={popupRef}>
       <button type="button" className="icon-button client-notification-button" onClick={handleOpen} aria-label="Open notifications">
-        <IoNotificationsOutline size={21} color="#3d67ee" />
+        <IoNotificationsOutline size={21} color={iconColor} />
         {unreadCount > 0 && <span className="client-notification-badge">{unreadCount}</span>}
       </button>
 
