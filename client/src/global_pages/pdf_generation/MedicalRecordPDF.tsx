@@ -198,6 +198,13 @@ interface Prescription {
   instructions?: string;
 }
 
+interface ServiceItem {
+  id?: string;
+  name: string;
+  price?: number;
+  description?: string;
+}
+
 interface VisitHistory {
   id: string;
   date: string;
@@ -210,6 +217,7 @@ interface VisitHistory {
   clinicalExam?: ClinicalExam;
   labResults?: LabResult[];
   prescriptions?: Prescription[];
+  selectedServices?: ServiceItem[];
 }
 
 interface PetDetails {
@@ -234,6 +242,20 @@ interface MedicalRecordPDFProps {
   ownerContact: string;
   patientId: string;
   visitHistory: VisitHistory[];
+  reportTitle?: string;
+  reportSubtitle?: string;
+  visitSectionTitle?: string;
+  emptyVisitMessage?: string;
+  summaryOnly?: boolean;
+  medicalHistorySummary?: {
+    totalVisits: number;
+    labResults: number;
+    prescriptions: number;
+    vaccinations: number;
+    services: number;
+    latestVisitLabel?: string;
+    latestVisitReason?: string;
+  };
 }
 
 // Helper function to strip HTML tags
@@ -296,6 +318,14 @@ const VisitCardComponent: React.FC<{ visit: VisitHistory; index: number }> = ({ 
         <Text style={styles.visitDetailLabel}>Reason:</Text>
         <Text style={styles.visitDetailValue}>{visit.reason}</Text>
       </View>
+      {visit.selectedServices && visit.selectedServices.length > 0 && (
+        <View style={styles.visitDetailRow}>
+          <Text style={styles.visitDetailLabel}>Services:</Text>
+          <Text style={styles.visitDetailValue}>
+            {visit.selectedServices.map((service) => service.name).filter(Boolean).join(', ')}
+          </Text>
+        </View>
+      )}
       <View style={styles.visitDetailRow}>
         <Text style={styles.visitDetailLabel}>Weight:</Text>
         <Text style={styles.visitDetailValue}>
@@ -416,6 +446,12 @@ const MedicalRecordPDF: React.FC<MedicalRecordPDFProps> = ({
   ownerContact,
   patientId,
   visitHistory,
+  reportTitle = 'Medical Record',
+  reportSubtitle,
+  visitSectionTitle,
+  emptyVisitMessage = 'No visit records available',
+  summaryOnly = false,
+  medicalHistorySummary,
 }) => {
   const currentDate = new Date().toLocaleDateString('en-US', {
     year: 'numeric',
@@ -444,8 +480,9 @@ const MedicalRecordPDF: React.FC<MedicalRecordPDFProps> = ({
           {pageIndex === 0 && (
             <View style={styles.header}>
               <View style={styles.headerLeft}>
-                <Text style={styles.title}>Medical Record</Text>
+                <Text style={styles.title}>{reportTitle}</Text>
                 <Text style={styles.subtitle}>Patient ID: {patientId}</Text>
+                {reportSubtitle && <Text style={styles.subtitle}>{reportSubtitle}</Text>}
               </View>
               <View style={styles.headerRight}>
                 <Text style={styles.reportDate}>Generated: {currentDate}</Text>
@@ -531,10 +568,48 @@ const MedicalRecordPDF: React.FC<MedicalRecordPDFProps> = ({
             </View>
           )}
 
+          {pageIndex === 0 && summaryOnly && medicalHistorySummary && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Medical History Summary</Text>
+              <View style={styles.infoGrid}>
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>Total Visits</Text>
+                  <Text style={styles.infoValue}>{medicalHistorySummary.totalVisits}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>Services</Text>
+                  <Text style={styles.infoValue}>{medicalHistorySummary.services}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>Lab Results</Text>
+                  <Text style={styles.infoValue}>{medicalHistorySummary.labResults}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>Prescriptions</Text>
+                  <Text style={styles.infoValue}>{medicalHistorySummary.prescriptions}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>Vaccinations</Text>
+                  <Text style={styles.infoValue}>{medicalHistorySummary.vaccinations}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={styles.infoLabel}>Latest Visit</Text>
+                  <Text style={styles.infoValue}>{medicalHistorySummary.latestVisitLabel || 'N/A'}</Text>
+                </View>
+              </View>
+              {medicalHistorySummary.latestVisitReason && (
+                <View style={styles.visitDetailRow}>
+                  <Text style={styles.visitDetailLabel}>Latest Reason:</Text>
+                  <Text style={styles.visitDetailValue}>{medicalHistorySummary.latestVisitReason}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
           {/* Visit History Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>
-              Visit History ({visitHistory.length} visit{visitHistory.length !== 1 ? 's' : ''})
+              {visitSectionTitle || `Visit History (${visitHistory.length} visit${visitHistory.length !== 1 ? 's' : ''})`}
             </Text>
             {chunk.length > 0 ? (
               chunk.map((visit, idx) => (
@@ -546,7 +621,7 @@ const MedicalRecordPDF: React.FC<MedicalRecordPDFProps> = ({
               ))
             ) : (
               <Text style={{ color: '#999999', textAlign: 'center', padding: 20 }}>
-                No visit records available
+                {emptyVisitMessage}
               </Text>
             )}
           </View>

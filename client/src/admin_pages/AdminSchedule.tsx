@@ -2646,16 +2646,6 @@ export default function Schedule({ viewerRole = 'admin', readOnly = false, hideB
                                 actionBusyType={appointmentActionLoading?.type || null}
                                 readOnly={isReadOnly}
                                 hideBillingActions={shouldHideBillingActions}
-                                showMedicalRecordsAction={isDoctorMode}
-                                onOpenMedicalRecords={(appointment) => navigate('/doctor/medical-records', {
-                                    state: {
-                                        appointmentId: appointment.dbId ?? appointment.id,
-                                        recordType: appointment.recordType || (appointment.is_walk_in ? 'walkin' : 'appointment'),
-                                        petName: appointment.petName || appointment.pet_name,
-                                    }
-                                })}
-                                showInventoryAction={isDoctorMode}
-                                onOpenInventory={() => navigate('/doctor/inventory')}
                             />
                         )}
                     </div>
