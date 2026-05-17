@@ -7,9 +7,6 @@ export default function UserAuthVisual() {
         <div className='imageBackground' aria-label='PawRang branches'>
             <img className='authSlide authSlideOne' src={branchLP} alt='PawRang branch lobby' />
             <img className='authSlide authSlideTwo' src={branchTaguig} alt='PawRang Taguig branch' />
-            <div className='placeholders'>
-                <h2>PetShield Veterinary Clinic and Grooming Services</h2>
-            </div>
         </div>
     )
 }

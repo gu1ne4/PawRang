@@ -34,6 +34,8 @@ interface NotificationsProps {
   onViewAll?: () => void;
   buttonClassName?: string;
   iconClassName?: string;
+  popoverMode?: 'fixed' | 'anchored';
+  closeOnScroll?: boolean;
 }
 
 const Notifications: React.FC<NotificationsProps> = ({
@@ -43,7 +45,9 @@ const Notifications: React.FC<NotificationsProps> = ({
   onDelete,
   onViewAll,
   buttonClassName = '',
-  iconClassName = ''
+  iconClassName = '',
+  popoverMode = 'fixed',
+  closeOnScroll = false
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -289,7 +293,7 @@ const Notifications: React.FC<NotificationsProps> = ({
   }, [getAdminUserId, normalizeFetchedNotification, updateKnownNotificationsAndSound]);
 
   useEffect(() => {
-    if (isOpen && anchorEl) {
+    if (popoverMode === 'fixed' && isOpen && anchorEl) {
       requestAnimationFrame(() => {
         const rect = anchorEl.getBoundingClientRect();
         setPosition({
@@ -298,7 +302,7 @@ const Notifications: React.FC<NotificationsProps> = ({
         });
       });
     }
-  }, [isOpen, anchorEl]);
+  }, [isOpen, anchorEl, popoverMode]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -320,6 +324,19 @@ const Notifications: React.FC<NotificationsProps> = ({
   useEffect(() => {
     fetchNotifications();
   }, [fetchNotifications]);
+
+  useEffect(() => {
+    if (!isOpen || !closeOnScroll) return;
+
+    const handleScroll = () => {
+      setIsOpen(false);
+    };
+
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [closeOnScroll, isOpen]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -485,13 +502,15 @@ const Notifications: React.FC<NotificationsProps> = ({
       {isOpen && (
         <div
           ref={popupRef}
-          className="notifPopup"
-          style={{
-            position: 'fixed',
-            top: `${position.top}px`,
-            right: `${position.right}px`,
-            zIndex: 9999
-          }}
+          className={`notifPopup ${popoverMode === 'anchored' ? 'notifPopupAnchored' : ''}`}
+          style={popoverMode === 'fixed'
+            ? {
+                position: 'fixed',
+                top: `${position.top}px`,
+                right: `${position.right}px`,
+                zIndex: 9999
+              }
+            : undefined}
         >
           <div className="notifHeader">
             <div className="notifHeaderLeft">

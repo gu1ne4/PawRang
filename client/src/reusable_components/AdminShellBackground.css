@@ -1,0 +1,88 @@
+/* Final admin/doctor shell overrides, imported after AdminStyles.css. */
+.biContainer,
+.doctorPortalShell {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(250, 43, 36, 0.08), transparent 28%),
+    radial-gradient(circle at 86% 0%, rgba(8, 24, 160, 0.12), transparent 30%),
+    linear-gradient(180deg, #f8faff 0%, #f3f6ff 48%, #eef3ff 100%) !important;
+}
+
+.navbarContainer,
+.bodyContainer,
+.doctorPortalContent {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+.navbarContainer {
+  box-shadow: none !important;
+}
+
+.bodyContainer {
+  scrollbar-gutter: stable;
+  scrollbar-color: rgba(8, 24, 160, 0.34) transparent;
+}
+
+.bodyContainer::-webkit-scrollbar {
+  width: 12px;
+}
+
+.bodyContainer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.bodyContainer::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(8, 24, 160, 0.34);
+  background-clip: padding-box;
+}
+
+.bodyContainer::-webkit-scrollbar-thumb:hover {
+  background: rgba(8, 24, 160, 0.52);
+  background-clip: padding-box;
+}
+
+.bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact,
+.doctorPortalContent > .admin-body-footer.user-page-footer.petshield-footer--compact {
+  min-height: 82px;
+  margin: 28px -28px 0 -16px;
+  padding: 18px 24px 20px;
+  background: transparent !important;
+  color: rgba(10, 17, 86, 0.62);
+}
+
+.bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact .petshield-footer-compact-content,
+.doctorPortalContent > .admin-body-footer.user-page-footer.petshield-footer--compact .petshield-footer-compact-content {
+  padding-top: 12px;
+  border-top-color: rgba(8, 24, 160, 0.12);
+  gap: 14px;
+}
+
+.bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact .petshield-footer-compact-logo,
+.doctorPortalContent > .admin-body-footer.user-page-footer.petshield-footer--compact .petshield-footer-compact-logo {
+  width: 35px;
+  height: 35px;
+  margin-right: -10px;
+  border-radius: 8px;
+}
+
+.bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact .home-footer-powered,
+.doctorPortalContent > .admin-body-footer.user-page-footer.petshield-footer--compact .home-footer-powered {
+  color: rgba(10, 17, 86, 0.62);
+}
+
+.bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact .home-footer-powered img,
+.doctorPortalContent > .admin-body-footer.user-page-footer.petshield-footer--compact .home-footer-powered img {
+  width: 62px;
+  height: 62px;
+}
+
+@media (max-width: 900px) {
+  .bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact,
+  .doctorPortalContent > .admin-body-footer.user-page-footer.petshield-footer--compact {
+    margin: 24px -14px 0;
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+}

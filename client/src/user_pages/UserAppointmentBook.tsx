@@ -3,10 +3,18 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import './UserStyles.css';
+import './UserSharedFooterStyles.css';
 import API_URL from '../API';
 import { formatPetAge } from '../utils/formatPetAge';
 import branchLP from '../assets/branchLP.jpg';
 import branchTaguig from '../assets/branchTaguig.jpg';
+import petshieldLogo from '../assets/PetshieldLogo.png';
+import pawRangLogo from '../assets/PawRang Logomark White.png';
+import consultationImage from '../assets/ConsultationImage.jpg';
+import groomingImage from '../assets/GroomingImage.jpg';
+import diagnosticsImage from '../assets/DiagnosticsImage.jpg';
+import confinementImage from '../assets/ConfinementImage.jpg';
+import sampleDoc from '../assets/sampleDoc.jpg';
 
 import {
   IoPawOutline, IoCalendarOutline, IoChevronBackCircle, IoChevronForwardCircle,
@@ -14,7 +22,7 @@ import {
   IoCloudUploadOutline, IoCutOutline, IoMedicalOutline, IoHomeOutline,
   IoScanOutline, IoRadioOutline, IoFlaskOutline, IoAdd,
   IoCloseCircle, IoPersonCircleOutline, IoLocationOutline, IoReceiptOutline,
-  IoShieldCheckmarkOutline,
+  IoShieldCheckmarkOutline, IoMailOutline, IoCallOutline,
 } from 'react-icons/io5';
 import ClientNavBar from '../reusable_components/ClientNavBar';
 
@@ -112,6 +120,7 @@ interface Service {
   id: number;
   name: string;
   icon: string;
+  image: string;
   description: string[];
   basePrice?: string;
   hasOptions: boolean;
@@ -171,8 +180,30 @@ const laboratoryOptions: ServiceOption[] = [
   { id:'l2', name:'Blood Chemistry',      price:'₱1200', description:'Liver, kidney, glucose levels' },
   { id:'l3', name:'Urinalysis',           price:'₱400',  description:'Complete urine analysis' },
   { id:'l4', name:'Fecal Examination',    price:'₱350',  description:'Parasite and bacteria check' },
-  { id:'l5', name:'X-Ray',               price:'₱1500', description:'Single view radiograph' },
-  { id:'l6', name:'Ultrasound',          price:'₱2000', description:'Abdominal ultrasound' },
+];
+
+const imagingOptions: ServiceOption[] = [
+  { id:'i1', name:'X-Ray',      price:'₱1500', description:'Single view radiograph' },
+  { id:'i2', name:'Ultrasound', price:'₱2000', description:'Abdominal ultrasound' },
+];
+
+const surgeryOptions: ServiceOption[] = [
+  { id:'s1', name:'Child Delivery', price:'₱3500', description:'Assisted delivery support and monitoring' },
+  { id:'s2', name:'Neuter / Spay',  price:'₱2500', description:'Sterilization procedure consultation and surgery' },
+];
+
+const vaccinationOptions: ServiceOption[] = [
+  { id:'v1', name:'Anti-Rabies Vaccine', price:'₱650',  description:'Rabies protection and vaccine record update' },
+  { id:'v2', name:'5-in-1 Vaccine',      price:'₱900',  description:'Core canine vaccine protection' },
+  { id:'v3', name:'8-in-1 Vaccine',      price:'₱1200', description:'Expanded canine vaccine protection' },
+  { id:'v4', name:'4-in-1 Cat Vaccine',  price:'₱1000', description:'Core feline vaccine protection' },
+];
+
+const nonGroomingOptionServices = [
+  ...laboratoryOptions,
+  ...imagingOptions,
+  ...surgeryOptions,
+  ...vaccinationOptions,
 ];
 
 const haircutStyles = [
@@ -207,14 +238,14 @@ const intakeStatusOptions = ['Normal', 'Less than usual', 'Not at all', 'Not sur
 const worseningOptions = ['Yes', 'No', 'Not sure'];
 
 const services: Service[] = [
-  { id:1, name:'Pet Grooming',            icon:'cut',     description:['Brushing, Nail','Trimming, Haircut,','Bathing, etc.'],         hasOptions:true,  options:groomingOptions },
-  { id:2, name:'Consultation & Check-Up', icon:'medical', description:['Preventative service','to assess your',"pet's overall health"], basePrice:'₱500',         hasOptions:false },
-  { id:3, name:'Dental Prophylaxis',      icon:'shield',  description:['Teeth cleaning,','plaque removal,','oral health check'],       basePrice:'₱800',         hasOptions:false },
-  { id:4, name:'Pet Boarding',            icon:'home',    description:['Overnight stay,','feeding,','supervision'],                    basePrice:'₱1,200/night', hasOptions:false },
-  { id:6, name:'X-Ray',                  icon:'scan',    description:['Radiography for','bone, chest,','abdominal imaging'],          basePrice:'₱1,500',       hasOptions:false },
-  { id:7, name:'Ultrasound',             icon:'radio',   description:['Soft tissue,','abdominal, cardiac,','pregnancy check'],        basePrice:'₱2,000',       hasOptions:false },
-  { id:8, name:'Laboratory Tests',       icon:'flask',   description:['Blood work,','urinalysis, fecal,','chemistry panel'],          hasOptions:true,  options:laboratoryOptions },
-  { id:9, name:'Vaccinations',           icon:'shield',  description:['Core vaccines,','boosters,','rabies shot'],                    basePrice:'₱1,200',       hasOptions:false },
+  { id:1,  name:'Pet Grooming',            icon:'cut',     image:groomingImage,     description:['Brushing, nail trimming, haircut, bathing, and coat care.'],       hasOptions:true,  options:groomingOptions },
+  { id:2,  name:'Consultation & Check-Up', icon:'medical', image:consultationImage, description:['Preventive care and assessment for your pet’s overall health.'], basePrice:'₱500',         hasOptions:false },
+  { id:3,  name:'Dental Prophylaxis',      icon:'shield',  image:sampleDoc,         description:['Teeth cleaning, plaque removal, and oral health check.'],       basePrice:'₱800',         hasOptions:false },
+  { id:4,  name:'Pet Boarding',            icon:'home',    image:confinementImage,  description:['Overnight stay, feeding, care supervision, and monitoring.'],    basePrice:'₱1,200/night', hasOptions:false },
+  { id:6,  name:'Imaging',                 icon:'scan',    image:diagnosticsImage,  description:['X-ray and ultrasound services for diagnostic support.'],         hasOptions:true,  options:imagingOptions },
+  { id:8,  name:'Laboratory Tests',        icon:'flask',   image:diagnosticsImage,  description:['Blood work, urinalysis, fecal exam, and chemistry panel.'],       hasOptions:true,  options:laboratoryOptions },
+  { id:9,  name:'Vaccinations',            icon:'shield',  image:consultationImage, description:['Core vaccines, boosters, and rabies protection.'],               hasOptions:true,  options:vaccinationOptions },
+  { id:10, name:'Surgery',                 icon:'medical', image:sampleDoc,         description:['Surgical care options available by clinic assessment.'],         hasOptions:true,  options:surgeryOptions },
 ];
 const DEFAULT_SERVICE_CARD_INDEX = Math.max(0, services.findIndex(service => service.id === 2));
 
@@ -429,7 +460,7 @@ const UserAppointmentBook: React.FC = () => {
       const restoredGroomingOptions = groomingOptions.filter(option =>
         draft.selectedGroomingOptionIds.includes(option.id),
       );
-      const restoredLabOptions = laboratoryOptions.filter(option =>
+      const restoredLabOptions = nonGroomingOptionServices.filter(option =>
         draft.selectedLabOptionIds.includes(option.id),
       );
 
@@ -665,8 +696,8 @@ const UserAppointmentBook: React.FC = () => {
     if (!currentUser) missingFields.push('Active user session');
     if (!selectedService) missingFields.push('Service');
     if (selectedService?.id === 1 && selectedGroomingOptions.length === 0) missingFields.push('Grooming option');
-    if (selectedService?.id === 8 && selectedLabOptions.length === 0) missingFields.push('Laboratory test');
-    if (selectedService?.id === 4 && (!boardingDays || Number(boardingDays) < 1)) missingFields.push('Boarding stay duration');
+    if (selectedService?.hasOptions && selectedService.id !== 1 && selectedLabOptions.length === 0) missingFields.push(`${selectedService.name} option`);
+    if (selectedService?.id === 4 && (!boardingDays || Number(boardingDays) < 1 || Number(boardingDays) > 14)) missingFields.push('Boarding stay duration');
     if (!selectedPet) missingFields.push('Pet');
     if (isGrooming && !selectedHaircutStyle) missingFields.push('Haircut style');
     if (isGrooming && selectedHaircutStyle === 'h6' && !customHaircutDescription.trim()) missingFields.push('Custom haircut description');
@@ -699,7 +730,7 @@ const UserAppointmentBook: React.FC = () => {
   const handleLogout = () => {
     localStorage.removeItem('userSession');
     localStorage.removeItem('access_token');
-    navigate('/login');
+    navigate('/user/home', { replace: true, state: { authMode: 'login' } });
   };
 
   const persistBookingDraft = () => {
@@ -778,14 +809,15 @@ const UserAppointmentBook: React.FC = () => {
   };
 
   const isGrooming = selectedService?.id === 1 && selectedGroomingOptions.length > 0;
+  const hasGroomingPreferenceStep = isGrooming && selectedGroomingOptions.some(option => !['g4', 'g5'].includes(option.id));
   const isPetBoarding = selectedService?.id === 4;
   const skipsSymptomStep = selectedService ? [1, 3, 4].includes(selectedService.id) : false;
   const hasSymptomStep = !skipsSymptomStep;
-  const groomingPrefsStep = isGrooming ? 3 : null;
-  const branchStep = isGrooming ? 4 : 3;
-  const dateTimeStep = isGrooming ? 5 : 4;
-  const symptomStep = hasSymptomStep ? (isGrooming ? 6 : 5) : null;
-  const medicalInfoStep = hasSymptomStep ? (isGrooming ? 7 : 6) : (isGrooming ? 6 : 5);
+  const groomingPrefsStep = hasGroomingPreferenceStep ? 3 : null;
+  const branchStep = hasGroomingPreferenceStep ? 4 : 3;
+  const dateTimeStep = branchStep + 1;
+  const symptomStep = hasSymptomStep ? dateTimeStep + 1 : null;
+  const medicalInfoStep = hasSymptomStep ? dateTimeStep + 2 : dateTimeStep + 1;
   const confirmStep = medicalInfoStep + 1;
 
   const getProgressSteps = () => {
@@ -794,7 +826,7 @@ const UserAppointmentBook: React.FC = () => {
       { n: 2, l: 'Pet' },
     ];
 
-    if (isGrooming) steps.push({ n: 3, l: 'Grooming Prefs' });
+    if (hasGroomingPreferenceStep) steps.push({ n: 3, l: 'Grooming Prefs' });
     steps.push({ n: branchStep, l: 'Branch' });
     steps.push({ n: dateTimeStep, l: 'Date & Time' });
     if (hasSymptomStep && symptomStep) steps.push({ n: symptomStep, l: 'Symptoms' });
@@ -903,10 +935,10 @@ const UserAppointmentBook: React.FC = () => {
     if (!selectedService) { showAlert('info','No Service Selected','Please select a service first'); return; }
     if (selectedService.hasOptions) {
       if (selectedService.id === 1 && !selectedGroomingOptions.length) { showAlert('info','No Options','Please select at least one grooming option'); return; }
-      if (selectedService.id === 8 && !selectedLabOptions.length)      { showAlert('info','No Tests','Please select at least one laboratory test'); return; }
+      if (selectedService.id !== 1 && !selectedLabOptions.length)      { showAlert('info','No Options','Please select at least one option'); return; }
     }
-    if (selectedService.id === 4 && (!boardingDays || Number(boardingDays) < 1)) {
-      showAlert('info','Stay Duration Needed','Please enter how many days your pet will stay.');
+    if (selectedService.id === 4 && (!boardingDays || Number(boardingDays) < 1 || Number(boardingDays) > 14)) {
+      showAlert('info','Stay Duration Needed','Please enter a boarding stay from 1 to 14 days.');
       return;
     }
     setStep(2);
@@ -925,7 +957,7 @@ const UserAppointmentBook: React.FC = () => {
     }
 
     if (step === branchStep) {
-      setStep(isGrooming ? 3 : 2);
+      setStep(groomingPrefsStep ?? 2);
       setSelectedBranch(null);
       return;
     }
@@ -1002,8 +1034,8 @@ const UserAppointmentBook: React.FC = () => {
       let typeLabel = bookingService.name;
       if (bookingService.id === 1 && selectedGroomingOptions.length)
         typeLabel = `Pet Grooming (${selectedGroomingOptions.map(o => o.name).join(', ')})`;
-      if (bookingService.id === 8 && selectedLabOptions.length)
-        typeLabel = `Laboratory Tests (${selectedLabOptions.map(o => o.name).join(', ')})`;
+      if (bookingService.id !== 1 && selectedLabOptions.length)
+        typeLabel = `${bookingService.name} (${selectedLabOptions.map(o => o.name).join(', ')})`;
       if (bookingService.id === 4 && boardingDays)
         typeLabel = `Pet Boarding (${boardingDays} ${Number(boardingDays) === 1 ? 'day' : 'days'})`;
 
@@ -1055,7 +1087,7 @@ const UserAppointmentBook: React.FC = () => {
         { headers: { Authorization: `Bearer ${getToken()}` } },
       );
 
-      if (selectedService.id === 1 && selectedHaircutStyle) {
+      if (hasGroomingPreferenceStep && selectedHaircutStyle) {
         let referenceUrl: string | undefined;
         if (haircutImageBase64) {
           try {
@@ -1109,6 +1141,12 @@ const UserAppointmentBook: React.FC = () => {
     input.click();
   };
 
+  const removeHaircutImage = () => {
+    setHaircutImage(null);
+    setHaircutImageBase64(null);
+    setHaircutImageMime('image/jpeg');
+  };
+
   // ── Derived ───────────────────────────────────────────────────────────────
   const displayName = currentUser
     ? (
@@ -1120,6 +1158,27 @@ const UserAppointmentBook: React.FC = () => {
 
   const timeSlots = dayTimeSlots;
   const progressSteps = getProgressSteps();
+  const selectedServiceOptions = selectedService?.id === 1 ? selectedGroomingOptions : selectedLabOptions;
+  const progressPercent = Math.max(8, (step / progressSteps.length) * 100);
+  const encouragementMessage =
+    progressPercent >= 86
+      ? 'Almost there! ✨'
+      : progressPercent >= 58
+        ? 'Just a couple more steps 🐾'
+        : progressPercent >= 30
+          ? 'Nice start! Keep going ❤️'
+          : 'Let’s book this visit 🐶';
+
+  const handleBoardingDaysChange = (value: string) => {
+    const digitsOnly = value.replace(/\D/g, '');
+    if (!digitsOnly) {
+      setBoardingDays('');
+      return;
+    }
+
+    const clampedDays = Math.min(14, Math.max(1, Number(digitsOnly)));
+    setBoardingDays(String(clampedDays));
+  };
 
   useEffect(() => {
     const activeNode = progressStepRefs.current[step];
@@ -1137,12 +1196,12 @@ const UserAppointmentBook: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="user-appointment-container" ref={pageContainerRef}>
+    <div className="user-appointment-container user-page-surface" ref={pageContainerRef}>
 
       {/* ── Alert Modal ── */}
       {alertVisible && (
         <div className="modal-overlay" onClick={() => setAlertVisible(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
+          <div className="modal-content user-alert-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-icon">
               {alertConfig.type === 'success' && <IoCheckmark                size={55} color="#2e9e0c" />}
               {alertConfig.type === 'error'   && <IoClose                    size={55} color="#d93025" />}
@@ -1181,7 +1240,7 @@ const UserAppointmentBook: React.FC = () => {
 
             {confirmModalStage === 'terms' && (
               <>
-                <div className="confirmation-icon"><IoHourglassOutline size={70} color="#3d67ee" /></div>
+                <div className="confirmation-icon"><IoHourglassOutline size={28} color="#3d67ee" /></div>
                 <h2 className="confirmation-title">Appointment Under Review</h2>
                 <p className="confirmation-text">
                   Your appointment will be reviewed by our team. We will send a booking confirmation email after submission, and another update once it is confirmed.
@@ -1204,7 +1263,7 @@ const UserAppointmentBook: React.FC = () => {
 
             {confirmModalStage === 'submitting' && (
               <>
-                <div className="confirmation-icon"><IoHourglassOutline size={70} color="#3d67ee" /></div>
+                <div className="confirmation-icon"><IoHourglassOutline size={28} color="#3d67ee" /></div>
                 <h2 className="confirmation-title">Submitting Appointment</h2>
                 <p className="confirmation-text">
                   Please wait while we finalize your booking.
@@ -1217,7 +1276,7 @@ const UserAppointmentBook: React.FC = () => {
 
             {confirmModalStage === 'submitted' && (
               <>
-                <div className="confirmation-icon"><IoCheckmark size={70} color="#2e9e0c" /></div>
+                <div className="confirmation-icon"><IoCheckmark size={30} color="#2e9e0c" /></div>
                 <h2 className="confirmation-title">Appointment Submitted!</h2>
                 <p className="confirmation-text">
                   {submittedBookingMessage}
@@ -1248,7 +1307,7 @@ const UserAppointmentBook: React.FC = () => {
       <div className="appointment-content" ref={contentRef}>
 
         {/* Progress bar */}
-        <div className={`progress-container ${!hasSymptomStep ? 'no-symptom-step' : ''}`}>
+        <div className={`progress-container booking-progress-hidden ${!hasSymptomStep ? 'no-symptom-step' : ''}`}>
           <div className="progress-steps">
             {progressSteps.map((s, i, arr) => (
               <React.Fragment key={s.n}>
@@ -1278,9 +1337,26 @@ const UserAppointmentBook: React.FC = () => {
             {getStepHeroIcon()}
           </div>
           <div className="step-hero-copy">
-            <span className="step-hero-kicker">Step {step} of {progressSteps.length}</span>
-            <h2>{getStepTitle()}</h2>
+            <div className="step-hero-topline">
+              <span className="step-hero-kicker">Step {step} of {progressSteps.length}</span>
+              {selectedService && (
+                <span className="selected-service-heading-chip">
+                  {getIconComponent(selectedService.icon)}
+                  Your selected service is {selectedService.name}
+                  {selectedServiceOptions.length > 0 && <strong>{selectedServiceOptions.length}</strong>}
+                </span>
+              )}
+            </div>
+            <div className="step-hero-title-row">
+              <h2>{getStepTitle()}</h2>
+            </div>
             <p>{getStepDescription()}</p>
+            <div className="step-hero-progress-row">
+              <div className="step-hero-progress" aria-label={`Step ${step} of ${progressSteps.length}`}>
+                <span style={{ width: `${progressPercent}%` }} />
+              </div>
+              <span className="step-hero-encouragement">{encouragementMessage}</span>
+            </div>
           </div>
           {step === confirmStep && (
             <div className="confirmation-total-chip">
@@ -1302,37 +1378,78 @@ const UserAppointmentBook: React.FC = () => {
                 onTouchEnd={handleCarouselTouchEnd}
               >
                 <div className="carousel-viewport">
-                  <div
-                    className="carousel-track"
-                    style={{
-                      transform: `translateX(calc(50% - ${isMobileCarousel ? 143 : 144}px - ${currentCardIndex * (isMobileCarousel ? 304 : 316)}px))`,
-                    }}
-                  >
+                  <div className="carousel-track booking-service-grid">
                     {services.map((service, index) => {
                       const isSelected = selectedService?.id === service.id;
                       const isActive = currentCardIndex === index;
+                      const selectedOptions = service.id === 1 ? selectedGroomingOptions : selectedLabOptions;
+                      const serviceOptions = service.options ?? [];
 
                       return (
                         <div
                           key={service.id}
                           className={`service-card-wrapper ${isActive ? 'center-card' : ''}`}
-                          aria-hidden={!isActive}
                         >
-                          <button
-                            className={`service-card ${isSelected ? 'selected' : ''} ${isActive ? 'active' : 'inactive'}`}
-                            onClick={() => handleServiceSelect(service)}
-                            disabled={!isActive}
+                          <div
+                            className={`service-card ${service.hasOptions ? 'has-options' : ''} ${isSelected ? 'selected' : ''} ${isActive ? 'active' : 'inactive'}`}
                           >
-                            {isSelected && (
-                              <span className="service-selected-mark">
-                                <IoCheckmark size={16} />
-                              </span>
-                            )}
-                            <div className="service-icon">{getIconComponent(service.icon)}</div>
-                            <h3 className="service-name">{service.name}</h3>
-                            <div className="service-description">{service.description.map((l,i) => <p key={i}>{l}</p>)}</div>
-                            <p className="service-price">{service.basePrice || 'Select options'}</p>
-                          </button>
+                            <div className="service-card-inner">
+                              <button
+                                type="button"
+                                className="service-card-face service-card-front"
+                                onClick={() => handleServiceSelect(service)}
+                              >
+                                <img src={service.image} alt="" className="service-card-image" />
+                                <div className="service-card-overlay" />
+                                <div className="service-card-copy">
+                                  <div className="service-icon">{getIconComponent(service.icon)}</div>
+                                  <h3 className="service-name">{service.name}</h3>
+                                  <div className="service-description">{service.description.map((l,i) => <p key={i}>{l}</p>)}</div>
+                                  <p className="service-price">{service.basePrice || 'Select options'}</p>
+                                </div>
+                              </button>
+
+                              <div className="service-card-face service-card-back">
+                                <h3>{service.name}</h3>
+                                {serviceOptions.length > 0 ? (
+                                  <div className="service-card-option-list">
+                                    {serviceOptions.map(option => {
+                                      const optionSelected = selectedOptions.some(selected => selected.id === option.id);
+
+                                      return (
+                                        <button
+                                          key={option.id}
+                                          type="button"
+                                          className={optionSelected ? 'is-picked' : ''}
+                                          onClick={() => {
+                                            if (service.id === 1) {
+                                              setSelectedGroomingOptions(prev =>
+                                                prev.some(o => o.id === option.id) ? [] : [option],
+                                              );
+                                            } else {
+                                              setSelectedLabOptions(prev => {
+                                                if (prev.some(o => o.id === option.id)) return prev.filter(o => o.id !== option.id);
+                                                if (service.id === 8 && prev.length >= 3) {
+                                                  showAlert('info','Max 3','You can only select up to 3 lab tests');
+                                                  return prev;
+                                                }
+                                                return [...prev, option];
+                                              });
+                                            }
+                                          }}
+                                        >
+                                          <span>{option.name}</span>
+                                          <strong>{option.price}</strong>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <p>{service.basePrice || 'Ready to book'}</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
@@ -1352,9 +1469,9 @@ const UserAppointmentBook: React.FC = () => {
 
             {selectedService?.hasOptions && expandedService === selectedService.id && (
               <div className="options-panel service-options-panel">
-                <h3 className="options-title">{selectedService.id === 1 ? 'Grooming Options' : 'Lab Options'}</h3>
+                <h3 className="options-title">{selectedService.name} Options</h3>
                 <div className="options-list">
-                  {(selectedService.id === 1 ? groomingOptions : laboratoryOptions).map(opt => {
+                  {(selectedService.options ?? []).map(opt => {
                     const isSel = selectedService.id === 1
                       ? selectedGroomingOptions.some(o => o.id === opt.id)
                       : selectedLabOptions.some(o => o.id === opt.id);
@@ -1370,7 +1487,7 @@ const UserAppointmentBook: React.FC = () => {
                           } else {
                             setSelectedLabOptions(prev => {
                               if (prev.some(o => o.id === opt.id)) return prev.filter(o => o.id !== opt.id);
-                              if (prev.length >= 3) { showAlert('info','Max 3','You can only select up to 3 lab tests'); return prev; }
+                              if (selectedService.id === 8 && prev.length >= 3) { showAlert('info','Max 3','You can only select up to 3 lab tests'); return prev; }
                               return [...prev, opt];
                             });
                           }
@@ -1401,10 +1518,16 @@ const UserAppointmentBook: React.FC = () => {
                   <input
                     type="number"
                     min="1"
+                    max="14"
                     step="1"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={boardingDays}
-                    onChange={event => setBoardingDays(event.target.value)}
-                    placeholder="Enter days"
+                    onChange={event => handleBoardingDaysChange(event.target.value)}
+                    onKeyDown={event => {
+                      if (['e', 'E', '+', '-', '.'].includes(event.key)) event.preventDefault();
+                    }}
+                    placeholder="1-14 days"
                   />
                 </label>
               </div>
@@ -1469,7 +1592,8 @@ const UserAppointmentBook: React.FC = () => {
                 ))}
                 <button className="add-pet-card" onClick={handleAddPetFromBooking}>
                   <div className="add-pet-icon"><IoAdd size={50} color="#3d67ee" /></div>
-                  <span className="add-pet-text">Add Pet</span>
+                  <span className="add-pet-text">Can't find your pet here?</span>
+                  <span className="add-pet-subtext">Click here to create a Pet Profile for them 🐾✨</span>
                 </button>
               </div>
             )}
@@ -1501,20 +1625,36 @@ const UserAppointmentBook: React.FC = () => {
                 ))}
               </div>
               {selectedHaircutStyle === 'h6' && (
-                <>
-                  <div style={{ marginTop:20 }}>
+                <div className="custom-grooming-panel">
+                  <div className="custom-grooming-copy">
+                    <span className="custom-grooming-kicker">Custom Style</span>
+                    <p>Describe the look you want and add a reference photo if you have one.</p>
+                  </div>
+                  <div>
                     <label className="grooming-label">Describe your custom style <span className="required-asterisk">*</span></label>
                     <textarea className="custom-style-input" rows={3} placeholder="Describe the desired haircut…" value={customHaircutDescription} onChange={e => setCustomHaircutDescription(e.target.value)} />
                   </div>
-                  <div style={{ marginTop:15 }}>
+                  <div className="reference-upload-field">
                     <label className="grooming-label">Reference Image (Optional)</label>
-                    <button className="image-upload-btn" onClick={pickImage} type="button">
-                      {haircutImage
-                        ? <div className="upload-preview"><img src={haircutImage} alt="Ref" style={{ width:'100%', height:'100%', objectFit:'cover' }} /><p>Tap to change</p></div>
-                        : <div className="upload-placeholder"><IoCloudUploadOutline size={30} color="#3d67ee" /><p>Upload Reference Image</p></div>}
-                    </button>
+                    <div className={`reference-upload-card ${haircutImage ? 'has-image' : ''}`}>
+                      {haircutImage ? (
+                        <>
+                          <img src={haircutImage} alt="Haircut reference" className="reference-upload-preview" />
+                          <div className="reference-upload-actions">
+                            <button className="reference-upload-change" onClick={pickImage} type="button">Change image</button>
+                            <button className="reference-upload-remove" onClick={removeHaircutImage} type="button">Remove</button>
+                          </div>
+                        </>
+                      ) : (
+                        <button className="image-upload-btn" onClick={pickImage} type="button">
+                          <IoCloudUploadOutline size={24} color="#0818a0" />
+                          <span>Upload Reference Image</span>
+                          <small>PNG, JPG, or JPEG</small>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </>
+                </div>
               )}
             </div>
             <div className="action-buttons-row" style={{ marginTop:40 }}>
@@ -1802,6 +1942,7 @@ const UserAppointmentBook: React.FC = () => {
                       {[true, false].map(val => (
                         <label key={String(val)} className="radio-label">
                           <input type="radio" name={q.key} checked={medicalAnswers[q.key] === val} onChange={() => setMedicalAnswers(prev => ({ ...prev, [q.key]: val }))} />
+                          <span className="custom-radio-dot" aria-hidden="true" />
                           <span>{val ? 'Yes' : 'No'}</span>
                         </label>
                       ))}
@@ -1856,8 +1997,9 @@ const UserAppointmentBook: React.FC = () => {
             </div>
 
             <div className="confirmation-details">
+              <div className="confirmation-column confirmation-column-left">
 
-              <div className="confirmation-card">
+              <div className="confirmation-card confirmation-owner-card">
                 <div className="card-header"><IoPersonCircleOutline size={27} color="#3d67ee" /><h3>Owner Details</h3></div>
                 <div className="card-details">
                   <div className="detail-row"><span className="detail-label">Full Name</span><span className="detail-value">{displayName}</span></div>
@@ -1866,8 +2008,38 @@ const UserAppointmentBook: React.FC = () => {
                 </div>
               </div>
 
+              {hasSymptomStep && (
+                <div className="confirmation-card confirmation-intake-card confirmation-left-stack">
+                  <div className="card-header"><IoMedicalOutline size={22} color="#3d67ee" /><h3>Symptom Intake</h3></div>
+                  <div className="card-details">
+                    <div className="detail-row">
+                      <span className="detail-label">Selected Symptoms</span>
+                      <span className="detail-value">{selectedSymptoms.length > 0 ? selectedSymptoms.join(', ') : 'No symptoms selected'}</span>
+                    </div>
+                    {ownerSymptomNotes && <div className="detail-row"><span className="detail-label">Owner Notes</span><span className="detail-value">{ownerSymptomNotes}</span></div>}
+                    {symptomDuration && <div className="detail-row"><span className="detail-label">Duration</span><span className="detail-value">{symptomDuration}</span></div>}
+                    {eatingStatus && <div className="detail-row"><span className="detail-label">Eating</span><span className="detail-value">{eatingStatus}</span></div>}
+                    {drinkingStatus && <div className="detail-row"><span className="detail-label">Drinking</span><span className="detail-value">{drinkingStatus}</span></div>}
+                    {worseningStatus && <div className="detail-row"><span className="detail-label">Getting Worse</span><span className="detail-value">{worseningStatus}</span></div>}
+                  </div>
+                </div>
+              )}
+
+              <div className="confirmation-card medical-info-card confirmation-left-stack">
+                <div className="card-header"><IoMedicalOutline size={22} color="#3d67ee" /><h3>Medical Information</h3></div>
+                <div className="card-details">
+                  <div className="detail-row"><span className="detail-label">Medications (72h)</span><span className="detail-value">{medicalAnswers.medications72h ? `Yes — ${medicationDetails}` : 'No'}</span></div>
+                  <div className="detail-row"><span className="detail-label">Flea/Tick Prev.</span><span className="detail-value">{medicalAnswers.fleaPrevention ? 'Yes' : 'No'}</span></div>
+                  <div className="detail-row"><span className="detail-label">Vaccinations</span><span className="detail-value">{medicalAnswers.catVaccinations ? 'Yes' : 'No'}</span></div>
+                  <div className="detail-row medical-not-pregnant-row"><span className="detail-label">Not Pregnant</span><span className="detail-value">{medicalAnswers.notPregnant ? 'Yes' : 'No'}</span></div>
+                  {additionalNotes && <div className="detail-row medical-notes-row"><span className="detail-label">Notes</span><span className="detail-value">{additionalNotes}</span></div>}
+                </div>
+              </div>
+              </div>
+
+              <div className="confirmation-column confirmation-column-right">
               {selectedPet && (
-                <div className="confirmation-card">
+                <div className="confirmation-card confirmation-pet-card">
                   <div className="card-header"><IoPawOutline size={22} color="#3d67ee" /><h3>Pet Details</h3></div>
                   <div className="pet-details-row">
                     <img src={selectedPet.pet_photo_url ?? DEFAULT_PET_IMG} alt={selectedPet.pet_name} className="pet-detail-image" />
@@ -1882,13 +2054,22 @@ const UserAppointmentBook: React.FC = () => {
               )}
 
               {isGrooming && selectedHaircutStyle && (
-                <div className="confirmation-card">
+                <div className="confirmation-card confirmation-grooming-card">
                   <div className="card-header"><IoCutOutline size={22} color="#3d67ee" /><h3>Grooming Preferences</h3></div>
                   <div className="card-details">
-                    <div className="detail-row"><span className="detail-label">Style</span><span className="detail-value">{haircutStyles.find(h => h.id === selectedHaircutStyle)?.name}</span></div>
-                    {selectedHaircutStyle === 'h6' && customHaircutDescription && (
-                      <div className="detail-row"><span className="detail-label">Description</span><span className="detail-value">{customHaircutDescription}</span></div>
-                    )}
+                    <div className={haircutImage ? 'grooming-review-layout' : ''}>
+                      {haircutImage && (
+                        <div className="grooming-reference-review">
+                          <img src={haircutImage} alt="Uploaded grooming reference" />
+                        </div>
+                      )}
+                      <div className="grooming-review-details">
+                        <div className="detail-row"><span className="detail-label">Style</span><span className="detail-value">{haircutStyles.find(h => h.id === selectedHaircutStyle)?.name}</span></div>
+                        {selectedHaircutStyle === 'h6' && customHaircutDescription && (
+                          <div className="detail-row"><span className="detail-label">Description</span><span className="detail-value">{customHaircutDescription}</span></div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1916,15 +2097,16 @@ const UserAppointmentBook: React.FC = () => {
                     <div className="detail-row"><span className="detail-label">Address</span><span className="detail-value">{selectedBranch.address}</span></div>
                     <div className="detail-divider" />
                     <div className="total-row">
-                      <span className="total-label">Total</span>
+                      <span className="total-label">Estimated Total</span>
                       <span className="total-value">₱{getTotalPrice().toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
               )}
+              </div>
 
               {hasSymptomStep && (
-                <div className="confirmation-card">
+                <div className="confirmation-card confirmation-intake-card">
                   <div className="card-header"><IoMedicalOutline size={22} color="#3d67ee" /><h3>Symptom Intake</h3></div>
                   <div className="card-details">
                     <div className="detail-row">
@@ -1960,6 +2142,53 @@ const UserAppointmentBook: React.FC = () => {
         )}
 
       </div>
+      <footer className="user-page-footer" aria-label="Petshield footer">
+        <div className="home-footer-main">
+          <div className="home-footer-brand">
+            <img src={petshieldLogo} alt="Petshield" />
+            <div>
+              <h2>Petshield</h2>
+              <p>Veterinary Clinic & Grooming Center</p>
+            </div>
+          </div>
+
+          <div className="home-footer-branches">
+            <div className="home-footer-branch">
+              <h3>Petshield Las Piñas</h3>
+              <p>Las Pinas City, Metro Manila</p>
+              <div className="home-footer-contact-actions">
+                <a href="mailto:petshieldlaspinas@gmail.com">
+                  <IoMailOutline size={17} />
+                  Email
+                </a>
+                <a href="tel:+639958590382">
+                  <IoCallOutline size={17} />
+                  Call
+                </a>
+              </div>
+            </div>
+            <div className="home-footer-branch">
+              <h3>Petshield Taguig</h3>
+              <p>Taguig City, Metro Manila</p>
+              <div className="home-footer-contact-actions">
+                <a href="mailto:petshieldtaguig@gmail.com">
+                  <IoMailOutline size={17} />
+                  Email
+                </a>
+                <a href="tel:+639054570190">
+                  <IoCallOutline size={17} />
+                  Call
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="home-footer-powered">
+          <span>Powered by</span>
+          <img src={pawRangLogo} alt="PawRang" />
+        </div>
+      </footer>
     </div>
   );
 };

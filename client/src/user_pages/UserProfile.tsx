@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import profileHeader from '../assets/ProfileHeader.png';
+import petshieldLogo from '../assets/PetshieldLogo.png';
+import pawRangLogo from '../assets/PawRang Logomark White.png';
 import { apiService } from '../apiService';
 import ClientNavBar from '../reusable_components/ClientNavBar';
 import { 
@@ -18,15 +20,15 @@ import {
   IoCheckmarkCircleOutline,
   IoAlertCircleOutline,
   IoCloseCircleOutline,
-  IoInformationCircleOutline,
   IoCalendar,
   IoMedical,
-  IoNotificationsOutline,
   IoArrowForwardOutline,
   IoMail,
+  IoCallOutline,
   IoKeyOutline
 } from 'react-icons/io5';
 import './UserStyles3.css';
+import './UserSharedFooterStyles.css';
 
 // Types
 interface UserProfile {
@@ -61,15 +63,6 @@ interface Appointment {
   type: string;
   vet: string;
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
-}
-
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  time: string;
-  type: 'info' | 'success' | 'warning' | 'reminder';
-  read: boolean;
 }
 
 interface AlertConfig {
@@ -287,7 +280,6 @@ const UserProfile: React.FC = () => {
   
   // Refs for scrollable containers
   const mainContentRef = useRef<HTMLDivElement>(null);
-  const notificationsRef = useRef<HTMLDivElement>(null);
   
   // State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -372,56 +364,13 @@ const UserProfile: React.FC = () => {
   const [pets, setPets] = useState<Pet[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
 
-  const [notifications, setNotifications] = useState<Notification[]>([
-    {
-      id: 'n1',
-      title: 'Vaccination Reminder',
-      message: 'Max is due for his rabies vaccination tomorrow',
-      time: '2 hours ago',
-      type: 'reminder',
-      read: false
-    },
-    {
-      id: 'n2',
-      title: 'Appointment Confirmed',
-      message: 'Your appointment with Dr. Smith on Mar 20 has been confirmed',
-      time: '1 day ago',
-      type: 'success',
-      read: false
-    },
-    {
-      id: 'n3',
-      title: 'Medical Record Updated',
-      message: 'New lab results have been added to Luna\'s record',
-      time: '3 days ago',
-      type: 'info',
-      read: true
-    },
-    {
-      id: 'n4',
-      title: 'Payment Successful',
-      message: 'Your payment for Charlie\'s check-up has been processed',
-      time: '5 days ago',
-      type: 'success',
-      read: true
-    },
-    {
-      id: 'n5',
-      title: 'Appointment Reminder',
-      message: 'Charlie has a check-up tomorrow at 11:30 AM',
-      time: '6 hours ago',
-      type: 'reminder',
-      read: false
-    }
-  ]);
-
   // Load user session
   useEffect(() => {
     const loadUser = async () => {
       try {
         const session = localStorage.getItem('userSession');
         if (!session) {
-          navigate('/login');
+          navigate('/user/home', { replace: true, state: { authMode: 'login' } });
           return;
         }
 
@@ -613,13 +562,12 @@ const UserProfile: React.FC = () => {
     );
   };
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     setDropdownVisible(false);
-    showAlert('confirm', 'Log Out', 'Are you sure you want to log out?', async () => {
-      localStorage.removeItem('userSession');
-      setCurrentUser(null);
-      navigate('/login');
-    }, true, 'Log Out');
+    localStorage.removeItem('userSession');
+    localStorage.removeItem('access_token');
+    setCurrentUser(null);
+    navigate('/user/home', { replace: true, state: { authMode: 'login' } });
   };
 
   const handleViewProfile = () => {
@@ -1026,21 +974,6 @@ const UserProfile: React.FC = () => {
     }
   };
 
-  const getNotificationIcon = (type: string) => {
-    switch(type) {
-      case 'reminder': return <IoCalendarOutline size={18} color="#3d67ee" />;
-      case 'success': return <IoCheckmarkCircleOutline size={18} color="#2e9e0c" />;
-      case 'warning': return <IoAlertCircleOutline size={18} color="#ff9800" />;
-      default: return <IoInformationCircleOutline size={18} color="#3d67ee" />;
-    }
-  };
-
-  const markAsRead = (id: string) => {
-    setNotifications(notifications.map(notif => 
-      notif.id === id ? { ...notif, read: true } : notif
-    ));
-  };
-
   // Make the entire container scrollable
   useEffect(() => {
     document.body.style.overflow = 'auto';
@@ -1074,11 +1007,11 @@ const UserProfile: React.FC = () => {
   }, [showPasswordModal, showEmailModal, customAlertVisible]);
 
   return (
-    <div className="upf-user-container">
+    <div className="upf-user-container user-page-surface">
     {/* Custom Alert Modal */}
     {customAlertVisible && (
     <div className="upf-modal-overlay" onClick={() => setCustomAlertVisible(false)}>
-        <div className="upf-modal-content" onClick={e => e.stopPropagation()}>
+        <div className="upf-modal-content upf-alert-modal" onClick={e => e.stopPropagation()}>
         {alertConfig.type === 'success' ? (
             <IoCheckmarkCircleOutline size={55} color="#10b981" />
         ) : alertConfig.type === 'error' ? (
@@ -1191,43 +1124,49 @@ const UserProfile: React.FC = () => {
           </div>
         </div>
 
-        {/* Tab Navigation - with disabled state when editing */}
-        <div className="upf-tabs-container">
-          <button 
-            className={`upf-tab-btn ${activeTab === 'profile' ? 'upf-active' : ''} ${isEditing ? 'upf-disabled' : ''}`}
-            onClick={() => handleTabClick('profile')}
-            disabled={isEditing}
-          >
-            <IoPersonOutline size={18} />
-            <span>Profile</span>
-          </button>
-          <button 
-            className={`upf-tab-btn ${activeTab === 'pets' ? 'upf-active' : ''} ${isEditing ? 'upf-disabled' : ''}`}
-            onClick={() => handleTabClick('pets')}
-            disabled={isEditing}
-          >
-            <IoPaw size={18} />
-            <span>My Pets</span>
-          </button>
-          <button 
-            className={`upf-tab-btn ${activeTab === 'appointments' ? 'upf-active' : ''} ${isEditing ? 'upf-disabled' : ''}`}
-            onClick={() => handleTabClick('appointments')}
-            disabled={isEditing}
-          >
-            <IoCalendarOutline size={18} />
-            <span>Appointments</span>
-          </button>
-        </div>
-
-        {/* Editing Overlay - shows when trying to click disabled tabs */}
-        {isEditing && (
-          <div className="upf-editing-overlay-message">
-            <p>Reminder: Please save or cancel your profile edits before switching tabs</p>
+        <div className="upf-profile-workspace">
+          {/* Side navigation - with disabled state when editing */}
+          <div className="upf-tabs-container" aria-label="Profile sections">
+            <div className="upf-side-nav-brand">
+              <img src={petshieldLogo} alt="Petshield" />
+              <span>Account</span>
+            </div>
+            <button 
+              className={`upf-tab-btn ${activeTab === 'profile' ? 'upf-active' : ''} ${isEditing ? 'upf-disabled' : ''}`}
+              onClick={() => handleTabClick('profile')}
+              disabled={isEditing}
+            >
+              <IoPersonOutline size={18} />
+              <span>Profile</span>
+            </button>
+            <button 
+              className={`upf-tab-btn ${activeTab === 'pets' ? 'upf-active' : ''} ${isEditing ? 'upf-disabled' : ''}`}
+              onClick={() => handleTabClick('pets')}
+              disabled={isEditing}
+            >
+              <IoPaw size={18} />
+              <span>My Pets</span>
+            </button>
+            <button 
+              className={`upf-tab-btn ${activeTab === 'appointments' ? 'upf-active' : ''} ${isEditing ? 'upf-disabled' : ''}`}
+              onClick={() => handleTabClick('appointments')}
+              disabled={isEditing}
+            >
+              <IoCalendarOutline size={18} />
+              <span>Appointments</span>
+            </button>
           </div>
-        )}
 
-        {/* Tab Content */}
-        <div className="upf-tab-content">
+          <div className="upf-profile-content-shell">
+            {/* Editing Overlay - shows when trying to click disabled tabs */}
+            {isEditing && (
+              <div className="upf-editing-overlay-message">
+                <p>Reminder: Please save or cancel your profile edits before switching sections</p>
+              </div>
+            )}
+
+            {/* Tab Content */}
+            <div className="upf-tab-content">
           {/* Profile Tab */}
           {activeTab === 'profile' && (
             <div className="upf-profile-tab">
@@ -1272,63 +1211,55 @@ const UserProfile: React.FC = () => {
 
                   <div className="upf-info-row">
                     <span className="upf-info-label">
-                      First Name {isEditing && <span className="upf-asterisk">*</span>}
+                      Name {isEditing && <span className="upf-asterisk">*</span>}
                     </span>
                     {isEditing ? (
                       <div className="upf-input-wrapper">
-                        <div className="upf-input-container">
-                          <input
-                            type="text"
-                            className={`upf-info-input ${formErrors.firstName ? 'upf-error' : ''}`}
-                            value={editedProfile.firstName}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              setEditedProfile({...editedProfile, firstName: value});
-                              setCharCounts({...charCounts, firstName: value.length});
-                              if (formErrors.firstName) setFormErrors({...formErrors, firstName: undefined});
-                            }}
-                            maxLength={30}
-                            placeholder="Enter first name"
-                          />
-                          <span className="upf-char-counter">{charCounts.firstName}/30</span>
+                        <div className="upf-name-fields">
+                          <div className="upf-input-container">
+                            <input
+                              type="text"
+                              className={`upf-info-input ${formErrors.firstName ? 'upf-error' : ''}`}
+                              value={editedProfile.firstName}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setEditedProfile({...editedProfile, firstName: value});
+                                setCharCounts({...charCounts, firstName: value.length});
+                                if (formErrors.firstName) setFormErrors({...formErrors, firstName: undefined});
+                              }}
+                              maxLength={30}
+                              placeholder="First name"
+                            />
+                            <span className="upf-char-counter">{charCounts.firstName}/30</span>
+                          </div>
+                          <div className="upf-input-container">
+                            <input
+                              type="text"
+                              className={`upf-info-input ${formErrors.lastName ? 'upf-error' : ''}`}
+                              value={editedProfile.lastName}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                setEditedProfile({...editedProfile, lastName: value});
+                                setCharCounts({...charCounts, lastName: value.length});
+                                if (formErrors.lastName) setFormErrors({...formErrors, lastName: undefined});
+                              }}
+                              maxLength={30}
+                              placeholder="Last name"
+                            />
+                            <span className="upf-char-counter">{charCounts.lastName}/30</span>
+                          </div>
                         </div>
                         {formErrors.firstName && (
                           <span className="upf-field-error">{formErrors.firstName}</span>
                         )}
-                      </div>
-                    ) : (
-                      <span className="upf-info-value">{currentUser?.firstName || 'Not provided'}</span>
-                    )}
-                  </div>
-
-                  <div className="upf-info-row">
-                    <span className="upf-info-label">
-                      Last Name {isEditing && <span className="upf-asterisk">*</span>}
-                    </span>
-                    {isEditing ? (
-                      <div className="upf-input-wrapper">
-                        <div className="upf-input-container">
-                          <input
-                            type="text"
-                            className={`upf-info-input ${formErrors.lastName ? 'upf-error' : ''}`}
-                            value={editedProfile.lastName}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              setEditedProfile({...editedProfile, lastName: value});
-                              setCharCounts({...charCounts, lastName: value.length});
-                              if (formErrors.lastName) setFormErrors({...formErrors, lastName: undefined});
-                            }}
-                            maxLength={30}
-                            placeholder="Enter last name"
-                          />
-                          <span className="upf-char-counter">{charCounts.lastName}/30</span>
-                        </div>
                         {formErrors.lastName && (
                           <span className="upf-field-error">{formErrors.lastName}</span>
                         )}
                       </div>
                     ) : (
-                      <span className="upf-info-value">{currentUser?.lastName || 'Not provided'}</span>
+                      <span className="upf-info-value">
+                        {`${currentUser?.firstName || ''} ${currentUser?.lastName || ''}`.trim() || currentUser?.fullname || 'Not provided'}
+                      </span>
                     )}
                   </div>
 
@@ -1411,37 +1342,6 @@ const UserProfile: React.FC = () => {
                 )}
               </div>
 
-              <div className="upf-notifications-card">
-                <div className="upf-card-header">
-                  <IoNotificationsOutline size={22} color="#3d67ee" />
-                  <h3>Recent Notifications</h3>
-                </div>
-
-                <div className="upf-notifications-list" ref={notificationsRef}>
-                  {notifications.slice(0, 3).map(notification => (
-                    <div 
-                      key={notification.id} 
-                      className={`upf-notification-item ${!notification.read ? 'upf-unread' : ''}`}
-                      onClick={() => markAsRead(notification.id)}
-                    >
-                      <div className="upf-notification-icon">
-                        {getNotificationIcon(notification.type)}
-                      </div>
-                      <div className="upf-notification-content">
-                        <h4>{notification.title}</h4>
-                        <p>{notification.message}</p>
-                        <span className="upf-notification-time">{notification.time}</span>
-                      </div>
-                      {!notification.read && <span className="upf-unread-dot"></span>}
-                    </div>
-                  ))}
-                </div>
-
-                <button className="upf-view-all-notifications">
-                  <span>View All Notifications</span>
-                  <IoArrowForwardOutline size={16} />
-                </button>
-              </div>
             </div>
           )}
 
@@ -1537,8 +1437,71 @@ const UserProfile: React.FC = () => {
               </div>
             </div>
           )}
+            </div>
+          </div>
         </div>
       </div>
+
+      <footer className="user-page-footer" aria-label="Petshield footer">
+        <div className="home-footer-main">
+          <div className="home-footer-brand">
+            <img src={petshieldLogo} alt="Petshield" />
+            <div>
+              <h2>Petshield</h2>
+              <p>Veterinary Clinic & Grooming Center</p>
+            </div>
+          </div>
+
+          <div className="home-footer-branches">
+            <div className="home-footer-branch">
+              <h3>Petshield Las Pinas</h3>
+              <p>Las Pinas City, Metro Manila</p>
+              <div className="home-footer-contact-actions">
+                <a href="mailto:petshieldlaspinas@gmail.com">
+                  <IoMailOutline size={17} />
+                  Email
+                </a>
+                <a href="tel:+639958590382">
+                  <IoCallOutline size={17} />
+                  Call
+                </a>
+              </div>
+            </div>
+
+            <div className="home-footer-branch">
+              <h3>Petshield Taguig</h3>
+              <p>Taguig City, Metro Manila</p>
+              <div className="home-footer-contact-actions">
+                <a href="mailto:petshieldtaguig@gmail.com">
+                  <IoMailOutline size={17} />
+                  Email
+                </a>
+                <a href="tel:+639054570190">
+                  <IoCallOutline size={17} />
+                  Call
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="home-footer-powered">
+          <span>Powered by</span>
+          <img src={pawRangLogo} alt="PawRang" />
+        </div>
+      </footer>
+
+      <button
+        type="button"
+        className="home-booking-toast upf-booking-toast"
+        onClick={() => navigate('/user/book-appointment')}
+        aria-label="Book an appointment"
+      >
+        <span className="home-booking-toast-icon">
+          <IoCalendarOutline size={22} />
+        </span>
+        <span className="home-booking-toast-copy">Book an Appointment now!</span>
+      </button>
 
       {/* Change Password Modal */}
       {showPasswordModal && (

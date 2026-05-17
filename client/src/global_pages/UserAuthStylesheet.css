@@ -423,6 +423,9 @@
 /* FIX: width: 100% ensures the background fills the full viewport */
 .resetMain {
     animation: fadeIn 0.3s ease-in-out;
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
     display: grid;
     place-items: center;
     align-items: center;
@@ -432,14 +435,41 @@
     width: 100%;
     padding: 20px 16px;
     box-sizing: border-box;
+    background: #050816;
+}
+
+.resetMain::before {
+    content: "";
+    position: absolute;
+    inset: -34px;
+    z-index: -2;
     background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.78) 0%, rgba(247, 250, 255, 0.7) 46%, rgba(238, 244, 255, 0.74) 100%),
-        #eef4ff;
+        linear-gradient(115deg, rgba(250, 43, 36, 0.52) 0%, rgba(8, 24, 160, 0.22) 42%, rgba(61, 182, 238, 0.2) 100%),
+        url("../assets/hero.png") center / cover no-repeat,
+        #050816;
+    filter: blur(18px) saturate(1.08);
+    transform: scale(1.04);
+}
+
+.resetMain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background:
+        radial-gradient(circle at 18% 18%, rgba(250, 43, 36, 0.26), transparent 34%),
+        radial-gradient(circle at 82% 8%, rgba(8, 24, 160, 0.34), transparent 38%),
+        linear-gradient(180deg, rgba(5, 8, 22, 0.54) 0%, rgba(5, 8, 22, 0.68) 100%);
+    backdrop-filter: blur(2px);
 }
 
 /* FIX: removed max-width: 520px — was capping the card at ~50% on laptop screens */
 .resetCard {
-    background-color: #ffffff;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.94)),
+        radial-gradient(circle at 0% 0%, rgba(250, 43, 36, 0.14), transparent 38%),
+        radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.16), transparent 36%);
+    border: 1px solid rgba(255, 255, 255, 0.72);
     border-radius: 24px;
     padding: 32px 30px;
     width: min(100%, 440px);
@@ -448,7 +478,7 @@
     flex-direction: column;
     align-items: center;
     gap: 14px;
-    box-shadow: 0 0 18px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 32px 90px rgba(4, 8, 42, 0.38);
 }
 
 .resetHeader {
@@ -461,7 +491,7 @@
 }
 
 .resetIconWrapper {
-    background-color: #eef4ff;
+    background: linear-gradient(135deg, rgba(250, 43, 36, 0.1), rgba(8, 24, 160, 0.12));
     border-radius: 50%;
     width: 60px;
     height: 60px;
@@ -474,12 +504,12 @@
 .resetHeader h2 {
     font-size: 24px;
     font-weight: bold;
-    color: #1a1a2e;
+    color: #0a1156;
 }
 
 .resetHeader p {
     font-size: 14px;
-    color: rgb(88, 88, 88);
+    color: #4a5872;
     line-height: 1.5;
 }
 
@@ -492,7 +522,7 @@
 }
 
 .resetInputLabel {
-    color: rgb(88, 88, 88);
+    color: #4a5872;
     font-weight: bold;
     font-size: 14px;
     padding-left: 5px;
@@ -524,15 +554,18 @@
     padding: 8px 12px 8px 40px;
     border-radius: 10px;
     box-sizing: border-box;
-    border: 2px solid #c0c0c0;
+    border: 1px solid rgba(157, 171, 195, 0.42);
     font-size: 14px;
-    color: #1a1a2e;
-    transition: border-color 0.2s;
+    color: #0a1156;
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
+    transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .resetInputField:focus {
     outline: none;
-    border-color: #3d67ee;
+    border-color: rgba(8, 24, 160, 0.52);
+    box-shadow: 0 0 0 4px rgba(8, 24, 160, 0.08);
 }
 
 .resetInputField::placeholder {
@@ -556,18 +589,22 @@
     min-width: 170px;
     height: 40px;
     margin-top: 8px;
-    background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9, #0f3bca);
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 42%),
+        linear-gradient(135deg, #fa2b24 0%, #b91d28 44%, #0818a0 100%);
     color: #ffffff;
     font-weight: bold;
     font-size: 15px;
-    border-radius: 10px;
+    border-radius: 999px;
     border: none;
     cursor: pointer;
     transition: background 0.2s;
 }
 
 .resetButton:hover {
-    background: linear-gradient(135deg, #43c0fb, #4d73f0, #0b43ef, #103fd5);
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0) 42%),
+        linear-gradient(135deg, #ff3a32 0%, #b91d28 44%, #1025c6 100%);
     box-shadow: 0 8px 18px rgba(61, 103, 238, 0.28);
 }
 
@@ -579,7 +616,7 @@
 .resetPageNavigator {
     border: none;
     background-color: transparent;
-    color: rgb(88, 88, 88);
+    color: #4a5872;
     font-size: 14px;
     cursor: pointer;
     padding: 4px;

@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import '../admin_pages/AdminStyles.css';
+import './AdminShellBackground.css';
 import { PiUsersThree } from "react-icons/pi";
 import { TbPresentationAnalytics } from "react-icons/tb";
 import { TbLayoutSidebarLeftCollapse, TbLayoutSidebarRightCollapse } from "react-icons/tb";
@@ -10,6 +12,7 @@ import { IoIosArchive } from "react-icons/io";
 import petShieldLogo from '../assets/PetshieldLogo.png';
 import pawRangLogomarkWhite from '../assets/PawRang Logomark White.png';
 import { isAdminRole, isDoctorRole, normalizeRole } from '../auth/roles';
+import PetshieldFooter from './PetshieldFooter';
 
 // Icons
 import { 
@@ -31,7 +34,8 @@ import {
   IoArrowUpOutline,
   IoReceiptOutline,
   IoCloseOutline,
-  IoMenuOutline
+  IoMenuOutline,
+  IoCreateOutline
 } from 'react-icons/io5';
 
 interface NavbarProps {
@@ -65,6 +69,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
   const [isHoveringTitle, setIsHoveringTitle] = useState<boolean>(false);
   const [isMobile, setIsMobile] = useState<boolean>(() => window.innerWidth <= 900);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+  const [footerTarget, setFooterTarget] = useState<HTMLElement | null>(null);
   
   const accountDropdownRef = useRef<HTMLDivElement>(null);
   const appointmentsDropdownRef = useRef<HTMLDivElement>(null);
@@ -78,6 +83,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
   const appointmentsPath = isDoctorWorkspace ? '/doctor/appointments' : '/admin/schedule';
   const recordsPath = isDoctorWorkspace ? '/doctor/medical-records' : '/patient-records';
   const inventoryPath = isDoctorWorkspace ? '/doctor/inventory' : '/inventory';
+  const accountSettingsPath = '/admin/settings';
 
   const isActive = (path: string): boolean => {
     return location.pathname === path;
@@ -157,6 +163,10 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
 
   useEffect(() => {
     setIsMobileMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    setFooterTarget(document.querySelector<HTMLElement>('.bodyContainer, .doctorPortalContent'));
   }, [location.pathname]);
 
   const toggleNavbar = () => {
@@ -311,7 +321,11 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                   className="navLogo"
                 />
               )}
-              {(!isCollapsed || isMobile) && <span className="brandFont">PetShield</span>}
+              {(!isCollapsed || isMobile) && (
+                <span className="navBrandText">
+                  <span className="brandFont">Petshield</span>
+                </span>
+              )}
             </div>
             {isMobile ? (
               <button
@@ -332,7 +346,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
           </div>
 
           {/* Account Logged In */}
-          <div className="navGlassContainer navAccountContainer">
+          <div className="navAccountContainer">
             <div className="navAccount">
               <img 
                 src={(currentUser && currentUser.userImage) ? currentUser.userImage : "/src/assets/userAvatar.jpg"} 
@@ -346,11 +360,20 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                 </div>
               )}
             </div>
+            {!isDoctorWorkspace && (!isCollapsed || isMobile) && (
+              <button
+                type="button"
+                className="navAccountEditBtn"
+                onClick={() => handleNavigate(accountSettingsPath)}
+                aria-label="Edit account settings"
+                title="Edit account settings"
+              >
+                <IoCreateOutline size={15} />
+              </button>
+            )}
           </div>
 
-          {(!isCollapsed || isMobile) && <div className="navOverview">Overview</div>}
-
-          <div className="navGlassContainer scrollable-nav">
+          <div className="scrollable-nav">
             <div className="navMenu">
               <div className="navMenuSection">
                 <button 
@@ -694,17 +717,15 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
           </div>
 
           <div className="navFooter">
-            <div className="navGlassContainer">
-              <button 
-                className="navBtn" 
-                onClick={onLogout}
-                onMouseEnter={(e) => handleMouseEnter(e, 'Log Out')}
-                onMouseLeave={handleMouseLeave}
-              >
-                <IoLogOutOutline size={isCollapsed ? 20 : 16} />
-                {!isCollapsed && <span>Log Out</span>}
-              </button>
-            </div>
+            <button
+              className="navBtn navLogoutBtn"
+              onClick={onLogout}
+              onMouseEnter={(e) => handleMouseEnter(e, 'Log Out')}
+              onMouseLeave={handleMouseLeave}
+            >
+              <IoLogOutOutline size={isCollapsed ? 20 : 16} />
+              {!isCollapsed && <span>Log Out</span>}
+            </button>
             {(!isCollapsed || isMobile) && (
               <div className="navPoweredBy">
                 <span>Powered by</span>
@@ -714,6 +735,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
           </div>
         </div>
       </div>
+      {footerTarget && createPortal(<PetshieldFooter className="admin-body-footer" variant="compact" />, footerTarget)}
       {!isMobile && renderTooltip()}
     </>
   );

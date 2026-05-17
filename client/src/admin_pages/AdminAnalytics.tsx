@@ -1443,50 +1443,56 @@ const PageHeader: React.FC<{
   onBranchChange,
 }) => {
   return (
-    <div className="analytics-top-container">
-      <div className="analytics-sub-top-container" style={{ paddingLeft: '30px' }}>
-        <div className="analytics-sub-top-left">
-          <IoStatsChart size={23} className="analytics-blue-icon" />
-          <span className="analytics-blue-text">Analytics Dashboard</span>
+      <header className="analytics-hero-panel">
+        <div className="analytics-hero-brand">
+          <div className="analytics-hero-icon-tile">
+            <IoStatsChart size={28} />
+          </div>
+          <div>
+            <span className="analytics-hero-kicker">Petshield Intelligence</span>
+            <h1>Analytics Dashboard</h1>
+            <p>Track revenue, demand, sales mix, peak hours, and forecast confidence.</p>
+          </div>
         </div>
         
-        <div className="analytics-branch-selector">
-          <span className="analytics-branch-label">Branch:</span>
-          <select 
-            value={selectedBranch}
-            onChange={(e) => onBranchChange(e.target.value)}
-            className="analytics-branch-select"
-          >
-            <option value="all">All Branches</option>
-            {branches.map((branch) => (
-              <option key={branch.id} value={String(branch.id)}>
-                {getShortBranchName(branch.name)}
-              </option>
-            ))}
-          </select>
+        <div className="analytics-hero-actions">
+          <label className="analytics-branch-selector">
+            <select 
+              value={selectedBranch}
+              onChange={(e) => onBranchChange(e.target.value)}
+              className="analytics-branch-select"
+            >
+              <option value="all">All Branches</option>
+              {branches.map((branch) => (
+                <option key={branch.id} value={String(branch.id)}>
+                  {getShortBranchName(branch.name)}
+                </option>
+              ))}
+            </select>
+          </label>
+              
+          <ExportButton
+            buttonClassName="analytics-export-btn"
+            branches={branches}
+            selectedBranch={selectedBranch}
+          />
+          <div className="analytics-notification-container">
+            <Notifications
+              buttonClassName="analytics-icon-button"
+              iconClassName="analytics-blue-icon"
+              closeOnScroll
+              onViewAll={() => {
+                console.log('View all notifications');
+              }}
+              onNotificationClick={(notification) => {
+                if (notification.link) {
+                  // navigate(notification.link);
+                }
+              }}
+            />
+          </div>
         </div>
-
-        <ExportButton
-          buttonClassName="analytics-export-btn"
-          branches={branches}
-          selectedBranch={selectedBranch}
-        />
-      </div>
-      <div className="analytics-sub-top-container analytics-notification-container" style={{ padding: 9 }}>
-        <Notifications 
-          buttonClassName="analytics-icon-button"
-          iconClassName="analytics-blue-icon"
-          onViewAll={() => {
-            console.log('View all notifications');
-          }}
-          onNotificationClick={(notification) => {
-            if (notification.link) {
-              // navigate(notification.link);
-            }
-          }}
-        />
-      </div>
-    </div>
+      </header>
   );
 };
 
@@ -1512,7 +1518,7 @@ const SalesTrendWithForecast: React.FC<{ data: SalesTrendData[]; forecastLabel?:
       {chartData.length === 0 ? (
         <EmptyChart message="No revenue trend data yet" />
       ) : (
-      <ResponsiveContainer width="100%" height={300}>
+      <ResponsiveContainer width="100%" height={240}>
         <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="actualGradient" x1="0" y1="0" x2="0" y2="1">
@@ -1556,7 +1562,7 @@ const TopServicesChart: React.FC<{ data: TopServiceData[] }> = ({ data }) => {
       {data.length === 0 ? (
         <EmptyChart message="No service sales yet" />
       ) : (
-      <ResponsiveContainer width="100%" height={300}>
+      <ResponsiveContainer width="100%" height={240}>
         <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 80, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
           <XAxis type="number" tickFormatter={(value) => `₱${value / 1000}k`} />
@@ -1591,7 +1597,7 @@ const TopProductsChart: React.FC<{ data: TopProductData[] }> = ({ data }) => {
       {data.length === 0 ? (
         <EmptyChart message="No product sales yet" />
       ) : (
-      <ResponsiveContainer width="100%" height={300}>
+      <ResponsiveContainer width="100%" height={240}>
         <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 100, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
           <XAxis type="number" />
@@ -1640,14 +1646,14 @@ const SalesDistributionChart: React.FC<{ data: SalesDistributionData[] }> = ({ d
         <span className="chart-subtitle">Revenue split between services and products</span>
       </div>
       {hasDistribution ? (
-        <ResponsiveContainer width="100%" height={280}>
+        <ResponsiveContainer width="100%" height={180}>
         <PieChart>
           <Pie
             data={data}
             cx="50%"
             cy="50%"
-            innerRadius={60}
-            outerRadius={100}
+            innerRadius={44}
+            outerRadius={78}
             paddingAngle={5}
             dataKey="value"
             label={renderCustomLabel}
@@ -1687,7 +1693,7 @@ const PeakTimeAnalytics: React.FC<{ data: PeakTimeData[]; forecastMode?: string 
       {data.length === 0 ? (
         <EmptyChart message="No completed appointment hours yet" />
       ) : (
-      <ResponsiveContainer width="100%" height={280}>
+      <ResponsiveContainer width="100%" height={220}>
         <ComposedChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
           <XAxis dataKey="hour" tick={{ fontSize: 11 }} angle={-45} textAnchor="end" height={50} />
@@ -1750,7 +1756,7 @@ const InventoryIntelligence: React.FC<{ items: InventoryItem[] }> = ({ items }) 
       <div className="movement-section-ai">
         <h4>Item Movement Classification</h4>
         {hasInventoryData ? (
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={150}>
             <BarChart data={movementData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="name" tick={{ fontSize: 11 }} />
@@ -1847,6 +1853,93 @@ const AiInsightsPanel: React.FC<{ insights: Insight[] }> = ({ insights }) => {
   );
 };
 
+const AiInsightsSidePanel: React.FC<{ insights: Insight[] }> = ({ insights }) => {
+  const [openSection, setOpenSection] = useState<Insight['type'] | null>('growth');
+  const sections: Array<{
+    key: Insight['type'];
+    title: string;
+    icon: React.ReactNode;
+    emptyText: string;
+    items: Insight[];
+  }> = [
+    {
+      key: 'growth',
+      title: 'Growth Opportunities',
+      icon: <IoTrendingUpOutline size={14} />,
+      emptyText: 'No growth insight yet',
+      items: insights.filter((insight) => insight.type === 'growth'),
+    },
+    {
+      key: 'warning',
+      title: 'Warnings & Risks',
+      icon: <IoAlertCircle size={14} />,
+      emptyText: 'No current warning',
+      items: insights.filter((insight) => insight.type === 'warning'),
+    },
+    {
+      key: 'opportunity',
+      title: 'Recommendations',
+      icon: <IoBulbOutline size={14} />,
+      emptyText: 'No recommendation yet',
+      items: insights.filter((insight) => insight.type === 'opportunity'),
+    },
+  ];
+
+  const toggleSection = (key: Insight['type']) => {
+    setOpenSection((current) => (current === key ? null : key));
+  };
+
+  return (
+    <aside className="insights-panel-ai-white analytics-side-insights">
+      <div className="insights-header-ai-white">
+        <h3><IoSparkles size={16} /> AI Sales Intelligence</h3>
+        <span className="insights-badge-ai-white">Live</span>
+      </div>
+
+      <div className="insights-categories-white">
+        {sections.map((section) => {
+          const isOpen = openSection === section.key;
+          return (
+            <div key={section.key} className={`insight-category-white ${section.key}`}>
+              <button
+                type="button"
+                className="category-header-white"
+                onClick={() => toggleSection(section.key)}
+                aria-expanded={isOpen}
+              >
+                <span className="insight-category-title">
+                  {section.items.length > 0 && <span className="insight-available-dot" />}
+                  {section.icon}
+                  <span>{section.title}</span>
+                </span>
+                <span className="insight-category-meta">
+                  <span className="insight-count-badge">{section.items.length}</span>
+                  <IoChevronDownOutline className={isOpen ? 'open' : ''} size={14} />
+                </span>
+              </button>
+
+              {isOpen && (
+                <div className="insight-category-body">
+                  {section.items.length === 0 && <div className="insight-empty-white">{section.emptyText}</div>}
+                  {section.items.map((insight) => (
+                    <div key={insight.id} className={`insight-item-ai-white ${section.key}`}>
+                      <div className="insight-icon-white">{insight.icon || '•'}</div>
+                      <div className="insight-content-white">
+                        <div className="insight-text-white">{insight.text}</div>
+                        {insight.action && <div className="insight-action-white"><span>Suggested action</span>{insight.action}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </aside>
+  );
+};
+
 // ==================== FORECAST VALIDATION ====================
 const ForecastValidationPanel: React.FC<{ validation?: ForecastValidation }> = ({ validation }) => {
   const rows = validation?.rows || [];
@@ -1866,7 +1959,7 @@ const ForecastValidationPanel: React.FC<{ validation?: ForecastValidation }> = (
 
       {hasRows ? (
         <>
-          <ResponsiveContainer width="100%" height={260}>
+          <ResponsiveContainer width="100%" height={220}>
             <LineChart data={rows} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="day" tick={{ fontSize: 11 }} />
@@ -2029,28 +2122,33 @@ const AdminAnalytics: React.FC = () => {
             />
           </div>
 
-          {/* Main Charts Grid */}
-          <div className="charts-grid-ai">
-            <SalesTrendWithForecast data={analytics.salesTrend} forecastLabel={analytics.forecast?.label} />
-            <TopServicesChart data={analytics.topServices} />
-          </div>
+          <div className="analytics-content-layout">
+            <div className="analytics-main-column">
+              <div className="charts-grid-ai">
+                <SalesTrendWithForecast data={analytics.salesTrend} forecastLabel={analytics.forecast?.label} />
+                <TopServicesChart data={analytics.topServices} />
+              </div>
 
-          <div className="charts-grid-ai">
-            <TopProductsChart data={analytics.topProducts} />
-            <SalesDistributionChart data={analytics.salesDistribution} />
-          </div>
+              <div className="charts-grid-ai">
+                <TopProductsChart data={analytics.topProducts} />
+                <SalesDistributionChart data={analytics.salesDistribution} />
+              </div>
 
-          <div className="charts-grid-ai">
-            <PeakTimeAnalytics data={analytics.peakHours} forecastMode={analytics.forecast?.mode} />
-            <InventoryIntelligence items={analytics.inventory} />
-          </div>
+              <div className="charts-grid-ai analytics-single-chart analytics-inventory-row">
+                <InventoryIntelligence items={analytics.inventory} />
+              </div>
 
-          <div className="charts-grid-ai analytics-single-chart">
-            <ForecastValidationPanel validation={analytics.forecast?.validation} />
-          </div>
+              <div className="charts-grid-ai analytics-single-chart analytics-peak-row">
+                <PeakTimeAnalytics data={analytics.peakHours} forecastMode={analytics.forecast?.mode} />
+              </div>
 
-          {/* AI Insights Panel */}
-          <AiInsightsPanel insights={salesIntelligenceInsights} />
+              <div className="charts-grid-ai analytics-single-chart">
+                <ForecastValidationPanel validation={analytics.forecast?.validation} />
+              </div>
+            </div>
+
+            <AiInsightsSidePanel insights={salesIntelligenceInsights} />
+          </div>
         </div>
       </div>
     </div>

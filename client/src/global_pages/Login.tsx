@@ -9,7 +9,13 @@ import petShieldLogo from '../assets/PetshieldLogo.png'
 
 type ButtonState = 'default' | 'loading' | 'success' | 'error'
 
-export default function Login() {
+interface LoginProps {
+    modalMode?: boolean
+    onRegisterClick?: () => void
+    onLoginSuccess?: (user: any) => void
+}
+
+export default function Login({ modalMode = false, onRegisterClick, onLoginSuccess }: LoginProps) {
     const nav = useNavigate()
     const [getIdentifier, setIdentifier] = useState('')
     const [getPassword, setPassword] = useState('')
@@ -110,6 +116,11 @@ export default function Login() {
             setButtonState('success')
 
             setTimeout(() => {
+                if (modalMode && onLoginSuccess) {
+                    onLoginSuccess(user)
+                    return
+                }
+
                 nav(getDefaultRouteForUser(user))
             }, 1500)
         } catch (error: any) {
@@ -136,7 +147,7 @@ export default function Login() {
     }
 
     return (
-        <div className="main">
+        <div className={modalMode ? 'main authModalMain' : 'main'}>
             <div className="authContainer">
                 <div className='divisionContainers' id='divisionContainer1'>
                     <UserAuthVisual />
@@ -220,8 +231,8 @@ export default function Login() {
                             </button>
 
                             <div className="authNavigatorGroup">
-                                <button className='pageNavigator' onClick={() => nav('/register')}>
-                                    <p style={{ fontSize: 15 }}>Don't have an account? <strong style={{ color: '#3d67ee' }}>Register</strong></p>
+                                <button className='pageNavigator' onClick={() => (onRegisterClick ? onRegisterClick() : nav('/register'))}>
+                                    <p style={{ fontSize: 15 }}>Don't have an account? <strong style={{ color: '#0818a0' }}>Register</strong></p>
                                 </button>
                             </div>
                         </div>

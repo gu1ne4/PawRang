@@ -6,6 +6,7 @@ import { apiService } from '../apiService';
 import { pdf } from '@react-pdf/renderer';
 import { CiReceipt } from "react-icons/ci";
 import { FaFileInvoice } from "react-icons/fa";
+import { RiListSettingsLine } from "react-icons/ri";
 import InvoicePDF from './pdf_generation/InvoicePDF';
 
 import './GlobalBillingStyles.css';
@@ -17,10 +18,10 @@ import {
   IoTrashOutline,
   IoCheckmarkCircleOutline,
   IoCloseCircleOutline,
+  IoCloseCircleSharp,
   IoAlertCircleOutline,
   IoEyeOutline,
   IoCloseOutline,
-  IoRefreshOutline,
   IoCreateOutline,
   IoTrashBinOutline,
   IoCalendarOutline,
@@ -43,6 +44,7 @@ import {
   IoCallOutline,
   IoMailOutline,
   IoDocumentTextOutline,
+  IoChevronBackOutline,
   IoChevronForward,
   IoFastFoodOutline,
   IoMedicalOutline,
@@ -51,7 +53,22 @@ import {
   IoRadioButtonOn,
   IoRadioButtonOff,
   IoCashOutline,
-  IoListOutline} from 'react-icons/io5';
+  IoListOutline,
+  IoReceiptOutline} from 'react-icons/io5';
+
+type BillingSortOption = 'newest' | 'oldest' | 'invoiceAZ' | 'customerAZ' | 'totalHigh' | 'totalLow' | 'statusAZ';
+
+const BILLING_SORT_OPTIONS: Array<{ value: BillingSortOption; label: string }> = [
+  { value: 'newest', label: 'Newest First' },
+  { value: 'oldest', label: 'Oldest First' },
+  { value: 'invoiceAZ', label: 'Invoice A-Z' },
+  { value: 'customerAZ', label: 'Customer A-Z' },
+  { value: 'totalHigh', label: 'Total High-Low' },
+  { value: 'totalLow', label: 'Total Low-High' },
+  { value: 'statusAZ', label: 'Status A-Z' },
+];
+
+const ROWS_PER_PAGE_OPTIONS = [8, 12, 16, 24];
 
 interface Invoice {
   id: string;
@@ -742,6 +759,8 @@ const GlobalBilling: React.FC = () => {
   const [dateFilter, setDateFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<string>('');
+  const [sortOption, setSortOption] = useState<BillingSortOption>('newest');
+  const [showSettingsDropdown, setShowSettingsDropdown] = useState<boolean>(false);
   const [searchHovered, setSearchHovered] = useState<boolean>(false);
   const [filterHovered, setFilterHovered] = useState<boolean>(false);
   const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
@@ -761,7 +780,8 @@ const GlobalBilling: React.FC = () => {
   
   // Pagination
   const [page, setPage] = useState<number>(0);
-  const itemsPerPage = 8;
+  const [rowsPerPage, setRowsPerPage] = useState<number>(8);
+  const itemsPerPage = rowsPerPage;
   
   // Create Invoice State
   const [invoiceType, setInvoiceType] = useState<InvoiceTypeSelection>('');
@@ -918,9 +938,29 @@ const GlobalBilling: React.FC = () => {
     const matchesType = typeFilter === '' || inv.invoiceType === typeFilter;
     return matchesSearch && matchesDate && matchesStatus && matchesType;
   });
+
+  const sortedInvoices = [...filteredInvoices].sort((a, b) => {
+    switch (sortOption) {
+      case 'oldest':
+        return new Date(`${a.date} ${a.time}`).getTime() - new Date(`${b.date} ${b.time}`).getTime();
+      case 'invoiceAZ':
+        return a.invoiceNumber.localeCompare(b.invoiceNumber);
+      case 'customerAZ':
+        return a.customerName.localeCompare(b.customerName);
+      case 'totalHigh':
+        return b.total - a.total;
+      case 'totalLow':
+        return a.total - b.total;
+      case 'statusAZ':
+        return a.paymentStatus.localeCompare(b.paymentStatus);
+      case 'newest':
+      default:
+        return new Date(`${b.date} ${b.time}`).getTime() - new Date(`${a.date} ${a.time}`).getTime();
+    }
+  });
   
-  const paginatedInvoices = filteredInvoices.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
-  const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / itemsPerPage));
+  const paginatedInvoices = sortedInvoices.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
+  const totalPages = Math.max(1, Math.ceil(sortedInvoices.length / itemsPerPage));
   
   const loadCurrentUser = async (): Promise<void> => {
     try {
@@ -1983,6 +2023,11 @@ const GlobalBilling: React.FC = () => {
     setSearchQuery('');
     setPage(0);
   };
+
+  const handleRowsPerPageChange = (value: number): void => {
+    setRowsPerPage(value);
+    setPage(0);
+  };
   
   useEffect(() => {
     loadCurrentUser();
@@ -2097,17 +2142,35 @@ const GlobalBilling: React.FC = () => {
     <div className="billingContainer">
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
       
-      <div className="billingBodyContainer">
+      <div className="billingBodyContainer bodyContainer">
         <div className="billingTopContainer">
           <div className="billingSubTopContainer">
-            <div className="billingSubTopLeft">
-              <CiReceipt size={20} className="billingBlueIcon" />
-              <span className="billingBlueText">Billing & Invoices</span>
+            <div className="billingHeroIcon">
+              <IoReceiptOutline size={28} />
+            </div>
+            <div className="billingHeroCopy">
+              <span>Finance Desk</span>
+              <h1>Billing & Invoices</h1>
+              <p>Create invoices, collect payments, and review clinic billing history.</p>
             </div>
           </div>
+          <div className="billingHeaderActions">
+            <div className="billingSearchRow">
+              <div className="billingToolbarStaticIcon">
+                <IoSearchSharp size={18} className="billingIconDefault" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search by Invoice #, Customer, or Pet..."
+                value={searchQuery}
+                onChange={(e) => {setSearchQuery(e.target.value); setPage(0);}}
+                className="billingSearchInput billingHeaderSearchInput"
+              />
+            </div>
+            <div className="billingHeaderDivider" aria-hidden="true" />
           <div className="billingSubTopContainer billingNotificationContainer">
             <Notifications 
-              buttonClassName="billingIconButton"
+              buttonClassName="billingIconButton billingNotificationButton"
               iconClassName="billingBlueIcon"
               onViewAll={() => console.log('View all notifications')}
               onNotificationClick={(notification) => {
@@ -2115,77 +2178,88 @@ const GlobalBilling: React.FC = () => {
               }}
             />
           </div>
+          </div>
         </div>
         
         <div className="billingTableContainer">
           <div className="billingTableToolbar">
             <div className="billingSearchFilterSection">
-              <div className="billingToolbarItem">
-                <button 
-                  className="billingIconButton"
-                  onMouseEnter={() => setSearchHovered(true)}
-                  onMouseLeave={() => setSearchHovered(false)}
-                  onClick={() => setSearchVisible(!searchVisible)}
-                >
-                  <IoSearchSharp size={20} className={searchVisible ? "billingIconActive" : "billingIconDefault"} />
-                </button>
-                {searchHovered && <div className="billingTooltip">Search</div>}
-              </div>
-              
-              {searchVisible && (
-                <input
-                  type="text"
-                  placeholder="Search by Invoice #, Customer, or Pet..."
-                  value={searchQuery}
-                  onChange={(e) => {setSearchQuery(e.target.value); setPage(0);}}
-                  className="billingSearchInput"
-                />
-              )}
-              
-              <div className="billingToolbarItem">
-                <button 
-                  className="billingIconButton"
-                  onMouseEnter={() => setFilterHovered(true)}
-                  onMouseLeave={() => setFilterHovered(false)}
-                  onClick={() => setFilterVisible(!filterVisible)}
-                >
-                  <IoFilterSharp size={20} className={filterVisible ? "billingIconActive" : "billingIconDefault"} />
-                </button>
-                {filterHovered && <div className="billingTooltip">Filter</div>}
-              </div>
-              
-              {filterVisible && (
-                <div className="billingFilterSection">
-                  <input
-                    type="date"
-                    value={dateFilter}
-                    onChange={(e) => {setDateFilter(e.target.value); setPage(0);}}
-                    className="billingFilterInput"
-                  />
-                  <select 
-                    value={statusFilter} 
-                    onChange={(e) => {setStatusFilter(e.target.value); setPage(0);}}
-                    className="billingFilterSelect"
-                  >
-                    <option value="">All Status</option>
-                    <option value="paid">Paid</option>
-                    <option value="pending">Pending</option>
-                    <option value="partial">Partial Paid</option>
-                  </select>
-                  <select 
-                    value={typeFilter} 
-                    onChange={(e) => {setTypeFilter(e.target.value); setPage(0);}}
-                    className="billingFilterSelect"
-                  >
-                    <option value="">All Types</option>
-                    <option value="appointment">Appointment</option>
-                    <option value="walkin">Walk-in Visit</option>
-                  </select>
-                  <button className="billingClearFilterBtn" onClick={clearFilters}>
-                    <IoRefreshOutline size={14} /> Clear
-                  </button>
+              <div className="billingFilterRow">
+                <div className="billingToolbarStaticIcon">
+                  <IoFilterSharp size={18} className="billingIconDefault" />
                 </div>
-              )}
+                <div className="billingFilterSection">
+                    <input
+                      type="date"
+                      value={dateFilter}
+                      onChange={(e) => {setDateFilter(e.target.value); setPage(0);}}
+                      className="billingFilterInput"
+                    />
+                    <select 
+                      value={statusFilter} 
+                      onChange={(e) => {setStatusFilter(e.target.value); setPage(0);}}
+                      className="billingFilterSelect"
+                    >
+                      <option value="">All Status</option>
+                      <option value="paid">Paid</option>
+                      <option value="pending">Pending</option>
+                      <option value="partial">Partial Paid</option>
+                    </select>
+                    <select 
+                      value={typeFilter} 
+                      onChange={(e) => {setTypeFilter(e.target.value); setPage(0);}}
+                      className="billingFilterSelect"
+                    >
+                      <option value="">All Types</option>
+                      <option value="appointment">Appointment</option>
+                      <option value="walkin">Walk-in Visit</option>
+                    </select>
+                    <button className="billingClearFilterBtn" onClick={clearFilters}>
+                      <IoCloseCircleSharp size={14} /> Clear Filters
+                    </button>
+                    <div className="billingFilterDivider" aria-hidden="true" />
+                    <div className="accountSettingsDropdownContainer">
+                      <div className="toolbarItem">
+                        <button
+                          className="iconButton accountSortIconButton"
+                          onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
+                          aria-label="Billing table settings"
+                        >
+                          <RiListSettingsLine size={19} className={showSettingsDropdown ? "iconActive" : "iconDefault"} />
+                        </button>
+                      </div>
+                      {showSettingsDropdown && (
+                        <div className="accountSettingsDropdown">
+                          <div className="accountSettingsSection">
+                            <label>Sort By</label>
+                            <select
+                              value={sortOption}
+                              onChange={(e) => { setSortOption(e.target.value as BillingSortOption); setPage(0); }}
+                              className="accountSettingsSelect"
+                            >
+                              {BILLING_SORT_OPTIONS.map(option => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="accountSettingsDivider" />
+                          <div className="accountSettingsSection">
+                            <label>Rows Per Page</label>
+                            <select
+                              value={rowsPerPage}
+                              onChange={(e) => handleRowsPerPageChange(parseInt(e.target.value, 10))}
+                              className="accountSettingsSelect"
+                            >
+                              {ROWS_PER_PAGE_OPTIONS.map(option => (
+                                <option key={option} value={option}>{option} per page</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+              </div>
             </div>
             
             <div className="billingActionSection">
@@ -2280,17 +2354,19 @@ const GlobalBilling: React.FC = () => {
                 <button 
                   onClick={() => setPage(Math.max(0, page - 1))}
                   disabled={page === 0}
-                  className="billingPaginationBtn"
+                  className="billingPaginationBtn billingPaginationPrevBtn"
                 >
-                  Previous
+                  <IoChevronBackOutline size={15} />
+                  <span>Previous</span>
                 </button>
-                <span className="billingPaginationInfo">{page + 1} of {totalPages}</span>
+                <span className="billingPaginationInfo">Page {page + 1} of {totalPages}</span>
                 <button 
                   onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
                   disabled={page >= totalPages - 1}
-                  className="billingPaginationBtn"
+                  className="billingPaginationBtn billingPaginationNextBtn"
                 >
-                  Next
+                  <span>Next</span>
+                  <IoChevronForward size={15} />
                 </button>
               </div>
             </div>
@@ -3445,9 +3521,9 @@ const GlobalBilling: React.FC = () => {
         <div className="billingModalOverlay">
           <div className="billingAlertModal">
             <div className="billingAlertIcon">
-              {modalConfig.type === 'success' && <IoCheckmarkCircleOutline size={45} color="#2e9e0c" />}
-              {modalConfig.type === 'error' && <IoCloseCircleOutline size={45} color="#d93025" />}
-              {modalConfig.type !== 'success' && modalConfig.type !== 'error' && <IoAlertCircleOutline size={45} color="#3d67ee" />}
+              {modalConfig.type === 'success' && <IoCheckmarkCircleOutline size={45} color="#166534" />}
+              {modalConfig.type === 'error' && <IoCloseCircleOutline size={45} color="#991b1b" />}
+              {modalConfig.type !== 'success' && modalConfig.type !== 'error' && <IoAlertCircleOutline size={45} color="#0a1156" />}
             </div>
             <h4 className="billingAlertTitle">{modalConfig.title}</h4>
             <div className="billingAlertMessage">
