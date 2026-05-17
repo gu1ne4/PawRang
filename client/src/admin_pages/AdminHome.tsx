@@ -35,6 +35,7 @@ import Notifications from '../reusable_components/Notifications';
 import pawRangLogomarkWhite from '../assets/PawRang Logomark White.png';
 import branchLP from '../assets/branchLP.jpg';
 import branchTaguig from '../assets/branchTaguig.jpg';
+import defaultUserImg from '../assets/userImg.jpg';
 
 interface User {
   id?: string; 
@@ -46,6 +47,11 @@ interface User {
   role: string;
   status: string;
   employee_image?: string; 
+  userImage?: string;
+  userimage?: string;
+  user_image?: string;
+  profileImage?: string;
+  image?: string;
   created_at?: string;
   branch_id?: number | string | null;
   branch_name?: string;
@@ -65,6 +71,10 @@ interface CurrentUser {
   fullName?: string;
   role: string;
   userImage?: string;
+  userimage?: string;
+  user_image?: string;
+  profileImage?: string;
+  employee_image?: string;
   branch_id?: number | string | null;
   branch_name?: string;
   branchName?: string;
@@ -177,7 +187,34 @@ const isBothBranchesLabel = (value?: string): boolean => {
 };
 
 const getEmployeeProfileImage = (user?: User | null): string =>
-  user?.employee_image || '../assets/userImg.jpg';
+  user?.employee_image ||
+  user?.userImage ||
+  user?.userimage ||
+  user?.user_image ||
+  user?.profileImage ||
+  user?.image ||
+  defaultUserImg;
+
+const normalizeAdminHomeUser = (raw: any): CurrentUser | null => {
+  if (!raw || typeof raw !== 'object') return null;
+
+  const profileImage =
+    raw.userImage ||
+    raw.userimage ||
+    raw.user_image ||
+    raw.profileImage ||
+    raw.employee_image ||
+    raw.image;
+
+  return {
+    ...raw,
+    userImage: profileImage,
+    userimage: raw.userimage || profileImage,
+    user_image: raw.user_image || profileImage,
+    profileImage: raw.profileImage || profileImage,
+    employee_image: raw.employee_image || profileImage,
+  };
+};
 
 const isDoctorAccount = (user?: User | null): boolean =>
   /doctor|vet|veterinarian/i.test(user?.role || '');
@@ -269,7 +306,7 @@ const AdminHome: React.FC = () => {
       const session = localStorage.getItem('userSession');
       
       if (session) {
-        setCurrentUser(JSON.parse(session));
+        setCurrentUser(normalizeAdminHomeUser(JSON.parse(session)));
       } else {
         // 🛑 TEMPORARILY DISABLED: The Bouncer is asleep
         // navigate('/login', { replace: true });
@@ -286,7 +323,7 @@ const AdminHome: React.FC = () => {
   const getStoredAdminId = (): string => {
     try {
       const session = localStorage.getItem('userSession');
-      const parsed = session ? JSON.parse(session) : null;
+      const parsed = session ? normalizeAdminHomeUser(JSON.parse(session)) : null;
       return parsed?.id || parsed?.pk || '';
     } catch {
       return '';
