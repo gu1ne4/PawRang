@@ -355,6 +355,7 @@ export default function AdminAvailSettings() {
   const [currentEditingDay, setCurrentEditingDay] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [slotCapacity, setSlotCapacity] = useState('');
 
   const [dayAvailability, setDayAvailability] = useState<any>({
     sunday: false, monday: false, tuesday: false, wednesday: false, thursday: false, friday: false, saturday: false
@@ -475,7 +476,8 @@ export default function AdminAvailSettings() {
         slotsByDay[day] = slots.map((slot: any) => ({
           id: slot.id,
           startTime: slot.start_time,
-          endTime: slot.end_time
+          endTime: slot.end_time,
+          capacity: slot.online_capacity ?? slot.slot_capacity ?? slot.capacity ?? ''
         }));
       }
       setTimeSlotsByDay(slotsByDay);
@@ -534,7 +536,8 @@ export default function AdminAvailSettings() {
       const formattedSlots = existingSlots.map((slot: any) => ({
         id: slot.id,
         startTime: slot.start_time,
-        endTime: slot.end_time
+        endTime: slot.end_time,
+        capacity: slot.online_capacity ?? slot.slot_capacity ?? slot.capacity ?? ''
       }));
       setTimeSlotsByDay((prev: any) => ({ ...prev, [dayKey]: formattedSlots }));
     } catch (error) {
@@ -571,6 +574,12 @@ export default function AdminAvailSettings() {
         return;
     }
     
+    const normalizedCapacity = slotCapacity.trim();
+    if (normalizedCapacity && (!/^\d+$/.test(normalizedCapacity) || Number(normalizedCapacity) < 1)) {
+      window.alert('Invalid Capacity: Capacity must be blank for auto capacity or a whole number of at least 1.');
+      return;
+    }
+
     const currentSlots = timeSlotsByDay[currentEditingDay] || [];
     const hasOverlap = currentSlots.some((slot: any) => {
       const slotStart = convertToMinutes(slot.startTime);
@@ -586,7 +595,8 @@ export default function AdminAvailSettings() {
     const newSlot = {
       id: `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       startTime: startTime,
-      endTime: endTime
+      endTime: endTime,
+      capacity: normalizedCapacity
     };
     
     setTimeSlotsByDay((prev: any) => {
@@ -600,6 +610,7 @@ export default function AdminAvailSettings() {
     
     setStartTime(DEFAULT_START_TIME);
     setEndTime(DEFAULT_END_TIME);
+    setSlotCapacity('');
   };
 
   const addEvent = async () => {
@@ -751,6 +762,16 @@ export default function AdminAvailSettings() {
     setDeleteConfirmationVisible(true);
   };
 
+  const updateSlotCapacity = (slotId: any, value: string) => {
+    const cleaned = value.replace(/[^\d]/g, '');
+    setTimeSlotsByDay((prev: any) => ({
+      ...prev,
+      [currentEditingDay]: (prev[currentEditingDay] || []).map((slot: any) =>
+        slot.id === slotId ? { ...slot, capacity: cleaned } : slot
+      )
+    }));
+  };
+
   const confirmDeleteSlot = async () => {
     if (!slotToDelete) return;
     const slotId = slotToDelete.id;
@@ -787,6 +808,10 @@ export default function AdminAvailSettings() {
           start_time: formatTo24Hour(slot.startTime),
           end_time: formatTo24Hour(slot.endTime)
         };
+        const capacityValue = String(slot.capacity ?? '').trim();
+        if (capacityValue) {
+          payload.online_capacity = Number(capacityValue);
+        }
         
         // Prevent 'temp-' generated IDs from crashing the database
         if (slot.id && !String(slot.id).startsWith('temp-')) {
@@ -806,7 +831,8 @@ export default function AdminAvailSettings() {
       const formattedSlots = updatedSlots.map((slot: any) => ({
         id: slot.id, 
         startTime: slot.start_time,
-        endTime: slot.end_time
+        endTime: slot.end_time,
+        capacity: slot.online_capacity ?? slot.slot_capacity ?? slot.capacity ?? ''
       }));
       
       setTimeSlotsByDay((prev: any) => ({ ...prev, [currentEditingDay]: formattedSlots }));
@@ -820,7 +846,10 @@ export default function AdminAvailSettings() {
       availabilityService.getTimeSlotsForDay(currentEditingDay)
         .then((existingSlots: any[]) => {
           const formattedSlots = existingSlots.map((slot: any) => ({
-            id: slot.id, startTime: slot.start_time, endTime: slot.end_time
+            id: slot.id,
+            startTime: slot.start_time,
+            endTime: slot.end_time,
+            capacity: slot.online_capacity ?? slot.slot_capacity ?? slot.capacity ?? ''
           }));
           setTimeSlotsByDay((prev: any) => ({ ...prev, [currentEditingDay]: formattedSlots }));
         })
@@ -831,6 +860,7 @@ export default function AdminAvailSettings() {
     setModalVisible(false);
     setStartTime(DEFAULT_START_TIME);
     setEndTime(DEFAULT_END_TIME);
+    setSlotCapacity('');
   };
 
   const DAYS_OF_WEEK = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -1014,6 +1044,23 @@ export default function AdminAvailSettings() {
                   <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
                     <TimeSelector label="Start Time" value={startTime} onChange={setStartTime} />
                     <TimeSelector label="End Time" value={endTime} onChange={setEndTime} />
+                    <div className="formGroup">
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '8px', color: '#333' }}>
+                        Online Capacity
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        placeholder="Auto"
+                        value={slotCapacity}
+                        onChange={(event) => setSlotCapacity(event.target.value.replace(/[^\d]/g, ''))}
+                        className="formInput"
+                      />
+                      <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#64748b' }}>
+                        Blank uses available doctor capacity.
+                      </p>
+                    </div>
                     
                     <button onClick={addSlot} className="gradientBtn submitBtn" style={{ width: '100%', margin: 0, marginTop: '10px' }}>
                       + Add Slot
@@ -1028,17 +1075,35 @@ export default function AdminAvailSettings() {
                           <tr>
                             <th style={{ textAlign: 'left' }}>Start</th>
                             <th style={{ textAlign: 'left' }}>End</th>
+                            <th style={{ textAlign: 'left' }}>Capacity</th>
                             <th style={{ textAlign: 'right' }}>Action</th>
                           </tr>
                         </thead>
                         <tbody>
                           {timeSlotsByDay[currentEditingDay]?.length === 0 ? (
-                            <tr><td colSpan={3} style={{ textAlign: 'center', padding: '30px', color: '#999', fontStyle: 'italic' }}>No time slots configured</td></tr>
+                            <tr><td colSpan={4} style={{ textAlign: 'center', padding: '30px', color: '#999', fontStyle: 'italic' }}>No time slots configured</td></tr>
                           ) : (
                             timeSlotsByDay[currentEditingDay]?.map((item: any) => (
                               <tr key={item.id}>
                                 <td>{formatToAMPM(item.startTime)}</td>
                                 <td>{formatToAMPM(item.endTime)}</td>
+                                <td>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    placeholder="Auto"
+                                    value={item.capacity ?? ''}
+                                    onChange={(event) => updateSlotCapacity(item.id, event.target.value)}
+                                    style={{
+                                      width: '84px',
+                                      padding: '6px 8px',
+                                      border: '1px solid #d8dee9',
+                                      borderRadius: '6px',
+                                      fontSize: '13px'
+                                    }}
+                                  />
+                                </td>
                                 <td style={{ textAlign: 'right' }}>
                                   <button onClick={() => deleteSlot(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                                     <IoTrashOutline size={20} color="#d32f2f" />

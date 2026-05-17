@@ -257,6 +257,13 @@ const BOOKING_DRAFT_KEY = 'userAppointmentBookingDraft';
 const DEFAULT_SUBMITTED_BOOKING_MESSAGE =
   'Your appointment is under review. You will receive an email once it is confirmed.';
 
+const addDays = (date: Date, days: number) => {
+  const nextDate = new Date(date);
+  nextDate.setHours(0, 0, 0, 0);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
+};
+
 const getBranchImage = (branch: Branch) => {
   const label = `${branch.branch_name} ${branch.address}`.toLowerCase();
   if (label.includes('taguig')) return branchTaguig;
@@ -560,11 +567,11 @@ const UserAppointmentBook: React.FC = () => {
     }
 
     let isCancelled = false;
-    const capacityManagedServiceIds = new Set([2, 3, 6, 7, 8, 9]);
+    const capacityManagedServiceIds = new Set([2, 3, 6, 7, 8, 9, 10]);
     const shouldUseCapacity =
       Boolean(selectedBranch && selectedService && capacityManagedServiceIds.has(selectedService.id));
     const capacityServiceName =
-      selectedService?.id === 8 && selectedLabOptions.length === 1
+      selectedService?.hasOptions && selectedService.id !== 1 && selectedLabOptions.length === 1
         ? selectedLabOptions[0].name
         : selectedService?.name;
     const slotParams = new URLSearchParams({
@@ -1742,18 +1749,18 @@ const UserAppointmentBook: React.FC = () => {
                   <Calendar
                     onChange={(v: any) => { if (v instanceof Date) { setSelectedDate(v); setSelectedTime(null); } }}
                     value={selectedDate}
-                    minDate={new Date()}
+                    minDate={addDays(new Date(), 2)}
                     maxDate={(() => { const d = new Date(); d.setMonth(d.getMonth()+2); return d; })()}
                     tileDisabled={({ date, view }) => {
                       if (view !== 'month') return false;
 
                       const dayName = getDayName(date);
                       const dateKey = toDateKey(date);
-                      const isPast = date < new Date(new Date().setHours(0, 0, 0, 0));
+                      const isTooSoon = date < addDays(new Date(), 2);
                       const isEnabledDay = dayName ? Boolean(dayAvailability[dayName.toLowerCase()]) : false;
                       const isSpecialDate = specialDates.includes(dateKey) || annualSpecialDates.includes(dateKey.slice(5));
 
-                      return loadingAvailability || isPast || !isEnabledDay || isSpecialDate;
+                      return loadingAvailability || isTooSoon || !isEnabledDay || isSpecialDate;
                     }}
                   />
                 </div>

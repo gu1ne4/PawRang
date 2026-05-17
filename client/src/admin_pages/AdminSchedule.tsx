@@ -160,7 +160,7 @@ const CustomCalendar = ({ selectedDate, onSelectDate, bookedDates = {}, availabl
             const hasAppointment = bookedDates[fullDate];
 
             // AVAILABILITY CHECKS
-            const isPast = disablePastDates && fullDate < todayStr;
+            const isPast = disablePastDates && fullDate <= todayStr;
             const isUnavailableDay = availableDays && availableDays[dayName] === false;
             const isDisabled = isPast || isUnavailableDay;
 
@@ -323,16 +323,17 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
         { id: 6, name: 'X-Ray', hasOptions: false },
         { id: 7, name: 'Ultrasound', hasOptions: false },
         { id: 8, name: 'Laboratory Tests', hasOptions: true, options: ['Complete Blood Count', 'Blood Chemistry', 'Urinalysis', 'Fecal Examination', 'X-Ray', 'Ultrasound'] },
-        { id: 9, name: 'Vaccinations', hasOptions: false }
+        { id: 9, name: 'Vaccinations', hasOptions: false },
+        { id: 10, name: 'Surgery', hasOptions: true, options: ['Child Delivery', 'Neuter / Spay'] }
     ];
-    const capacityManagedServiceIds = new Set([2, 3, 5, 6, 7, 8, 9]);
+    const capacityManagedServiceIds = new Set([2, 3, 5, 6, 7, 8, 9, 10]);
     const selectedServiceConfig = servicesList.find(item => item.name === service);
     const shouldUseCapacity = Boolean(
         branchId &&
         selectedServiceConfig &&
         capacityManagedServiceIds.has(selectedServiceConfig.id)
     );
-    const capacityServiceName = service === 'Laboratory Tests' && subService ? subService : service;
+    const capacityServiceName = selectedServiceConfig?.hasOptions && subService ? subService : service;
 
     const resetFormState = () => {
         setFirstName(''); setLastName(''); setEmail(''); setPhone(''); setReason('');
@@ -1452,6 +1453,7 @@ const TableView = ({ onViewUser, loading, filteredAppointments, service, setServ
                 <option value="Ultrasound">Ultrasound</option>
                 <option value="Laboratory Tests">Laboratory Tests</option>
                 <option value="Vaccinations">Vaccinations</option>
+                <option value="Surgery">Surgery</option>
               </select>
             </div>
             

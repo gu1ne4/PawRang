@@ -46,7 +46,7 @@ const getAppointmentBranchId = (appointment: any) =>
 
 const getAppointmentServiceName = (appointment: any) => {
     const service = String(appointment?.service || appointment?.appointment_type || appointment?.typeLabel || '').trim();
-    if (service.toLowerCase().includes('laboratory tests')) {
+    if (/(laboratory tests|imaging|surgery|vaccinations)/i.test(service)) {
         const match = service.match(/\(([^)]+)\)/);
         if (match?.[1] && !match[1].includes(',')) return match[1].trim();
     }
@@ -85,7 +85,7 @@ const CustomCalendar = ({ selectedDate, onSelectDate, availableDays = null, disa
             const dayName = dayNamesList[dayOfWeek];
             const isSelected = selectedDate === fullDate;
             const isToday = fullDate === todayStr;
-            const isPast = disablePastDates && fullDate < todayStr;
+            const isPast = disablePastDates && fullDate <= todayStr;
             const isUnavailableDay = availableDays && availableDays[dayName] === false;
             const isBeforeMinDate = Boolean(minDateKey) && fullDate < minDateKey;
             const isDisabled = isPast || isUnavailableDay || isBeforeMinDate;
