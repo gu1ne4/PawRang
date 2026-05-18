@@ -10,7 +10,7 @@ import { IoIosArchive } from "react-icons/io";
 import petShieldLogo from '../assets/PetshieldLogo.png';
 import pawRangLogomarkWhite from '../assets/PawRang Logomark White.png';
 import defaultUserAvatar from '../assets/userAvatar.jpg';
-import { isAdminRole, isDoctorRole, normalizeRole } from '../auth/roles';
+import { isAdminRole, isClinicStaffRole, isDoctorRole, isNurseRole, normalizeRole } from '../auth/roles';
 
 // Icons
 import { 
@@ -78,17 +78,77 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
   const appointmentsDropdownRef = useRef<HTMLDivElement>(null);
   const inventoryDropdownRef = useRef<HTMLDivElement>(null);
   const normalizedRole = normalizeRole(currentUser?.role);
-  const isAdminWorkspace = isAdminRole(currentUser?.role);
+  const isDoctorPath = location.pathname.startsWith('/doctor');
+  const isClinicStaffPath = location.pathname.startsWith('/clinic-staff');
+  const isNursePath = location.pathname.startsWith('/nurse');
+  const isAdminWorkspace = !isDoctorPath && !isClinicStaffPath && !isNursePath && isAdminRole(currentUser?.role);
   const isDoctorWorkspace =
     !isAdminWorkspace &&
-    (location.pathname.startsWith('/doctor') || isDoctorRole(normalizedRole));
-  const homePath = isDoctorWorkspace ? '/doctor/home' : '/admin/home';
-  const appointmentSchedulePath = isDoctorWorkspace ? '/doctor/appointments/schedule' : '/admin/schedule';
-  const appointmentAvailabilityPath = isDoctorWorkspace ? '/doctor/appointments/availability' : '/admin/availability';
-  const appointmentHistoryPath = isDoctorWorkspace ? '/doctor/appointments/history' : '/admin/history';
-  const recordsPath = isDoctorWorkspace ? '/doctor/medical-records' : '/patient-records';
-  const inventoryPath = isDoctorWorkspace ? '/doctor/inventory' : '/inventory';
-  const settingsPath = isDoctorWorkspace ? '/doctor/settings' : '/admin/settings';
+    (isDoctorPath || isDoctorRole(normalizedRole));
+  const isClinicStaffWorkspace =
+    !isAdminWorkspace &&
+    !isDoctorWorkspace &&
+    (isClinicStaffPath || isClinicStaffRole(normalizedRole));
+  const isNurseWorkspace =
+    !isAdminWorkspace &&
+    !isDoctorWorkspace &&
+    !isClinicStaffWorkspace &&
+    (isNursePath || isNurseRole(normalizedRole));
+  const homePath = isDoctorWorkspace
+    ? '/doctor/home'
+    : isClinicStaffWorkspace
+      ? '/clinic-staff/home'
+      : isNurseWorkspace
+        ? '/nurse/home'
+        : '/admin/home';
+  const analyticsPath = isClinicStaffWorkspace ? '/clinic-staff/analytics' : '/analytics';
+  const appointmentSchedulePath = isDoctorWorkspace
+    ? '/doctor/appointments/schedule'
+    : isClinicStaffWorkspace
+      ? '/clinic-staff/appointments/schedule'
+      : isNurseWorkspace
+        ? '/nurse/appointments/schedule'
+        : '/admin/schedule';
+  const appointmentAvailabilityPath = isDoctorWorkspace
+    ? '/doctor/appointments/availability'
+    : isClinicStaffWorkspace
+      ? '/clinic-staff/appointments/availability'
+      : isNurseWorkspace
+        ? '/nurse/appointments/availability'
+      : '/admin/availability';
+  const appointmentHistoryPath = isDoctorWorkspace
+    ? '/doctor/appointments/history'
+    : isClinicStaffWorkspace
+      ? '/clinic-staff/appointments/history'
+      : isNurseWorkspace
+        ? '/nurse/appointments/history'
+      : '/admin/history';
+  const recordsPath = isDoctorWorkspace
+    ? '/doctor/medical-records'
+    : isClinicStaffWorkspace
+      ? '/clinic-staff/medical-records'
+      : isNurseWorkspace
+        ? '/nurse/medical-records'
+        : '/patient-records';
+  const billingPath = isClinicStaffWorkspace ? '/clinic-staff/billing' : isNurseWorkspace ? '/nurse/billing' : '/billing';
+  const inventoryPath = isDoctorWorkspace
+    ? '/doctor/inventory'
+    : isClinicStaffWorkspace
+      ? '/clinic-staff/inventory'
+      : isNurseWorkspace
+        ? '/nurse/inventory'
+        : '/inventory';
+  const inventoryLogsPath = isDoctorWorkspace ? '/doctor/inventory-logs' : isClinicStaffWorkspace ? '/clinic-staff/inventory-logs' : isNurseWorkspace ? '/nurse/inventory-logs' : '/inventory-logs';
+  const inventoryInPath = isClinicStaffWorkspace ? '/clinic-staff/inventory-in' : isNurseWorkspace ? '/nurse/inventory-in' : '/inventory-in';
+  const inventoryOutPath = isClinicStaffWorkspace ? '/clinic-staff/inventory-out' : isNurseWorkspace ? '/nurse/inventory-out' : '/inventory-out';
+  const inventoryArchivePath = isClinicStaffWorkspace ? '/clinic-staff/inventory-archive' : isNurseWorkspace ? '/nurse/inventory-archive' : '/inventory-archive';
+  const settingsPath = isDoctorWorkspace
+    ? '/doctor/settings'
+    : isClinicStaffWorkspace
+      ? '/clinic-staff/settings'
+      : isNurseWorkspace
+        ? '/nurse/settings'
+        : '/admin/settings';
   const profileImage =
     currentUser?.profileImage ||
     currentUser?.employee_image ||
@@ -107,7 +167,10 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
     if (isDoctorWorkspace) {
       return location.pathname === '/doctor/appointments' || location.pathname.startsWith('/doctor/appointments/');
     }
-    return isActive('/admin/schedule') || isActive('/admin/availability') || isActive('/admin/history');
+    if (isNurseWorkspace) {
+      return location.pathname === '/nurse/appointments' || location.pathname.startsWith('/nurse/appointments/');
+    }
+    return isActive(appointmentSchedulePath) || isActive(appointmentAvailabilityPath) || isActive(appointmentHistoryPath);
   };
 
   const isAccountActive = (): boolean => {
@@ -116,9 +179,9 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
 
   const isInventoryActive = (): boolean => {
     if (isDoctorWorkspace) {
-      return isActive('/doctor/inventory');
+      return isActive('/doctor/inventory') || isActive('/doctor/inventory/catalog') || isActive('/doctor/inventory-logs');
     }
-    return isActive('/manage-inventory') || isActive('/inventory') || isActive('/inventory-logs') || isActive('/inventory-in') || isActive('/inventory-out') || isActive('/inventory-archive');
+    return isActive('/manage-inventory') || isActive(inventoryPath) || isActive(inventoryLogsPath) || isActive(inventoryInPath) || isActive(inventoryOutPath) || isActive(inventoryArchivePath);
   };
   
   useEffect(() => {
@@ -167,7 +230,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
         setShowInventoryDropdown(true);
       }
     }
-  }, [location.pathname, isCollapsed, isDoctorWorkspace]);
+  }, [location.pathname, isCollapsed, isDoctorWorkspace, isClinicStaffWorkspace, isNurseWorkspace]);
 
   useEffect(() => {
     if (isMobile) {
@@ -281,6 +344,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
       case 'Account Overview': tooltipText = 'Account Overview'; break;
       case 'Appointments': tooltipText = 'Appointments'; break;
       case 'Patient Records': tooltipText = isDoctorWorkspace ? 'Medical Records' : 'Patient Records'; break;
+      case 'Billing': tooltipText = 'Billing'; break;
       case 'Inventory': tooltipText = 'Inventory'; break;
       case 'System Audit': tooltipText = 'System Audit'; break;
       case 'Settings': tooltipText = 'Settings'; break;
@@ -398,11 +462,11 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                 </button>
               </div>
 
-              {!isDoctorWorkspace && (
+              {!isDoctorWorkspace && !isNurseWorkspace && (
                 <div className="navMenuSection">
                   <button 
-                    className={`navBtn ${isActive('/analytics') ? 'active' : ''}`} 
-                    onClick={() => handleNavigate('/analytics')}
+                    className={`navBtn ${isActive(analyticsPath) ? 'active' : ''}`}
+                    onClick={() => handleNavigate(analyticsPath)}
                     onMouseEnter={(e) => handleMouseEnter(e, 'Analytics')}
                     onMouseLeave={handleMouseLeave}
                   >
@@ -412,7 +476,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                 </div>
               )}
 
-              {!isDoctorWorkspace && (
+              {!isDoctorWorkspace && !isClinicStaffWorkspace && !isNurseWorkspace && (
               <div className="navMenuSection" ref={accountDropdownRef}>
                 {!isCollapsed ? (
                   <>
@@ -551,8 +615,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
 
               {/* Patient Records */}
               <div className="navMenuSection">
-                <button 
-                  className={`navBtn ${isActive(recordsPath) ? 'active' : ''}`} 
+                <button
+                  className={`navBtn ${isActive(recordsPath) ? 'active' : ''}`}
                   onClick={() => handleNavigate(recordsPath)}
                   onMouseEnter={(e) => handleMouseEnter(e, 'Patient Records')}
                   onMouseLeave={handleMouseLeave}
@@ -565,8 +629,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
               {!isDoctorWorkspace && (
                 <div className="navMenuSection">
                   <button 
-                    className={`navBtn ${isActive('/billing') ? 'active' : ''}`} 
-                    onClick={() => handleNavigate('/billing')}
+                    className={`navBtn ${isActive(billingPath) ? 'active' : ''}`}
+                    onClick={() => handleNavigate(billingPath)}
                     onMouseEnter={(e) => handleMouseEnter(e, 'Billing')}
                     onMouseLeave={handleMouseLeave}
                   >
@@ -578,17 +642,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
 
               {/* Inventory with Dropdown */}
               <div className="navMenuSection" ref={inventoryDropdownRef}>
-                {isDoctorWorkspace ? (
-                  <button 
-                    className={`navBtn ${isInventoryActive() ? 'active' : ''}`}
-                    onClick={() => handleNavigate(inventoryPath)}
-                    onMouseEnter={(e) => handleMouseEnter(e, 'Inventory')}
-                    onMouseLeave={handleMouseLeave}
-                  >
-                    <IoLayersOutline size={isCollapsed ? 20 : 16} />
-                    {!isCollapsed && <span>Inventory</span>}
-                  </button>
-                ) : !isCollapsed ? (
+                {!isCollapsed ? (
                   <>
                     <button 
                       className={`navBtn ${isInventoryActive() ? 'active' : ''}`}
@@ -602,40 +656,44 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                     {showInventoryDropdown && (
                       <div className="navSubMenu">
                         <button 
-                          className={`navBtn subNavBtn ${isActive('/manage-inventory') ? 'active' : ''}`}
+                          className={`navBtn subNavBtn ${isActive(inventoryPath) || (isDoctorWorkspace && isActive('/doctor/inventory/catalog')) || isActive('/manage-inventory') ? 'active' : ''}`}
                           onClick={() => handleNavigate(inventoryPath)}
                         >
                           <CiBoxes size={14} />
                           <span>Item Catalog</span>
                         </button>
                         <button 
-                          className={`navBtn subNavBtn ${isActive('/inventory-logs') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/inventory-logs')}
+                          className={`navBtn subNavBtn ${isActive(inventoryLogsPath) ? 'active' : ''}`}
+                          onClick={() => handleNavigate(inventoryLogsPath)}
                         >
                           <TbArrowsUpDown size={16} />
                           <span>Movement Logs</span>
                         </button>
-                        <button 
-                          className={`navBtn subNavBtn ${isActive('/inventory-in') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/inventory-in')}
-                        >
-                          <IoArrowDownOutline size={16} />
-                          <span>Inventory IN</span>
-                        </button>
-                        <button 
-                          className={`navBtn subNavBtn ${isActive('/inventory-out') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/inventory-out')}
-                        >
-                          <IoArrowUpOutline size={16} />
-                          <span>Inventory OUT</span>
-                        </button>
-                        <button 
-                          className={`navBtn subNavBtn ${isActive('/inventory-archive') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/inventory-archive')}
-                        >
-                          <IoIosArchive size={16} />
-                          <span>Archived Items</span>
-                        </button>
+                        {!isDoctorWorkspace && (
+                          <>
+                            <button
+                              className={`navBtn subNavBtn ${isActive(inventoryInPath) ? 'active' : ''}`}
+                              onClick={() => handleNavigate(inventoryInPath)}
+                            >
+                              <IoArrowDownOutline size={16} />
+                              <span>Inventory IN</span>
+                            </button>
+                            <button
+                              className={`navBtn subNavBtn ${isActive(inventoryOutPath) ? 'active' : ''}`}
+                              onClick={() => handleNavigate(inventoryOutPath)}
+                            >
+                              <IoArrowUpOutline size={16} />
+                              <span>Inventory OUT</span>
+                            </button>
+                            <button
+                              className={`navBtn subNavBtn ${isActive(inventoryArchivePath) ? 'active' : ''}`}
+                              onClick={() => handleNavigate(inventoryArchivePath)}
+                            >
+                              <IoIosArchive size={16} />
+                              <span>Archived Items</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </>
@@ -652,42 +710,46 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                     {showInventoryDropdown && (
                       <div className="collapsedDropdown">
                         <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/inventory', () => setShowInventoryDropdown(false));
+                          handleNavigate(inventoryPath, () => setShowInventoryDropdown(false));
                         }}>
                           <CiBoxes size={16} />
                           <span>Item Catalog</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/inventory-logs', () => setShowInventoryDropdown(false));
+                          handleNavigate(inventoryLogsPath, () => setShowInventoryDropdown(false));
                         }}>
                           <TbArrowsUpDown size={16} />
                           <span>Movement Logs</span>
                         </button>
-                        <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/inventory-in', () => setShowInventoryDropdown(false));
-                        }}>
-                          <IoArrowDownOutline size={16} />
-                          <span>Inventory IN</span>
-                        </button>
-                        <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/inventory-out', () => setShowInventoryDropdown(false));
-                        }}>
-                          <IoArrowUpOutline size={16} />
-                          <span>Inventory OUT</span>
-                        </button>
-                        <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/inventory-archive', () => setShowInventoryDropdown(false));
-                        }}>
-                          <IoIosArchive size={16} />
-                          <span>Archived Items</span>
-                        </button>
+                        {!isDoctorWorkspace && (
+                          <>
+                            <button className="collapsedDropdownItem" onClick={() => {
+                              handleNavigate(inventoryInPath, () => setShowInventoryDropdown(false));
+                            }}>
+                              <IoArrowDownOutline size={16} />
+                              <span>Inventory IN</span>
+                            </button>
+                            <button className="collapsedDropdownItem" onClick={() => {
+                              handleNavigate(inventoryOutPath, () => setShowInventoryDropdown(false));
+                            }}>
+                              <IoArrowUpOutline size={16} />
+                              <span>Inventory OUT</span>
+                            </button>
+                            <button className="collapsedDropdownItem" onClick={() => {
+                              handleNavigate(inventoryArchivePath, () => setShowInventoryDropdown(false));
+                            }}>
+                              <IoIosArchive size={16} />
+                              <span>Archived Items</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </>
                 )}
               </div>
 
-              {!isDoctorWorkspace && (
+              {!isDoctorWorkspace && !isClinicStaffWorkspace && !isNurseWorkspace && (
                 <div className="navMenuSection">
                   <button 
                     className={`navBtn ${isActive('/admin/audit') ? 'active' : ''}`} 

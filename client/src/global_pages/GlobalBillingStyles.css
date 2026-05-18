@@ -1227,6 +1227,57 @@
   color: #ff9800;
 }
 
+.billingProductCardBatch {
+  margin-top: 3px;
+  font-size: 10px;
+  color: #4b5565;
+}
+
+.billingBatchSelectorBlock {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 260px;
+}
+
+.billingBatchLabel {
+  font-size: 10px;
+  font-weight: 600;
+  color: #4b5565;
+}
+
+.billingBatchSelect {
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: 1px solid #d6dced;
+  border-radius: 6px;
+  background: #fff;
+  color: #2f3440;
+  font-size: 11px;
+}
+
+.billingBatchSelect:focus {
+  outline: none;
+  border-color: #3d67ee;
+  box-shadow: 0 0 0 2px rgba(61, 103, 238, 0.1);
+}
+
+.billingBatchMeta {
+  font-size: 10px;
+  color: #667085;
+}
+
+.billingBatchWarning {
+  font-size: 10px;
+  color: #b26a00;
+  background: #fff7e6;
+  border: 1px solid #ffe0a3;
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
 .billingProductCardAddBtn {
   background-color: #3d67ee;
   color: white;
@@ -2142,6 +2193,12 @@
   padding: 2px 6px;
   border-radius: 10px;
   margin-top: 4px;
+}
+
+.billingDrawerBatch {
+  margin-top: 4px;
+  font-size: 9px;
+  color: #4b5565;
 }
 
 /* Responsive adjustments */

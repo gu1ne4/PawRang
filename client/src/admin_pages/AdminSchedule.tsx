@@ -22,6 +22,7 @@ import AdminRescheduleModal from './AdminRescheduleModal';
 import Notifications from '../reusable_components/Notifications';
 import UserDetailsView from './UserDetailsView';
 import { apiService } from '../apiService';
+import { isClinicStaffRole, isNurseRole } from '../auth/roles';
 
 // --- TYPESCRIPT INTERFACES ---
 interface CurrentUser {
@@ -1901,6 +1902,9 @@ export default function Schedule({ viewerRole = 'admin', readOnly = false, hideB
     const shouldHideBillingActions = hideBillingActions || isDoctorMode;
 
     const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+    const isClinicStaffWorkspace = location.pathname.startsWith('/clinic-staff') || isClinicStaffRole(currentUser?.role);
+    const isNurseWorkspace = location.pathname.startsWith('/nurse') || isNurseRole(currentUser?.role);
+    const billingPath = isClinicStaffWorkspace ? '/clinic-staff/billing' : isNurseWorkspace ? '/nurse/billing' : '/billing';
     const [service, setService] = useState('');
     const [doctorFilter, setDoctorFilter] = useState('');
     const [appointmentPriority, setAppointmentPriority] = useState<AppointmentPriorityFilter>('dateAsc');
@@ -2335,7 +2339,7 @@ export default function Schedule({ viewerRole = 'admin', readOnly = false, hideB
             return;
         }
 
-        navigate('/billing', {
+        navigate(billingPath, {
             state: {
                 billingAction: {
                     invoiceType,

@@ -70,6 +70,14 @@ interface InventoryLog {
   notes: string;
   unitCost?: number;
   totalCost?: number;
+  batchNumber?: string;
+  batch_number?: string;
+  inventoryBatchId?: string | number;
+  inventory_batch_id?: string | number;
+  sourceModule?: string;
+  source_module?: string;
+  sourceType?: string;
+  source_type?: string;
 }
 
 interface ModalConfig {
@@ -120,7 +128,11 @@ const BRANCH_NAME_BY_ID: Record<number, string> = {
 };
 
 
-const GlobalInventoryLogs: React.FC = () => {
+interface GlobalInventoryLogsProps {
+  readOnly?: boolean;
+}
+
+const GlobalInventoryLogs: React.FC<GlobalInventoryLogsProps> = ({ readOnly = false }) => {
   const navigate = useNavigate();
   
   // State
@@ -291,6 +303,11 @@ const GlobalInventoryLogs: React.FC = () => {
   }, [selectedBranch]);
 
   const handleImport = async (file: File): Promise<boolean> => {
+    if (readOnly) {
+      showAlert('error', 'View Only', 'Inventory movement logs are view-only for your role.');
+      return false;
+    }
+
     const branchId = BRANCH_ID_BY_NAME[selectedBranch];
     if (!branchId || selectedBranch === 'All') {
       showAlert('error', 'Select Branch', 'Please select a specific branch before importing inventory.');
@@ -517,6 +534,19 @@ const GlobalInventoryLogs: React.FC = () => {
   // Get unique products for filter
   const uniqueProducts = Array.from(new Set(logs.map(log => log.productName)));
 
+  const getLogBatchLabel = (log: InventoryLog): string => {
+    const batchNumber = log.batchNumber || log.batch_number;
+    if (batchNumber) return String(batchNumber);
+    const batchId = log.inventoryBatchId || log.inventory_batch_id;
+    return batchId ? `Batch ${batchId}` : 'Legacy/default';
+  };
+
+  const getLogSourceLabel = (log: InventoryLog): string => {
+    const sourceModule = log.sourceModule || log.source_module;
+    const sourceType = log.sourceType || log.source_type;
+    return [sourceModule, sourceType].filter(Boolean).join(' / ') || 'Manual inventory';
+  };
+
   // Format date and time for display
   const formatDateTime = (date: string, time: string): string => {
     const formattedDate = new Date(date).toLocaleDateString();
@@ -529,6 +559,8 @@ const GlobalInventoryLogs: React.FC = () => {
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (readOnly) return;
+
     const file = event.target.files?.[0];
     if (file) {
       setSelectedFile(file);
@@ -536,6 +568,11 @@ const GlobalInventoryLogs: React.FC = () => {
   };
 
   const handleImportSubmit = () => {
+    if (readOnly) {
+      showAlert('error', 'View Only', 'Inventory movement logs are view-only for your role.');
+      return;
+    }
+
     if (!selectedFile) {
       showAlert('error', 'No File', 'Please select a file to import.');
       return;
@@ -661,12 +698,14 @@ const GlobalInventoryLogs: React.FC = () => {
               </select>
             </div>
 
-            <ImportButton 
+            {!readOnly && (
+              <ImportButton
                 onImport={handleImport}
                 onDownloadTemplate={handleDownloadTemplate}
                 buttonClassName="invImportBtn"
                 accept=".xlsx"
               />
+            )}
               <ExportButton 
                 logs={logs} 
                 products={products}
@@ -841,10 +880,12 @@ const GlobalInventoryLogs: React.FC = () => {
                     <th style={{ width: '180px' }}>Date & Time</th>
                     <th>Branch</th>
                     <th>Product</th>
+                    <th>Batch</th>
                     <th>Unit</th>
                     <th>Type</th>
                     <th>Qty</th>
                     <th>Reference</th>
+                    <th>Source</th>
                     <th>Reason</th>
                     <th>Supplier/Issued To</th>
                     <th>User</th>
@@ -863,6 +904,7 @@ const GlobalInventoryLogs: React.FC = () => {
                             <div className="invProductName">{log.productName}</div>
                           </div>
                         </td>
+                        <td>{getLogBatchLabel(log)}</td>
                         <td>{log.unit || 'Piece'}</td>
                         <td>
                           <span className={`invTypeBadge ${log.type === 'IN' ? 'invTypeIn' : 'invTypeOut'}`}>
@@ -872,6 +914,9 @@ const GlobalInventoryLogs: React.FC = () => {
                         <td>{log.quantity}</td>
                         <td>
                           <div className="invRefCell">{log.referenceNumber}</div>
+                        </td>
+                        <td>
+                          <div className="invReasonCell">{getLogSourceLabel(log)}</div>
                         </td>
                         <td>
                           <div className="invReasonCell">{log.reason}</div>
@@ -893,7 +938,7 @@ const GlobalInventoryLogs: React.FC = () => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={11} className="invNoData">
+                      <td colSpan={13} className="invNoData">
                         No logs found
                       </td>
                     </tr>
@@ -942,7 +987,7 @@ const GlobalInventoryLogs: React.FC = () => {
       )}
 
       {/* Import Modal */}
-      {showImportModal && (
+      {showImportModal && !readOnly && (
         <div className="invModalOverlay" onClick={() => setShowImportModal(false)}>
           <div className="invImportModal" onClick={e => e.stopPropagation()}>
             <div className="invModalHeader">

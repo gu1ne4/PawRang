@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import './AdminDashboardLayout.css'; 
@@ -29,6 +29,7 @@ import {
   IoVideocamOutline,
   IoMedkitOutline,
   IoCalendarNumberOutline,
+  IoReceiptOutline,
   IoSparkles} from 'react-icons/io5';
 
 import Navbar from '../reusable_components/NavBar';
@@ -36,6 +37,7 @@ import NotificationsAllModal from '../reusable_components/NotificationsAllModal'
 import type { Notification as AppNotification, NotificationsModalRef } from '../reusable_components/NotificationsAllModal';
 import API_URL from '../API';
 import { apiService } from '../apiService';
+import { isClinicStaffRole, isNurseRole } from '../auth/roles';
 
 // ========== INTERFACES ==========
 
@@ -414,6 +416,7 @@ const KpiCard: React.FC<KpiCardProps> = ({
 
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   
   // State
   const [date, setDate] = useState<Date>(new Date());
@@ -697,6 +700,15 @@ const AdminDashboard: React.FC = () => {
   const isMobile = viewportWidth <= 900;
   const isCompact = viewportWidth <= 640;
   const displayedNotifications = notifications.slice(0, 4);
+  const isClinicStaffWorkspace = location.pathname.startsWith('/clinic-staff') || isClinicStaffRole(currentUser.role);
+  const isNurseWorkspace = location.pathname.startsWith('/nurse') || isNurseRole(currentUser.role);
+  const dashboardPaths = {
+    appointments: isClinicStaffWorkspace ? '/clinic-staff/appointments/schedule' : isNurseWorkspace ? '/nurse/appointments/schedule' : '/schedule',
+    records: isClinicStaffWorkspace ? '/clinic-staff/medical-records' : isNurseWorkspace ? '/nurse/medical-records' : '/patient-records',
+    billing: isNurseWorkspace ? '/nurse/billing' : '/billing',
+    inventory: isClinicStaffWorkspace ? '/clinic-staff/inventory' : isNurseWorkspace ? '/nurse/inventory' : '/inventory',
+    inventoryLogs: isClinicStaffWorkspace ? '/clinic-staff/inventory-logs' : isNurseWorkspace ? '/nurse/inventory-logs' : '/inventory-logs',
+  };
 
   // Custom tooltip for charts
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -716,7 +728,7 @@ const AdminDashboard: React.FC = () => {
   };
 
   const quickActions = [
-    { icon: IoCalendarOutline, label: 'Appointments', iconColor: '#3566ee', bgColor: '#3566ee13', borderColor: '#3566ee', hoverBg: '#3566ee25', action: () => navigate('/schedule') },
+    { icon: IoCalendarOutline, label: 'Appointments', iconColor: '#3566ee', bgColor: '#3566ee13', borderColor: '#3566ee', hoverBg: '#3566ee25', action: () => navigate(dashboardPaths.appointments) },
     { icon: IoCalendarNumberOutline, label: 'Calendar', iconColor: '#06b6d4', bgColor: '#06b6d413', borderColor: '#06b6d4', hoverBg: '#06b6d425', action: () => console.log('Calendar feature coming soon') },
     { 
       icon: IoNotificationsOutline, 
@@ -727,17 +739,26 @@ const AdminDashboard: React.FC = () => {
       hoverBg: '#eb871625',
       action: () => notificationsModalRef.current?.openModal()
     },
-    { 
+    ...(!isClinicStaffWorkspace ? [{
       icon: IoPersonAddOutline, 
       label: 'Add Patient', 
       iconColor: '#c201c2', 
       bgColor: '#c201c213', 
       borderColor: '#c201c2',
       hoverBg: '#c201c225',
-      action: () => navigate('/patient-records', { state: { autoOpenAddMode: true } })
-    },
-    { icon: IoDocumentText, label: 'Records', iconColor: '#f12ba5', bgColor: '#f12ba513', borderColor: '#f12ba5', hoverBg: '#f12ba525', action: () => navigate('/patient-records') },
-    { icon: IoLayersOutline, label: 'Inventory', iconColor: '#ff2222', bgColor: '#ff222213', borderColor: '#ff2222', hoverBg: '#ff222225', action: () => navigate('/inventory') },
+      action: () => navigate(dashboardPaths.records, { state: { autoOpenAddMode: true } })
+    }] : []),
+    { icon: IoDocumentText, label: 'Records', iconColor: '#f12ba5', bgColor: '#f12ba513', borderColor: '#f12ba5', hoverBg: '#f12ba525', action: () => navigate(dashboardPaths.records) },
+    ...(isNurseWorkspace ? [{
+      icon: IoReceiptOutline,
+      label: 'Billing',
+      iconColor: '#10b981',
+      bgColor: '#10b98113',
+      borderColor: '#10b981',
+      hoverBg: '#10b98125',
+      action: () => navigate(dashboardPaths.billing)
+    }] : []),
+    { icon: IoLayersOutline, label: 'Inventory', iconColor: '#ff2222', bgColor: '#ff222213', borderColor: '#ff2222', hoverBg: '#ff222225', action: () => navigate(dashboardPaths.inventory) },
   ];
 
   const today = new Date().toISOString().split('T')[0];
@@ -917,7 +938,7 @@ const AdminDashboard: React.FC = () => {
             <div className="appointmentsCard dashboardSoftCard" style={{ padding: '15px', marginTop: isMobile ? '18px' : '35px', marginBottom: '15px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', border: '1px solid #f0f2f5' }}>
               <div className="cardHeader" style={{ marginBottom: '8px' }}>
                 <h3 className="cardTitle" style={{ fontSize: '14px', margin: 0 }}>Inventory Movement Logs</h3>
-                <button className="viewAllBtn" style={{ fontSize: '11px' }} onClick={() => navigate('/inventory-logs')}>View All</button>
+                <button className="viewAllBtn" style={{ fontSize: '11px' }} onClick={() => navigate(dashboardPaths.inventoryLogs)}>View All</button>
               </div>
               <div className="inventoryLogsList">
                 <div className="inventoryLogsHeader" style={{ 

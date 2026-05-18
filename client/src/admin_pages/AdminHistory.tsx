@@ -20,6 +20,7 @@ import logoImg from '../assets/AgsikapLogo-Temp.png';
 import defaultUserImg from '../assets/userImg.jpg';
 import { availabilityService } from './availabilityService';
 import UserDetailsView from './UserDetailsView';
+import { isClinicStaffRole, isNurseRole } from '../auth/roles';
 
 const BILLING_NAVIGATION_DELAY_MS = 450;
 const DEFAULT_HISTORY_ROWS_PER_PAGE = 10;
@@ -60,6 +61,9 @@ export default function AdminHistory({ viewerRole = 'admin', hideBillingActions 
   const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const isClinicStaffWorkspace = location.pathname.startsWith('/clinic-staff') || isClinicStaffRole(currentUser?.role);
+  const isNurseWorkspace = location.pathname.startsWith('/nurse') || isNurseRole(currentUser?.role);
+  const billingPath = isClinicStaffWorkspace ? '/clinic-staff/billing' : isNurseWorkspace ? '/nurse/billing' : '/billing';
 
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const [showAppointmentsDropdown, setShowAppointmentsDropdown] = useState(true); // Default open for this section
@@ -275,7 +279,7 @@ export default function AdminHistory({ viewerRole = 'admin', hideBillingActions 
 
     setBillingNavigationKey(getHistoryAppointmentKey(appointment));
     window.setTimeout(() => {
-      navigate('/billing', {
+      navigate(billingPath, {
         state: {
           billingAction: {
             invoiceType,

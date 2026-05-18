@@ -163,7 +163,9 @@ const getDoctorNotificationTarget = (target: string): string | null => {
 
   if (normalizedTarget === '/patient-records') return '/doctor/medical-records';
   if (normalizedTarget === '/admin/schedule' || normalizedTarget === '/admin/history' || normalizedTarget === '/schedule') return '/doctor/appointments';
-  if (normalizedTarget === '/inventory' || normalizedTarget === '/inventory-logs' || normalizedTarget === '/inventory-archive') return '/doctor/inventory';
+  if (normalizedTarget === '/inventory') return '/doctor/inventory';
+  if (normalizedTarget === '/inventory-logs') return '/doctor/inventory-logs';
+  if (normalizedTarget === '/inventory-archive') return '/doctor/inventory';
   if (normalizedTarget.startsWith('/doctor/')) return normalizedTarget;
 
   return null;

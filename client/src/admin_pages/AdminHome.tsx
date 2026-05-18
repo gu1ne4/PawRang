@@ -121,7 +121,7 @@ interface DoctorSchedulingResponse {
   error?: string;
 }
 
-type Role = 'Admin' | 'Veterinarian' | 'Clinic Staff' | 'Moderator';
+type Role = 'Admin' | 'Veterinarian' | 'Clinic Staff' | 'Nurse' | 'Moderator';
 type Status = 'Active' | 'Disabled';
 type AccountSortOption = 'nameAZ' | 'nameZA' | 'roleAZ' | 'emailAZ' | 'statusAZ' | 'newest';
 type EmployeeFormErrors = Partial<Record<'firstName' | 'lastName' | 'contact' | 'email' | 'role' | 'branch', string>>;
@@ -158,6 +158,7 @@ const isCompletePhilippineContactNumber = (value: string): boolean => {
 
 const displayEmployeeRole = (value?: string): Role | string => {
   const normalized = (value || '').toLowerCase();
+  if (normalized.includes('nurse')) return 'Nurse';
   if (normalized.includes('reception') || normalized.includes('clinical') || normalized.includes('clinic staff')) return 'Clinic Staff';
   return value || 'Admin';
 };
@@ -887,6 +888,7 @@ const AdminHome: React.FC = () => {
                     <option value="Admin">Admin</option>
                     <option value="Veterinarian">Veterinarian</option>
                     <option value="Clinic Staff">Clinic Staff</option>
+                    <option value="Nurse">Nurse</option>
                   </select>
 
                   <select
@@ -1207,6 +1209,7 @@ const AdminHome: React.FC = () => {
                       <option value="Admin">Admin</option>
                       <option value="Veterinarian">Veterinarian</option>
                       <option value="Clinic Staff">Clinic Staff</option>
+                      <option value="Nurse">Nurse</option>
                     </select>
                   </div>
                   {formErrors.role && <p className="fieldError">{formErrors.role}</p>}
@@ -1381,6 +1384,7 @@ const AdminHome: React.FC = () => {
                       <option value="Admin">Admin</option>
                       <option value="Veterinarian">Veterinarian</option>
                       <option value="Clinic Staff">Clinic Staff</option>
+                      <option value="Nurse">Nurse</option>
                     </select>
                   </div>
                   {formErrors.role && <p className="fieldError">{formErrors.role}</p>}

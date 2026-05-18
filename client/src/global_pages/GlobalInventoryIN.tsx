@@ -6,6 +6,14 @@ import ImportButton from '../reusable_components/ImportBtn';
 import ExportButton  from '../reusable_components/ExportBtn';
 import { downloadInventoryTemplate } from './pdf_generation/InventoryExcel';
 import { parsePetShieldInventoryTemplate } from './inventoryImport';
+import {
+  findBatchBySelectValue,
+  getBatchDisplayNumber,
+  getBatchExpirationStatus,
+  getBatchSelectValue,
+  getProductBatches,
+  type InventoryBatch,
+} from './inventoryBatchUtils';
 
 import './GlobalInventoryStyles2.css';
 import { 
@@ -53,6 +61,11 @@ interface Product {
   maxQuantity?: number;
   useMaxQuantity?: boolean;
   criticalStockLevel?: number;
+  batches?: any[];
+  activeBatches?: any[];
+  active_batches?: any[];
+  inventoryBatches?: any[];
+  inventory_batches?: any[];
 }
 
 interface InventoryTransaction {
@@ -97,11 +110,18 @@ interface BulkItem {
   quantity: number;
   unitCost: number;
   availableStock: number;
+  batches: InventoryBatch[];
+  batchSelectorValue?: string;
+  inventoryBatchId?: string | number;
+  batchNumber?: string;
+  batchExpirationDate?: string;
+  batchExpirationNA?: boolean;
+  batchReceivedDate?: string;
 }
 
 type SortOption = 'stockLowToHigh' | 'stockHighToLow' | 'expirationEarliest' | 'expirationLatest' | 'alphabeticalAZ' | 'alphabeticalZA';
 type ViewMode = 'list' | 'add' | 'edit';
-type Category = 'Pet Supplies' | 'Deworming' | 'Vitamins' | 'Food' | 'Accessories' | 'Medication';
+type Category = 'Pet Supplies' | 'Deworming' | 'Vitamins' | 'Food' | 'Accessories' | 'Medication' | 'Vaccine' | 'Supplies';
 type UnitOption =
   | 'Capsule'
   | 'Tablet'
@@ -129,7 +149,7 @@ const SORT_OPTIONS = [
   { value: 'alphabeticalZA', label: 'Alphabetical Z-A' }
 ];
 
-const CATEGORIES: Category[] = ['Pet Supplies', 'Deworming', 'Vitamins', 'Food', 'Accessories', 'Medication'];
+const CATEGORIES: Category[] = ['Pet Supplies', 'Deworming', 'Vitamins', 'Food', 'Accessories', 'Medication', 'Vaccine', 'Supplies'];
 const UNIT_OPTIONS: UnitOption[] = ['Capsule', 'Tablet', 'Bottle', 'Piece', 'Pack', 'Box', 'Vial', 'Tube', 'Sachet', 'Can', 'Bag', 'mL', 'L', 'Gram', 'Kg', 'Others'];
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
@@ -156,6 +176,10 @@ const BRANCH_NAME_BY_ID: Record<number, string> = {
   1: 'Taguig',
   2: 'Las Pinas',
 };
+
+const todayIsoDate = (): string => new Date().toISOString().split('T')[0];
+const getBatchNumberExample = (itemCode?: string): string =>
+  `${(itemCode || 'ITEMCODE').trim() || 'ITEMCODE'}-${new Date().getFullYear()}-001`;
 
 const MOCK_PRODUCTS: Product[] = [
   {
@@ -822,7 +846,14 @@ useEffect(() => {
         unit: product?.unit || 'Piece',
         quantity: 0,
         unitCost: product?.basePrice || 0,
-        availableStock: product?.stockCount || 0
+        availableStock: product?.stockCount || 0,
+        batches: getProductBatches(product),
+        batchSelectorValue: '',
+        inventoryBatchId: undefined,
+        batchNumber: '',
+        batchExpirationDate: '',
+        batchExpirationNA: false,
+        batchReceivedDate: todayIsoDate()
       };
     });
     
@@ -850,6 +881,48 @@ useEffect(() => {
     const newQty = Math.min(Math.max(0, value), 999999);
     newItems[index].quantity = newQty;
     setTransactionItems(newItems);
+  };
+
+  const handleStockInBatchSelectionChange = (index: number, value: string) => {
+    setTransactionItems(prev => {
+      const next = [...prev];
+      const item = { ...next[index] };
+      item.batchSelectorValue = value;
+
+      if (!value) {
+        item.inventoryBatchId = undefined;
+        item.batchNumber = '';
+        item.batchExpirationDate = '';
+        item.batchExpirationNA = false;
+      } else if (value === 'new') {
+        item.inventoryBatchId = undefined;
+        item.batchNumber = '';
+        item.batchExpirationDate = '';
+        item.batchExpirationNA = false;
+        item.batchReceivedDate = item.batchReceivedDate || todayIsoDate();
+      } else {
+        const batch = findBatchBySelectValue(item.batches, value);
+        item.inventoryBatchId = batch?.id;
+        item.batchNumber = batch?.batchNumber || '';
+        item.batchExpirationDate = batch?.expirationDate || '';
+        item.batchExpirationNA = !!batch?.expirationNA;
+      }
+
+      next[index] = item;
+      return next;
+    });
+  };
+
+  const updateStockInBatchField = (index: number, field: keyof BulkItem, value: string | boolean) => {
+    setTransactionItems(prev => {
+      const next = [...prev];
+      const updatedItem = { ...next[index], [field]: value };
+      if (field === 'batchExpirationNA' && value === true) {
+        updatedItem.batchExpirationDate = '';
+      }
+      next[index] = updatedItem;
+      return next;
+    });
   };
 
 const saveTransaction = async () => {
@@ -911,11 +984,21 @@ const saveTransaction = async () => {
         supplier: transactionSupplier.trim(),
         notes: transactionNotes.trim(),
         processedBy: currentUser?.id || currentUser?.pk,
-        items: transactionItems.map(item => ({
-          productId: item.productId,
-          quantity: item.quantity,
-          unitCost: item.unitCost,
-        })),
+        items: transactionItems.map(item => {
+          const batchNumber = (item.batchNumber || '').trim();
+          const batchExpirationDate = item.batchExpirationNA ? '' : (item.batchExpirationDate || '').trim();
+          return {
+            productId: item.productId,
+            quantity: item.quantity,
+            unitCost: item.unitCost,
+            ...(item.inventoryBatchId ? { inventory_batch_id: item.inventoryBatchId } : {}),
+            ...(batchNumber ? { batch_number: batchNumber, batchNumber } : {}),
+            ...(batchExpirationDate ? { expiration_date: batchExpirationDate, batch_expiration_date: batchExpirationDate, batchExpirationDate } : {}),
+            ...(item.batchExpirationNA ? { expiration_na: true, batch_expiration_na: true, expirationNA: true } : {}),
+            ...(item.batchReceivedDate ? { received_date: item.batchReceivedDate, receivedDate: item.batchReceivedDate } : {}),
+            ...(transactionSupplier.trim() ? { supplier: transactionSupplier.trim() } : {}),
+          };
+        }),
       }),
     });
 
@@ -1829,7 +1912,7 @@ const saveTransaction = async () => {
                   </div>
 
                   <div className="invFormGroup">
-                    <label>Expiration Date <span className="invRequired">*</span></label>
+                    <label>Item-Level Default Expiration Date <span className="invRequired">*</span></label>
                     <input 
                       type="date"
                       value={formExpirationDate ? (() => {
@@ -1855,6 +1938,9 @@ const saveTransaction = async () => {
                       disabled={formExpirationNA}
                       className={`invFormInput ${formErrors.expirationDate ? 'invError' : ''} ${formExpirationNA ? 'invDisabled' : ''}`}
                     />
+                    <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+                      Used as the product default. Batch expiration is set when receiving stock and is more specific.
+                    </div>
                     <div className="invCheckboxGroup">
                       <label className="invCheckboxLabel">
                         <input
@@ -1975,6 +2061,7 @@ const saveTransaction = async () => {
                   <th>Product Name</th>
                   <th>Unit Cost</th>
                   <th>Current Stock</th>
+                  <th>Batch</th>
                   <th>Quantity to Receive</th>
                   <th>Subtotal</th>
                 </tr>
@@ -2009,6 +2096,79 @@ const saveTransaction = async () => {
                         <td>{item.productName}</td>
                         <td>₱{item.unitCost.toLocaleString()}</td>
                         <td>{item.availableStock}</td>
+                        <td style={{ minWidth: '240px' }}>
+                          <select
+                            className="invFormSelect"
+                            value={item.batchSelectorValue || ''}
+                            onChange={(e) => handleStockInBatchSelectionChange(originalIndex, e.target.value)}
+                          >
+                            <option value="">Legacy default batch</option>
+                            {item.batches.map((batch) => (
+                              <option key={getBatchSelectValue(batch)} value={getBatchSelectValue(batch)}>
+                                {getBatchDisplayNumber(batch)} - {batch.quantityOnHand} on hand - {getBatchExpirationStatus(batch)}
+                              </option>
+                            ))}
+                            <option value="new">New batch number</option>
+                          </select>
+                          <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+                            Leave blank to use default legacy batch.
+                          </div>
+                          {item.batchSelectorValue === 'new' && (
+                            <div style={{ display: 'grid', gap: '6px', marginTop: '8px' }}>
+                              <label style={{ fontSize: '11px', color: '#334155', fontWeight: 700 }}>
+                                Batch Number
+                              </label>
+                              <input
+                                type="text"
+                                className="invFormInput"
+                                value={item.batchNumber || ''}
+                                onChange={(e) => updateStockInBatchField(originalIndex, 'batchNumber', e.target.value)}
+                                placeholder="Enter batch number"
+                                maxLength={50}
+                              />
+                              <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                Recommended format: ITEMCODE-YYYY-001
+                                <br />
+                                Example: {getBatchNumberExample(item.productCode)}
+                              </div>
+                              <label style={{ fontSize: '11px', color: '#334155', fontWeight: 700 }}>
+                                Batch Expiration Date
+                              </label>
+                              <input
+                                type="date"
+                                className={`invFormInput ${item.batchExpirationNA ? 'invDisabled' : ''}`}
+                                value={item.batchExpirationDate || ''}
+                                onChange={(e) => updateStockInBatchField(originalIndex, 'batchExpirationDate', e.target.value)}
+                                disabled={!!item.batchExpirationNA}
+                              />
+                              <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                Expiration date for this received batch.
+                              </div>
+                              <label style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '11px', color: '#475569' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!item.batchExpirationNA}
+                                  onChange={(e) => updateStockInBatchField(originalIndex, 'batchExpirationNA', e.target.checked)}
+                                />
+                                No expiration
+                              </label>
+                              <label style={{ fontSize: '11px', color: '#334155', fontWeight: 700 }}>
+                                Received Date
+                              </label>
+                              <input
+                                type="date"
+                                className="invFormInput invDisabled"
+                                value={item.batchReceivedDate || todayIsoDate()}
+                                readOnly
+                                disabled
+                                title="Received date is automatically set to today"
+                              />
+                              <div style={{ fontSize: '11px', color: '#64748b' }}>
+                                Auto-filled to today's date and sent with the stock receipt.
+                              </div>
+                            </div>
+                          )}
+                        </td>
                         <td>
                           <div className="invModalQuantityControls">
                             <input
@@ -2063,7 +2223,7 @@ const saveTransaction = async () => {
                   item.productName.toLowerCase().includes(modalSearchQuery.toLowerCase())
                 ).length === 0 && (
                   <tr>
-                    <td colSpan={7} className="invNoSearchResults">
+                    <td colSpan={8} className="invNoSearchResults">
                       No products found matching "{modalSearchQuery}"
                     </td>
                   </tr>
@@ -2071,7 +2231,7 @@ const saveTransaction = async () => {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={6} className="invBulkTotalLabel">Total:</td>
+                  <td colSpan={7} className="invBulkTotalLabel">Total:</td>
                   <td className="invBulkTotalValue">
                     ₱{transactionItems.reduce((sum, item) => sum + (item.quantity * item.unitCost), 0).toLocaleString()}
                   </td>

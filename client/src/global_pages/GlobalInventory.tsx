@@ -11,6 +11,12 @@ import ExportButton  from '../reusable_components/ExportBtn';
 import { parsePetShieldInventoryTemplate } from './inventoryImport';
 import { recordAuditLog } from '../auditLog';
 import { RiListSettingsLine } from "react-icons/ri";
+import {
+  getBatchDisplayNumber,
+  getBatchExpirationStatus,
+  getBatchSummary,
+  getProductBatches,
+} from './inventoryBatchUtils';
 
 import { 
   IoSearchSharp,
@@ -51,6 +57,11 @@ interface Product {
   useMaxQuantity?: boolean;
   criticalStockLevel?: number;
   isArchived?: boolean;
+  batches?: any[];
+  activeBatches?: any[];
+  active_batches?: any[];
+  inventoryBatches?: any[];
+  inventory_batches?: any[];
 }
 
 interface CurrentUser {
@@ -81,7 +92,7 @@ interface FormErrors {
 }
 
 type ViewMode = 'list' | 'add' | 'edit';
-type Category = 'Pet Supplies' | 'Deworming' | 'Vitamins' | 'Food' | 'Accessories' | 'Medication';
+type Category = 'Pet Supplies' | 'Deworming' | 'Vitamins' | 'Food' | 'Accessories' | 'Medication' | 'Vaccine' | 'Supplies';
 type SortOption = 'stockLowToHigh' | 'stockHighToLow' | 'expirationEarliest' | 'expirationLatest' | 'alphabeticalAZ' | 'alphabeticalZA';
 
 const SORT_OPTIONS = [
@@ -109,7 +120,7 @@ const withInventoryUserId = (url: string): string => {
   if (!userId) return url;
   return `${url}${url.includes('?') ? '&' : '?'}userId=${encodeURIComponent(userId)}`;
 };
-const CATEGORIES: Category[] = ['Pet Supplies', 'Deworming', 'Vitamins', 'Food', 'Accessories', 'Medication'];
+const CATEGORIES: Category[] = ['Pet Supplies', 'Deworming', 'Vitamins', 'Food', 'Accessories', 'Medication', 'Vaccine', 'Supplies'];
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
 const BRANCH_ID_BY_NAME: Record<string, number> = {
   All: 1,
@@ -370,6 +381,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
   const [filterHovered, setFilterHovered] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
+  const [expandedBatchProducts, setExpandedBatchProducts] = useState<Set<number>>(new Set());
   const [showLowStockSidebar, setShowLowStockSidebar] = useState<boolean>(false);
   const [showExpiringSidebar, setShowExpiringSidebar] = useState<boolean>(false);
   const [activeFilter, setActiveFilter] = useState<string>('');
@@ -955,6 +967,18 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
       newSelected.add(id);
     }
     setSelectedProducts(newSelected);
+  };
+
+  const toggleBatchDetails = (id: number) => {
+    setExpandedBatchProducts(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   // Toggle all products
@@ -1612,6 +1636,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                         <th>Base Price</th>
                         <th>Selling Price</th>
                         <th>Stock</th>
+                        <th>Batches</th>
                         <th>Expiration</th>
                         <th>Status</th>
                         <th>{readOnly ? 'Mode' : 'Actions'}</th>
@@ -1630,10 +1655,13 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                           const isExpiredProduct = isExpired(product.expirationDate, product.expirationNA);
                           const isExpiringProduct = isExpiringSoon(product.expirationDate, product.expirationNA);
                           const isOutOfStock = product.stockCount === 0;
+                          const batches = getProductBatches(product);
+                          const batchSummary = getBatchSummary(product);
+                          const batchDetailsExpanded = expandedBatchProducts.has(productId);
 
                           return (
+                            <React.Fragment key={productId}>
                             <tr 
-                              key={productId} 
                               className={`
                                 ${isExpiredProduct ? 'invExpiredRow' : ''} 
                                 ${isExpiringProduct ? 'invExpiringRow' : ''}
@@ -1662,6 +1690,25 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                               <td>₱{product.sellingPrice.toLocaleString()}</td>
                               <td className={isOutOfStock ? 'invCriticalStockCell' : ''}>
                                 {product.stockCount}
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  <span style={{ fontSize: '12px', color: '#334155', fontWeight: 700 }}>
+                                    {batchSummary.count} batch{batchSummary.count === 1 ? '' : 'es'}
+                                  </span>
+                                  {batchSummary.count > 0 && (
+                                    <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                      {batchSummary.totalStock} in batches
+                                    </span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleBatchDetails(productId)}
+                                    style={{ border: 'none', background: 'transparent', color: '#3d67ee', cursor: 'pointer', padding: 0, textAlign: 'left', fontSize: '11px', fontWeight: 700 }}
+                                  >
+                                    {batchDetailsExpanded ? 'Hide batches' : 'View batches'}
+                                  </button>
+                                </div>
                               </td>
                               <td>
                                 <span className={`invExpirationDate ${
@@ -1696,11 +1743,35 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                                 )}
                               </td>
                             </tr>
+                            {batchDetailsExpanded && (
+                              <tr>
+                                <td colSpan={13} style={{ background: '#f8fafc', padding: '14px 18px' }}>
+                                  {batches.length > 0 ? (
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+                                      {batches.map((batch, batchIndex) => {
+                                        const status = getBatchExpirationStatus(batch);
+                                        return (
+                                          <div key={`${productId}-${batch.id ?? batch.batchNumber}-${batchIndex}`} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px', background: '#fff' }}>
+                                            <div style={{ fontSize: '12px', fontWeight: 800, color: '#1e293b' }}>{getBatchDisplayNumber(batch)}</div>
+                                            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Qty on hand: <strong>{batch.quantityOnHand}</strong></div>
+                                            <div style={{ fontSize: '11px', color: '#64748b' }}>Expires: <strong>{batch.expirationNA ? 'N/A' : (batch.expirationDate || 'N/A')}</strong></div>
+                                            <div style={{ fontSize: '11px', color: status === 'Expired' ? '#dc2626' : status === 'Expiring soon' ? '#d97706' : '#16a34a', fontWeight: 700 }}>{status}</div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : (
+                                    <div style={{ fontSize: '12px', color: '#64748b' }}>No batch records returned for this item.</div>
+                                  )}
+                                </td>
+                              </tr>
+                            )}
+                            </React.Fragment>
                           );
                         })
                       ) : (
                         <tr>
-                          <td colSpan={11} className="invNoData">
+                          <td colSpan={13} className="invNoData">
                             No products found
                           </td>
                         </tr>

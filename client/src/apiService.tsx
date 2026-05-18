@@ -446,6 +446,7 @@ export const apiService = {
     age?: string;
     weight_kg?: string;
     pet_photo_url?: string;
+    color_markings?: string;
     is_vaccinated?: boolean;
     vaccination_urls?: string[];
   }) {
@@ -462,6 +463,7 @@ export const apiService = {
     age: string;
     weight_kg: string;
     pet_photo_url: string;
+    color_markings: string;
     is_vaccinated: boolean;
     vaccination_urls: string[];
   }>) {

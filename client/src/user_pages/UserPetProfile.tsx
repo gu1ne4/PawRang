@@ -36,6 +36,7 @@ interface Pet {
   pet_breed: string;
   pet_gender: string;
   pet_size: string;
+  color_markings?: string | null;
   birthday: string | null;
   age: string;
   weight_kg: string;
@@ -414,6 +415,7 @@ const UserPetProfile: React.FC = () => {
     breed:         '',
     customBreed:   '',
     breedSize:     'Medium' as 'Small' | 'Medium' | 'Large',
+    colorMarkings: '',
     birthday:      '',
     age:           '',
     ageUnknown:    false,
@@ -680,6 +682,7 @@ const UserPetProfile: React.FC = () => {
         age:              addForm.ageUnknown ? undefined : calculateAgeYearsFromBirthday(addForm.birthday) || undefined,
         weight_kg:        addForm.weightUnknown ? undefined : addForm.weight || undefined,
         pet_photo_url:    photoUrl,
+        color_markings:   addForm.colorMarkings.trim(),
         is_vaccinated:    addForm.isVaccinated ?? false,
         vaccination_urls: vaccUrls.length ? vaccUrls : undefined,
       });
@@ -719,6 +722,7 @@ const UserPetProfile: React.FC = () => {
   const resetAddForm = () => {
     setAddForm({
       petName: '', petType: 'Dog', breed: '', customBreed: '', breedSize: 'Medium',
+      colorMarkings: '',
       birthday: '', age: '', ageUnknown: false,
       weight: '', weightUnknown: false, gender: 'Male', isVaccinated: null,
     });
@@ -789,6 +793,7 @@ const UserPetProfile: React.FC = () => {
         weight_kg:     editPet.weight_kg ?? undefined,
         is_vaccinated: editPet.is_vaccinated ?? undefined,
         pet_photo_url: photoUrl          ?? undefined,
+        color_markings: editPet.color_markings?.trim() ?? '',
       });
 
       const freshPets = await fetchPets(currentUser.id);
@@ -1262,6 +1267,7 @@ const UserPetProfile: React.FC = () => {
                 ['Gender',   pet.pet_gender],
                 ['Breed',    pet.pet_breed],
                 ['Size',     pet.pet_size],
+                ['Color/Markings', pet.color_markings || 'Not specified'],
                 ['Birthday', pet.birthday ? formatDate(pet.birthday) : 'Unknown'],
                 ['Age',      formatPetAge(pet.age, pet.birthday)],
                 ['Weight',   pet.weight_kg ? `${pet.weight_kg} kg` : 'Unknown'],
@@ -1520,6 +1526,7 @@ const UserPetProfile: React.FC = () => {
                         ['Gender',   selectedPet.pet_gender],
                         ['Breed',    selectedPet.pet_breed],
                         ['Size',     selectedPet.pet_size],
+                        ['Color/Markings', selectedPet.color_markings || 'Not specified'],
                         ['Birthday', selectedPet.birthday ? formatDate(selectedPet.birthday) : 'Unknown'],
                         ['Age',      formatPetAge(selectedPet.age, selectedPet.birthday)],
                         ['Weight',   selectedPet.weight_kg ? `${selectedPet.weight_kg} kg`    : 'Unknown'],
@@ -1705,6 +1712,20 @@ const UserPetProfile: React.FC = () => {
                     {s}
                   </button>
                 ))}
+              </div>
+
+              {/* Color / Markings */}
+              <label className="form-label">Color/Markings</label>
+              <div className="input-with-counter">
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. Brown with white spots"
+                  value={addForm.colorMarkings}
+                  maxLength={80}
+                  onChange={e => setAddForm(f => ({ ...f, colorMarkings: e.target.value }))}
+                />
+                <span className="char-counter">{addForm.colorMarkings.length}/80</span>
               </div>
 
               {/* Birthday */}
@@ -1902,6 +1923,16 @@ const UserPetProfile: React.FC = () => {
                   </button>
                 ))}
               </div>
+
+              <label className="form-label">Color/Markings</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="e.g. Brown with white spots"
+                value={editPet.color_markings ?? ''}
+                maxLength={80}
+                onChange={e => setEditPet(p => ({ ...p, color_markings: e.target.value }))}
+              />
 
               <label className="form-label">Birthday</label>
               <input

@@ -8,6 +8,14 @@ import { pdf } from '@react-pdf/renderer';
 import { CiReceipt } from "react-icons/ci";
 import { FaFileInvoice } from "react-icons/fa";
 import InvoicePDF from './pdf_generation/InvoicePDF';
+import {
+  findBatchBySelectValue,
+  getBatchDisplayNumber,
+  getBatchExpirationStatus,
+  getBatchSelectValue,
+  getProductBatches,
+  type InventoryBatch,
+} from './inventoryBatchUtils';
 
 import './GlobalBillingStyles.css';
 
@@ -129,6 +137,12 @@ interface BillingSourceService {
 interface ProductItem {
   id: string;
   inventoryItemId?: string | number;
+  inventoryBatchId?: string | number;
+  inventory_batch_id?: string | number;
+  batchNumber?: string;
+  batch_number?: string;
+  batchSelectValue?: string;
+  availableBatches?: InventoryBatch[];
   name: string;
   sku: string;
   description: string;
@@ -241,6 +255,11 @@ interface ModalConfig {
 interface Product {
   id: string;
   inventoryItemId?: string | number;
+  activeBatches?: any[];
+  active_batches?: any[];
+  batches?: any[];
+  inventoryBatches?: any[];
+  inventory_batches?: any[];
   name: string;
   sku: string;
   category: string;
@@ -263,6 +282,12 @@ interface TempSelectedServiceEntry {
   service: Service;
   quantity: number;
   locked?: boolean;
+}
+
+interface TempSelectedProductEntry {
+  product: Product;
+  quantity: number;
+  batchSelectValue?: string;
 }
 
 type ViewMode = 'list' | 'create' | 'details';
@@ -309,6 +334,7 @@ const DEFAULT_SALES_REPORT_SECTIONS: Record<BillingSalesReportSectionKey, boolea
   itemized: true,
   payments: true
 };
+const LOW_BATCH_STOCK_THRESHOLD = 5;
 
 const toDateInputValue = (date: Date): string => {
   const year = date.getFullYear();
@@ -1000,7 +1026,7 @@ const GlobalBilling: React.FC = () => {
   const [productSearchQuery, setProductSearchQuery] = useState<string>('');
   const [selectedProducts, setSelectedProducts] = useState<ProductItem[]>([]);
   const [productCategoryFilter, setProductCategoryFilter] = useState<string>('all');
-  const [tempSelectedProducts, setTempSelectedProducts] = useState<Map<string, { product: Product; quantity: number }>>(new Map());
+  const [tempSelectedProducts, setTempSelectedProducts] = useState<Map<string, TempSelectedProductEntry>>(new Map());
   
   // Discount State
   const [discountType, setDiscountType] = useState<DiscountType>('none');
@@ -1120,6 +1146,89 @@ const GlobalBilling: React.FC = () => {
     : invoiceType === 'walkin'
       ? (selectedWalkin?.prescriptionProductSuggestions || [])
       : [];
+  const hasBatchValue = (value: unknown): boolean =>
+    value !== undefined && value !== null && String(value).trim() !== '';
+  const getProductLineId = (product: Pick<ProductItem, 'id' | 'inventoryItemId'>): string =>
+    String(product.inventoryItemId || product.id);
+  const getProductLineAvailableBatches = (product: ProductItem): InventoryBatch[] => {
+    if (Array.isArray(product.availableBatches) && product.availableBatches.length > 0) {
+      return product.availableBatches;
+    }
+
+    const productId = getProductLineId(product);
+    const catalogMatch = products.find(catalogProduct =>
+      String(catalogProduct.id) === productId ||
+      String(catalogProduct.inventoryItemId || '') === productId
+    );
+
+    return catalogMatch ? getProductBatches(catalogMatch) : [];
+  };
+  const getProductLineBatchSelectValue = (product: ProductItem, batches = getProductLineAvailableBatches(product)): string => {
+    if (product.batchSelectValue) return product.batchSelectValue;
+    if (hasBatchValue(product.inventoryBatchId)) return `id:${product.inventoryBatchId}`;
+    if (hasBatchValue(product.inventory_batch_id)) return `id:${product.inventory_batch_id}`;
+    const batchNumber = product.batchNumber || product.batch_number;
+    if (batchNumber) {
+      const matchingBatch = batches.find(batch => batch.batchNumber === batchNumber);
+      return matchingBatch ? getBatchSelectValue(matchingBatch) : `number:${batchNumber}`;
+    }
+    return '';
+  };
+  const getProductLineSelectedBatch = (product: ProductItem): InventoryBatch | undefined => {
+    const batches = getProductLineAvailableBatches(product);
+    return findBatchBySelectValue(batches, getProductLineBatchSelectValue(product, batches));
+  };
+  const getProductLineBatchNumber = (product: ProductItem): string => {
+    const selectedBatch = getProductLineSelectedBatch(product);
+    return (
+      product.batchNumber ||
+      product.batch_number ||
+      (selectedBatch ? getBatchDisplayNumber(selectedBatch) : '')
+    );
+  };
+  const getBatchOptionLabel = (batch: InventoryBatch): string => {
+    const status = getBatchExpirationStatus(batch);
+    const expirationLabel = batch.expirationNA || !batch.expirationDate ? 'No expiration' : `Exp ${batch.expirationDate}`;
+    return [
+      getBatchDisplayNumber(batch),
+      `${batch.quantityOnHand} available`,
+      expirationLabel,
+      status === expirationLabel ? '' : status,
+    ].filter(Boolean).join(' - ');
+  };
+  const getBatchWarningText = (batch?: InventoryBatch): string => {
+    if (!batch) return '';
+
+    const warnings: string[] = [];
+    const status = getBatchExpirationStatus(batch).toLowerCase();
+    if (status === 'expired') {
+      warnings.push('Selected batch is expired.');
+    } else if (status === 'expiring soon') {
+      warnings.push('Selected batch is near expiry.');
+    }
+    if (batch.quantityOnHand <= LOW_BATCH_STOCK_THRESHOLD) {
+      warnings.push(`Low batch stock: ${batch.quantityOnHand} left.`);
+    }
+
+    return warnings.join(' ');
+  };
+  const getProductBatchPayload = (product: ProductItem): Record<string, string | number> => {
+    const selectedBatch = getProductLineSelectedBatch(product);
+    const inventoryBatchId = product.inventoryBatchId ?? product.inventory_batch_id ?? selectedBatch?.id;
+    const batchNumber = product.batchNumber || product.batch_number || selectedBatch?.batchNumber;
+    const payload: Record<string, string | number> = {};
+
+    if (hasBatchValue(inventoryBatchId)) {
+      payload.inventoryBatchId = inventoryBatchId as string | number;
+      payload.inventory_batch_id = inventoryBatchId as string | number;
+    }
+    if (batchNumber) {
+      payload.batchNumber = batchNumber;
+      payload.batch_number = batchNumber;
+    }
+
+    return payload;
+  };
 
   useEffect(() => {
     if (!showPaymentModal || !selectedInvoice || selectedInvoice.paymentMethod !== 'installment') return;
@@ -1652,12 +1761,17 @@ const GlobalBilling: React.FC = () => {
       return;
     }
 
-    const tempMap = new Map();
+    const tempMap = new Map<string, TempSelectedProductEntry>();
     selectedProducts.forEach(product => {
       const selectedProductId = String(product.inventoryItemId || product.id);
       const foundProduct = products.find(p => String(p.id) === selectedProductId);
       if (foundProduct) {
-        tempMap.set(foundProduct.id, { product: foundProduct, quantity: product.quantity });
+        const batches = getProductBatches(foundProduct);
+        tempMap.set(foundProduct.id, {
+          product: foundProduct,
+          quantity: product.quantity,
+          batchSelectValue: getProductLineBatchSelectValue(product, batches),
+        });
       }
     });
     setTempSelectedProducts(tempMap);
@@ -1683,11 +1797,37 @@ const GlobalBilling: React.FC = () => {
     const existing = newTemp.get(productId);
     if (existing) {
       const product = existing.product;
-      const maxQuantity = product.stock;
+      const selectedBatch = findBatchBySelectValue(getProductBatches(product), existing.batchSelectValue);
+      const maxQuantity = selectedBatch ? selectedBatch.quantityOnHand : product.stock;
+      if (maxQuantity <= 0) {
+        showAlert('error', 'Batch Unavailable', 'The selected batch has no available stock.');
+        return;
+      }
       const newQuantity = Math.min(Math.max(1, quantity), maxQuantity);
       newTemp.set(productId, { ...existing, quantity: newQuantity });
       setTempSelectedProducts(newTemp);
     }
+  };
+
+  const updateTempProductBatch = (productId: string, batchSelectValue: string) => {
+    const newTemp = new Map(tempSelectedProducts);
+    const existing = newTemp.get(productId);
+    if (!existing) return;
+
+    const selectedBatch = findBatchBySelectValue(getProductBatches(existing.product), batchSelectValue);
+    if (selectedBatch && selectedBatch.quantityOnHand <= 0) {
+      showAlert('error', 'Batch Unavailable', 'The selected batch has no available stock.');
+      return;
+    }
+
+    const maxQuantity = selectedBatch ? selectedBatch.quantityOnHand : existing.product.stock;
+    const quantity = maxQuantity > 0 ? Math.min(existing.quantity, maxQuantity) : existing.quantity;
+    newTemp.set(productId, {
+      ...existing,
+      quantity,
+      batchSelectValue,
+    });
+    setTempSelectedProducts(newTemp);
   };
   
   const removeTempProduct = (productId: string) => {
@@ -1698,16 +1838,35 @@ const GlobalBilling: React.FC = () => {
   
   const confirmProducts = () => {
     const newProducts: ProductItem[] = [];
-    tempSelectedProducts.forEach(({ product, quantity }) => {
+    for (const { product, quantity, batchSelectValue } of tempSelectedProducts.values()) {
+      const batches = getProductBatches(product);
+      const selectedBatch = findBatchBySelectValue(batches, batchSelectValue);
+      if (selectedBatch && quantity > selectedBatch.quantityOnHand) {
+        showAlert(
+          'error',
+          'Batch Stock Limit',
+          `${product.name} quantity cannot exceed selected batch stock (${selectedBatch.quantityOnHand}).`
+        );
+        return;
+      }
+
       const existingProduct = selectedProducts.find(existing =>
         String(existing.inventoryItemId || existing.id) === String(product.id) ||
         existing.name.toLowerCase() === product.name.toLowerCase()
       );
       const unitPrice = existingProduct?.unitPrice ?? product.price;
+      const batchNumber = selectedBatch?.batchNumber || undefined;
+      const inventoryBatchId = selectedBatch?.id;
 
       newProducts.push({
         id: String(existingProduct?.inventoryItemId || existingProduct?.id || product.id),
         inventoryItemId: existingProduct?.inventoryItemId || existingProduct?.id || product.id,
+        inventoryBatchId,
+        inventory_batch_id: inventoryBatchId,
+        batchNumber,
+        batch_number: batchNumber,
+        batchSelectValue: selectedBatch ? getBatchSelectValue(selectedBatch) : '',
+        availableBatches: batches,
         name: product.name,
         sku: product.sku,
         description: existingProduct?.description ?? product.description,
@@ -1717,7 +1876,7 @@ const GlobalBilling: React.FC = () => {
         category: normalizeProductCategory(product.category),
         stock: product.stock
       });
-    });
+    }
     setSelectedProducts(newProducts);
     if (newProducts.length > 0) {
       clearFormErrors('lineItems');
@@ -1753,8 +1912,22 @@ const GlobalBilling: React.FC = () => {
 
   const updateProductQuantity = (id: string, quantity: number) => {
     if (quantity < 1) return;
+    const targetProduct = selectedProducts.find(p => getProductLineId(p) === id);
+    if (!targetProduct) return;
+
+    const selectedBatch = getProductLineSelectedBatch(targetProduct);
+    const maxQuantity = selectedBatch ? selectedBatch.quantityOnHand : (targetProduct.stock ?? 0);
+    if (selectedBatch && maxQuantity <= 0) {
+      showAlert('error', 'Batch Unavailable', 'The selected batch has no available stock.');
+      return;
+    }
+
+    const nextQuantity = maxQuantity && maxQuantity > 0
+      ? Math.min(quantity, maxQuantity)
+      : quantity;
+
     setSelectedProducts(prev => prev.map(p => 
-      String(p.inventoryItemId || p.id) === id ? { ...p, quantity, total: p.unitPrice * quantity } : p
+      getProductLineId(p) === id ? { ...p, quantity: nextQuantity, total: p.unitPrice * nextQuantity } : p
     ));
   };
   
@@ -1767,6 +1940,40 @@ const GlobalBilling: React.FC = () => {
     setSelectedProducts(prev => prev.map(p => 
       String(p.inventoryItemId || p.id) === id ? { ...p, unitPrice: newPrice, total: p.quantity * newPrice } : p
     ));
+  };
+
+  const updateSelectedProductBatch = (id: string, batchSelectValue: string) => {
+    const targetProduct = selectedProducts.find(p => getProductLineId(p) === id);
+    if (!targetProduct) return;
+
+    const batches = getProductLineAvailableBatches(targetProduct);
+    const selectedBatch = findBatchBySelectValue(batches, batchSelectValue);
+    if (selectedBatch && selectedBatch.quantityOnHand <= 0) {
+      showAlert('error', 'Batch Unavailable', 'The selected batch has no available stock.');
+      return;
+    }
+
+    const inventoryBatchId = selectedBatch?.id;
+    const batchNumber = selectedBatch?.batchNumber || undefined;
+    const maxQuantity = selectedBatch ? selectedBatch.quantityOnHand : (targetProduct.stock ?? 0);
+    const nextQuantity = maxQuantity && maxQuantity > 0
+      ? Math.min(targetProduct.quantity, maxQuantity)
+      : targetProduct.quantity;
+
+    setSelectedProducts(prev => prev.map(product => (
+      getProductLineId(product) === id
+        ? {
+            ...product,
+            inventoryBatchId,
+            inventory_batch_id: inventoryBatchId,
+            batchNumber,
+            batch_number: batchNumber,
+            batchSelectValue,
+            quantity: nextQuantity,
+            total: product.unitPrice * nextQuantity,
+          }
+        : product
+    )));
   };
 
   const isPrescriptionSuggestionSelected = (suggestion: PrescriptionProductSuggestion): boolean => {
@@ -1784,11 +1991,17 @@ const GlobalBilling: React.FC = () => {
           return prev;
         }
 
+        const catalogProduct = products.find(product =>
+          String(product.id) === suggestionId ||
+          String(product.inventoryItemId || '') === suggestionId
+        );
+
         return [
           ...prev,
           {
             id: suggestionId,
             inventoryItemId: suggestion.inventoryItemId || suggestion.id,
+            availableBatches: catalogProduct ? getProductBatches(catalogProduct) : [],
             name: suggestion.name,
             sku: suggestion.sku,
             description: suggestion.description,
@@ -1929,6 +2142,14 @@ const GlobalBilling: React.FC = () => {
       nextErrors.initialPaymentReference = `${getPaymentReferenceLabel(initialPaymentMethod)} must contain numbers only.`;
     }
 
+    for (const product of selectedProducts) {
+      const selectedBatch = getProductLineSelectedBatch(product);
+      if (selectedBatch && product.quantity > selectedBatch.quantityOnHand) {
+        nextErrors.lineItems = `${product.name} quantity cannot exceed selected batch stock (${selectedBatch.quantityOnHand}).`;
+        break;
+      }
+    }
+
     if (Object.keys(nextErrors).length > 0) {
       setFormErrors(nextErrors);
       showAlert(
@@ -1988,6 +2209,7 @@ const GlobalBilling: React.FC = () => {
           quantity: product.quantity,
           unitPrice: product.unitPrice,
           category: product.category,
+          ...getProductBatchPayload(product),
         })),
         discountType,
         discountValue: discountType === 'custom' ? customDiscountValue : undefined,
@@ -3491,26 +3713,63 @@ const GlobalBilling: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedProducts.map(product => (
+                      {selectedProducts.map(product => {
+                        const batches = getProductLineAvailableBatches(product);
+                        const selectedBatchValue = getProductLineBatchSelectValue(product, batches);
+                        const selectedBatch = findBatchBySelectValue(batches, selectedBatchValue);
+                        const batchWarning = getBatchWarningText(selectedBatch);
+                        const productLineId = getProductLineId(product);
+
+                        return (
                         <tr key={product.id}>
                           <td>
                             <strong>{product.name}</strong>
                             <div className="billingServiceCategory">{product.sku}</div>
+                            {batches.length > 0 && (
+                              <div className="billingBatchSelectorBlock">
+                                <label className="billingBatchLabel">Batch</label>
+                                <select
+                                  value={selectedBatchValue}
+                                  onChange={(e) => updateSelectedProductBatch(productLineId, e.target.value)}
+                                  className="billingBatchSelect"
+                                >
+                                  <option value="">Use backend fallback batch</option>
+                                  {batches.map(batch => (
+                                    <option
+                                      key={getBatchSelectValue(batch)}
+                                      value={getBatchSelectValue(batch)}
+                                      disabled={batch.quantityOnHand <= 0}
+                                    >
+                                      {getBatchOptionLabel(batch)}
+                                    </option>
+                                  ))}
+                                </select>
+                                {selectedBatch ? (
+                                  <div className="billingBatchMeta">
+                                    Available: {selectedBatch.quantityOnHand} | {getBatchExpirationStatus(selectedBatch)}
+                                  </div>
+                                ) : (
+                                  <div className="billingBatchMeta">No batch selected. Backend fallback deduction is allowed.</div>
+                                )}
+                                {batchWarning && <div className="billingBatchWarning">{batchWarning}</div>}
+                              </div>
+                            )}
                           </td>
                           <td>
                             <input
                               type="number"
                               value={product.quantity}
-                              onChange={(e) => updateProductQuantity(product.id, parseInt(e.target.value) || 1)}
+                              onChange={(e) => updateProductQuantity(productLineId, parseInt(e.target.value) || 1)}
                               className="billingQtyInput"
                               min="1"
+                              max={selectedBatch ? selectedBatch.quantityOnHand : product.stock}
                             />
                           </td>
                           <td>
                             <input
                               type="number"
                               value={product.unitPrice}
-                              onChange={(e) => updateProductPrice(product.id, parseFloat(e.target.value) || 0)}
+                              onChange={(e) => updateProductPrice(productLineId, parseFloat(e.target.value) || 0)}
                               className="billingPriceInput"
                               min="0"
                               step="0.01"
@@ -3518,12 +3777,13 @@ const GlobalBilling: React.FC = () => {
                           </td>
                           <td className="billingItemTotal">₱{product.total.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</td>
                           <td>
-                            <button className="billingRemoveItemBtn" onClick={() => removeProduct(product.id)}>
+                            <button className="billingRemoveItemBtn" onClick={() => removeProduct(productLineId)}>
                               <IoTrashBinOutline size={16} />
                             </button>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                       {selectedProducts.length === 0 && (
                         <tr>
                           <td colSpan={5} className="billingNoItems">
@@ -3932,6 +4192,9 @@ const GlobalBilling: React.FC = () => {
                             <strong>{product.name}</strong><br/>
                             {product.sku && (
                               <div className="billingDrawerCategory">{product.sku}</div>
+                            )}
+                            {getProductLineBatchNumber(product) && (
+                              <div className="billingDrawerBatch">Batch: {getProductLineBatchNumber(product)}</div>
                             )}
                           </td>
                           <td>{product.quantity}</td>
@@ -4517,6 +4780,8 @@ const GlobalBilling: React.FC = () => {
                     filteredProducts.map(product => {
                       const isSelected = tempSelectedProducts.has(product.id);
                       const isOutOfStock = product.stock === 0;
+                      const batches = getProductBatches(product);
+                      const batchStock = batches.reduce((sum, batch) => sum + batch.quantityOnHand, 0);
                       return (
                         <div key={product.id} className={`billingServiceCard ${isSelected ? 'selected' : ''} ${isOutOfStock ? 'out-of-stock' : ''}`}>
                           <div className="billingServiceCardInfo">
@@ -4528,6 +4793,11 @@ const GlobalBilling: React.FC = () => {
                             <div className="billingServiceCardDesc">{product.description}</div>
                             <div className="billingServiceCardPrice">₱{product.price.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</div>
                             <div className="billingProductCardStock">Stock: {product.stock} left</div>
+                            {batches.length > 0 && (
+                              <div className="billingProductCardBatch">
+                                {batches.length} batch{batches.length === 1 ? '' : 'es'} | Batch stock: {batchStock}
+                              </div>
+                            )}
                           </div>
                           <button 
                             className="billingServiceCardAddBtn"
@@ -4557,7 +4827,13 @@ const GlobalBilling: React.FC = () => {
                 
                 <div className="billingSummaryItems">
                   {tempSelectedProducts.size > 0 ? (
-                    Array.from(tempSelectedProducts.entries()).map(([id, { product, quantity }]) => (
+                    Array.from(tempSelectedProducts.entries()).map(([id, { product, quantity, batchSelectValue }]) => {
+                      const batches = getProductBatches(product);
+                      const selectedBatch = findBatchBySelectValue(batches, batchSelectValue);
+                      const batchWarning = getBatchWarningText(selectedBatch);
+                      const maxQuantity = selectedBatch ? selectedBatch.quantityOnHand : product.stock;
+
+                      return (
                       <div key={id} className="billingSummaryItem">
                         <div className="billingSummaryItemInfo">
                           <div className="billingSummaryItemNameWithIcon">
@@ -4576,11 +4852,40 @@ const GlobalBilling: React.FC = () => {
                             <button 
                               className="billingQtyBtnSmall"
                               onClick={() => updateTempProductQuantity(id, quantity + 1)}
-                              disabled={quantity >= product.stock}
+                              disabled={maxQuantity <= 0 || quantity >= maxQuantity}
                             >
                               <IoAdd size={10} />
                             </button>
                           </div>
+                          {batches.length > 0 && (
+                            <div className="billingBatchSelectorBlock">
+                              <label className="billingBatchLabel">Batch</label>
+                              <select
+                                value={batchSelectValue || ''}
+                                onChange={(e) => updateTempProductBatch(id, e.target.value)}
+                                className="billingBatchSelect"
+                              >
+                                <option value="">Use backend fallback batch</option>
+                                {batches.map(batch => (
+                                  <option
+                                    key={getBatchSelectValue(batch)}
+                                    value={getBatchSelectValue(batch)}
+                                    disabled={batch.quantityOnHand <= 0}
+                                  >
+                                    {getBatchOptionLabel(batch)}
+                                  </option>
+                                ))}
+                              </select>
+                              {selectedBatch ? (
+                                <div className="billingBatchMeta">
+                                  Available: {selectedBatch.quantityOnHand} | {getBatchExpirationStatus(selectedBatch)}
+                                </div>
+                              ) : (
+                                <div className="billingBatchMeta">Leave blank to let backend choose a batch.</div>
+                              )}
+                              {batchWarning && <div className="billingBatchWarning">{batchWarning}</div>}
+                            </div>
+                          )}
                         </div>
                         <div className="billingSummaryItemRight">
                           <span className="billingSummaryItemPrice">₱{(product.price * quantity).toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
@@ -4589,7 +4894,8 @@ const GlobalBilling: React.FC = () => {
                           </button>
                         </div>
                       </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <div className="billingSummaryEmpty">
                       <p>No products selected</p>
