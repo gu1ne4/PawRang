@@ -64,12 +64,12 @@ html, body {
 }
 
 .invBlueIcon {
-  color: #3d67ee;
+  color: #0a1156;
 }
 
 .invBlueText {
   font-size: 16px;
-  color: #3d67ee;
+  color: #0a1156;
   font-weight: 620;
   margin-left: 10px;
 }
@@ -175,7 +175,7 @@ html, body {
 
 /* Background Colors for Analytics Icons */
 .invBlueBg {
-  background: linear-gradient(135deg, #3db6ee, #3d67ee);
+  background: linear-gradient(135deg, #0b1732, #0a1156);
 }
 
 .invRedBg {
@@ -240,11 +240,11 @@ html, body {
 }
 
 .invIconDefault {
-  color: #3d67ee;
+  color: #0a1156;
 }
 
 .invIconActive {
-  color: #afccf8;
+  color: #fa2b24;
 }
 
 .invSearchInput {
@@ -373,13 +373,13 @@ html, body {
 }
 
 .invClearFilterBtn {
-  background-color: #3d67ee;
+  background-color: #0a1156;
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 5px;
   height: 30px;
-  border: 1px solid #3d67ee;
+  border: 1px solid #0a1156;
   border-radius: 8px;
   padding: 0 10px;
   color: white;
@@ -476,7 +476,7 @@ html, body {
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: #3d67ee;
+  accent-color: #0a1156;
   border-radius: 4px;
 }
 
@@ -526,16 +526,16 @@ html, body {
 
 .invPaginationBtn {
   padding: 8px 16px;
-  border: 1px solid #3d67ee;
+  border: 1px solid #0a1156;
   background-color: white;
-  color: #3d67ee;
+  color: #0a1156;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .invPaginationBtn:hover:not(:disabled) {
-  background-color: #3d67ee;
+  background-color: #0a1156;
   color: white;
   transform: translateY(-1px);
   box-shadow: 0 2px 5px rgba(61, 103, 238, 0.3);
@@ -629,7 +629,7 @@ html, body {
 
 .invFormInput:focus {
   outline: none;
-  border-color: #3d67ee;
+  border-color: #0a1156;
   box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.1);
 }
 
@@ -645,7 +645,7 @@ html, body {
 
 .invFormSelect:focus {
   outline: none;
-  border-color: #3d67ee;
+  border-color: #0a1156;
   box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.1);
 }
 
@@ -687,7 +687,7 @@ html, body {
 
 .invSubmitBtn {
   padding: 10px 30px;
-  background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9);
+  background: linear-gradient(135deg, #0b1732, #0a1156, #0818a0);
   border: none;
   border-radius: 8px;
   font-size: 14px;
@@ -748,7 +748,7 @@ html, body {
 
 .invPriceInput:focus {
   outline: none;
-  border-color: #3d67ee;
+  border-color: #0a1156;
   box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.1);
 }
 
@@ -767,14 +767,14 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #3d67ee;
+  color: #0a1156;
   font-size: 24px;
   transition: all 0.2s ease;
 }
 
 .invStockBtn:hover:not(:disabled) {
   transform: scale(1.1);
-  color: #0738D9;
+  color: #0818a0;
 }
 
 .invStockBtn:disabled {
@@ -794,7 +794,7 @@ html, body {
 
 .invStockInput:focus:not(:disabled) {
   outline: none;
-  border-color: #3d67ee;
+  border-color: #0a1156;
   box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.1);
 }
 
@@ -835,7 +835,7 @@ html, body {
   width: 40px;
   height: 40px;
   border: 4px solid #f3f3f3;
-  border-top: 4px solid #3d67ee;
+  border-top: 4px solid #0a1156;
   border-radius: 50%;
   animation: invSpin 1s linear infinite;
 }
@@ -934,7 +934,7 @@ html, body {
 }
 
 .invConfirmAlertBtn {
-  background-color: #3d67ee;
+  background-color: #0a1156;
   color: white;
 }
 
@@ -1075,7 +1075,7 @@ html, body {
 }
 
 .invSidebarItemArrow {
-  color: #3d67ee;
+  color: #0a1156;
   font-size: 18px;
   opacity: 0;
   transition: opacity 0.2s ease;
@@ -1104,12 +1104,12 @@ html, body {
 }
 
 .invSidebarContent::-webkit-scrollbar-thumb {
-  background: #3d67ee;
+  background: #0a1156;
   border-radius: 3px;
 }
 
 .invSidebarContent::-webkit-scrollbar-thumb:hover {
-  background: #0738D9;
+  background: #0818a0;
 }
 
 .invStockCritical {
@@ -1375,7 +1375,7 @@ html, body {
 
 .invStockInput:focus:not(:disabled) {
   outline: none;
-  border-color: #3d67ee;
+  border-color: #0a1156;
   box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.1);
 }
 
@@ -1532,7 +1532,7 @@ html, body {
 .invBranchLabel {
   font-size: 14px;
   font-weight: 500;
-  color: #3d67ee;
+  color: #0a1156;
   margin-right: 10px;
 }
 
@@ -1550,13 +1550,13 @@ html, body {
 }
 
 .invBranchSelect:hover {
-  border-color: #3d67ee;
+  border-color: #0a1156;
   box-shadow: 0 2px 4px rgba(61, 103, 238, 0.1);
 }
 
 .invBranchSelect:focus {
   outline: none;
-  border-color: #3d67ee;
+  border-color: #0a1156;
   box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.1);
 }
 
@@ -1635,7 +1635,7 @@ html, body {
 }
 
 .invBodyContainer::-webkit-scrollbar-thumb {
-  background: #3d67ee;
+  background: #0a1156;
   border-radius: 10px;
 }
 
@@ -1653,12 +1653,12 @@ html, body {
 }
 
 .invBlueIcon {
-  color: #3d67ee;
+  color: #0a1156;
 }
 
 .invBlueText {
   font-size: 16px;
-  color: #3d67ee;
+  color: #0a1156;
   font-weight: 620;
   margin-left: 10px;
 }
@@ -1688,7 +1688,7 @@ html, body {
 }
 
 .invBranchSelect:hover {
-  border-color: #3d67ee;
+  border-color: #0a1156;
 }
 
 /* ========================================= */
@@ -1734,7 +1734,7 @@ html, body {
 }
 
 .invBlueBg {
-  background: linear-gradient(135deg, #3db6ee, #3d67ee);
+  background: linear-gradient(135deg, #0b1732, #0a1156);
 }
 
 .invRedBg {
@@ -1844,11 +1844,11 @@ html, body {
 }
 
 .invIconDefault {
-  color: #3d67ee;
+  color: #0a1156;
 }
 
 .invIconActive {
-  color: #afccf8;
+  color: #fa2b24;
 }
 
 .invTooltip {
@@ -1970,7 +1970,7 @@ html, body {
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: #3d67ee;
+  accent-color: #0a1156;
 }
 
 .invStockBadge {
@@ -2101,16 +2101,16 @@ html, body {
 
 .invPaginationBtn {
   padding: 8px 16px;
-  border: 1px solid #3d67ee;
+  border: 1px solid #0a1156;
   background-color: white;
-  color: #3d67ee;
+  color: #0a1156;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .invPaginationBtn:hover:not(:disabled) {
-  background-color: #3d67ee;
+  background-color: #0a1156;
   color: white;
 }
 
@@ -2202,7 +2202,7 @@ html, body {
 
 .invFormInput:focus, .invFormSelect:focus {
   outline: none;
-  border-color: #3d67ee;
+  border-color: #0a1156;
   box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.1);
 }
 
@@ -2273,14 +2273,14 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #3d67ee;
+  color: #0a1156;
   font-size: 24px;
   transition: all 0.2s ease;
 }
 
 .invStockBtn:hover:not(:disabled) {
   transform: scale(1.1);
-  color: #0738D9;
+  color: #0818a0;
 }
 
 .invStockBtn:disabled {
@@ -2338,7 +2338,7 @@ html, body {
 
 .invSubmitBtn {
   padding: 10px 30px;
-  background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9);
+  background: linear-gradient(135deg, #0b1732, #0a1156, #0818a0);
   border: none;
   border-radius: 8px;
   font-size: 14px;
@@ -2476,7 +2476,7 @@ html, body {
 }
 
 .invTemplateBtn {
-  background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9);
+  background: linear-gradient(135deg, #0b1732, #0a1156, #0818a0);
   color: white;
   border: none;
   border-radius: 8px;
@@ -2499,7 +2499,7 @@ html, body {
 }
 
 .invFileUploadArea:hover {
-  border-color: #3d67ee;
+  border-color: #0a1156;
 }
 
 .invFileUploadLabel {
@@ -2512,7 +2512,7 @@ html, body {
 }
 
 .invFileUploadLabel svg {
-  color: #3d67ee;
+  color: #0a1156;
 }
 
 .invFileHint {
@@ -2540,7 +2540,7 @@ html, body {
 }
 
 .invImportBtn {
-  background: linear-gradient(135deg, #4b70eb, #3d67ee);
+  background: linear-gradient(135deg, #0b1732, #0a1156);
   border-radius: 8px;
   padding: 0 20px;
   height: 30px;
@@ -2558,7 +2558,7 @@ html, body {
 }
 
 .invImportBtn:hover {
-  background: linear-gradient(135deg, #3d67ee, #1138b9);
+  background: linear-gradient(135deg, #0a1156, #071126);
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
 }
@@ -2646,7 +2646,7 @@ html, body {
 }
 
 .invConfirmAlertBtn {
-  background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9);
+  background: linear-gradient(135deg, #0b1732, #0a1156, #0818a0);
   color: white;
 }
 
@@ -2787,7 +2787,7 @@ html, body {
 }
 
 .invSidebarItemArrow {
-  color: #3d67ee;
+  color: #0a1156;
   font-size: 18px;
   opacity: 0;
   transition: opacity 0.2s ease;
@@ -2864,7 +2864,7 @@ html, body {
   width: 40px;
   height: 40px;
   border: 4px solid #f3f3f3;
-  border-top: 4px solid #3d67ee;
+  border-top: 4px solid #0a1156;
   border-radius: 50%;
   animation: invSpin 1s linear infinite;
 }
@@ -2902,7 +2902,7 @@ html, body {
 .invTemplateLink {
   background: none;
   border: none;
-  color: #3d67ee;
+  color: #0a1156;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -2914,7 +2914,7 @@ html, body {
 }
 
 .invTemplateLink:hover {
-  color: #0738D9;
+  color: #0818a0;
   text-decoration: underline;
   transform: translateY(-1px);
 }
@@ -2930,7 +2930,7 @@ textarea.invFormInput {
 }
 
 .invBranchAll {
-  background-color: #3d67ee;
+  background-color: #0a1156;
 }
 
 ::-webkit-scrollbar {
@@ -2944,12 +2944,12 @@ textarea.invFormInput {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #3d67ee;
+  background: #0a1156;
   border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #0738D9;
+  background: #0818a0;
 }
 
 /* Rows per page dropdown */
@@ -3005,6 +3005,645 @@ textarea.invFormInput {
 }
 
 .invRowsPerPageOption.active {
-  background-color: #3d67ee;
+  background-color: #0a1156;
   color: white;
+}
+
+/* ========================================= */
+/* ITEM CATALOG ADMIN UI REFRESH */
+/* ========================================= */
+
+.invContainer {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(250, 43, 36, 0.08), transparent 28%),
+    radial-gradient(circle at 86% 0%, rgba(8, 24, 160, 0.12), transparent 30%),
+    linear-gradient(180deg, #f8faff 0%, #f3f6ff 48%, #eef3ff 100%);
+}
+
+.invBodyContainer.bodyContainer {
+  min-width: 0;
+  height: 100vh;
+  min-height: 0;
+  padding: 28px 28px 0 16px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: transparent;
+  color: #0a1156;
+  scrollbar-gutter: stable;
+  scrollbar-color: rgba(8, 24, 160, 0.34) transparent;
+}
+
+.invBodyContainer.bodyContainer::-webkit-scrollbar {
+  width: 12px;
+}
+
+.invBodyContainer.bodyContainer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.invBodyContainer.bodyContainer::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(8, 24, 160, 0.34);
+  background-clip: padding-box;
+}
+
+.invBodyContainer.bodyContainer::-webkit-scrollbar-thumb:hover {
+  background: rgba(8, 24, 160, 0.52);
+  background-clip: padding-box;
+}
+
+.invCatalogHero {
+  position: relative;
+  z-index: 20;
+  min-height: 96px;
+  margin-bottom: 14px;
+  padding: 0 2px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: #0a1156;
+}
+
+.invCatalogHeroBrand {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.invCatalogHeroIcon {
+  width: 65px;
+  height: 65px;
+  flex: 0 0 65px;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(61, 182, 238, 0.34), transparent 36%, rgba(250, 43, 36, 0.7)),
+    linear-gradient(135deg, #0b1732 0%, #071126 64%, #040815 100%);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 16px 34px rgba(4, 8, 42, 0.18);
+}
+
+.invCatalogKicker {
+  display: block;
+  margin-bottom: 5px;
+  color: #4a5872;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.invCatalogHero h1 {
+  margin: 0;
+  font-size: clamp(1.3rem, 1.8vw, 1.75rem);
+  font-weight: 700;
+  line-height: 1.08;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.6), transparent 90%),
+    linear-gradient(135deg, #0b1732 0%, #071126 58%, #040815 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.invCatalogHero p {
+  max-width: 560px;
+  margin: 5px 0 0;
+  color: #4a5872;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.invCatalogHeroActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.invCatalogHero .invBranchSelector {
+  margin-left: 0;
+  padding-right: 0;
+  border-right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.invCatalogHero .invBranchSelect,
+.invCatalogHero .invImportBtn,
+.invCatalogHero .invExportBtn {
+  min-height: 34px;
+  height: 34px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.invCatalogHero .invBranchSelect {
+  min-width: 158px;
+  padding: 0 36px 0 14px;
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  background: #ffffff;
+  color: #0a1156;
+  box-shadow: none;
+}
+
+.invCatalogHero .invBranchSelect:hover,
+.invCatalogHero .invBranchSelect:focus {
+  outline: none;
+  border-color: rgba(8, 24, 160, 0.34);
+  background: #f7fbff;
+  box-shadow: 0 10px 24px rgba(10, 17, 86, 0.1);
+}
+
+.invCatalogHero .invImportBtn,
+.invCatalogHero .invExportBtn {
+  padding: 0 14px;
+  border: 1px solid rgba(61, 182, 238, 0.28);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(4, 8, 42, 0.14);
+}
+
+.invCatalogHero .invImportBtn:hover,
+.invCatalogHero .invExportBtn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+  box-shadow: 0 14px 28px rgba(5, 12, 38, 0.18), 0 0 0 3px rgba(61, 182, 238, 0.12);
+}
+
+.invCatalogHero .invNotificationContainer {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  margin-left: 0;
+  padding: 0;
+  flex: 0 0 38px;
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  border-radius: 999px;
+  background: #ffffff;
+  display: grid;
+  place-items: center;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.invCatalogHero .invNotificationContainer:hover {
+  border-color: rgba(8, 24, 160, 0.32);
+  background: #f7fbff;
+  box-shadow: 0 10px 24px rgba(10, 17, 86, 0.1);
+}
+
+.invCatalogHero .invIconButton {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  color: #0a1156;
+}
+
+.invBlueIcon,
+.invIconDefault,
+.invCatalogHero .invIconButton svg {
+  color: #0a1156 !important;
+}
+
+.invIconActive {
+  color: #fa2b24 !important;
+}
+
+.invBlueText,
+.invBranchLabel {
+  color: #0a1156;
+}
+
+.invAnalyticsContainer {
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.invAnalyticsCard,
+.invTableContainer {
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.07), transparent 34%),
+    radial-gradient(circle at 0% 100%, rgba(250, 43, 36, 0.055), transparent 36%),
+    linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+  box-shadow:
+    0 18px 42px rgba(10, 17, 86, 0.075),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.invAnalyticsCard {
+  min-height: 116px;
+  height: auto;
+  padding: 15px;
+  border-radius: 16px;
+  transform: none !important;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.invAnalyticsCard:hover,
+.invTableContainer:hover {
+  border-color: rgba(8, 24, 160, 0.2);
+  box-shadow:
+    0 22px 48px rgba(10, 17, 86, 0.11),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.invAnalyticsIcon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+}
+
+.invBlueBg,
+.invGreenBg,
+.invPurpleBg {
+  background:
+    radial-gradient(circle at 20% 18%, rgba(61, 182, 238, 0.26), transparent 38%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+}
+
+.invRedBg,
+.invOrangeBg {
+  background:
+    radial-gradient(circle at 20% 18%, rgba(250, 43, 36, 0.32), transparent 38%),
+    linear-gradient(135deg, #fa2b24 0%, #b91d28 42%, #0818a0 100%);
+}
+
+.invAnalyticsLabel {
+  color: #4a5872;
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.invAnalyticsValue {
+  color: #0a1156;
+  font-size: 1.45rem;
+}
+
+.invViewDetails {
+  color: #d23b37;
+}
+
+.invTableContainer {
+  height: auto;
+  min-height: 570px;
+  padding: 18px;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.invTableToolbar {
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.invSearchFilterSection {
+  gap: 12px;
+}
+
+.invSearchInput,
+.invFilterSelect,
+.invRowsPerPageBtn,
+.invRowsPerPageDropdown,
+.invBranchSelect,
+.invFormInput,
+.invFormSelect,
+.invPriceInput,
+.invStockInput {
+  border-color: rgba(8, 24, 160, 0.14);
+  border-radius: 12px;
+  color: #0a1156;
+}
+
+.invSearchInput:focus,
+.invFilterSelect:focus,
+.invFormInput:focus,
+.invFormSelect:focus,
+.invPriceInput:focus,
+.invStockInput:focus:not(:disabled) {
+  border-color: rgba(8, 24, 160, 0.44);
+  box-shadow: 0 0 0 3px rgba(61, 182, 238, 0.16);
+}
+
+.invClearFilterBtn,
+.invBlackBtn,
+.invSubmitBtn,
+.invConfirmAlertBtn,
+.invRowsPerPageOption.active {
+  border: 0;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(4, 8, 42, 0.14);
+}
+
+.invDeleteBtn,
+.invErrorBtn {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(135deg, #fa2b24 0%, #b91d28 44%, #0818a0 100%);
+}
+
+.invArchiveBtn,
+.invReturnBtn,
+.invRowsPerPageBtn,
+.invCancelBtn,
+.invCancelAlertBtn {
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  background: #ffffff;
+  color: #0a1156;
+  box-shadow: none;
+}
+
+.invArchiveBtn:hover,
+.invReturnBtn:hover,
+.invRowsPerPageBtn:hover,
+.invCancelBtn:hover,
+.invCancelAlertBtn:hover {
+  background: #f7fbff;
+  color: #0a1156;
+  box-shadow: 0 10px 24px rgba(10, 17, 86, 0.1);
+}
+
+.invTableWrapper {
+  min-height: 390px;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(8, 24, 160, 0.28) transparent;
+}
+
+.invTableWrapper::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.invTableWrapper::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.invTableWrapper::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(8, 24, 160, 0.28);
+}
+
+.invDataTable th {
+  background:
+    linear-gradient(135deg, rgba(8, 24, 160, 0.08), rgba(61, 182, 238, 0.09));
+  color: #0a1156;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.1);
+}
+
+.invDataTable td {
+  color: #34405a;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.08);
+}
+
+.invDataTable tbody tr:hover {
+  background: rgba(8, 24, 160, 0.035);
+}
+
+.invCheckbox {
+  accent-color: #0818a0;
+}
+
+.invPagination {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.invPaginationBtn {
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+}
+
+.invPaginationBtn:hover:not(:disabled) {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+  color: #ffffff;
+}
+
+.invPaginationInfo {
+  color: #4a5872;
+}
+
+.invExportDropdown,
+.invRowsPerPageDropdown {
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 22px 48px rgba(5, 12, 38, 0.16);
+}
+
+.invExportOption,
+.invRowsPerPageOption {
+  color: #0a1156;
+}
+
+.invExportOption:hover,
+.invRowsPerPageOption:hover {
+  background: rgba(8, 24, 160, 0.06);
+}
+
+.invTooltip {
+  border: 1px solid rgba(61, 182, 238, 0.2);
+  background: #071126;
+  color: #ffffff;
+}
+
+.invModalOverlay,
+.invSidebarOverlay {
+  background:
+    radial-gradient(circle at 22% 18%, rgba(250, 43, 36, 0.24), transparent 34%),
+    radial-gradient(circle at 78% 0%, rgba(8, 24, 160, 0.3), transparent 36%),
+    rgba(5, 8, 22, 0.64);
+  backdrop-filter: blur(6px);
+}
+
+.invImportModal,
+.invFormModal,
+.invAlertModal,
+.invSidebar {
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.94)),
+    radial-gradient(circle at 0% 0%, rgba(250, 43, 36, 0.14), transparent 38%),
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.16), transparent 36%);
+  box-shadow: 0 32px 80px rgba(4, 8, 42, 0.34);
+}
+
+.invModalHeader,
+.invModalFooter,
+.invSidebarHeader {
+  border-color: rgba(8, 24, 160, 0.1);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.invModalHeader h2,
+.invFormHeader h2,
+.invAlertTitle,
+.invSidebarTitle h2 {
+  color: #0a1156;
+}
+
+.invModalClose,
+.invFormClose,
+.invSidebarClose,
+.invStockBtn,
+.invTemplateLink {
+  color: #0a1156;
+}
+
+.invStockBtn:hover:not(:disabled),
+.invTemplateLink:hover {
+  color: #fa2b24;
+}
+
+.invImportNote {
+  border-left-color: #fa2b24;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.1), transparent 36%),
+    rgba(8, 24, 160, 0.045);
+}
+
+.invFileUploadArea {
+  border-color: rgba(8, 24, 160, 0.18);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.invFileUploadArea:hover {
+  border-color: rgba(8, 24, 160, 0.38);
+}
+
+.invFileUploadLabel svg {
+  color: #0a1156;
+}
+
+.invBodyContainer.bodyContainer > .admin-body-footer.user-page-footer,
+.invBodyContainer.bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+  margin: 42px -28px 0 -16px;
+}
+
+@media (max-width: 1200px) {
+  .invCatalogHero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .invCatalogHeroActions {
+    justify-content: flex-start;
+  }
+
+  .invAnalyticsContainer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .invBodyContainer.bodyContainer {
+    padding: 78px 14px 0;
+  }
+
+  .invCatalogHeroIcon {
+    width: 58px;
+    height: 58px;
+    flex-basis: 58px;
+  }
+
+  .invCatalogHeroActions,
+  .invCatalogHero .invBranchSelector,
+  .invCatalogHero .invBranchSelect,
+  .invCatalogHero .invImportBtn,
+  .invCatalogHero .invExportBtn,
+  .invExportDropdownContainer {
+    width: 100%;
+  }
+
+  .invCatalogHero .invNotificationContainer {
+    width: 38px;
+  }
+
+  .invAnalyticsContainer {
+    grid-template-columns: 1fr;
+  }
+
+  .invTableToolbar,
+  .invSearchFilterSection,
+  .invActionSection {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .invSearchInput,
+  .invFilterSelect {
+    width: 100%;
+  }
+
+  .invPagination {
+    grid-template-columns: 1fr;
+  }
+
+.invBodyContainer.bodyContainer > .admin-body-footer.user-page-footer,
+.invBodyContainer.bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+  margin: 34px -14px 0;
+  }
+}
+
+/* Subtle expiry states and lighter batch affordance polish. */
+.invExpiredRow,
+.invExpiredRow:hover {
+  opacity: 1;
+  background:
+    linear-gradient(90deg, rgba(250, 43, 36, 0.14) 0%, rgba(250, 43, 36, 0.07) 34%, rgba(255, 255, 255, 0.82) 100%) !important;
+}
+
+.invExpiredRow td {
+  background: transparent !important;
+}
+
+.invExpiringRow {
+  background:
+    linear-gradient(90deg, rgba(245, 124, 0, 0.12) 0%, rgba(245, 124, 0, 0.05) 38%, rgba(255, 255, 255, 0.84) 100%) !important;
+}
+
+/* Header control alignment shared by all inventory pages using this sheet. */
+.invCatalogHero .invBranchSelector {
+  padding-right: 14px;
+  margin-right: 2px;
+  border-right: 1px solid rgba(8, 24, 160, 0.16);
+}
+
+.invCatalogHero .invImportBtn,
+.invCatalogHero .invExportBtn {
+  width: 122px;
+  justify-content: center;
+}
+
+@media (max-width: 900px) {
+  .invCatalogHero .invBranchSelector {
+    padding-right: 0;
+    margin-right: 0;
+    padding-bottom: 10px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(8, 24, 160, 0.12);
+  }
+
+  .invCatalogHero .invImportBtn,
+  .invCatalogHero .invExportBtn {
+    width: 100%;
+  }
 }

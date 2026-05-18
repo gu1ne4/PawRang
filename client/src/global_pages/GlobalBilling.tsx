@@ -3183,19 +3183,28 @@ const GlobalBilling: React.FC = () => {
         <div className="billingTopContainer">
           <div className="billingSubTopContainer">
             <div className="billingSubTopLeft">
-              <CiReceipt size={20} className="billingBlueIcon" />
-              <span className="billingBlueText">Billing & Invoices</span>
+              <div className="billingHeroIcon">
+                <CiReceipt size={28} />
+              </div>
+              <div className="billingHeroCopy">
+                <span>Petshield Billing</span>
+                <h1>Billing & Invoices</h1>
+                <p>Create invoices, record payments, manage balances, and generate sales reports.</p>
+              </div>
             </div>
           </div>
-          <div className="billingSubTopContainer billingNotificationContainer">
-            <Notifications 
-              buttonClassName="billingIconButton"
-              iconClassName="billingBlueIcon"
-              onViewAll={() => console.log('View all notifications')}
-              onNotificationClick={(notification) => {
-                if (notification.link) navigate(notification.link);
-              }}
-            />
+          <div className="billingHeaderActions">
+            <div className="billingSubTopContainer billingNotificationContainer">
+              <Notifications 
+                buttonClassName="billingIconButton"
+                iconClassName="billingBlueIcon"
+                closeOnScroll
+                onViewAll={() => console.log('View all notifications')}
+                onNotificationClick={(notification) => {
+                  if (notification.link) navigate(notification.link);
+                }}
+              />
+            </div>
           </div>
         </div>
         

@@ -48,8 +48,11 @@ import {
   IoTimeSharp,
   IoReceipt,
   IoChevronUpOutline,
-  IoChevronDownOutline
+  IoChevronDownOutline,
+  IoChevronBackOutline,
+  IoChevronForwardOutline
 } from 'react-icons/io5';
+import { RiListSettingsLine } from 'react-icons/ri';
 
 const BILLING_NAVIGATION_DELAY_MS = 450;
 
@@ -439,6 +442,18 @@ type ViewMode = 'list' | 'add' | 'edit';
 type Species = 'Dog' | 'Cat';
 type Gender = 'Male' | 'Female';
 type PdfExportOption = 'full' | 'specific' | 'range' | 'summary';
+type EmrSortOption = 'lastVisitDesc' | 'lastVisitAsc' | 'petAZ' | 'ownerAZ' | 'doctorAZ' | 'statusAZ';
+
+const EMR_SORT_OPTIONS: Array<{ value: EmrSortOption; label: string }> = [
+  { value: 'lastVisitDesc', label: 'Latest Visit First' },
+  { value: 'lastVisitAsc', label: 'Oldest Visit First' },
+  { value: 'petAZ', label: 'Pet Name A-Z' },
+  { value: 'ownerAZ', label: 'Owner A-Z' },
+  { value: 'doctorAZ', label: 'Veterinarian A-Z' },
+  { value: 'statusAZ', label: 'Status A-Z' },
+];
+
+const EMR_ROWS_PER_PAGE_OPTIONS = [8, 10, 12, 16, 24];
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 const PH_PHONE_TOTAL_DIGITS = 12;
@@ -1208,11 +1223,12 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
   const [showServicesPanel, setShowServicesPanel] = useState<boolean>(false);
   
   // UI State
-  const [searchVisible, setSearchVisible] = useState<boolean>(false);
   const [filterVisible, setFilterVisible] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [searchHovered, setSearchHovered] = useState<boolean>(false);
   const [filterHovered, setFilterHovered] = useState<boolean>(false);
+  const [showSettingsDropdown, setShowSettingsDropdown] = useState<boolean>(false);
+  const [sortOption, setSortOption] = useState<EmrSortOption>('lastVisitDesc');
+  const [rowsPerPage, setRowsPerPage] = useState<number>(10);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [selectedRecords, setSelectedRecords] = useState<Set<number>>(new Set());
   const [activeFilter, setActiveFilter] = useState<string>('');
@@ -1230,13 +1246,14 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
   const [visitDoctorFilter, setVisitDoctorFilter] = useState<string>('');
   const [petStatusFilter, setPetStatusFilter] = useState<string>('all');
   const [showModeOverlay, setShowModeOverlay] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<'info' | 'visits' | 'medicalHistory'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'visits' | 'medicalHistory' | 'aiSupport'>('info');
   const [petImage, setPetImage] = useState<string>('');
   const [petImageFile, setPetImageFile] = useState<File | null>(null);
   const [lastWeight, setLastWeight] = useState<{ value: number; unit: 'kg' | 'lbs' } | null>(null);
   const [showPrescriptionPanel, setShowPrescriptionPanel] = useState<boolean>(false);
   const [prescriptionRemarks, setPrescriptionRemarks] = useState<string>('');
   const [expandedVisitId, setExpandedVisitId] = useState<string | null>(null);
+  const [selectedVisitRecord, setSelectedVisitRecord] = useState<VisitHistory | null>(null);
   
   const [newVisit, setNewVisit] = useState<VisitHistory>({
     id: '',
@@ -1288,7 +1305,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
 
   // Pagination
   const [page, setPage] = useState<number>(0);
-  const itemsPerPage = 10;
+  const itemsPerPage = rowsPerPage;
 
   // Form States
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -2993,6 +3010,11 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
     setPage(0);
   };
 
+  const handleRowsPerPageChange = (value: number) => {
+    setRowsPerPage(value);
+    setPage(0);
+  };
+
   useEffect(() => {
     fetchRecords();
     fetchSearchPets();
@@ -3666,8 +3688,39 @@ useEffect(() => {
     return matchesSearch && matchesDate && matchesDoctor && matchesStatus;
   });
 
-  const paginatedRecords = filteredRecords.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
-  const totalPages = Math.ceil(filteredRecords.length / itemsPerPage);
+  const sortedRecords = [...filteredRecords].sort((firstRecord, secondRecord) => {
+    const firstVisitTime = new Date(firstRecord.lastVisitRaw || firstRecord.lastVisit || '').getTime() || 0;
+    const secondVisitTime = new Date(secondRecord.lastVisitRaw || secondRecord.lastVisit || '').getTime() || 0;
+
+    switch (sortOption) {
+      case 'lastVisitAsc':
+        return firstVisitTime - secondVisitTime;
+      case 'petAZ':
+        return firstRecord.petName.localeCompare(secondRecord.petName);
+      case 'ownerAZ':
+        return firstRecord.ownerName.localeCompare(secondRecord.ownerName);
+      case 'doctorAZ':
+        return firstRecord.veterinarian.localeCompare(secondRecord.veterinarian);
+      case 'statusAZ': {
+        const firstStatus = firstRecord.deceased ? 'Deceased' : 'Active';
+        const secondStatus = secondRecord.deceased ? 'Deceased' : 'Active';
+        return firstStatus.localeCompare(secondStatus);
+      }
+      case 'lastVisitDesc':
+      default:
+        return secondVisitTime - firstVisitTime;
+    }
+  });
+
+  const totalPages = Math.max(1, Math.ceil(sortedRecords.length / itemsPerPage));
+  const currentPage = Math.min(page, totalPages - 1);
+  const paginatedRecords = sortedRecords.slice(currentPage * itemsPerPage, (currentPage + 1) * itemsPerPage);
+  const visibleStart = sortedRecords.length === 0 ? 0 : currentPage * itemsPerPage + 1;
+  const visibleEnd = Math.min((currentPage + 1) * itemsPerPage, sortedRecords.length);
+
+  useEffect(() => {
+    setPage(0);
+  }, [sortedRecords.length, rowsPerPage]);
 
   const filteredVisits = visitHistory.filter(visit => {
     const matchesSearch = visitSearchQuery === '' || 
@@ -4102,56 +4155,57 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
         onNavigateAttempt={handleProtectedNavigation}
       />
       
-      <div className="emrBodyContainer">
+      <div className="bodyContainer emrBodyContainer">
         <div className="emrTopContainer">
           <div className="emrSubTopContainer">
             <div className="emrSubTopLeft">
-              <CiMedicalClipboard size={20} className="emrBlueIcon" />
-              <span className="emrBlueText">Medical Records</span>
+              <div className="emrHeroIconTile">
+                <CiMedicalClipboard size={28} />
+              </div>
+              <div className="emrHeroCopy">
+                <span>Petshield Records</span>
+                <h1>Medical Records</h1>
+                <p>Manage patient histories, visits, prescriptions, labs, and owner visibility.</p>
+              </div>
             </div>
           </div>
-          <div className="emrSubTopContainer emrNotificationContainer">
-            <Notifications 
-              buttonClassName="emrIconButton"
-              iconClassName="emrBlueIcon"
-              onViewAll={() => console.log('View all notifications')}
-              onNotificationClick={(notification) => {
-                const notificationLink = notification.link;
-                if (notificationLink) {
-                  handleProtectedNavigation(notificationLink, () => navigate(notificationLink));
-                }
-              }}
-            />
+          <div className="emrPageHeaderActions">
+            <div className="emrHeaderSearchRow">
+              <div className="emrToolbarItem emrToolbarStaticIcon">
+                <IoSearchSharp size={18} className="emrIconDefault" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search records..."
+                value={searchQuery}
+                onChange={(e) => {setSearchQuery(e.target.value); setPage(0);}}
+                className="emrSearchInput emrHeaderSearchInput"
+                maxLength={60}
+              />
+            </div>
+            <div className="emrHeaderDivider" aria-hidden="true" />
+            <div className="emrSubTopContainer emrNotificationContainer">
+              <Notifications 
+                buttonClassName="emrIconButton"
+                iconClassName="emrBlueIcon"
+                popoverMode="anchored"
+                onViewAll={() => console.log('View all notifications')}
+                onNotificationClick={(notification) => {
+                  const notificationLink = notification.link;
+                  if (notificationLink) {
+                    handleProtectedNavigation(notificationLink, () => navigate(notificationLink));
+                  }
+                }}
+              />
+            </div>
           </div>
         </div>
 
-        <div className="emrTableContainer">
+        <div className={`emrTableContainer ${viewMode !== 'list' ? 'emrRecordDetailShell' : ''}`}>
           {viewMode === 'list' ? (
             <>
               <div className="emrTableToolbar">
                 <div className="emrSearchFilterSection">
-                  <div className="emrToolbarItem">
-                    <button 
-                      className="emrIconButton"
-                      onMouseEnter={() => setSearchHovered(true)}
-                      onMouseLeave={() => setSearchHovered(false)}
-                      onClick={() => setSearchVisible(!searchVisible)}
-                    >
-                      <IoSearchSharp size={20} className={searchVisible ? "emrIconActive" : "emrIconDefault"} />
-                    </button>
-                    {searchHovered && <div className="emrTooltip">Search</div>}
-                  </div>
-
-                  {searchVisible && (
-                    <input
-                      type="text"
-                      placeholder="Search by Patient ID, Pet Name, or Owner..."
-                      value={searchQuery}
-                      onChange={(e) => {setSearchQuery(e.target.value); setPage(0);}}
-                      className="emrSearchInput"
-                    />
-                  )}
-
                   <div className="emrToolbarItem">
                     <button 
                       className="emrIconButton"
@@ -4197,6 +4251,47 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       </button>
                     </div>
                   )}
+
+                  <div className="emrSettingsDropdownContainer">
+                    <div className="emrToolbarItem">
+                      <button
+                        className="emrIconButton emrSortIconButton"
+                        onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
+                        aria-label="Medical records table settings"
+                      >
+                        <RiListSettingsLine size={19} className={showSettingsDropdown ? "emrIconActive" : "emrIconDefault"} />
+                      </button>
+                    </div>
+                    {showSettingsDropdown && (
+                      <div className="emrSettingsDropdown">
+                        <div className="emrSettingsSection">
+                          <label>Sort By</label>
+                          <select
+                            value={sortOption}
+                            onChange={(e) => { setSortOption(e.target.value as EmrSortOption); setPage(0); }}
+                            className="emrSettingsSelect"
+                          >
+                            {EMR_SORT_OPTIONS.map(option => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="emrSettingsDivider" />
+                        <div className="emrSettingsSection">
+                          <label>Rows Per Page</label>
+                          <select
+                            value={rowsPerPage}
+                            onChange={(e) => handleRowsPerPageChange(parseInt(e.target.value, 10))}
+                            className="emrSettingsSelect"
+                          >
+                            {EMR_ROWS_PER_PAGE_OPTIONS.map(option => (
+                              <option key={option} value={option}>{option} per page</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="emrActionSection">
@@ -4326,32 +4421,44 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
 
                   <div className="emrPagination">
                     <button 
-                      onClick={() => setPage(Math.max(0, page - 1))}
-                      disabled={page === 0}
+                      onClick={() => setPage(Math.max(0, currentPage - 1))}
+                      disabled={currentPage === 0}
                       className="emrPaginationBtn"
                     >
-                      Previous
+                      <IoChevronBackOutline size={15} />
+                      <span>Previous</span>
                     </button>
-                    <span className="emrPaginationInfo">{page + 1} of {totalPages}</span>
+                    <span className="emrPaginationInfo">
+                      Showing {visibleStart} to {visibleEnd} of {sortedRecords.length} records
+                    </span>
                     <button 
-                      onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
-                      disabled={page >= totalPages - 1}
+                      onClick={() => setPage(Math.min(totalPages - 1, currentPage + 1))}
+                      disabled={currentPage >= totalPages - 1}
                       className="emrPaginationBtn"
                     >
-                      Next
+                      <span>Next</span>
+                      <IoChevronForwardOutline size={15} />
                     </button>
                   </div>
                 </div>
               )}
             </>
           ) : viewMode === 'add' ? (
-            <div className="emrFormContainer">
-              <div className="emrFormHeader">
+            <div className="emrFormContainer emrCreateRecordPanel">
+              <div className="emrFormHeader emrCreateRecordHeader">
                 <div className="emrFormHeaderLeft">
-                  <IoCreateOutline size={20} className="emrHeaderIcon" />
-                  <h3>Create New Medical Record</h3>
+                  <div className="emrCreateRecordIcon">
+                    <IoCreateOutline size={22} />
+                  </div>
+                  <div className="emrCreateRecordTitle">
+                    <span>Medical Records</span>
+                    <h3>Create New Medical Record</h3>
+                    <p>Start from an existing pet or enter a new patient profile.</p>
+                  </div>
                 </div>
-                <button className="emrFormClose" onClick={handleCancel} disabled={isSavingRecord}>×</button>
+                <button className="emrFormClose" onClick={handleCancel} disabled={isSavingRecord} aria-label="Close create medical record form">
+                  <IoCloseOutline size={20} />
+                </button>
               </div>
 
               <div className="emrFormContent">
@@ -4735,7 +4842,8 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                   <CiMedicalClipboard size={20} className="emrHeaderIcon" />
                   <h3>Medical Record</h3>
                 </div>
-                {activeTab === 'info' && !isReadOnlyMode && (
+                <div className="emrFormHeaderRight">
+                  {activeTab === 'info' && !isReadOnlyMode && (
                   <div className="emrHeaderActions">
                     <label className="emrSwitch">
                       <input
@@ -4747,8 +4855,15 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       <span className="emrSwitchLabel">{editModeEnabled ? 'Edit Mode ON' : 'Edit Mode OFF'}</span>
                     </label>
                   </div>
-                )}
+                  )}
+                  {activeTab === 'visits' && !isReadOnlyMode && !deceased && (
+                    <button className="emrHeaderAddVisitBtn" onClick={openAddVisitModal}>
+                      <IoAddCircleOutline size={16} /> Add New Visit
+                    </button>
+                  )}
                 <button className="emrFormClose" onClick={handleCancel} disabled={isSavingRecord}>×</button>
+              </div>
+
               </div>
 
               <div className="emrTabs">
@@ -4770,9 +4885,15 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                 >
                   <IoMedicalOutline size={14} /> Medical History
                 </button>
+                <button
+                  className={`emrTabBtn ${activeTab === 'aiSupport' ? 'emrTabActive' : ''}`}
+                  onClick={() => setActiveTab('aiSupport')}
+                >
+                  <IoMedicalOutline size={14} /> {doctorMode ? 'Doctor AI Support' : 'Admin EMR AI Support'}
+                </button>
               </div>
 
-              {viewMode === 'edit' && (
+              {viewMode === 'edit' && activeTab === 'aiSupport' && (
                 <div className={`emrDoctorAiPanel ${doctorAiCollapsed ? 'emrDoctorAiPanelCollapsed' : ''}`}>
                   <div className="emrDoctorAiHeader">
                     <div>
@@ -5018,7 +5139,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
 
               <div className="emrFormContent">
                 {activeTab === 'info' && (
-                  <>
+                  <div className="emrPetOwnerInfoRedesign">
                     <div className="emrFormSection">
                       <h4>Pet Information</h4>
                       <div className="emrFormRow">
@@ -5375,7 +5496,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                         </div>
                       </div>
                     </div>
-                  </>
+                  </div>
                 )}
 
                 {activeTab === 'visits' && (
@@ -5396,23 +5517,29 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                             className="emrSearchInputSmall"
                           />
                         </div>
-                        <input
-                          type="date"
-                          value={visitDateFilter}
-                          onChange={(e) => setVisitDateFilter(e.target.value)}
-                          className="emrFilterInputSmall"
-                          placeholder="Filter by date"
-                        />
-                        <select 
-                          value={visitDoctorFilter} 
-                          onChange={(e) => setVisitDoctorFilter(e.target.value)}
-                          className="emrFilterSelectSmall"
-                        >
-                          <option value="">All Doctors</option>
-                          {availableVeterinarians.map(doc => (
-                            <option key={doc} value={doc}>{doc}</option>
-                          ))}
-                        </select>
+                        <div className="emrVisitFilterControl">
+                          <IoCalendarOutline size={14} className="emrVisitFilterIcon" />
+                          <input
+                            type="date"
+                            value={visitDateFilter}
+                            onChange={(e) => setVisitDateFilter(e.target.value)}
+                            className="emrFilterInputSmall emrVisitFilterInput"
+                            placeholder="Filter by date"
+                          />
+                        </div>
+                        <div className="emrVisitFilterControl">
+                          <IoMedicalOutline size={14} className="emrVisitFilterIcon" />
+                          <select 
+                            value={visitDoctorFilter} 
+                            onChange={(e) => setVisitDoctorFilter(e.target.value)}
+                            className="emrFilterSelectSmall emrVisitFilterInput"
+                          >
+                            <option value="">All Doctors</option>
+                            {availableVeterinarians.map(doc => (
+                              <option key={doc} value={doc}>{doc}</option>
+                            ))}
+                          </select>
+                        </div>
                         <button className="emrClearFilterBtn" onClick={clearVisitFilters}>
                           <IoRefreshOutline size={12} /> Clear
                         </button>
@@ -5425,10 +5552,30 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           const visitServices = visit.selectedServices ?? [];
                           const visitPrescriptionRemarks = getSharedPrescriptionInstructions(visit.prescriptions || []);
                           const isOpeningBilling = billingNavigationVisitId === visit.id;
+                          const hasVisitPrescription = Boolean(
+                            visit.prescriptions &&
+                            visit.prescriptions.length > 0 &&
+                            visit.prescriptions.some(p => p.medicationName && p.medicationName.trim() !== '')
+                          );
 
                           return (
                           <div key={visit.id}>
-                            <div className="emrVisitCard" onClick={() => toggleVisitExpand(visit.id)} style={{ cursor: 'pointer' }}>
+                            <div
+                              className="emrVisitCard emrVisitFolderCard"
+                              onClick={() => {
+                                setExpandedVisitId(null);
+                                setSelectedVisitRecord(visit);
+                              }}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  setExpandedVisitId(null);
+                                  setSelectedVisitRecord(visit);
+                                }
+                              }}
+                            >
                               <div className="emrVisitHeader">
                                 <div className="emrVisitDate">
                                   <IoTimeOutline size={14} />
@@ -5439,54 +5586,13 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                     </span>
                                   )}
                                   {visitServices.length > 0 && (
-                                    <span className="emrStatusActive" style={{ marginLeft: '8px', fontSize: '10px', backgroundColor: '#e3f2fd', color: '#1565c0' }}>
+                                    <span className="emrStatusActive" style={{ marginLeft: '8px', fontSize: '10px', backgroundColor: 'rgba(61, 182, 238, 0.14)', color: '#0a1156' }}>
                                       <IoListOutline size={10} /> {visitServices.length} Service(s)
                                     </span>
                                   )}
                                 </div>
                                 <div className="emrVisitHeaderActions">
-                                  {canShowVisitBillingActions && (
-                                    <button
-                                      className="emrCreateInvoiceBtn"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleCreateInvoice(visit);
-                                      }}
-                                      disabled={billingNavigationVisitId !== null}
-                                      title={visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
-                                    >
-                                      {isOpeningBilling ? (
-                                        <>
-                                          <span className="emrBtnSpinner" aria-hidden="true"></span>
-                                          Opening Billing...
-                                        </>
-                                      ) : (
-                                        <>
-                                          <IoReceipt size={14} /> {visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
-                                        </>
-                                      )}
-                                    </button>
-                                  )}
-                                  
-                                  {(visit.prescriptions && visit.prescriptions.length > 0 && 
-                                    visit.prescriptions.some(p => p.medicationName && p.medicationName.trim() !== '')) && (
-                                    <button 
-                                      className="emrViewPrescriptionBtn"
-                                      onClick={(e) => {
-                                        e.stopPropagation(); 
-                                        handleViewPrescription(visit);
-                                      }}
-                                      title="View Prescription"
-                                    >
-                                      <TbReportMedical size={14} /> Prescription
-                                    </button>
-                                  )}
                                   <div className="emrVisitNumber">Visit #{index + 1}</div>
-                                  {expandedVisitId === visit.id ? (
-                                    <IoChevronUpOutline size={18} />
-                                  ) : (
-                                    <IoChevronDownOutline size={18} />
-                                  )}
                                 </div>
                               </div>
                               <div className="emrVisitDetails">
@@ -5515,6 +5621,45 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                   </div>
                                 )}
                               </div>
+                              {(canShowVisitBillingActions || hasVisitPrescription) && (
+                                <div className="emrVisitCardActionsGrid">
+                                  {canShowVisitBillingActions && (
+                                    <button
+                                      className="emrCreateInvoiceBtn"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCreateInvoice(visit);
+                                      }}
+                                      disabled={billingNavigationVisitId !== null}
+                                      title={visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
+                                    >
+                                      {isOpeningBilling ? (
+                                        <>
+                                          <span className="emrBtnSpinner" aria-hidden="true"></span>
+                                          Opening Billing...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <IoReceipt size={14} /> {visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
+
+                                  {hasVisitPrescription && (
+                                    <button
+                                      className="emrViewPrescriptionBtn"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleViewPrescription(visit);
+                                      }}
+                                      title="View Prescription"
+                                    >
+                                      <TbReportMedical size={14} /> Prescription
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </div>
                             {expandedVisitId === visit.id && (
                               <div className="emrVisitCard emrExpandedDetails" style={{ marginTop: '-18px', borderTopLeftRadius: 5, borderTopRightRadius: 5, zIndex: 1, backgroundColor: '#f9f9f9' }}>
@@ -5637,11 +5782,6 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       )}
                     </div>
                     
-                    {!isReadOnlyMode && (
-                      <button className="emrFloatingBtn" onClick={openAddVisitModal}>
-                        <IoAddCircleOutline size={18} /> Add New Visit
-                      </button>
-                    )}
                   </div>
                 )}
 
@@ -5977,6 +6117,157 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
           )}
         </div>
       </div>
+
+      {selectedVisitRecord && (() => {
+        const visit = selectedVisitRecord;
+        const visitIndex = visitHistory.findIndex((item) => item.id === visit.id);
+        const visitServices = visit.selectedServices ?? [];
+        const visitPrescriptionRemarks = getSharedPrescriptionInstructions(visit.prescriptions || []);
+
+        return (
+          <div className="emrModalOverlay" onClick={() => setSelectedVisitRecord(null)}>
+            <div className="emrSearchModal emrVisitRecordModal" onClick={e => e.stopPropagation()}>
+              <div className="emrModalHeader emrVisitRecordModalHeader">
+                <div>
+                  <span className="emrVisitRecordKicker">Visit Folder</span>
+                  <h4>Visit #{visitIndex >= 0 ? visitIndex + 1 : ''}</h4>
+                  <p>{visit.date} at {visit.time}</p>
+                </div>
+                <button className="emrModalClose" onClick={() => setSelectedVisitRecord(null)} aria-label="Close visit record">
+                  <IoCloseOutline size={20} />
+                </button>
+              </div>
+
+              <div className="emrVisitRecordModalContent">
+                <div className="emrVisitRecordSummary">
+                  <div>
+                    <span className="emrVisitRecordSummaryIcon"><IoMedicalOutline size={16} /></span>
+                    <span>Veterinarian</span>
+                    <strong>{visit.veterinarian || 'Not recorded'}</strong>
+                  </div>
+                  <div>
+                    <span className="emrVisitRecordSummaryIcon"><IoDocumentTextOutline size={16} /></span>
+                    <span>Reason / Chief Complaint</span>
+                    <strong>{visit.reason || 'Not recorded'}</strong>
+                  </div>
+                  <div>
+                    <span className="emrVisitRecordSummaryIcon"><IoPawOutline size={16} /></span>
+                    <span>Weight</span>
+                    <strong>{visit.weight || 0} {visit.weightUnit}</strong>
+                  </div>
+                  <div>
+                    <span className="emrVisitRecordSummaryIcon"><IoCalendarOutline size={16} /></span>
+                    <span>Source</span>
+                    <strong>{visit.appointmentId ? 'Appointment' : 'Manual visit'}</strong>
+                  </div>
+                </div>
+
+                <div className="emrVisitRecordGrid">
+                  <section className="emrVisitRecordPanel emrVisitRecordPanelWide emrClinicalExamPanel">
+                    <h5><IoMedicalOutline size={16} /> Clinical Exam</h5>
+                    <div className="emrVisitRecordDetailGrid emrClinicalExamGrid">
+                      <div><span><IoPawOutline size={13} /> Length</span><strong>{visit.clinicalExam ? `${visit.clinicalExam.length} ${visit.clinicalExam.lengthUnit}` : 'N/A'}</strong></div>
+                      <div><span><IoMedicalOutline size={13} /> Temperature</span><strong>{visit.clinicalExam ? `${visit.clinicalExam.temperature} ${visit.clinicalExam.tempUnit}` : 'N/A'}</strong></div>
+                      <div><span><IoTimeSharp size={13} /> Heart Rate</span><strong>{visit.clinicalExam?.heartRate ? `${visit.clinicalExam.heartRate}/min` : 'N/A'}</strong></div>
+                      <div><span><IoTimeOutline size={13} /> Breathing Rate</span><strong>{visit.clinicalExam?.breathingRate ? `${visit.clinicalExam.breathingRate}/min` : 'N/A'}</strong></div>
+                    </div>
+                    {visit.clinicalExam?.additionalFindings && (
+                      <p className="emrVisitRecordNote">{visit.clinicalExam.additionalFindings}</p>
+                    )}
+                  </section>
+
+                  {visit.medicalInformation && (
+                    <section className="emrVisitRecordPanel emrVisitRecordPanelWide">
+                      {renderMedicalInformationBlock(visit.medicalInformation, 'Medical Information')}
+                    </section>
+                  )}
+
+                  {visitServices.length > 0 && (
+                    <section className="emrVisitRecordPanel emrVisitRecordPanelWide">
+                      <h5><IoListOutline size={16} /> Services</h5>
+                      <div className="emrServicesDetailedList">
+                        <table className="emrServicesTable">
+                          <thead>
+                            <tr>
+                              <th>Service</th>
+                              <th>Description</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {visitServices.map(service => (
+                              <tr key={service.id}>
+                                <td>{service.name}</td>
+                                <td className="emrServiceDescCell">{service.description || 'N/A'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  )}
+
+                  {visit.vaccinationDetails && (
+                    <section className="emrVisitRecordPanel">
+                      <h5><IoMedkitOutline size={16} /> Vaccination Details</h5>
+                      <div className="emrVisitRecordDetailGrid">
+                        <div><span>Vaccine</span><strong>{visit.vaccinationDetails.vaccineName}</strong></div>
+                        <div><span>Dose/Volume</span><strong>{visit.vaccinationDetails.doseVolume || 'N/A'}</strong></div>
+                        <div><span>Injection Site</span><strong>{visit.vaccinationDetails.injectionSite || 'N/A'}</strong></div>
+                        <div><span>Manufacturer</span><strong>{visit.vaccinationDetails.manufacturer || 'N/A'}</strong></div>
+                        <div><span>Date Administered</span><strong>{visit.vaccinationDetails.dateAdministered}</strong></div>
+                        <div><span>Next Due Date</span><strong>{visit.vaccinationDetails.nextDueDate || 'N/A'}</strong></div>
+                      </div>
+                    </section>
+                  )}
+
+                  {visit.prescriptions && visit.prescriptions.length > 0 && (
+                    <section className="emrVisitRecordPanel">
+                      <h5><TbReportMedical size={16} /> Prescriptions</h5>
+                      <div className="emrVisitRecordStack">
+                        {visit.prescriptions.map((pres) => (
+                          <div key={pres.id} className="emrPrescriptionItem">
+                            <span><strong>{pres.medicationName || 'Medication'}</strong></span>
+                            {formatPrescriptionDisplayParts(pres).length > 0 && (
+                              <span>{formatPrescriptionDisplayParts(pres).join(' | ')}</span>
+                            )}
+                          </div>
+                        ))}
+                        {visitPrescriptionRemarks && (
+                          <div className="emrPrescriptionInstructions" style={{ whiteSpace: 'pre-wrap' }}>
+                            Instructions: {visitPrescriptionRemarks}
+                          </div>
+                        )}
+                      </div>
+                    </section>
+                  )}
+
+                  {visit.labResults && visit.labResults.length > 0 && (
+                    <section className="emrVisitRecordPanel">
+                      <h5><ImLab size={15} /> Lab Results</h5>
+                      <div className="emrVisitRecordStack">
+                        {visit.labResults.map((lab) => (
+                          <div key={lab.id} className="emrVisitRecordLabItem">
+                            <strong>{lab.testType}</strong>
+                            <span>{lab.interpretation || 'No interpretation recorded'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+
+                  <section className="emrVisitRecordPanel emrVisitRecordPanelWide">
+                    <h5><IoDocumentTextOutline size={16} /> Doctor Remarks</h5>
+                    <div
+                      className="emrRichTextDisplayContent emrVisitRecordRemarks"
+                      dangerouslySetInnerHTML={{ __html: visit.doctorRemarks || 'No remarks' }}
+                    />
+                  </section>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* PDF Options Modal */}
       {showPdfOptionsModal && (

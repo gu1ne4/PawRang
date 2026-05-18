@@ -1063,16 +1063,21 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
     <div className="invContainer">
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
       
-      <div className="invBodyContainer">
-        <div className="invTopContainer">
-          <div className="invSubTopContainer" style={{paddingLeft: '30px'}}>
-            <div className="invSubTopLeft">
-              <IoArrowUpOutline size={23} className="invBlueIcon" />
-              <span className="invBlueText">Inventory OUT</span>
+      <div className="bodyContainer invBodyContainer">
+        <header className="invCatalogHero">
+          <div className="invCatalogHeroBrand">
+            <div className="invCatalogHeroIcon">
+              <IoArrowUpOutline size={28} />
             </div>
-            
-            <div className="invBranchSelector">
-              <span className="invBranchLabel">Branch:</span>
+            <div>
+              <span className="invCatalogKicker">Petshield Inventory</span>
+              <h1>Inventory Out</h1>
+              <p>Record outgoing stock, select batches, and keep branch deductions traceable.</p>
+            </div>
+          </div>
+
+          <div className="invCatalogHeroActions">
+            <label className="invBranchSelector" aria-label="Branch filter">
               <select 
                 value={selectedBranch}
                 onChange={(e) => setSelectedBranch(e.target.value)}
@@ -1082,7 +1087,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                 <option value="Taguig">Taguig</option>
                 <option value="Las Pinas">Las Piñas</option>
               </select>
-            </div>
+            </label>
 
             <ImportButton 
                 onImport={handleImport}
@@ -1095,16 +1100,17 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                 type="inventory"
                 buttonClassName="invExportBtn"
               />
-          </div>
-          <div className="invSubTopContainer invNotificationContainer" style={{padding: 13}}>
+            <div className="invNotificationContainer">
             <Notifications 
               buttonClassName="invIconButton"
               iconClassName="invBlueIcon"
+              closeOnScroll
               onViewAll={() => {}}
               onNotificationClick={() => {}}
             />
+            </div>
           </div>
-        </div>
+        </header>
 
         {/* Main Content */}
         <div className="invTableContainerOUT">
@@ -1237,7 +1243,6 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                 className="invRecordTransactionBtn"
                 onClick={addToCart}
                 disabled={selectedProducts.size === 0}
-                style={{ marginRight: '10px' }}
               >
                 <IoDocumentTextOutline /> Add to Cart ({selectedProducts.size} item{selectedProducts.size !== 1 ? 's' : ''} selected)
               </button>
@@ -1248,25 +1253,6 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
               >
                 <IoDocumentTextOutline /> Record Transaction ({cartItems.length} item{cartItems.length !== 1 ? 's' : ''} in cart)
               </button>
-            </div>
-
-            <div className="invRowLegend" aria-label="Inventory row legend">
-              <span className="invRowLegendItem">
-                <span className="invRowLegendSwatch invRowLegendExpired" />
-                Expired
-              </span>
-              <span className="invRowLegendItem">
-                <span className="invRowLegendSwatch invRowLegendExpiring" />
-                Expiring Soon
-              </span>
-              <span className="invRowLegendItem">
-                <span className="invRowLegendSwatch invRowLegendSelected" />
-                Selected
-              </span>
-              <span className="invRowLegendItem">
-                <span className="invRowLegendSwatch invRowLegendZeroStock" />
-                Out of Stock
-              </span>
             </div>
           </div>
 
@@ -1847,7 +1833,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
             <div className="invAlertIcon">
               {modalConfig.type === 'success' && <IoCheckmarkCircleOutline size={55} color="#2e9e0c" />}
               {modalConfig.type === 'error' && <IoCloseCircleOutline size={55} color="#d93025" />}
-              {modalConfig.type !== 'success' && modalConfig.type !== 'error' && <IoAlertCircleOutline size={55} color="#3d67ee" />}
+              {modalConfig.type !== 'success' && modalConfig.type !== 'error' && <IoAlertCircleOutline size={55} color="#0a1156" />}
             </div>
             
             <h3 className="invAlertTitle">{modalConfig.title}</h3>

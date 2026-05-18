@@ -28,12 +28,10 @@
 }
 
 .emrSubTopContainer {
-  background-color: #ffffff;
   border-radius: 12px;
   padding: 12px 20px;
   display: flex;
   align-items: center;
-  box-shadow: 0 0 12px rgba(0, 0, 0, 0.08);
   flex: 20;
 }
 
@@ -530,7 +528,7 @@
   justify-content: flex-end;
   gap: 12px;
   margin-top: 20px;
-  padding-top: 16px;
+  padding-top: 12px;
   border-top: 1px solid #e0e0e0;
 }
 
@@ -5066,5 +5064,2157 @@ input:checked ~ .emrSwitchLabel {
   .emrFilterGroup {
     width: 100%;
     justify-content: center;
+  }
+}
+
+/* Medical Records visual refresh */
+.emrContainer {
+  background:
+    radial-gradient(circle at 14% 8%, rgba(250, 43, 36, 0.1), transparent 28%),
+    radial-gradient(circle at 84% 0%, rgba(8, 24, 160, 0.16), transparent 32%),
+    linear-gradient(180deg, #f8faff 0%, #f3f6ff 42%, #eef3ff 100%) !important;
+}
+
+.emrBodyContainer {
+  padding: 28px 28px 0 16px !important;
+  background: transparent !important;
+  overflow-y: auto;
+}
+
+.emrTopContainer {
+  min-height: 96px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  margin-bottom: 14px;
+  padding: 0 2px 14px;
+  position: relative;
+  z-index: 20;
+}
+
+.emrSubTopContainer {
+  min-height: 0;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  flex: 0 1 auto;
+}
+
+.emrSubTopLeft {
+  min-width: 0;
+  gap: 14px;
+}
+
+.emrHeroIconTile {
+  width: 65px;
+  height: 65px;
+  flex: 0 0 65px;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(61, 182, 238, 0.35), transparent 36%, rgba(255, 15, 15, 0.708)),
+    linear-gradient(135deg, #0b1732 0%, #071126 64%, #040815 100%);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 16px 34px rgba(4, 8, 42, 0.18);
+}
+
+.emrHeroCopy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.emrHeroCopy span {
+  color: #4a5872;
+  font-size: 0.62rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.emrHeroCopy h1 {
+  margin: 0;
+  font-size: clamp(1.3rem, 1.8vw, 1.75rem);
+  font-weight: 700;
+  line-height: 1.08;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.618), transparent 90%),
+    linear-gradient(135deg, #0b1732 0%, #071126 58%, #040815 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+.emrHeroCopy p {
+  max-width: 560px;
+  margin: 0;
+  color: #4a5872;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.emrBlueText {
+  margin-left: 0;
+  color: #0a1156;
+  font-size: clamp(1.3rem, 1.8vw, 1.75rem);
+  font-weight: 780;
+}
+
+.emrPageHeaderActions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.emrNotificationContainer {
+  width: 80px;
+  min-width: 80px;
+  max-width: 80px;
+  height: 34px;
+  min-height: 34px;
+  max-height: 34px;
+  flex: 0 0 80px;
+  margin-left: 0;
+  padding: 0 !important;
+  border-radius: 999px !important;
+  display: grid;
+  place-items: center;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+
+.emrNotificationContainer:hover {
+  border-color: rgba(8, 24, 160, 0.32) !important;
+  transform: translateY(-1px);
+}
+
+.emrNotificationContainer:hover .emrIconButton,
+.emrNotificationContainer:hover .emrBlueIcon {
+  color: #0818a0 !important;
+}
+
+.emrTableContainer {
+  min-height: auto;
+  height: auto;
+  padding: 16px;
+  gap: 14px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.07), transparent 34%),
+    radial-gradient(circle at 0% 100%, rgba(250, 43, 36, 0.055), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84) 0%, rgba(249, 251, 255, 0.82) 100%);
+  box-shadow:
+    0 18px 42px rgba(10, 17, 86, 0.075),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.emrTableToolbar {
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 0;
+  padding: 0 0 14px;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.1);
+}
+
+.emrSearchFilterSection {
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.emrActionSection {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.emrIconButton {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.emrIconButton:hover,
+.emrIconButton:has(.emrIconActive) {
+  opacity: 1;
+  border-color: rgba(8, 24, 160, 0.32);
+  background: #f7fbff;
+  box-shadow: 0 10px 24px rgba(10, 17, 86, 0.1);
+  transform: translateY(-1px);
+}
+
+.emrIconDefault,
+.emrIconActive {
+  color: #0a1156;
+}
+
+.emrSearchInput,
+.emrFilterInput,
+.emrFilterSelect,
+.emrSettingsSelect {
+  min-height: 34px;
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+  font-size: 12px;
+}
+
+.emrSearchInput:focus,
+.emrFilterInput:focus,
+.emrFilterSelect:focus,
+.emrSettingsSelect:focus {
+  outline: none;
+  border-color: rgba(8, 24, 160, 0.42);
+  box-shadow: 0 0 0 3px rgba(61, 182, 238, 0.14);
+}
+
+.emrFilterSection {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.emrSettingsDropdownContainer {
+  position: relative;
+}
+
+.emrSettingsDropdown {
+  position: absolute;
+  top: 42px;
+  left: 0;
+  z-index: 120;
+  width: 230px;
+  padding: 14px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 22px 50px rgba(4, 8, 42, 0.16);
+}
+
+.emrSettingsSection {
+  display: grid;
+  gap: 8px;
+}
+
+.emrSettingsSection label {
+  color: #4a5872;
+  font-size: 0.68rem;
+  font-weight: 780;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.emrSettingsSelect {
+  width: 100%;
+  padding: 0 12px;
+}
+
+.emrSettingsDivider {
+  height: 1px;
+  margin: 12px 0;
+  background: rgba(8, 24, 160, 0.1);
+}
+
+.emrClearFilterBtn,
+.emrBlackBtn,
+.emrDeleteBtn,
+.emrReturnBtn,
+.emrSubmitBtn {
+  min-height: 34px;
+  border-radius: 999px;
+  font-weight: 760;
+}
+
+.emrBlackBtn,
+.emrSubmitBtn {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+  box-shadow: 0 12px 24px rgba(4, 8, 42, 0.12);
+}
+
+.emrClearFilterBtn,
+.emrReturnBtn {
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  background: #ffffff;
+  color: #0a1156;
+}
+
+.emrDeleteBtn {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.18), transparent 42%),
+    linear-gradient(135deg, #3a0b14 0%, #150711 100%);
+}
+
+.emrToolbarPagination {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #4a5872;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.emrToolbarPagination button {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #0a1156;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.emrToolbarPagination button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.emrLegend {
+  margin: -2px 0 0;
+  padding: 0 2px;
+  gap: 12px;
+  color: #4a5872;
+}
+
+.emrTableWrapper {
+  min-height: 430px;
+  overflow: visible;
+  border: 1px solid rgba(8, 24, 160, 0.08);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.emrDataTable th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 12px 10px;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.1);
+  background: #f7fbff;
+  color: #0a1156;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.emrDataTable td {
+  padding: 11px 10px;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.07);
+  color: #34405a;
+}
+
+.emrDataTable tbody tr {
+  transition: background 0.18s ease;
+}
+
+.emrDataTable tbody tr:hover {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.08), transparent 38%),
+    rgba(255, 255, 255, 0.92);
+}
+
+.emrDeceasedRow {
+  background:
+    linear-gradient(90deg, rgba(244, 67, 54, 0.11) 0%, rgba(244, 67, 54, 0.045) 34%, rgba(255, 255, 255, 0.72) 100%) !important;
+}
+
+.emrStatusActive,
+.emrStatusDeceased,
+.emrDeceasedBadge {
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 780;
+}
+
+.emrStatusActive {
+  padding: 5px 10px;
+  background: #e5f7eb;
+  color: #1f7a3f;
+}
+
+.emrStatusDeceased,
+.emrDeceasedBadge {
+  padding: 5px 10px;
+  background: #ffe8e8;
+  color: #b42318;
+}
+
+.emrActionBtn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+  margin-left: 0;
+}
+
+.emrActionBtn:hover {
+  background: #f7fbff;
+  border-color: rgba(8, 24, 160, 0.28);
+  box-shadow: 0 10px 20px rgba(10, 17, 86, 0.08);
+}
+
+.emrPagination {
+  justify-content: space-between;
+  gap: 12px;
+  margin: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(8, 24, 160, 0.08);
+}
+
+.emrPaginationBtn {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 760;
+}
+
+.emrPaginationBtn:hover:not(:disabled) {
+  border-color: rgba(8, 24, 160, 0.32);
+  background: #f7fbff;
+  color: #0a1156;
+}
+
+.emrPaginationInfo {
+  color: #4a5872;
+  font-weight: 700;
+}
+
+.emrModalOverlay {
+  background: rgba(4, 8, 21, 0.54);
+  backdrop-filter: blur(8px);
+}
+
+.emrSearchModal,
+.emrPdfOptionsModal,
+.emrProofModal,
+.emrAddVisitModal,
+.emrAddVisitModalSplit,
+.emrAlertModal {
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(247, 250, 255, 0.95)),
+    radial-gradient(circle at 0% 0%, rgba(250, 43, 36, 0.1), transparent 38%),
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.14), transparent 36%);
+  box-shadow: 0 32px 80px rgba(4, 8, 42, 0.34);
+}
+
+.emrModalHeader,
+.emrRightPanelHeader {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.1);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.emrModalHeader h4,
+.emrRightPanelHeader h4,
+.emrAlertTitle {
+  color: #0a1156;
+  font-weight: 800;
+}
+
+.emrModalClose {
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+}
+
+.emrSearchResultItem,
+.emrPdfOptionCard,
+.emrLabResultCard,
+.emrPrescriptionCard {
+  border-color: rgba(8, 24, 160, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.emrSearchResultItem:hover,
+.emrPdfOptionCard:hover {
+  border-color: rgba(8, 24, 160, 0.26);
+  background: #f7fbff;
+  box-shadow: 0 12px 24px rgba(10, 17, 86, 0.08);
+}
+
+.emrPdfOptionActive {
+  border-color: rgba(61, 182, 238, 0.34);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.16), transparent 42%),
+    #ffffff;
+}
+
+.emrAddVisitLeftPanel,
+.emrAddVisitRightPanel,
+.emrRightPanelHeader {
+  background: transparent;
+}
+
+.emrAddVisitRightPanel {
+  border-left-color: rgba(8, 24, 160, 0.1);
+}
+
+.emrFormHeader {
+  border-bottom-color: rgba(8, 24, 160, 0.1);
+}
+
+.emrFormHeader h3,
+.emrFormHeader h4,
+.emrFormSection h4 {
+  color: #0a1156;
+}
+
+.emrFormSection {
+  border: 1px solid rgba(8, 24, 160, 0.1);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.emrAlertModal {
+  width: min(92vw, 360px);
+  padding: 26px;
+}
+
+.emrAlertMessage {
+  color: #4a5872;
+  line-height: 1.55;
+}
+
+.emrConfirmAlertBtn {
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+}
+
+.emrCancelAlertBtn,
+.emrCancelBtn {
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+}
+
+@media (max-width: 900px) {
+  .emrBodyContainer {
+    padding: 78px 14px 0 !important;
+  }
+
+  .emrTopContainer,
+  .emrSubTopContainer {
+    height: auto;
+    min-height: 0;
+  }
+
+  .emrTopContainer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .emrPageHeaderActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .emrTableToolbar,
+  .emrActionSection {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .emrSearchFilterSection,
+  .emrFilterSection {
+    width: 100%;
+  }
+
+  .emrSearchInput,
+  .emrFilterInput,
+  .emrFilterSelect {
+    width: 100%;
+  }
+
+  .emrToolbarPagination {
+    justify-content: space-between;
+  }
+
+  .emrPagination {
+    flex-wrap: wrap;
+  }
+
+  .emrPaginationInfo {
+    width: 100%;
+    order: 3;
+    text-align: center;
+  }
+
+  .emrAddVisitModalSplit {
+    width: 95%;
+    flex-direction: column;
+  }
+
+  .emrAddVisitRightPanel {
+    width: 100%;
+    border-left: 0;
+    border-top: 1px solid rgba(8, 24, 160, 0.1);
+  }
+}
+
+/* Final EMR shell alignment with Account Overview and shared admin chrome */
+.emrBodyContainer.bodyContainer {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100vh;
+  padding: 28px 28px 0 16px !important;
+  background: transparent !important;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-color: rgba(8, 24, 160, 0.34) transparent;
+}
+
+.emrBodyContainer.bodyContainer::-webkit-scrollbar,
+.emrTableWrapper::-webkit-scrollbar,
+.emrFormContainer::-webkit-scrollbar,
+.emrSearchResults::-webkit-scrollbar,
+.emrAddVisitLeftPanel::-webkit-scrollbar,
+.emrAddVisitRightPanel::-webkit-scrollbar,
+.emrRightPanelBody::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.emrBodyContainer.bodyContainer::-webkit-scrollbar-track,
+.emrTableWrapper::-webkit-scrollbar-track,
+.emrFormContainer::-webkit-scrollbar-track,
+.emrSearchResults::-webkit-scrollbar-track,
+.emrAddVisitLeftPanel::-webkit-scrollbar-track,
+.emrAddVisitRightPanel::-webkit-scrollbar-track,
+.emrRightPanelBody::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.emrBodyContainer.bodyContainer::-webkit-scrollbar-thumb,
+.emrTableWrapper::-webkit-scrollbar-thumb,
+.emrFormContainer::-webkit-scrollbar-thumb,
+.emrSearchResults::-webkit-scrollbar-thumb,
+.emrAddVisitLeftPanel::-webkit-scrollbar-thumb,
+.emrAddVisitRightPanel::-webkit-scrollbar-thumb,
+.emrRightPanelBody::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(8, 24, 160, 0.34);
+  background-clip: padding-box;
+}
+
+.emrBodyContainer.bodyContainer::-webkit-scrollbar-thumb:hover,
+.emrTableWrapper::-webkit-scrollbar-thumb:hover,
+.emrFormContainer::-webkit-scrollbar-thumb:hover,
+.emrSearchResults::-webkit-scrollbar-thumb:hover,
+.emrAddVisitLeftPanel::-webkit-scrollbar-thumb:hover,
+.emrAddVisitRightPanel::-webkit-scrollbar-thumb:hover,
+.emrRightPanelBody::-webkit-scrollbar-thumb:hover {
+  background: rgba(8, 24, 160, 0.52);
+  background-clip: padding-box;
+}
+
+.emrTableWrapper,
+.emrFormContainer,
+.emrSearchResults,
+.emrAddVisitLeftPanel,
+.emrAddVisitRightPanel,
+.emrRightPanelBody {
+  scrollbar-color: rgba(8, 24, 160, 0.34) transparent;
+  scrollbar-width: thin;
+}
+
+.emrAddVisitRightPanel {
+  -ms-overflow-style: auto;
+  scrollbar-width: thin;
+}
+
+.emrAddVisitRightPanel::-webkit-scrollbar {
+  display: block;
+}
+
+.emrBodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+  flex: 0 0 auto;
+  min-height: 82px;
+  margin: 34px -28px 0 -16px;
+  padding: 18px 24px 20px;
+  background: transparent !important;
+  color: rgba(10, 17, 86, 0.62);
+}
+
+.emrBodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact .petshield-footer-compact-content {
+  padding-top: 12px;
+  border-top-color: rgba(8, 24, 160, 0.12);
+  gap: 14px;
+}
+
+.emrBodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact .petshield-footer-compact-logo {
+  width: 35px;
+  height: 35px;
+  margin-right: -10px;
+  border-radius: 8px;
+}
+
+.emrBodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact .home-footer-powered {
+  color: rgba(10, 17, 86, 0.62);
+}
+
+.emrBodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact .home-footer-powered img {
+  width: 62px;
+  height: 62px;
+}
+
+.emrPageHeaderActions {
+  align-self: center;
+  gap: 10px;
+}
+
+.emrHeaderSearchRow {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.emrToolbarStaticIcon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 999px;
+  background: rgba(8, 24, 160, 0.06);
+  display: grid;
+  place-items: center;
+}
+
+.emrHeaderDivider {
+  width: 1px;
+  height: 24px;
+  flex: 0 0 1px;
+  border-radius: 999px;
+  background: rgba(8, 24, 160, 0.16);
+}
+
+.emrHeaderSearchInput.emrSearchInput {
+  width: clamp(210px, 20vw, 300px);
+  height: 34px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+  font-size: 0.76rem;
+}
+
+.emrHeaderSearchInput.emrSearchInput:focus {
+  outline: none;
+  border-color: rgba(8, 24, 160, 0.42);
+  box-shadow: 0 0 0 3px rgba(61, 182, 238, 0.14);
+}
+
+.emrNotificationContainer {
+  width: 34px !important;
+  min-width: 34px !important;
+  max-width: 34px !important;
+  flex-basis: 34px !important;
+}
+
+.emrNotificationContainer .notifButtonWrapper,
+.emrNotificationContainer .notifButton,
+.emrNotificationContainer .emrIconButton {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  min-height: 34px !important;
+}
+
+/* EMR modal color system aligned with Billing and Account Overview */
+.emrModalOverlay {
+  background:
+    radial-gradient(circle at 22% 18%, rgba(250, 43, 36, 0.24), transparent 34%),
+    radial-gradient(circle at 78% 0%, rgba(8, 24, 160, 0.3), transparent 36%),
+    rgba(5, 8, 22, 0.64) !important;
+  backdrop-filter: blur(6px);
+}
+
+.emrSearchModal,
+.emrPdfOptionsModal,
+.emrProofModal,
+.emrAddVisitModal,
+.emrAddVisitModalSplit,
+.emrAlertModal {
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(247, 250, 255, 0.95)),
+    radial-gradient(circle at 0% 0%, rgba(250, 43, 36, 0.1), transparent 38%),
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.14), transparent 36%) !important;
+  box-shadow: 0 32px 80px rgba(4, 8, 42, 0.34);
+}
+
+.emrModalHeader,
+.emrRightPanelHeader {
+  min-height: 64px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #e7edff;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.emrModalHeader h4,
+.emrRightPanelHeader h4,
+.emrAlertTitle {
+  color: #0a1156 !important;
+  font-size: 1.05rem;
+  font-weight: 760;
+}
+
+.emrModalClose,
+.emrFormClose,
+.emrClosePanelBtn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+  display: inline-grid;
+  place-items: center;
+}
+
+.emrModalClose:hover,
+.emrFormClose:hover,
+.emrClosePanelBtn:hover {
+  border-color: rgba(8, 24, 160, 0.28);
+  background: #f7fbff;
+  color: #0818a0;
+}
+
+.emrSearchModalContent,
+.emrAddVisitContent,
+.emrRightPanelBody,
+.emrProofContent {
+  padding: 18px;
+}
+
+.emrFormSection,
+.emrSearchResultItem,
+.emrPdfOptionCard,
+.emrLabResultCard,
+.emrPrescriptionCard,
+.emrServiceCard,
+.emrClientCarePanel,
+.emrDoctorAiPanel,
+.emrAiSupportPanel {
+  border: 1px solid #e7edff;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10px 24px rgba(10, 17, 86, 0.05);
+}
+
+.emrFormSection h4,
+.emrSearchResultName,
+.emrPdfOptionCard h5 {
+  color: #0a1156;
+}
+
+.emrFormInput,
+.emrFormSelect,
+.emrFormTextarea,
+.emrSearchInput,
+.emrSearchInputSmall,
+.emrWeightInput {
+  border-color: rgba(8, 24, 160, 0.14);
+  background: rgba(255, 255, 255, 0.86);
+  color: #0a1156;
+}
+
+.emrFormInput:focus,
+.emrFormSelect:focus,
+.emrFormTextarea:focus,
+.emrSearchInput:focus,
+.emrSearchInputSmall:focus,
+.emrWeightInput:focus {
+  border-color: rgba(8, 24, 160, 0.42);
+  box-shadow: 0 0 0 3px rgba(61, 182, 238, 0.14);
+  outline: none;
+}
+
+.emrAddVisitLeftPanel,
+.emrAddVisitRightPanel {
+  background: transparent;
+}
+
+/* Create New Medical Record redesign */
+.emrCreateRecordPanel {
+  min-height: 620px;
+  padding: 0;
+  overflow: visible;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.07), transparent 34%),
+    radial-gradient(circle at 0% 100%, rgba(250, 43, 36, 0.055), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, rgba(249, 251, 255, 0.86) 100%);
+  box-shadow:
+    0 18px 42px rgba(10, 17, 86, 0.075),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.emrCreateRecordHeader {
+  margin: 0;
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.1);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.12), transparent 40%),
+    rgba(255, 255, 255, 0.58);
+}
+
+.emrCreateRecordIcon {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(61, 182, 238, 0.35), transparent 36%, rgba(255, 15, 15, 0.62)),
+    linear-gradient(135deg, #0b1732 0%, #071126 64%, #040815 100%);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 14px 28px rgba(4, 8, 42, 0.16);
+}
+
+.emrCreateRecordTitle {
+  display: grid;
+  gap: 3px;
+}
+
+.emrCreateRecordTitle span {
+  color: #4a5872;
+  font-size: 0.62rem;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.emrCreateRecordTitle h3 {
+  margin: 0;
+  color: #0a1156;
+  font-size: clamp(1.08rem, 1.4vw, 1.35rem);
+  font-weight: 780;
+}
+
+.emrCreateRecordTitle p {
+  margin: 0;
+  color: #4a5872;
+  font-size: 0.78rem;
+}
+
+.emrCreateRecordPanel .emrFormContent {
+  padding: 18px;
+}
+
+.emrCreateRecordPanel .emrFormSection {
+  padding: 18px;
+}
+
+.emrCreateRecordPanel .emrPetImageUpload {
+  align-items: center;
+  padding: 14px;
+  border: 1px dashed rgba(8, 24, 160, 0.2);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.emrCreateRecordPanel .emrImagePreview {
+  border-radius: 18px;
+  border-color: rgba(8, 24, 160, 0.12);
+  background: #f7fbff;
+}
+
+.emrCreateRecordPanel .emrSearchPetBtn,
+.emrFileUploadBtn,
+.emrSubmitBtn {
+  border: 1px solid rgba(61, 182, 238, 0.28);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(4, 8, 42, 0.12);
+}
+
+.emrCancelBtn {
+  border: 1px solid rgba(157, 171, 195, 0.34);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+}
+
+.emrFormActions {
+  border-top-color: rgba(8, 24, 160, 0.1);
+}
+
+/* EMR toast redesign */
+.emrToast {
+  top: 26px;
+  z-index: 3200;
+}
+
+.emrToastContent {
+  min-height: 48px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.2), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 64%, #040815 100%);
+  color: #ffffff;
+  box-shadow: 0 18px 42px rgba(4, 8, 42, 0.28);
+}
+
+.emrToastIcon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+}
+
+.emrToastMessage {
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.emrToastClose {
+  width: 30px;
+  height: 30px;
+  margin-left: 2px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.emrToastClose:hover {
+  background: rgba(255, 255, 255, 0.18);
+  transform: none;
+}
+
+@media (max-width: 900px) {
+  .emrBodyContainer.bodyContainer {
+    padding: 78px 14px 0 !important;
+  }
+
+  .emrPageHeaderActions,
+  .emrHeaderSearchRow {
+    width: 100%;
+  }
+
+  .emrHeaderDivider {
+    display: none;
+  }
+
+  .emrHeaderSearchInput.emrSearchInput {
+    width: 100%;
+  }
+
+  .emrBodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+    margin: 28px -14px 0;
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .emrCreateRecordHeader {
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .emrCreateRecordPanel .emrFormContent,
+  .emrCreateRecordPanel .emrFormSection {
+    padding: 14px;
+  }
+}
+
+/* Folder-style EMR detail view */
+.emrFormContainer:not(.emrCreateRecordPanel) {
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.06), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(249, 251, 255, 0.86));
+  box-shadow:
+    0 18px 42px rgba(10, 17, 86, 0.075),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.emrFormContainer:not(.emrCreateRecordPanel) > .emrFormHeader {
+  margin: 0;
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.1);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.emrTabs {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin: 0;
+  padding: 14px 18px 0;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.12);
+  background:
+    linear-gradient(180deg, rgba(248, 251, 255, 0.72), rgba(238, 243, 255, 0.72));
+  overflow-x: auto;
+}
+
+.emrTabBtn {
+  position: relative;
+  min-height: 42px;
+  padding: 10px 16px 9px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(241, 245, 255, 0.82));
+  color: #4a5872;
+  box-shadow: inset 0 -8px 12px rgba(8, 24, 160, 0.03);
+}
+
+.emrTabBtn::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  left: 16px;
+  width: 44px;
+  height: 10px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  background: inherit;
+}
+
+.emrTabBtn:hover {
+  transform: translateY(-1px);
+  color: #0a1156;
+}
+
+.emrTabBtn.emrTabActive {
+  z-index: 2;
+  border-color: rgba(8, 24, 160, 0.18);
+  background: #ffffff;
+  color: #0818a0;
+  box-shadow: 0 -10px 24px rgba(10, 17, 86, 0.07);
+}
+
+.emrTabBtn.emrTabActive::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: #ffffff;
+}
+
+.emrFormContainer:not(.emrCreateRecordPanel) > .emrFormContent {
+  padding: 18px;
+}
+
+.emrPetOwnerInfoRedesign {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.85fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.emrPetOwnerInfoRedesign .emrFormSection {
+  position: relative;
+  overflow: hidden;
+  padding: 18px;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.08), transparent 34%),
+    rgba(255, 255, 255, 0.82);
+}
+
+.emrPetOwnerInfoRedesign .emrFormSection::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5px;
+  height: 100%;
+  background: linear-gradient(180deg, #0818a0, #3db6ee);
+}
+
+.emrPetOwnerInfoRedesign .emrFormSection h4 {
+  margin: 0 0 14px;
+  color: #0a1156;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.emrPetOwnerInfoRedesign .emrFormSection:first-child {
+  grid-row: span 2;
+}
+
+.emrPetOwnerInfoRedesign .emrPetImageUpload {
+  align-items: center;
+  gap: 18px;
+  padding: 14px;
+  border: 1px dashed rgba(8, 24, 160, 0.18);
+  border-radius: 18px;
+  background: rgba(247, 251, 255, 0.78);
+}
+
+.emrPetOwnerInfoRedesign .emrImagePreview {
+  width: 132px;
+  height: 132px;
+  border-radius: 20px;
+  border-color: rgba(8, 24, 160, 0.14);
+  background: #f7fbff;
+}
+
+.emrPetOwnerInfoRedesign .emrFormGroup label {
+  color: #4a5872;
+  font-size: 0.68rem;
+  font-weight: 780;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.emrPetOwnerInfoRedesign .emrFormInput:disabled,
+.emrPetOwnerInfoRedesign .emrFormSelect:disabled,
+.emrPetOwnerInfoRedesign .emrWeightInput:disabled {
+  opacity: 1;
+  background: rgba(248, 251, 255, 0.92);
+  color: #34405a;
+}
+
+/* Visit folders */
+.emrVisitHistoryContainer {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  max-height: none;
+  overflow: visible;
+}
+
+.emrVisitFolderCard {
+  position: relative;
+  min-height: 188px;
+  padding: 18px;
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  border-radius: 0 18px 18px 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(247, 250, 255, 0.9));
+  box-shadow: 0 14px 30px rgba(10, 17, 86, 0.08);
+  cursor: pointer;
+}
+
+.emrVisitFolderCard::before {
+  content: "";
+  position: absolute;
+  top: -18px;
+  left: -1px;
+  width: 128px;
+  height: 18px;
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  background: #ffffff;
+}
+
+.emrVisitFolderCard:hover {
+  transform: translateY(-2px);
+  border-color: rgba(8, 24, 160, 0.28);
+  box-shadow: 0 20px 38px rgba(10, 17, 86, 0.12);
+}
+
+.emrVisitFolderCard .emrVisitHeader {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.emrVisitFolderCard .emrVisitDate {
+  display: grid;
+  gap: 4px;
+  color: #0a1156;
+}
+
+.emrVisitFolderCard .emrVisitHeaderActions {
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.emrVisitFolderCard .emrVisitDetails {
+  grid-template-columns: 1fr;
+  margin-top: 14px;
+}
+
+.emrVisitFolderCard .emrVisitDetails div {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.emrVisitOpenHint {
+  color: #4a5872;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.emrVisitRecordModal {
+  width: min(96vw, 980px);
+  max-width: 980px;
+  max-height: min(88vh, 860px);
+}
+
+.emrVisitRecordModalHeader {
+  align-items: flex-start;
+}
+
+.emrVisitRecordModalHeader h4 {
+  margin: 2px 0;
+}
+
+.emrVisitRecordModalHeader p {
+  margin: 0;
+  color: #4a5872;
+  font-size: 0.8rem;
+}
+
+.emrVisitRecordKicker {
+  color: #4a5872;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.emrVisitRecordModalContent {
+  padding: 18px;
+  overflow-y: auto;
+}
+
+.emrVisitRecordSummary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.emrVisitRecordSummary > div,
+.emrVisitRecordPanel,
+.emrVisitRecordLabItem {
+  border: 1px solid #e7edff;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10px 24px rgba(10, 17, 86, 0.05);
+}
+
+.emrVisitRecordSummary > div {
+  padding: 12px;
+  display: grid;
+  gap: 5px;
+}
+
+.emrVisitRecordSummary span,
+.emrVisitRecordDetailGrid span {
+  color: #4a5872;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.emrVisitRecordSummary strong,
+.emrVisitRecordDetailGrid strong {
+  color: #0a1156;
+  font-size: 0.86rem;
+}
+
+.emrVisitRecordActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.emrVisitRecordGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.emrVisitRecordPanel {
+  padding: 14px;
+}
+
+.emrVisitRecordPanelWide {
+  grid-column: 1 / -1;
+}
+
+.emrVisitRecordPanel h5 {
+  margin: 0 0 12px;
+  color: #0a1156;
+  font-size: 0.92rem;
+}
+
+.emrVisitRecordDetailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.emrVisitRecordDetailGrid > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(247, 251, 255, 0.78);
+}
+
+.emrVisitRecordNote {
+  margin: 12px 0 0;
+  color: #34405a;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.emrVisitRecordStack {
+  display: grid;
+  gap: 10px;
+}
+
+.emrVisitRecordLabItem {
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.emrVisitRecordLabItem strong {
+  color: #0a1156;
+}
+
+.emrVisitRecordLabItem span {
+  color: #4a5872;
+  font-size: 0.78rem;
+}
+
+.emrVisitRecordRemarks {
+  min-height: 96px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(247, 251, 255, 0.78);
+}
+
+@media (max-width: 1000px) {
+  .emrPetOwnerInfoRedesign,
+  .emrVisitRecordGrid,
+  .emrVisitRecordSummary {
+    grid-template-columns: 1fr;
+  }
+
+  .emrPetOwnerInfoRedesign .emrFormSection:first-child {
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 700px) {
+  .emrTabBtn {
+    min-width: 180px;
+  }
+
+  .emrVisitHistoryContainer {
+    grid-template-columns: 1fr;
+  }
+
+  .emrVisitRecordDetailGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* EMR viewing refinements */
+.emrTableContainer.emrRecordDetailShell {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.emrTabs {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.emrTabBtn {
+  flex: 0 1 auto;
+}
+
+.emrVisitFilters {
+  align-items: center;
+}
+
+.emrSmallSearch .emrSearchInputSmall,
+.emrVisitFilterControl .emrFilterInputSmall,
+.emrVisitFilterControl .emrFilterSelectSmall {
+  min-height: 34px;
+  border: 1px solid rgba(8, 24, 160, 0.16);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+  box-shadow: 0 8px 18px rgba(10, 17, 86, 0.04);
+}
+
+.emrSmallSearch .emrSearchInputSmall {
+  padding-left: 34px;
+}
+
+.emrVisitFilterControl {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.emrVisitFilterIcon {
+  position: absolute;
+  left: 12px;
+  z-index: 1;
+  color: #0818a0;
+  pointer-events: none;
+}
+
+.emrVisitFilterControl .emrFilterInputSmall,
+.emrVisitFilterControl .emrFilterSelectSmall {
+  width: 100%;
+  padding-left: 34px;
+}
+
+.emrVisitHistoryContainer {
+  grid-auto-rows: 1fr;
+  align-items: stretch;
+  padding-top: 18px;
+}
+
+.emrVisitHistoryContainer > div {
+  display: flex;
+  min-width: 0;
+}
+
+.emrVisitFolderCard {
+  width: 100%;
+  min-height: 230px;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.94));
+}
+
+.emrVisitFolderCard::before {
+  background: #ffffff;
+}
+
+.emrVisitFolderCard .emrVisitDetails {
+  min-height: 76px;
+  align-content: start;
+}
+
+.emrVisitRecordModal {
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.1), transparent 28%),
+    linear-gradient(180deg, #ffffff, #f8faff);
+  color: #0a1156;
+}
+
+.emrVisitRecordModal .emrModalHeader {
+  border-bottom: 1px solid rgba(8, 24, 160, 0.12);
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.emrVisitRecordModal .emrPrescriptionItem,
+.emrVisitRecordModal .emrPrescriptionItem span,
+.emrVisitRecordModal .emrPrescriptionItem strong,
+.emrVisitRecordModal .emrPrescriptionInstructions {
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.emrVisitRecordModal .emrPrescriptionItem {
+  margin-top: 6px;
+  padding-left: 10px;
+  border-left-color: #0818a0;
+}
+
+.emrVisitRecordModal .emrPrescriptionItem strong {
+  color: #0a1156;
+  font-weight: 760;
+}
+
+.emrVisitRecordModal .emrPrescriptionInstructions {
+  margin: 8px 0 0;
+  color: #4a5872;
+}
+
+@media (max-width: 700px) {
+  .emrTabBtn {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
+  }
+
+  .emrVisitFilters,
+  .emrVisitFilterControl {
+    width: 100%;
+  }
+}
+
+/* Medical records final palette and layout polish */
+.emrNotificationContainer {
+  position: relative;
+  isolation: isolate;
+}
+
+.emrNotificationContainer:hover {
+  transform: none !important;
+}
+
+.emrNotificationContainer .emrIconButton,
+.emrNotificationContainer .emrBlueIcon,
+.emrNotificationContainer .emrIconDefault,
+.emrNotificationContainer .emrIconActive {
+  color: #0a1156 !important;
+}
+
+.emrNotificationContainer .emrIconButton:hover,
+.emrNotificationContainer .emrIconButton:focus-visible {
+  border-color: rgba(8, 24, 160, 0.34);
+  background:
+    radial-gradient(circle at 30% 18%, rgba(61, 182, 238, 0.16), transparent 42%),
+    #ffffff;
+  box-shadow: 0 12px 26px rgba(10, 17, 86, 0.12);
+}
+
+.emrNotificationContainer .notifPopupAnchored {
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 3500;
+}
+
+.emrFormHeader {
+  gap: 14px;
+  border-bottom-color: rgba(8, 24, 160, 0.12);
+}
+
+.emrFormHeaderRight {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.emrHeaderAddVisitBtn {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 760;
+  cursor: pointer;
+  box-shadow: 0 12px 24px rgba(4, 8, 42, 0.12);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.emrHeaderAddVisitBtn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(61, 182, 238, 0.36);
+  box-shadow: 0 16px 30px rgba(4, 8, 42, 0.16);
+}
+
+.emrStatusActive {
+  border: 1px solid rgba(61, 182, 238, 0.22);
+  background: rgba(61, 182, 238, 0.12);
+  color: #0a1156;
+}
+
+.emrVisitFolderCard {
+  gap: 14px;
+  border-color: rgba(8, 24, 160, 0.14);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(248, 251, 255, 0.94));
+}
+
+.emrVisitFolderCard .emrVisitHeader {
+  margin-bottom: 0;
+  border-bottom-color: rgba(8, 24, 160, 0.1);
+}
+
+.emrVisitFolderCard .emrVisitDetails {
+  margin-top: 0;
+}
+
+.emrVisitCardActionsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid rgba(8, 24, 160, 0.1);
+}
+
+.emrVisitCardActionsGrid:has(> button:only-child) {
+  grid-template-columns: 1fr;
+}
+
+.emrVisitCardActionsGrid .emrCreateInvoiceBtn,
+.emrVisitCardActionsGrid .emrViewPrescriptionBtn {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  margin: 0;
+  padding: 0 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 760;
+  white-space: normal;
+  line-height: 1.2;
+  box-shadow: none;
+}
+
+.emrVisitCardActionsGrid .emrCreateInvoiceBtn {
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+}
+
+.emrVisitCardActionsGrid .emrViewPrescriptionBtn {
+  border: 1px solid rgba(250, 43, 36, 0.18);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.14), transparent 48%),
+    linear-gradient(135deg, #fff7f7 0%, #ffecec 100%);
+  color: #8f1616;
+}
+
+.emrVisitCardActionsGrid .emrCreateInvoiceBtn:hover,
+.emrVisitCardActionsGrid .emrViewPrescriptionBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(10, 17, 86, 0.1);
+}
+
+.emrVisitCardActionsGrid .emrViewPrescriptionBtn:hover {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.18), transparent 48%),
+    linear-gradient(135deg, #fff2f2 0%, #ffe4e4 100%);
+}
+
+.emrRecordDetailShell .emrFormContainer > .emrFormActions {
+  margin-bottom: 28px;
+  padding-top: 18px;
+  padding-left: 20px;
+  padding-right: 20px;
+  border-top-color: rgba(8, 24, 160, 0.12);
+}
+
+.emrRecordDetailShell .emrReturnBtn,
+.emrRecordDetailShell .emrCancelBtn,
+.emrRecordDetailShell .emrSubmitBtn,
+.emrPdfModalActions .emrReturnBtn,
+.emrPdfModalActions .emrCancelBtn,
+.emrPdfModalActions .emrSubmitBtn {
+  min-height: 36px;
+  border-radius: 999px;
+}
+
+.emrRecordDetailShell .emrCancelBtn,
+.emrPdfModalActions .emrCancelBtn {
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  background: #ffffff;
+  color: #0a1156;
+}
+
+.emrRecordDetailShell .emrSubmitBtn,
+.emrPdfModalActions .emrSubmitBtn {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+}
+
+@media (max-width: 700px) {
+  .emrFormHeaderRight {
+    flex-wrap: wrap;
+  }
+
+  .emrHeaderAddVisitBtn {
+    order: 2;
+    width: 100%;
+  }
+
+  .emrVisitCardActionsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* EMR tab and visit-folder color corrections */
+.emrVisitCardActionsGrid .emrCreateInvoiceBtn,
+.emrCreateInvoiceBtn {
+  border: 1px solid rgba(31, 122, 63, 0.2);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(92, 214, 143, 0.22), transparent 44%),
+    linear-gradient(135deg, #1f7a3f 0%, #11552b 100%) !important;
+  color: #ffffff;
+}
+
+.emrVisitCardActionsGrid .emrCreateInvoiceBtn:hover,
+.emrCreateInvoiceBtn:hover {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(92, 214, 143, 0.28), transparent 44%),
+    linear-gradient(135deg, #25894a 0%, #0f4726 100%) !important;
+  box-shadow: 0 12px 24px rgba(31, 122, 63, 0.18);
+}
+
+.emrVisitCardActionsGrid .emrViewPrescriptionBtn,
+.emrViewPrescriptionBtn {
+  border: 1px solid rgba(180, 35, 24, 0.2);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.28), transparent 44%),
+    linear-gradient(135deg, #d92d20 0%, #8f1616 100%) !important;
+  color: #ffffff;
+}
+
+.emrVisitCardActionsGrid .emrViewPrescriptionBtn:hover,
+.emrViewPrescriptionBtn:hover {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.34), transparent 44%),
+    linear-gradient(135deg, #ef3b2d 0%, #7b1111 100%) !important;
+  box-shadow: 0 12px 24px rgba(180, 35, 24, 0.18);
+}
+
+.emrPetOwnerInfoRedesign {
+  padding: 2px;
+}
+
+.emrPetOwnerInfoRedesign .emrFormSection {
+  border-color: rgba(8, 24, 160, 0.12);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.09), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 251, 255, 0.88));
+  box-shadow: 0 14px 30px rgba(10, 17, 86, 0.07);
+}
+
+.emrPetOwnerInfoRedesign .emrFormSection::before {
+  background: linear-gradient(180deg, #0a1156 0%, #fa2b24 100%);
+}
+
+.emrPetOwnerInfoRedesign .emrFormSection h4 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #0a1156;
+  font-weight: 820;
+}
+
+.emrPetOwnerInfoRedesign .emrFormInput,
+.emrPetOwnerInfoRedesign .emrFormSelect,
+.emrPetOwnerInfoRedesign .emrWeightInput {
+  border-color: rgba(8, 24, 160, 0.14);
+  background: #ffffff;
+  color: #0a1156;
+}
+
+.emrPetOwnerInfoRedesign .emrFormInput:focus,
+.emrPetOwnerInfoRedesign .emrFormSelect:focus,
+.emrPetOwnerInfoRedesign .emrWeightInput:focus {
+  border-color: rgba(8, 24, 160, 0.42);
+  box-shadow: 0 0 0 3px rgba(61, 182, 238, 0.14);
+}
+
+.emrMedicalHistoryContainer {
+  padding: 4px;
+}
+
+.emrMedicalHistoryFilters {
+  border: 1px solid rgba(8, 24, 160, 0.1);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.1), transparent 40%),
+    rgba(255, 255, 255, 0.72);
+  box-shadow: 0 10px 24px rgba(10, 17, 86, 0.05);
+}
+
+.emrFilterChip {
+  border-color: rgba(8, 24, 160, 0.14);
+  background: #ffffff;
+  color: #4a5872;
+  font-weight: 760;
+}
+
+.emrFilterChip:hover {
+  border-color: rgba(8, 24, 160, 0.32);
+  color: #0a1156;
+  background: #f7fbff;
+}
+
+.emrFilterChipActive {
+  border-color: rgba(61, 182, 238, 0.28);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+  color: #ffffff;
+}
+
+.emrHistorySection {
+  border-color: rgba(8, 24, 160, 0.12);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.08), transparent 34%),
+    rgba(255, 255, 255, 0.84);
+  box-shadow: 0 14px 30px rgba(10, 17, 86, 0.07);
+}
+
+.emrHistorySectionHeader {
+  background:
+    radial-gradient(circle at 0% 0%, rgba(250, 43, 36, 0.08), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 251, 255, 0.86));
+  border-bottom-color: rgba(8, 24, 160, 0.1);
+}
+
+.emrHistorySectionHeader svg {
+  color: #0a1156;
+}
+
+.emrHistorySectionHeader h4,
+.emrHistoryCardTitle strong {
+  color: #0a1156;
+  font-weight: 800;
+}
+
+.emrHistoryCount,
+.emrHistoryDate {
+  border: 1px solid rgba(8, 24, 160, 0.1);
+  background: #ffffff;
+  color: #4a5872;
+}
+
+.emrHistoryCard {
+  border-color: rgba(8, 24, 160, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 251, 255, 0.9));
+  box-shadow: 0 8px 20px rgba(10, 17, 86, 0.04);
+}
+
+.emrHistoryCard:hover {
+  border-color: rgba(8, 24, 160, 0.22);
+  box-shadow: 0 14px 30px rgba(10, 17, 86, 0.09);
+}
+
+.emrHistoryLabel {
+  color: #7b879d;
+  font-weight: 650;
+}
+
+.emrHistoryDetail {
+  color: #25324a;
+  font-weight: 520;
+}
+
+.emrOwnerShareBtn {
+  border-color: rgba(8, 24, 160, 0.18);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+}
+
+.emrOwnerShareBtn.isShared {
+  background: #ffffff;
+  color: #0a1156;
+}
+
+.emrVisitRecordModal {
+  width: min(96vw, 1040px);
+}
+
+.emrVisitRecordModalContent {
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.emrVisitRecordSummary {
+  margin-bottom: 0;
+  gap: 12px;
+}
+
+.emrVisitRecordSummary > div {
+  position: relative;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 14px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.1), transparent 40%),
+    #ffffff;
+}
+
+.emrVisitRecordSummaryIcon {
+  grid-row: span 2;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background:
+    radial-gradient(circle at 30% 18%, rgba(61, 182, 238, 0.24), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+  color: #ffffff !important;
+  display: grid;
+  place-items: center;
+  font-size: 0;
+}
+
+.emrVisitRecordSummary span:not(.emrVisitRecordSummaryIcon),
+.emrVisitRecordDetailGrid span {
+  color: #7b879d;
+  font-size: 0.64rem;
+  font-weight: 680;
+  letter-spacing: 0.075em;
+}
+
+.emrVisitRecordDetailGrid span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.emrVisitRecordDetailGrid span svg {
+  color: #3db6ee;
+}
+
+.emrVisitRecordSummary strong,
+.emrVisitRecordDetailGrid strong {
+  color: #0a1156;
+  font-size: 0.9rem;
+  font-weight: 680;
+  line-height: 1.3;
+}
+
+.emrVisitRecordPanel {
+  border-color: rgba(8, 24, 160, 0.12);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.07), transparent 34%),
+    rgba(255, 255, 255, 0.86);
+}
+
+.emrVisitRecordPanel h5 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.08);
+  color: #0a1156;
+  font-size: 0.94rem;
+  font-weight: 800;
+}
+
+.emrVisitRecordPanel h5 svg {
+  color: #fa2b24;
+}
+
+.emrClinicalExamPanel {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(31, 122, 63, 0.08), transparent 34%),
+    rgba(255, 255, 255, 0.88);
+}
+
+.emrVisitRecordDetailGrid.emrClinicalExamGrid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.emrVisitRecordDetailGrid > div {
+  border: 1px solid rgba(8, 24, 160, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 251, 255, 0.84));
+}
+
+.emrVisitRecordNote {
+  border: 1px solid rgba(250, 43, 36, 0.12);
+  background: rgba(255, 247, 247, 0.72);
+  padding: 12px;
+  border-radius: 14px;
+  color: #4a5872;
+  font-weight: 520;
+}
+
+.emrVisitRecordLabItem {
+  border-color: rgba(8, 24, 160, 0.1);
+  background: #ffffff;
+}
+
+.emrVisitRecordLabItem strong,
+.emrVisitRecordModal .emrPrescriptionItem strong {
+  font-weight: 700;
+}
+
+.emrVisitRecordLabItem span,
+.emrVisitRecordModal .emrPrescriptionItem span,
+.emrVisitRecordModal .emrPrescriptionInstructions,
+.emrVisitRecordRemarks {
+  color: #4a5872;
+  font-weight: 520;
+}
+
+@media (max-width: 900px) {
+  .emrVisitRecordDetailGrid.emrClinicalExamGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .emrVisitRecordDetailGrid.emrClinicalExamGrid {
+    grid-template-columns: 1fr;
   }
 }

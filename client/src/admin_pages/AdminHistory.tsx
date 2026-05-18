@@ -6,14 +6,15 @@ import {
   IoHomeOutline, IoPeopleOutline, IoChevronDownOutline, IoChevronUpOutline,
   IoPersonOutline, IoMedkitOutline, IoCalendarClearOutline, IoCalendarOutline,
   IoTodayOutline, IoTimeOutline, IoDocumentTextOutline, IoSettingsOutline,
-  IoLogOutOutline, IoNotifications, IoCheckmarkCircleOutline, IoCloseCircleOutline,
+  IoLogOutOutline, IoCheckmarkCircleOutline, IoCloseCircleOutline,
   IoAlertCircleOutline, IoSearchSharp, IoFilterSharp, IoRefresh, IoEyeOutline, IoReceipt,
-  IoListOutline
+  IoListOutline, IoSwapVerticalOutline
 } from 'react-icons/io5';
 
 // Import your merged CSS file
 import './AdminStyles.css';
 import Navbar from '../reusable_components/NavBar';
+import Notifications from '../reusable_components/Notifications';
 
 // Using standard imports for Vite images
 import logoImg from '../assets/AgsikapLogo-Temp.png';
@@ -25,6 +26,12 @@ import { isClinicStaffRole, isNurseRole } from '../auth/roles';
 const BILLING_NAVIGATION_DELAY_MS = 450;
 const DEFAULT_HISTORY_ROWS_PER_PAGE = 10;
 const HISTORY_ROWS_PER_PAGE_OPTIONS = [10, 20, 50];
+const HISTORY_SORT_OPTIONS = [
+  { value: 'dateDesc', label: 'Newest First' },
+  { value: 'dateAsc', label: 'Oldest First' },
+  { value: 'patientAsc', label: 'Patient A-Z' },
+  { value: 'patientDesc', label: 'Patient Z-A' },
+] as const;
 
 // --- TYPESCRIPT INTERFACES ---
 interface CurrentUser {
@@ -68,16 +75,10 @@ export default function AdminHistory({ viewerRole = 'admin', hideBillingActions 
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const [showAppointmentsDropdown, setShowAppointmentsDropdown] = useState(true); // Default open for this section
   
-  const [searchVisible, setSearchVisible] = useState(false);
-  const [filterVisible, setFilterVisible] = useState(false);
-  const [searchHovered, setSearchHovered] = useState(false);
-  const [filterHovered, setFilterHovered] = useState(false);
-  const [rowsMenuVisible, setRowsMenuVisible] = useState(false);
-  const [rowsMenuHovered, setRowsMenuHovered] = useState(false);
-  
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [serviceFilter, setServiceFilter] = useState('all');
+  const [sortOrder, setSortOrder] = useState<typeof HISTORY_SORT_OPTIONS[number]['value']>('dateDesc');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(DEFAULT_HISTORY_ROWS_PER_PAGE);
   const [historyAppointments, setHistoryAppointments] = useState<any[]>([]);
@@ -169,6 +170,16 @@ export default function AdminHistory({ viewerRole = 'admin', hideBillingActions 
     )
   ).sort((a, b) => a.localeCompare(b));
 
+  const getHistorySortDateValue = (appointment: any) => {
+    const dateValue = appointment.date_only || appointment.date_display || String(appointment.date_time || '').split(' ')[0] || '';
+    const timeValue = appointment.time_display || appointment.appointment_time || String(appointment.date_time || '').split(' ').slice(1).join(' ') || '00:00';
+    const parsed = new Date(`${dateValue} ${timeValue}`);
+    return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+  };
+
+  const getHistoryPatientName = (appointment: any) =>
+    String(appointment.name || appointment.patient_name || '').trim();
+
   // Filter appointments
   const filteredAppointments = historyAppointments.filter(app => {
     const normalizedQuery = searchQuery.toLowerCase();
@@ -184,6 +195,11 @@ export default function AdminHistory({ viewerRole = 'admin', hideBillingActions 
     if (statusFilter !== 'all' && statusFilter !== 'ready_for_billing' && normalizedStatus !== statusFilter) return false;
     if (serviceFilter !== 'all' && app.service !== serviceFilter) return false;
     return true;
+  }).sort((a, b) => {
+    if (sortOrder === 'dateAsc') return getHistorySortDateValue(a) - getHistorySortDateValue(b);
+    if (sortOrder === 'patientAsc') return getHistoryPatientName(a).localeCompare(getHistoryPatientName(b));
+    if (sortOrder === 'patientDesc') return getHistoryPatientName(b).localeCompare(getHistoryPatientName(a));
+    return getHistorySortDateValue(b) - getHistorySortDateValue(a);
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredAppointments.length / rowsPerPage));
@@ -193,7 +209,7 @@ export default function AdminHistory({ viewerRole = 'admin', hideBillingActions 
   );
   useEffect(() => {
     setPage(0);
-  }, [searchQuery, statusFilter, serviceFilter, rowsPerPage]);
+  }, [searchQuery, statusFilter, serviceFilter, sortOrder, rowsPerPage]);
 
   useEffect(() => {
     setPage((currentPage) => Math.min(currentPage, totalPages - 1));
@@ -305,21 +321,52 @@ export default function AdminHistory({ viewerRole = 'admin', hideBillingActions 
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
 
       {/* BODY CONTENT */}
-      <div className="bodyContainer">
-        <div className="topContainer">
-          <div className="subTopContainer">
-            <IoDocumentTextOutline size={20} color="#3d67ee" style={{ marginTop: '2px' }} />
-            <span className="blueText" style={{ marginLeft: '10px' }}>Appointments / History</span>
+      <div className="bodyContainer accountOverviewBodyContainer historyBodyContainer">
+        <div className="topContainer accountOverviewTopContainer historyTopContainer">
+          <div className="subTopContainer accountOverviewSubTopContainer">
+            <div className="accountOverviewHeroIcon historyHeroIcon">
+              <IoDocumentTextOutline size={25} />
+            </div>
+            <div className="accountOverviewHeroCopy">
+              <span>Appointments</span>
+              <h1>History</h1>
+              <p>Review completed, cancelled, expired, and billing-ready appointments.</p>
+            </div>
           </div>
-          <div className="subTopContainer" style={{ justifyContent: 'center', flex: 0.5, marginLeft: '12px' }}>
-            <button style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-              <IoNotifications size={21} color="#3d67ee" style={{ marginTop: '3px' }} />
-            </button>
+          <div className="accountOverviewHeaderActions historyHeaderActions">
+            <div className="accountSearchRow accountHeaderSearchRow historyHeaderSearchRow">
+              <div className="toolbarItem accountToolbarStaticIcon">
+                <IoSearchSharp size={18} className="iconDefault" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search history..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="searchInput accountHeaderSearchInput historyHeaderSearchInput"
+                maxLength={60}
+              />
+            </div>
+            <div className="accountHeaderDivider" aria-hidden="true" />
+            <div className="subTopContainer notificationContainer accountOverviewNotificationContainer">
+              <Notifications
+                buttonClassName="invIconButton"
+                iconClassName="invBlueIcon"
+                onViewAll={() => {
+                  console.log('View all notifications');
+                }}
+                onNotificationClick={(notification) => {
+                  if (notification.link) {
+                    navigate(notification.link);
+                  }
+                }}
+              />
+            </div>
           </div>
         </div>
 
         {/* TABLE CONTAINER */}
-        <div className="tableContainer">
+        <div className="tableContainer accountOverviewTableContainer historyTableContainer">
           {selectedHistoryAppointment ? (
             <UserDetailsView
               user={selectedHistoryAppointment}
@@ -343,90 +390,17 @@ export default function AdminHistory({ viewerRole = 'admin', hideBillingActions 
             />
           ) : (
             <>
-              <div className="tableToolbar">
-                
-                {/* Search and Filters */}
+              <div className="tableToolbar historyToolbar">
                 <div className="searchFilterSection">
-                  <div className="toolbarItem" onMouseEnter={() => setSearchHovered(true)} onMouseLeave={() => setSearchHovered(false)}>
-                    <button className="iconButton" onClick={() => setSearchVisible(!searchVisible)}>
-                      <IoSearchSharp size={25} color={searchVisible ? "#afccf8" : "#3d67ee"} />
-                    </button>
-                    {searchHovered && <div className="tooltip">Search</div>}
-                  </div>
-
-                  {searchVisible && (
-                    <input
-                      type="text"
-                      placeholder="Search by patient or pet name..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="searchInput"
-                      maxLength={60}
-                      style={{ width: '250px' }}
-                    />
-                  )}
-
-                  <div className="toolbarItem" style={{ marginLeft: '15px' }} onMouseEnter={() => setFilterHovered(true)} onMouseLeave={() => setFilterHovered(false)}>
-                    <button
-                      className="iconButton"
-                      onClick={() => {
-                        setFilterVisible(!filterVisible);
-                        setRowsMenuVisible(false);
-                      }}
-                    >
-                      <IoFilterSharp size={25} color={filterVisible ? "#afccf8" : "#3d67ee"} />
-                    </button>
-                    {filterHovered && <div className="tooltip">Filter</div>}
-                  </div>
-
-                  <div
-                    className="toolbarItem"
-                    onMouseEnter={() => setRowsMenuHovered(true)}
-                    onMouseLeave={() => setRowsMenuHovered(false)}
-                    style={{ marginLeft: '4px' }}
-                  >
-                    <button
-                      className="iconButton"
-                      aria-label="Rows per page"
-                      aria-expanded={rowsMenuVisible}
-                      onClick={() => {
-                        setRowsMenuVisible(!rowsMenuVisible);
-                        setFilterVisible(false);
-                      }}
-                    >
-                      <IoListOutline size={24} color={rowsMenuVisible ? "#afccf8" : "#3d67ee"} />
-                    </button>
-                    {rowsMenuHovered && !rowsMenuVisible && <div className="tooltip">Rows per page</div>}
-                    {rowsMenuVisible && (
-                      <div className="historyRowsMenu">
-                        <label className="historyRowsMenuLabel" htmlFor="historyRowsPerPage">
-                          Rows Per Page
-                        </label>
-                        <select
-                          id="historyRowsPerPage"
-                          value={rowsPerPage}
-                          onChange={(e) => {
-                            setRowsPerPage(Number(e.target.value));
-                            setRowsMenuVisible(false);
-                          }}
-                          className="filterSelect historyRowsMenuSelect"
-                          aria-label="Rows per page"
-                        >
-                          {HISTORY_ROWS_PER_PAGE_OPTIONS.map((option) => (
-                            <option key={option} value={option}>{option} per page</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-
-                  {filterVisible && (
-                    <div className="filterSection">
+                  <div className="accountFilterRow historyFilterRow">
+                    <div className="toolbarItem accountToolbarStaticIcon">
+                      <IoFilterSharp size={18} className="iconDefault" />
+                    </div>
+                    <div className="filterSection historyFilterSection">
                       <select 
                         value={statusFilter} 
                         onChange={(e) => setStatusFilter(e.target.value)}
                         className="filterSelect"
-                        style={{ width: '170px' }}
                       >
                         <option value="all" style={{color: '#a8a8a8'}}>All Status</option>
                         {!shouldHideBillingActions && <option value="ready_for_billing">Ready for Billing</option>}
@@ -440,7 +414,6 @@ export default function AdminHistory({ viewerRole = 'admin', hideBillingActions 
                         value={serviceFilter} 
                         onChange={(e) => setServiceFilter(e.target.value)}
                         className="filterSelect"
-                        style={{ width: '160px', marginLeft: '10px' }}
                       >
                         <option value="all" style={{color: '#a8a8a8'}}>All Services</option>
                         {serviceOptions.map((service) => (
@@ -448,16 +421,46 @@ export default function AdminHistory({ viewerRole = 'admin', hideBillingActions 
                         ))}
                       </select>
 
-                      {(statusFilter !== 'all' || serviceFilter !== 'all' || searchQuery) && (
+                      <div className="toolbarItem accountToolbarStaticIcon">
+                        <IoSwapVerticalOutline size={18} className="iconDefault" />
+                      </div>
+
+                      <select
+                        value={sortOrder}
+                        onChange={(e) => setSortOrder(e.target.value as typeof sortOrder)}
+                        className="filterSelect"
+                        aria-label="Sort history"
+                      >
+                        {HISTORY_SORT_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+
+                      <div className="toolbarItem accountToolbarStaticIcon">
+                        <IoListOutline size={18} className="iconDefault" />
+                      </div>
+
+                      <select
+                        value={rowsPerPage}
+                        onChange={(e) => setRowsPerPage(Number(e.target.value))}
+                        className="filterSelect historyRowsSelect"
+                        aria-label="Rows per page"
+                      >
+                        {HISTORY_ROWS_PER_PAGE_OPTIONS.map((option) => (
+                          <option key={option} value={option}>{option} per page</option>
+                        ))}
+                      </select>
+
+                      {(statusFilter !== 'all' || serviceFilter !== 'all' || searchQuery || sortOrder !== 'dateDesc') && (
                         <button 
-                          onClick={() => { setStatusFilter('all'); setServiceFilter('all'); setSearchQuery(''); }}
-                          style={{ background: 'none', border: 'none', color: '#3d67ee', fontSize: '12px', marginLeft: '10px', cursor: 'pointer', fontWeight: '600' }}
+                          onClick={() => { setStatusFilter('all'); setServiceFilter('all'); setSearchQuery(''); setSortOrder('dateDesc'); }}
+                          className="clearFilterBtn"
                         >
                           Clear Filters
                         </button>
                       )}
                     </div>
-                  )}
+                  </div>
                 </div>
 
                 {/* Refresh Button */}
@@ -584,24 +587,31 @@ export default function AdminHistory({ viewerRole = 'admin', hideBillingActions 
                 )}
               </div>
               {!loading && filteredAppointments.length > 0 && (
-                <div className="pagination">
-                  <button
-                    className="paginationBtn"
-                    onClick={() => setPage((currentPage) => Math.max(0, currentPage - 1))}
-                    disabled={page === 0}
-                  >
-                    Previous
-                  </button>
-                  <span className="paginationInfo">
-                    Page {page + 1} of {totalPages}
-                  </span>
-                  <button
-                    className="paginationBtn"
-                    onClick={() => setPage((currentPage) => Math.min(totalPages - 1, currentPage + 1))}
-                    disabled={page >= totalPages - 1}
-                  >
-                    Next
-                  </button>
+                <div className="pagination accountPagination historyPagination">
+                  <div className="accountPaginationGroup">
+                    <span className="paginationInfo">
+                      Showing {page * rowsPerPage + 1}-{Math.min((page + 1) * rowsPerPage, filteredAppointments.length)} of {filteredAppointments.length}
+                    </span>
+                  </div>
+                  <div className="accountPaginationButtons">
+                    <button
+                      className="paginationBtn"
+                      onClick={() => setPage((currentPage) => Math.max(0, currentPage - 1))}
+                      disabled={page === 0}
+                    >
+                      Previous
+                    </button>
+                    <span className="paginationInfo">
+                      Page {page + 1} of {totalPages}
+                    </span>
+                    <button
+                      className="paginationBtn"
+                      onClick={() => setPage((currentPage) => Math.min(totalPages - 1, currentPage + 1))}
+                      disabled={page >= totalPages - 1}
+                    >
+                      Next
+                    </button>
+                  </div>
                 </div>
               )}
             </>

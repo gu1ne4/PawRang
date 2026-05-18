@@ -11,6 +11,7 @@ import {
   IoCalendarClearOutline, IoInformationCircle, IoChevronBack, IoChevronForward,
   IoSearchSharp, IoPaw
 } from 'react-icons/io5';
+import { RiListSettingsLine } from 'react-icons/ri';
 
 // Styles and Images
 import './AdminStyles.css';
@@ -819,18 +820,23 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
         : '';
 
     return (
-        <div className="modalOverlay" style={{ zIndex: 1000 }}>
-            <div className="modalContainer" style={{ width: '95%', maxWidth: '600px', padding: '25px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+        <div className="modalOverlay appointmentCreateModalOverlay" style={{ zIndex: 1000 }}>
+            <div className="modalContainer appointmentCreateModal" style={{ width: '95%', maxWidth: '600px', padding: '25px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
                 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#333', margin: 0 }}>Create New Appointment</h2>
-                    <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><IoClose size={24} color="#666" /></button>
+                <div className="appointmentCreateModalHeader" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                    <div>
+                        <span>Schedule</span>
+                        <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#333', margin: 0 }}>Create New Appointment</h2>
+                        <p>Register a booked appointment from an existing pet profile or a clinic-created entry.</p>
+                    </div>
+                    <button className="appointmentCreateModalClose" onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer' }} aria-label="Close create appointment modal"><IoClose size={24} color="#666" /></button>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+                <div className="appointmentCreateQuickActions" style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
                     <button 
                         onClick={() => setIsSearchOpen(true)}
                         type="button"
+                        className="appointmentCreateSearchBtn"
                         style={{ flex: 1, padding: '12px', backgroundColor: '#3d67ee', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '600', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
                     >
                         <IoSearchSharp size={18} /> Search Existing Pet
@@ -839,6 +845,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
                         <button
                             onClick={clearSelectedPetProfile}
                             type="button"
+                            className="appointmentCreateSecondaryBtn"
                             style={{ padding: '12px 16px', backgroundColor: '#f5f5f5', color: '#666', border: '1px solid #ddd', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}
                         >
                             Clear Selection
@@ -859,7 +866,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
                 )}
 
                 {/* SCROLLABLE BODY */}
-                <div style={{ overflowY: 'auto', paddingRight: '5px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div className="appointmentCreateModalBody" style={{ overflowY: 'auto', paddingRight: '5px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                     
                     {/* PATIENT INFORMATION */}
                     <div>
@@ -1175,21 +1182,21 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
 
                 </div>
 
-                <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid #eee' }}>
+                <div className="appointmentCreateModalFooter" style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid #eee' }}>
                     {submitAttempted && validationMessage && (
-                        <div style={{ marginBottom: '12px', padding: '10px 12px', borderRadius: '8px', backgroundColor: '#fff3f3', border: '1px solid #f3c7c7', color: '#c62828', fontSize: '12px', lineHeight: '18px' }}>
+                        <div className="appointmentCreateValidation" style={{ marginBottom: '12px', padding: '10px 12px', borderRadius: '8px', backgroundColor: '#fff3f3', border: '1px solid #f3c7c7', color: '#c62828', fontSize: '12px', lineHeight: '18px' }}>
                             {validationMessage}
                         </div>
                     )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '15px' }}>
-                        <button onClick={onClose} type="button" style={{ flex: 1, padding: '12px', backgroundColor: '#f5f5f5', border: 'none', borderRadius: '8px', color: '#666', fontWeight: '600', cursor: 'pointer' }}>Cancel</button>
-                        <button onClick={handleSave} type="button" style={{ flex: 1, padding: '12px', backgroundColor: isFormValid ? '#3d67ee' : '#8fa6f6', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s' }}>Create Appointment</button>
+                    <div className="appointmentCreateFooterActions" style={{ display: 'flex', justifyContent: 'space-between', gap: '15px' }}>
+                        <button className="appointmentCreateCancelBtn" onClick={onClose} type="button" style={{ flex: 1, padding: '12px', backgroundColor: '#f5f5f5', border: 'none', borderRadius: '8px', color: '#666', fontWeight: '600', cursor: 'pointer' }}>Cancel</button>
+                        <button className="appointmentCreateSubmitBtn" onClick={handleSave} type="button" style={{ flex: 1, padding: '12px', backgroundColor: isFormValid ? '#3d67ee' : '#8fa6f6', border: 'none', borderRadius: '8px', color: '#fff', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s' }}>Create Appointment</button>
                     </div>
                 </div>
 
                 {/* SEARCH OVERLAY MODAL */}
                 {isSearchOpen && (
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'white', borderRadius: '20px', zIndex: 10, padding: '25px', display: 'flex', flexDirection: 'column' }}>
+                    <div className="appointmentCreateSearchOverlay" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'white', borderRadius: '20px', zIndex: 10, padding: '25px', display: 'flex', flexDirection: 'column' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                             <h2 style={{ fontSize: '18px', fontWeight: 'bold', color: '#333', margin: 0 }}>Search Existing Pet</h2>
                             <button onClick={() => setIsSearchOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><IoClose size={24} color="#666" /></button>
@@ -1585,11 +1592,11 @@ const TableView = ({
   handleCreateAppointment,
   canCreateAppointment = true
 }: any) => {
+  const [showTableSettings, setShowTableSettings] = useState(false);
   const hasActiveFilters = Boolean(
     service ||
     doctorFilter ||
     selectedCalendarDate ||
-    tableSearchQuery ||
     appointmentPriority !== 'dateAsc'
   );
 
@@ -1606,12 +1613,8 @@ const TableView = ({
   const totalPages = Math.max(1, Math.ceil(filteredAppointments.length / rowsPerPage));
   const pageStartIndex = (currentPage - 1) * rowsPerPage;
   const paginatedAppointments = filteredAppointments.slice(pageStartIndex, pageStartIndex + rowsPerPage);
-  const pageNumbers = Array.from({ length: totalPages }, (_, index) => index + 1).filter((page) => {
-    if (totalPages <= 5) return true;
-    if (page === 1 || page === totalPages) return true;
-    return Math.abs(page - currentPage) <= 1;
-  });
-
+  const visibleStart = filteredAppointments.length === 0 ? 0 : pageStartIndex + 1;
+  const visibleEnd = Math.min(pageStartIndex + rowsPerPage, filteredAppointments.length);
   useEffect(() => {
     setCurrentPage(1);
   }, [service, doctorFilter, selectedCalendarDate, tableSearchQuery, appointmentPriority, rowsPerPage]);
@@ -1621,17 +1624,18 @@ const TableView = ({
   }, [currentPage, totalPages]);
 
   return (
-    <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', flex: 1, display: 'flex', flexDirection: 'column', boxShadow: '0 0 18px rgba(0,0,0,0.05)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+    <div className="appointmentBookedPanel">
+      <div className="appointmentBookedHeader">
         <div>
-          <h2 style={{ fontSize: '25px', fontWeight: '700', margin: 0 }}>Booked Appointments</h2>
-          <p style={{ fontSize: '14px', marginTop: '5px', color: '#888', margin: 0 }}>
-            {loading ? 'Loading appointments...' : `Total appointments: ${filteredAppointments.length}`}
+          <span className="appointmentPanelKicker">Schedule Queue</span>
+          <h2>Booked Appointments</h2>
+          <p>
+            {loading ? 'Loading appointments...' : `${filteredAppointments.length} appointments match the current view`}
           </p>
         </div>
         
         {canCreateAppointment && (
-          <button onClick={handleCreateAppointment} className="blackBtn" style={{ backgroundColor: '#3d67ee', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button onClick={handleCreateAppointment} className="blackBtn appointmentCreateBtn">
             <IoAddCircle size={20} color="#fff" />
             <span>Create Appointment</span>
           </button>
@@ -1641,39 +1645,16 @@ const TableView = ({
       {loading ? (
         <div className="loadingContainer"><div className="spinner"></div></div>
       ) : (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <div className="appointmentBookedContent">
           
-          <div style={{ display: 'flex', alignItems: 'center', marginLeft: '5px', marginTop: '20px', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
-            
-            <div style={{ display: 'flex', alignItems: 'center', border: '1px solid #ddd', borderRadius: '8px', padding: '8px 12px', backgroundColor: '#fff', width: '250px' }}>
-                <IoSearchSharp size={18} color="#999" style={{ marginRight: '8px' }} />
-                <input 
-                    type="text" 
-                    placeholder="Search name, pet, or service..." 
-                    value={tableSearchQuery}
-                    onChange={(e) => setTableSearchQuery(e.target.value)}
-                    style={{ border: 'none', outline: 'none', width: '100%', fontSize: '13px' }}
-                />
-            </div>
-
-            <div style={{ width: '1px', height: '30px', backgroundColor: '#eee', margin: '0 5px' }}></div>
-
-            <IoFilterSharp size={25} color="#3d67ee" style={{ marginRight: '5px' }} />
-
-            <div>
-              <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Table Priority</div>
-              <select value={appointmentPriority} onChange={(e) => setAppointmentPriority(e.target.value)} className="filterSelect" style={{ width: '180px' }}>
-                <option value="dateAsc">Closest first</option>
-                <option value="dateDesc">Farthest first</option>
-                <option value="pendingFirst">Pending first</option>
-                <option value="confirmedFirst">Confirmed first</option>
-                <option value="noDoctorFirst">No doctor first</option>
-              </select>
+          <div className="appointmentToolbar">
+            <div className="appointmentFilterIcon">
+              <IoFilterSharp size={18} />
             </div>
             
-            <div>
-              <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Service</div>
-              <select value={service} onChange={(e) => setService(e.target.value)} className="filterSelect" style={{ width: '150px' }}>
+            <div className="appointmentFilterGroup">
+              <label>Service</label>
+              <select value={service} onChange={(e) => setService(e.target.value)} className="filterSelect appointmentFilterSelect">
                 <option value="" style={{color: '#a8a8a8'}}>All Services</option>
                 <option value="Pet Grooming">Pet Grooming</option>
                 <option value="Consultation & Check-Up">Check-up or Consultation</option>
@@ -1688,9 +1669,9 @@ const TableView = ({
               </select>
             </div>
             
-            <div>
-              <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Doctor</div>
-              <select value={doctorFilter} onChange={(e) => setDoctorFilter(e.target.value)} className="filterSelect" style={{ width: '180px' }}>
+            <div className="appointmentFilterGroup">
+              <label>Doctor</label>
+              <select value={doctorFilter} onChange={(e) => setDoctorFilter(e.target.value)} className="filterSelect appointmentFilterSelect appointmentFilterSelectWide">
                 <option value="" style={{color: '#a8a8a8'}}>All Doctors</option>
                 <option value="Not Assigned">Not Assigned</option>
                 {doctors.map((doctor: any) => (
@@ -1701,45 +1682,52 @@ const TableView = ({
               </select>
             </div>
 
-            <div>
-              <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Rows</div>
-              <select
-                value={rowsPerPage}
-                onChange={(event) => setRowsPerPage(Number(event.target.value))}
-                className="filterSelect"
-                style={{ width: '90px' }}
-              >
-                <option value={5}>5</option>
-                <option value={8}>8</option>
-                <option value={10}>10</option>
-                <option value={15}>15</option>
-              </select>
-            </div>
-            
             {hasActiveFilters && (
-              <button onClick={clearTableFilters} style={{ marginLeft: '15px', display: 'flex', alignItems: 'center', background: 'none', border: 'none', cursor: 'pointer' }}>
-                <IoCloseCircle size={18} color="#666" />
-                <span style={{ marginLeft: '5px', fontSize: '12px', color: '#666' }}>
-                  Clear Filters
-                </span>
+              <button onClick={clearTableFilters} className="clearFilterBtn appointmentClearFiltersBtn">
+                <IoCloseCircle size={18} />
+                <span>Clear Filters</span>
               </button>
             )}
-          </div>
 
-          <div className="appointmentTableLegend" aria-label="Appointment table legend">
-            <span className="appointmentLegendLabel">Legends:</span>
-            <span className="appointmentLegendItem">
-              <span className="appointmentLegendSwatch urgent" />
-              Pending within 5 days
-            </span>
-            <span className="appointmentLegendItem">
-              <span className="appointmentLegendSwatch pending" />
-              Pending review
-            </span>
-            <span className="appointmentLegendItem">
-              <span className="appointmentLegendSwatch confirmed" />
-              Confirmed or scheduled
-            </span>
+            <div className="appointmentSettingsDropdownContainer">
+              <button
+                type="button"
+                className="appointmentSettingsBtn"
+                onClick={() => setShowTableSettings((visible) => !visible)}
+                aria-label="Appointment table options"
+              >
+                <RiListSettingsLine size={18} />
+              </button>
+              {showTableSettings && (
+                <div className="appointmentSettingsDropdown">
+                  <div className="appointmentSettingsSection">
+                    <label>Sort By</label>
+                    <select value={appointmentPriority} onChange={(e) => setAppointmentPriority(e.target.value)} className="filterSelect appointmentSettingsSelect">
+                      <option value="dateAsc">Closest first</option>
+                      <option value="dateDesc">Farthest first</option>
+                      <option value="pendingFirst">Pending first</option>
+                      <option value="confirmedFirst">Confirmed first</option>
+                      <option value="noDoctorFirst">No doctor first</option>
+                    </select>
+                  </div>
+                  <div className="appointmentSettingsDivider" />
+                  <div className="appointmentSettingsSection">
+                    <label>Rows Per Page</label>
+                    <select
+                      value={rowsPerPage}
+                      onChange={(event) => setRowsPerPage(Number(event.target.value))}
+                      className="filterSelect appointmentSettingsSelect"
+                    >
+                      <option value={5}>5 per page</option>
+                      <option value={8}>8 per page</option>
+                      <option value={10}>10 per page</option>
+                      <option value={15}>15 per page</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+            
           </div>
 
           <div className="tableWrapper appointmentTableScroll" style={{ marginTop: '0' }}>
@@ -1838,43 +1826,30 @@ const TableView = ({
             </table>
           </div>
 
-          <div className="appointmentPaginationBar">
-            <div className="appointmentPageControls">
+          <div className="pagination accountPagination appointmentPaginationBar">
               <button
                 type="button"
-                className="paginationBtn appointmentPageBtn"
+                className="paginationBtn paginationPrevBtn appointmentPageBtn"
                 onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
                 disabled={currentPage === 1}
               >
-                Previous
+                <IoChevronBack size={14} />
+                <span>Previous</span>
               </button>
 
-              {pageNumbers.map((page, index) => {
-                const previousPage = pageNumbers[index - 1];
-                const needsGap = previousPage && page - previousPage > 1;
-                return (
-                  <React.Fragment key={page}>
-                    {needsGap && <span className="appointmentPageGap">...</span>}
-                    <button
-                      type="button"
-                      className={`appointmentPageNumber ${currentPage === page ? 'active' : ''}`}
-                      onClick={() => setCurrentPage(page)}
-                    >
-                      {page}
-                    </button>
-                  </React.Fragment>
-                );
-              })}
+              <span className="paginationInfo appointmentPaginationInfo">
+                Showing {visibleStart} to {visibleEnd} of {filteredAppointments.length} appointments
+              </span>
 
               <button
                 type="button"
-                className="paginationBtn appointmentPageBtn"
+                className="paginationBtn paginationNextBtn appointmentPageBtn"
                 onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
                 disabled={currentPage === totalPages}
               >
-                Next
+                <span>Next</span>
+                <IoChevronForward size={14} />
               </button>
-            </div>
           </div>
         </div>
       )}
@@ -2553,35 +2528,56 @@ export default function Schedule({ viewerRole = 'admin', readOnly = false, hideB
             
             <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
 
-            <div className="bodyContainer">
-                <div className="topContainer">
-                    <div className="subTopContainer">
-                        <IoDocumentTextOutline size={20} color="#3d67ee" style={{ marginTop: '2px' }} />
-                        <span className="blueText" style={{ marginLeft: '10px' }}>
-                            {currentView === 'table' ? 'Appointments / Schedule' : 'Patient Details'}
-                        </span>
+            <div className="bodyContainer accountOverviewBodyContainer appointmentScheduleBody">
+                <div className="topContainer accountOverviewTopContainer appointmentScheduleTop">
+                    <div className="subTopContainer accountOverviewSubTopContainer">
+                        <div className="accountOverviewHeroIcon appointmentScheduleHeroIcon">
+                            <IoDocumentTextOutline size={25} />
+                        </div>
+                        <div className="accountOverviewHeroCopy">
+                            <span>Appointments</span>
+                            <h1>{currentView === 'table' ? 'Booked Appointments' : 'Appointment Details'}</h1>
+                            <p>Review booking requests, manage doctor assignments, and keep schedules moving.</p>
+                        </div>
                     </div>
-                    <div className="invSubTopContainer invNotificationContainer" style={{padding: 20}}>
-                        <Notifications 
-                            buttonClassName="invIconButton"
-                            iconClassName="invBlueIcon"
-                            onViewAll={() => {
-                            console.log('View all notifications');
-                            }}
-                            onNotificationClick={(notification) => {
-                            if (notification.link) {
-                                navigate(notification.link);
-                            }
-                            }}
-                        />
+                    <div className="accountOverviewHeaderActions appointmentHeaderActions">
+                        <div className="accountSearchRow accountHeaderSearchRow appointmentHeaderSearchRow">
+                            <div className="toolbarItem accountToolbarStaticIcon">
+                                <IoSearchSharp size={18} className="iconDefault" />
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Search appointments..."
+                                value={tableSearchQuery}
+                                onChange={(event) => setTableSearchQuery(event.target.value)}
+                                className="searchInput accountHeaderSearchInput appointmentHeaderSearchInput"
+                                maxLength={60}
+                                disabled={currentView !== 'table'}
+                            />
+                        </div>
+                        <div className="accountHeaderDivider" aria-hidden="true" />
+                        <div className="subTopContainer notificationContainer accountOverviewNotificationContainer">
+                            <Notifications 
+                                buttonClassName="invIconButton"
+                                iconClassName="invBlueIcon"
+                                onViewAll={() => {
+                                console.log('View all notifications');
+                                }}
+                                onNotificationClick={(notification) => {
+                                if (notification.link) {
+                                    navigate(notification.link);
+                                }
+                                }}
+                            />
+                        </div>
                     </div>
                 </div>
 
-                <div className="tableContainer" style={{ flexDirection: 'row', gap: '20px', padding: 0, backgroundColor: 'transparent', boxShadow: 'none' }}>
+                <div className="tableContainer appointmentScheduleWorkspace">
                     
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '20px', minWidth: '300px', maxWidth: '350px' }}>
+                    <div className="appointmentScheduleSidebar">
                         
-                        <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '20px', boxShadow: '0 0 18px rgba(0,0,0,0.05)' }}>
+                        <div className="appointmentCalendarPanel">
                             <CustomCalendar 
                                 selectedDate={selectedCalendarDate} 
                                 onSelectDate={setSelectedCalendarDate} 
@@ -2590,8 +2586,8 @@ export default function Schedule({ viewerRole = 'admin', readOnly = false, hideB
                             />
                         </div>
 
-                        <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '20px', flex: 1, boxShadow: '0 0 18px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '5px', flexShrink: 0 }}>PetShield Veterinarian</h3>
+                        <div className="appointmentDoctorsPanel">
+                            <h3>PetShield Veterinarian</h3>
                             
                             <div className="doctors-scroll-container" style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column' }}>
                                 {doctors.map((doctor, index) => (
@@ -2614,7 +2610,7 @@ export default function Schedule({ viewerRole = 'admin', readOnly = false, hideB
                         </div>
                     </div>
 
-                    <div style={{ flex: 3, display: 'flex', flexDirection: 'column' }}>
+                    <div className="appointmentScheduleMain">
                         {currentView === 'table' ? (
                             <TableView 
                                 onViewUser={handleViewUser}
