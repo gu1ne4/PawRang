@@ -65,6 +65,7 @@ function App() {
           <Route path="/admin/schedule" element={<AdminSchedule />} />
           <Route path="/admin/reschedule" element={<AdminRescheduleModal />} />
           <Route path="/admin/availability" element={<AdminAvailSettings />} />
+          <Route path="/admin/availability/bulk-time-slots" element={<AdminAvailSettings />} />
           <Route path="/admin/cancel-appointment" element={<AdminCancelAppointmentModal />} />
 
           <Route path="/Home" element={<Navigate to="/admin/home" replace />} />

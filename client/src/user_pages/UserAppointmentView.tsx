@@ -93,7 +93,32 @@ interface RescheduleTimeSlot {
   startTime: string;
   endTime: string;
   displayText: string;
+  disabled?: boolean;
+  unavailableReason?: string;
 }
+
+const CAPACITY_MANAGED_SERVICE_PATTERN =
+  /(consultation|check-up|checkup|dental|confinement|x-ray|ultrasound|laboratory|blood|urinalysis|fecal|vaccination|vaccine|surgery|neuter|spay|child delivery)/i;
+
+const getAppointmentCapacityServiceName = (appointment?: Appointment | null) => {
+  const rawService = String(appointment?.appointment_type || '').trim();
+  if (!rawService) return '';
+
+  const parenthesizedOption = rawService.match(/\(([^)]+)\)/)?.[1]?.trim();
+  if (parenthesizedOption && !parenthesizedOption.includes(',')) {
+    return parenthesizedOption;
+  }
+
+  if (rawService.includes(' - ')) {
+    const [, option] = rawService.split(' - ', 2);
+    if (option?.trim()) return option.trim();
+  }
+
+  return rawService.replace(/\s*\(.+\)\s*$/, '').trim();
+};
+
+const shouldUseAppointmentCapacity = (appointment?: Appointment | null) =>
+  Boolean(appointment?.branch_id && CAPACITY_MANAGED_SERVICE_PATTERN.test(appointment.appointment_type || ''));
 
 const RescheduleCalendar = ({
   selectedDate,
@@ -618,12 +643,37 @@ const UserAppointmentView: React.FC = () => {
     const isAllowedDay = rescheduleAvailableDays ? Boolean(rescheduleAvailableDays[selectedDayName]) : true;
     const isWithinWindow = newDate >= earliestDateKey && newDate < monthAfterNextKey;
 
-    const mapSlots = (slots: any[]): RescheduleTimeSlot[] => (slots || []).map((slot: any) => ({
-      id: slot.id,
-      startTime: slot.start_time,
-      endTime: slot.end_time,
-      displayText: slot.displayText || formatTimeSlotDisplay(slot.start_time, slot.end_time),
-    }));
+    const useCapacity = shouldUseAppointmentCapacity(rescheduleTarget);
+    const capacityServiceName = getAppointmentCapacityServiceName(rescheduleTarget);
+    const mapSlots = (slots: any[]): RescheduleTimeSlot[] => (slots || [])
+      .filter((slot: any) => slot?.start_time && slot?.end_time)
+      .filter((slot: any) => useCapacity || slot?.is_available !== false)
+      .map((slot: any) => {
+        const displayText = slot.displayText || formatTimeSlotDisplay(slot.start_time, slot.end_time);
+
+        if (!useCapacity) {
+          return {
+            id: slot.id,
+            startTime: slot.start_time,
+            endTime: slot.end_time,
+            displayText,
+            disabled: false,
+          };
+        }
+
+        const availableSlots = Number(slot.availableSlots ?? slot.available_slots ?? 0);
+        const capacity = Number(slot.capacity ?? 0);
+        const isFull = slot.is_available === false || availableSlots <= 0;
+
+        return {
+          id: slot.id,
+          startTime: slot.start_time,
+          endTime: slot.end_time,
+          displayText: capacity > 0 ? `${displayText} (${Math.max(availableSlots, 0)}/${capacity} slots)` : displayText,
+          disabled: isFull,
+          unavailableReason: slot.unavailableReason,
+        };
+      });
 
     if (!isAllowedDay || isBlockedSpecialDate || !isWithinWindow) {
       setRescheduleTimeSlots([]);
@@ -632,10 +682,17 @@ const UserAppointmentView: React.FC = () => {
     }
 
     setLoadingRescheduleSlots(true);
-    apiService.getTimeSlotsForDay(selectedDayName)
+    apiService.getAvailableTimeSlots(newDate, {
+      branchId: useCapacity ? rescheduleTarget?.branch_id : null,
+      service: useCapacity ? capacityServiceName : null,
+    })
       .then((slots: any[]) => {
         if (!isActive) return;
         setRescheduleTimeSlots(mapSlots(slots));
+        setNewTime((previousTime) => {
+          const selectedSlot = mapSlots(slots).find((slot) => slot.startTime === previousTime);
+          return selectedSlot && !selectedSlot.disabled ? previousTime : '';
+        });
       })
       .catch((error) => {
         if (!isActive) return;
@@ -649,7 +706,7 @@ const UserAppointmentView: React.FC = () => {
     return () => {
       isActive = false;
     };
-  }, [newDate, rescheduleAnnualSpecialDates, rescheduleAvailableDays, rescheduleModalVisible, rescheduleSpecialDates]);
+  }, [newDate, rescheduleAnnualSpecialDates, rescheduleAvailableDays, rescheduleModalVisible, rescheduleSpecialDates, rescheduleTarget]);
 
   const handleLogout = () => {
     localStorage.removeItem('userSession');
@@ -1823,8 +1880,12 @@ const UserAppointmentView: React.FC = () => {
                             {rescheduleTimeSlots.map((slot) => (
                               <button
                                 key={slot.id}
-                                className={`app-time-option ${newTime === slot.startTime ? 'selected' : ''}`}
-                                onClick={() => setNewTime(slot.startTime)}
+                                className={`app-time-option ${newTime === slot.startTime ? 'selected' : ''} ${slot.disabled ? 'disabled' : ''}`}
+                                onClick={() => {
+                                  if (!slot.disabled) setNewTime(slot.startTime);
+                                }}
+                                disabled={slot.disabled}
+                                title={slot.disabled ? (slot.unavailableReason || 'This time slot is fully booked') : undefined}
                               >
                                 <IoTimeOutline size={14} />
                                 <span>{slot.displayText}</span>

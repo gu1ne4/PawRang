@@ -226,6 +226,31 @@ export const availabilityService = {
     }
   },
 
+  async saveBulkTimeSlots(dayNames: string[], settings: any, slots: any[]): Promise<any> {
+    try {
+      const sanitizedSlots = (slots || []).map(({ capacity, ...slot }) => slot);
+      const response = await fetch(`${API_URL}/api/time-slots/bulk-update`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          days: dayNames.map((day) => day.toLowerCase()),
+          settings,
+          slots: sanitizedSlots
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save bulk time slots');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error saving bulk time slots:', error);
+      throw error;
+    }
+  },
+
   // Delete a specific time slot
   async deleteTimeSlot(slotId: string | number): Promise<any> {
     try {
