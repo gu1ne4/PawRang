@@ -5,6 +5,7 @@ export interface InventoryBatch {
   expirationDate?: string;
   expirationNA?: boolean;
   status?: string;
+  expirationStatus?: string;
   supplier?: string;
   receivedDate?: string;
 }
@@ -64,7 +65,8 @@ export const normalizeInventoryBatch = (raw: any): InventoryBatch => {
     ),
     expirationDate,
     expirationNA,
-    status: toStringValue(raw?.status ?? raw?.batchStatus ?? raw?.batch_status),
+    status: toStringValue(raw?.status ?? raw?.batchStatus ?? raw?.batch_status ?? raw?.inventoryStatus ?? raw?.inventory_status),
+    expirationStatus: toStringValue(raw?.expirationStatus ?? raw?.expiration_status),
     supplier: toStringValue(raw?.supplier ?? raw?.receivedFrom ?? raw?.received_from),
     receivedDate: toStringValue(raw?.receivedDate ?? raw?.received_date ?? raw?.dateReceived ?? raw?.date_received),
   };
@@ -87,7 +89,7 @@ export const getProductBatches = (product: any): InventoryBatch[] => {
     .filter(batch => batch.id !== undefined || batch.batchNumber || batch.quantityOnHand > 0);
 };
 
-const parseExpirationDate = (value?: string): Date | null => {
+export const parseInventoryExpirationDate = (value?: string): Date | null => {
   const trimmed = toStringValue(value);
   if (!trimmed || trimmed.toUpperCase() === 'N/A') return null;
 
@@ -112,31 +114,39 @@ const parseExpirationDate = (value?: string): Date | null => {
 
 export const isBatchExpired = (batch: InventoryBatch): boolean => {
   if (batch.expirationNA) return false;
-  const expiration = parseExpirationDate(batch.expirationDate);
+  const expiration = parseInventoryExpirationDate(batch.expirationDate);
   if (!expiration) return false;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return expiration < today;
+  return expiration <= today;
+};
+
+export const getDaysUntilBatchExpiration = (batch: InventoryBatch): number | null => {
+  if (batch.expirationNA) return null;
+  const expiration = parseInventoryExpirationDate(batch.expirationDate);
+  if (!expiration) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((expiration.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 };
 
 export const isBatchExpiringSoon = (batch: InventoryBatch): boolean => {
   if (batch.expirationNA || isBatchExpired(batch)) return false;
-  const expiration = parseExpirationDate(batch.expirationDate);
-  if (!expiration) return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const inThirtyDays = new Date(today);
-  inThirtyDays.setDate(inThirtyDays.getDate() + 30);
-  return expiration <= inThirtyDays;
+  const daysUntilExpiration = getDaysUntilBatchExpiration(batch);
+  return daysUntilExpiration !== null && daysUntilExpiration <= 90;
 };
 
 export const getBatchExpirationStatus = (batch: InventoryBatch): string => {
+  if (batch.status === 'For Disposal') return 'For Disposal';
   if (batch.expirationNA || !batch.expirationDate || batch.expirationDate.toUpperCase() === 'N/A') {
     return 'No expiration';
   }
   if (isBatchExpired(batch)) return 'Expired';
-  if (isBatchExpiringSoon(batch)) return 'Expiring soon';
-  return batch.status || 'Active';
+  const daysUntilExpiration = getDaysUntilBatchExpiration(batch);
+  if (daysUntilExpiration !== null && daysUntilExpiration <= 30) return 'Expiring in 1 month';
+  if (daysUntilExpiration !== null && daysUntilExpiration <= 60) return 'Expiring in 2 months';
+  if (daysUntilExpiration !== null && daysUntilExpiration <= 90) return 'Expiring in 3 months';
+  return batch.expirationStatus || batch.status || 'Active';
 };
 
 export const getBatchDisplayNumber = (batch: InventoryBatch): string =>

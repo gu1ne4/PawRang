@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../reusable_components/NavBar';
 import './GlobalInventoryStyles.css';
 import Notifications from '../reusable_components/Notifications';
+import { apiService } from '../apiService';
 import { CiBoxes } from "react-icons/ci";
 import { downloadInventoryTemplate } from './pdf_generation/InventoryExcel';
 import ImportButton from '../reusable_components/ImportBtn';
@@ -16,6 +17,7 @@ import {
   getBatchExpirationStatus,
   getBatchSummary,
   getProductBatches,
+  parseInventoryExpirationDate,
 } from './inventoryBatchUtils';
 
 import { 
@@ -49,7 +51,11 @@ interface Product {
   basePrice: number;
   sellingPrice: number;
   stockCount: number;
-  stockStatus: 'High Stock' | 'Average Stock' | 'Low Stock' | 'Critical Stock';
+  stockStatus: 'High Stock' | 'Average Stock' | 'Low Stock' | 'Critical Stock' | 'For Disposal';
+  stockLevelStatus?: 'High Stock' | 'Average Stock' | 'Low Stock' | 'Critical Stock';
+  status?: string;
+  inventoryStatus?: string;
+  inventory_status?: string;
   expirationDate?: string;
   expirationNA?: boolean;
   dateAdded?: string;
@@ -130,6 +136,54 @@ const BRANCH_ID_BY_NAME: Record<string, number> = {
 const BRANCH_NAME_BY_ID: Record<number, string> = {
   1: 'Taguig',
   2: 'Las Pinas',
+};
+
+const FOR_DISPOSAL_STATUS = 'For Disposal';
+
+const getDaysUntilDate = (targetDate: Date): number => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((targetDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+};
+
+const getExpirationLabelFromDate = (expirationDate?: string, expirationNA?: boolean): string => {
+  if (expirationNA || !expirationDate || expirationDate === 'N/A') return 'No expiration';
+  const parsedExpiration = parseInventoryExpirationDate(expirationDate);
+  if (!parsedExpiration) return 'No expiration';
+  const daysUntilExpiration = getDaysUntilDate(parsedExpiration);
+  if (daysUntilExpiration <= 0) return 'Expired';
+  if (daysUntilExpiration <= 30) return 'Expiring in 1 month';
+  if (daysUntilExpiration <= 60) return 'Expiring in 2 months';
+  if (daysUntilExpiration <= 90) return 'Expiring in 3 months';
+  return 'Active';
+};
+
+const getProductOperationalStatus = (product: Product): string => {
+  const directStatus = product.inventoryStatus || product.inventory_status || product.status;
+  const hasForDisposalBatch = getProductBatches(product).some(batch => batch.status === FOR_DISPOSAL_STATUS);
+  if (directStatus === FOR_DISPOSAL_STATUS || hasForDisposalBatch) return FOR_DISPOSAL_STATUS;
+  return directStatus || 'Active';
+};
+
+const getProductDisplayStatus = (product: Product): Product['stockStatus'] => {
+  if (getProductOperationalStatus(product) === FOR_DISPOSAL_STATUS) return FOR_DISPOSAL_STATUS;
+  return product.stockStatus;
+};
+
+const getProductStockLevelStatus = (product: Product): Product['stockLevelStatus'] | Product['stockStatus'] =>
+  product.stockLevelStatus || (product.stockStatus === FOR_DISPOSAL_STATUS ? 'Average Stock' : product.stockStatus);
+
+const getProductExpirationLabel = (product: Product): string => {
+  if (getProductOperationalStatus(product) === FOR_DISPOSAL_STATUS) return FOR_DISPOSAL_STATUS;
+
+  const itemLabel = getExpirationLabelFromDate(product.expirationDate, product.expirationNA);
+  const batchLabels = getProductBatches(product).map(getBatchExpirationStatus);
+
+  if (itemLabel === 'Expired' || batchLabels.includes('Expired')) return 'Expired';
+  if (itemLabel === 'Expiring in 1 month' || batchLabels.includes('Expiring in 1 month')) return 'Expiring in 1 month';
+  if (itemLabel === 'Expiring in 2 months' || batchLabels.includes('Expiring in 2 months')) return 'Expiring in 2 months';
+  if (itemLabel === 'Expiring in 3 months' || batchLabels.includes('Expiring in 3 months')) return 'Expiring in 3 months';
+  return itemLabel;
 };
 
 const MOCK_PRODUCTS: Product[] = [
@@ -527,6 +581,15 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
   const fetchProducts = async (): Promise<void> => {
     setLoading(true);
     try {
+      const inventoryUserId = getStoredInventoryUserId();
+      if (inventoryUserId) {
+        try {
+          await apiService.runInventoryExpirationCheck(inventoryUserId);
+        } catch (expirationError) {
+          console.warn('Inventory expiration check skipped:', expirationError);
+        }
+      }
+
       const response = await fetch(withInventoryUserId(`${API_URL}/api/inventory/items`));
       if (!response.ok) {
         throw new Error(`Failed to fetch inventory data (${response.status})`);
@@ -546,38 +609,31 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
   };
 
   const isExpired = (expirationDate?: string, expirationNA?: boolean): boolean => {
-    if (expirationNA || !expirationDate || expirationDate === 'N/A') return false;
-    
-    const [month, day, year] = expirationDate.split('/');
-    const expDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    return expDate < today;
+    return getExpirationLabelFromDate(expirationDate, expirationNA) === 'Expired';
   };
 
   const isExpiringSoon = (expirationDate?: string, expirationNA?: boolean): boolean => {
-    if (expirationNA || !expirationDate || expirationDate === 'N/A') return false;
-    if (isExpired(expirationDate, expirationNA)) return false;
-    
-    const [month, day, year] = expirationDate.split('/');
-    const expDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const oneMonthFromNow = new Date();
-    oneMonthFromNow.setMonth(today.getMonth() + 1);
-    
-    return expDate <= oneMonthFromNow;
+    const label = getExpirationLabelFromDate(expirationDate, expirationNA);
+    return label === 'Expiring in 1 month' || label === 'Expiring in 2 months' || label === 'Expiring in 3 months';
   };
 
   // Calculate analytics
   const calculateAnalytics = (productList: Product[]) => {
     const activeProducts = productList.filter(p => !p.isArchived);
     const totalProducts = activeProducts.length;
-    const lowStockCount = activeProducts.filter(p => p.stockStatus === 'Low Stock' || p.stockStatus === 'Critical Stock').length;
-    const criticalStockCount = activeProducts.filter(p => p.stockStatus === 'Critical Stock').length;
-    const expiredCount = activeProducts.filter(p => isExpired(p.expirationDate, p.expirationNA)).length;
-    const expiringCount = activeProducts.filter(p => isExpiringSoon(p.expirationDate, p.expirationNA)).length;
+    const lowStockCount = activeProducts.filter(p => {
+      const stockLevel = getProductStockLevelStatus(p);
+      return stockLevel === 'Low Stock' || stockLevel === 'Critical Stock';
+    }).length;
+    const criticalStockCount = activeProducts.filter(p => getProductStockLevelStatus(p) === 'Critical Stock').length;
+    const expiredCount = activeProducts.filter(p => {
+      const expirationLabel = getProductExpirationLabel(p);
+      return expirationLabel === 'Expired' || expirationLabel === FOR_DISPOSAL_STATUS;
+    }).length;
+    const expiringCount = activeProducts.filter(p => {
+      const expirationLabel = getProductExpirationLabel(p);
+      return expirationLabel === 'Expiring in 1 month' || expirationLabel === 'Expiring in 2 months' || expirationLabel === 'Expiring in 3 months';
+    }).length;
     const totalValue = activeProducts.reduce((sum, p) => sum + (p.basePrice * p.stockCount), 0);
     const totalRevenue = activeProducts.reduce((sum, p) => sum + (p.sellingPrice * p.stockCount), 0);
     
@@ -1325,7 +1381,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
       product.category.toLowerCase().includes(searchLower);
 
     const matchesCategory = categoryFilter !== "defaultCategory" ? product.category === categoryFilter : true;
-    const matchesStatus = stockStatusFilter !== "defaultStatus" ? product.stockStatus === stockStatusFilter : true;
+    const matchesStatus = stockStatusFilter !== "defaultStatus" ? getProductDisplayStatus(product) === stockStatusFilter : true;
 
     return matchesSearch && matchesCategory && matchesStatus;
   });
@@ -1336,7 +1392,10 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
 
   // Low stock products
   const lowStockProducts = products
-    .filter(p => !p.isArchived && (p.stockStatus === 'Low Stock' || p.stockStatus === 'Critical Stock'))
+    .filter(p => {
+      const stockLevel = getProductStockLevelStatus(p);
+      return !p.isArchived && (stockLevel === 'Low Stock' || stockLevel === 'Critical Stock');
+    })
     .sort((a, b) => {
       if (a.stockCount <= (a.criticalStockLevel || 10) && b.stockCount > (b.criticalStockLevel || 10)) return -1;
       if (a.stockCount > (a.criticalStockLevel || 10) && b.stockCount <= (b.criticalStockLevel || 10)) return 1;
@@ -1345,11 +1404,15 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
 
   // Expiration products
   const expirationProducts = products
-    .filter(p => !p.isArchived && !p.expirationNA && p.expirationDate && p.expirationDate !== 'N/A')
-    .filter(p => isExpired(p.expirationDate, p.expirationNA) || isExpiringSoon(p.expirationDate, p.expirationNA))
+    .filter(p => {
+      const expirationLabel = getProductExpirationLabel(p);
+      return !p.isArchived && !['Active', 'No expiration'].includes(expirationLabel);
+    })
     .sort((a, b) => {
-      const aExpired = isExpired(a.expirationDate, a.expirationNA);
-      const bExpired = isExpired(b.expirationDate, b.expirationNA);
+      const aLabel = getProductExpirationLabel(a);
+      const bLabel = getProductExpirationLabel(b);
+      const aExpired = aLabel === 'Expired' || aLabel === FOR_DISPOSAL_STATUS;
+      const bExpired = bLabel === 'Expired' || bLabel === FOR_DISPOSAL_STATUS;
       
       if (aExpired && !bExpired) return -1;
       if (!aExpired && bExpired) return 1;
@@ -1357,10 +1420,10 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
       if (!a.expirationDate || a.expirationDate === 'N/A') return 1;
       if (!b.expirationDate || b.expirationDate === 'N/A') return -1;
       
-      const [aMonth, aYear] = a.expirationDate.split('/');
-      const [bMonth, bYear] = b.expirationDate.split('/');
-      const aDate = new Date(parseInt(aYear), parseInt(aMonth) - 1);
-      const bDate = new Date(parseInt(bYear), parseInt(bMonth) - 1);
+      const aDate = parseInventoryExpirationDate(a.expirationDate);
+      const bDate = parseInventoryExpirationDate(b.expirationDate);
+      if (!aDate) return 1;
+      if (!bDate) return -1;
       
       return aDate.getTime() - bDate.getTime();
     });
@@ -1542,6 +1605,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                         <option value="Average Stock">Average Stock</option>
                         <option value="Low Stock">Low Stock</option>
                         <option value="Critical Stock">Critical Stock</option>
+                        <option value="For Disposal">For Disposal</option>
                       </select>
 
                       <button className="invClearFilterBtn" onClick={clearFilters}>
@@ -1646,14 +1710,18 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                       {paginatedProducts.length > 0 ? (
                         paginatedProducts.map(product => {
                           const productId = product.id || product.pk || 0;
+                          const productDisplayStatus = getProductDisplayStatus(product);
+                          const expirationLabel = getProductExpirationLabel(product);
+                          const isForDisposal = productDisplayStatus === FOR_DISPOSAL_STATUS;
                           const stockStatusClass = 
-                            product.stockStatus === 'High Stock' ? 'invStockHigh' :
-                            product.stockStatus === 'Average Stock' ? 'invStockAvg' :
-                            product.stockStatus === 'Low Stock' ? 'invStockLow' : 
+                            productDisplayStatus === FOR_DISPOSAL_STATUS ? 'invStockDisposal' :
+                            productDisplayStatus === 'High Stock' ? 'invStockHigh' :
+                            productDisplayStatus === 'Average Stock' ? 'invStockAvg' :
+                            productDisplayStatus === 'Low Stock' ? 'invStockLow' : 
                             'invStockCritical';
                           
-                          const isExpiredProduct = isExpired(product.expirationDate, product.expirationNA);
-                          const isExpiringProduct = isExpiringSoon(product.expirationDate, product.expirationNA);
+                          const isExpiredProduct = expirationLabel === 'Expired' || isForDisposal;
+                          const isExpiringProduct = ['Expiring in 1 month', 'Expiring in 2 months', 'Expiring in 3 months'].includes(expirationLabel);
                           const isOutOfStock = product.stockCount === 0;
                           const batches = getProductBatches(product);
                           const batchSummary = getBatchSummary(product);
@@ -1665,6 +1733,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                               className={`
                                 ${isExpiredProduct ? 'invExpiredRow' : ''} 
                                 ${isExpiringProduct ? 'invExpiringRow' : ''}
+                                ${isForDisposal ? 'invForDisposalRow' : ''}
                                 ${isOutOfStock ? 'invZeroStockRow' : ''}
                               `}
                             >
@@ -1682,6 +1751,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                               <td>{getBranchLabel(product.branchId, product.branchName)}</td>
                               <td>
                                 {product.item}
+                                {isForDisposal && <span className="invForDisposalTag">FOR DISPOSAL</span>}
                                 {isOutOfStock && <span className="invOutOfStockTag">OUT OF STOCK</span>}
                               </td>
                               <td>{product.unit || 'Piece'}</td>
@@ -1721,11 +1791,16 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                                     <span className="invExpiringIndicator">!</span>
                                   )}
                                 </span>
+                                {!['Active', 'No expiration'].includes(expirationLabel) && (
+                                  <span className={`invExpirationBadge ${isForDisposal ? 'invExpirationDisposalBadge' : isExpiredProduct ? 'invExpirationExpiredBadge' : 'invExpirationWarningBadge'}`}>
+                                    {expirationLabel}
+                                  </span>
+                                )}
                               </td>
                               <td>
                                 <span className={`invStockBadge ${stockStatusClass}`}>
-                                  {product.stockStatus}
-                                  {product.stockStatus === 'Critical Stock' && (
+                                  {productDisplayStatus}
+                                  {productDisplayStatus === 'Critical Stock' && (
                                     <span className="invCriticalIndicator">!</span>
                                   )}
                                 </span>
@@ -1750,12 +1825,17 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
                                       {batches.map((batch, batchIndex) => {
                                         const status = getBatchExpirationStatus(batch);
+                                        const statusColor =
+                                          status === 'For Disposal' ? '#7f1d1d' :
+                                          status === 'Expired' ? '#dc2626' :
+                                          status.startsWith('Expiring') ? '#d97706' :
+                                          '#16a34a';
                                         return (
                                           <div key={`${productId}-${batch.id ?? batch.batchNumber}-${batchIndex}`} style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px', background: '#fff' }}>
                                             <div style={{ fontSize: '12px', fontWeight: 800, color: '#1e293b' }}>{getBatchDisplayNumber(batch)}</div>
                                             <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Qty on hand: <strong>{batch.quantityOnHand}</strong></div>
                                             <div style={{ fontSize: '11px', color: '#64748b' }}>Expires: <strong>{batch.expirationNA ? 'N/A' : (batch.expirationDate || 'N/A')}</strong></div>
-                                            <div style={{ fontSize: '11px', color: status === 'Expired' ? '#dc2626' : status === 'Expiring soon' ? '#d97706' : '#16a34a', fontWeight: 700 }}>{status}</div>
+                                            <div style={{ fontSize: '11px', color: statusColor, fontWeight: 700 }}>{status}</div>
                                           </div>
                                         );
                                       })}
@@ -2148,7 +2228,8 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
             <div className="invSidebarContent">
               {expirationProducts.length > 0 ? (
                 expirationProducts.map(product => {
-                  const isExpiredProduct = isExpired(product.expirationDate, product.expirationNA);
+                  const expirationLabel = getProductExpirationLabel(product);
+                  const isExpiredProduct = expirationLabel === 'Expired' || expirationLabel === FOR_DISPOSAL_STATUS;
                   
                   return (
                     <div 
@@ -2163,7 +2244,9 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                         <span className="invSidebarItemName">
                           {product.item}
                           {isExpiredProduct && (
-                            <span className="invExpiredTag">EXPIRED</span>
+                            <span className={expirationLabel === FOR_DISPOSAL_STATUS ? 'invForDisposalTag' : 'invExpiredTag'}>
+                              {expirationLabel === FOR_DISPOSAL_STATUS ? 'FOR DISPOSAL' : 'EXPIRED'}
+                            </span>
                           )}
                         </span>
                         <span className="invSidebarItemCode">{product.code}</span>
@@ -2173,7 +2256,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                           {product.expirationDate}
                         </span>
                         <span className="invSidebarStockLabel">
-                          {isExpiredProduct ? 'expired' : 'expires'}
+                          {isExpiredProduct ? expirationLabel.toLowerCase() : expirationLabel}
                         </span>
                       </div>
                       <div className="invSidebarItemArrow">→</div>

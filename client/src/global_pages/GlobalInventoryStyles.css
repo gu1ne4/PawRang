@@ -504,6 +504,12 @@ html, body {
   color: #c62828;
 }
 
+.invStockDisposal {
+  background-color: #fee2e2;
+  color: #7f1d1d;
+  border: 1px solid #fecaca;
+}
+
 .invNoData {
   text-align: center;
   color: #888;
@@ -1277,6 +1283,52 @@ html, body {
 
 .invExpiringRow {
   background-color: #fffaf0;
+}
+
+.invForDisposalRow {
+  background-color: #fff1f2 !important;
+}
+
+.invForDisposalRow:hover {
+  background-color: #ffe4e6 !important;
+}
+
+.invExpirationBadge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.invExpirationWarningBadge {
+  background-color: #fff7ed;
+  color: #c2410c;
+}
+
+.invExpirationExpiredBadge {
+  background-color: #fee2e2;
+  color: #b91c1c;
+}
+
+.invExpirationDisposalBadge {
+  background-color: #fecaca;
+  color: #7f1d1d;
+}
+
+.invForDisposalTag {
+  background-color: #7f1d1d;
+  color: white;
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  margin-left: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 /* Expiring Sidebar Item */

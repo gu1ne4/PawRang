@@ -476,6 +476,15 @@ const AdminDashboard: React.FC = () => {
         const query = params.toString();
         return `${API_URL}${path}${query ? `?${query}` : ''}`;
       };
+
+      if (adminUserId) {
+        try {
+          await apiService.runInventoryExpirationCheck(adminUserId);
+        } catch (error) {
+          console.warn('Dashboard inventory expiration check skipped:', error);
+        }
+      }
+
       const [
         analyticsResult,
         patientsResult,

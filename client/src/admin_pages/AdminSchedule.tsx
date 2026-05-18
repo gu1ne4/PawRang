@@ -470,7 +470,7 @@ const CreateAppointmentModal = ({ visible, onClose, onSubmit, branches = [] }: a
         { id: 9, name: 'Vaccinations', hasOptions: false },
         { id: 10, name: 'Surgery', hasOptions: true, options: ['Child Delivery', 'Neuter / Spay'] }
     ];
-    const capacityManagedServiceIds = new Set([2, 3, 5, 6, 7, 8, 9, 10]);
+    const capacityManagedServiceIds = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     const selectedServiceConfig = servicesList.find(item => item.name === service);
     const shouldUseCapacity = Boolean(
         branchId &&

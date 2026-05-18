@@ -642,6 +642,17 @@ export const apiService = {
     return request(withUserIdQuery(`/api/admin/analytics/overview${suffix}`));
   },
 
+  runInventoryExpirationCheck(userId?: string | number | null, branchId?: string | number | null) {
+    const adminUserId = userId || getStoredUserId();
+    return request('/api/admin-notifications/reconcile/inventory-expiration-alerts', {
+      method: 'POST',
+      body: JSON.stringify({
+        adminUserId,
+        branchId,
+      }),
+    });
+  },
+
   getAdminAppointmentSearchData() {
     return request('/api/admin/appointment-search-data');
   },

@@ -581,11 +581,13 @@ const UserAppointmentBook: React.FC = () => {
     }
 
     let isCancelled = false;
-    const capacityManagedServiceIds = new Set([2, 3, 6, 7, 8, 9, 10]);
+    const capacityManagedServiceIds = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     const shouldUseCapacity =
       Boolean(selectedBranch && selectedService && capacityManagedServiceIds.has(selectedService.id));
     const capacityServiceName =
-      selectedService?.hasOptions && selectedService.id !== 1 && selectedLabOptions.length === 1
+      selectedService?.id === 1 && selectedGroomingOptions.length
+        ? `Pet Grooming (${selectedGroomingOptions.map(option => option.name).join(', ')})`
+        : selectedService?.hasOptions && selectedLabOptions.length === 1
         ? selectedLabOptions[0].name
         : selectedService?.name;
     const slotParams = new URLSearchParams({
@@ -645,7 +647,7 @@ const UserAppointmentBook: React.FC = () => {
     return () => {
       isCancelled = true;
     };
-  }, [selectedDate, selectedBranch, selectedService, selectedLabOptions, dayAvailability, specialDates, annualSpecialDates]);
+  }, [selectedDate, selectedBranch, selectedService, selectedGroomingOptions, selectedLabOptions, dayAvailability, specialDates, annualSpecialDates]);
 
   useEffect(() => {
     const handleResize = () => setIsMobileCarousel(isMobileViewport());
