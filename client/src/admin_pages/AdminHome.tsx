@@ -24,7 +24,6 @@ import {
   IoCalendarClearOutline,
   IoImageOutline,
   IoCamera,
-  IoPersonCircleOutline,
   IoCheckmarkCircleOutline,
   IoCloseCircleOutline,
   IoAlertCircleOutline,
@@ -36,6 +35,7 @@ import pawRangLogomarkWhite from '../assets/PawRang Logomark White.png';
 import branchLP from '../assets/branchLP.jpg';
 import branchTaguig from '../assets/branchTaguig.jpg';
 import defaultUserImg from '../assets/userImg.jpg';
+import { getProfileImageFromRecord, resolveProfileImage } from '../utils/profileImage';
 
 interface User {
   id?: string; 
@@ -46,12 +46,12 @@ interface User {
   email: string;
   role: string;
   status: string;
-  employee_image?: string; 
+  employee_image?: string;
+  profileImage?: string;
+  image?: string;
   userImage?: string;
   userimage?: string;
   user_image?: string;
-  profileImage?: string;
-  image?: string;
   created_at?: string;
   branch_id?: number | string | null;
   branch_name?: string;
@@ -123,7 +123,7 @@ interface DoctorSchedulingResponse {
   error?: string;
 }
 
-type Role = 'Admin' | 'Veterinarian' | 'Clinic Staff' | 'Moderator';
+type Role = 'Admin' | 'Veterinarian' | 'Clinic Staff' | 'Nurse' | 'Moderator';
 type Status = 'Active' | 'Disabled';
 type AccountSortOption = 'nameAZ' | 'nameZA' | 'roleAZ' | 'emailAZ' | 'statusAZ' | 'newest';
 type EmployeeFormErrors = Partial<Record<'firstName' | 'lastName' | 'contact' | 'email' | 'role' | 'branch', string>>;
@@ -160,6 +160,7 @@ const isCompletePhilippineContactNumber = (value: string): boolean => {
 
 const displayEmployeeRole = (value?: string): Role | string => {
   const normalized = (value || '').toLowerCase();
+  if (normalized.includes('nurse')) return 'Nurse';
   if (normalized.includes('reception') || normalized.includes('clinical') || normalized.includes('clinic staff')) return 'Clinic Staff';
   return value || 'Admin';
 };
@@ -186,35 +187,30 @@ const isBothBranchesLabel = (value?: string): boolean => {
   return name.includes('both') || name.includes('main') || name.includes('all branches');
 };
 
-const getEmployeeProfileImage = (user?: User | null): string =>
-  user?.employee_image ||
-  user?.userImage ||
-  user?.userimage ||
-  user?.user_image ||
-  user?.profileImage ||
-  user?.image ||
-  defaultUserImg;
-
 const normalizeAdminHomeUser = (raw: any): CurrentUser | null => {
   if (!raw || typeof raw !== 'object') return null;
 
   const profileImage =
+    raw.profileImage ||
+    raw.employee_image ||
     raw.userImage ||
     raw.userimage ||
     raw.user_image ||
-    raw.profileImage ||
-    raw.employee_image ||
-    raw.image;
+    raw.image ||
+    '';
 
   return {
     ...raw,
-    userImage: profileImage,
-    userimage: raw.userimage || profileImage,
-    user_image: raw.user_image || profileImage,
-    profileImage: raw.profileImage || profileImage,
-    employee_image: raw.employee_image || profileImage,
+    profileImage: profileImage || undefined,
+    employee_image: profileImage || undefined,
+    userImage: profileImage || undefined,
+    userimage: profileImage || undefined,
+    user_image: profileImage || undefined,
   };
 };
+
+const getEmployeeProfileImage = (user?: User | null): string =>
+  getProfileImageFromRecord(user, defaultUserImg);
 
 const isDoctorAccount = (user?: User | null): boolean =>
   /doctor|vet|veterinarian/i.test(user?.role || '');
@@ -227,6 +223,7 @@ const getServiceOptionName = (service: MedicalServiceOption): string =>
 
 const getServiceOptionDuration = (service: MedicalServiceOption): number | undefined =>
   service.appointmentDurationMinutes ?? service.appointment_duration_minutes;
+
 const AdminHome: React.FC = () => {
   const navigate = useNavigate();
 
@@ -544,8 +541,7 @@ const AdminHome: React.FC = () => {
     setNewBranchId(getEmployeeFormBranchId(user));
     setNewStatus((user.status as Status) || 'Active');
     
-    let img = user.employee_image;
-    if (img && !img.startsWith('data:image')) img = `data:image/jpeg;base64,${img}`;
+    const img = getProfileImageFromRecord(user, '');
     setUserImage(img || null);
     
     setEditAccountVisible(true);
@@ -893,6 +889,7 @@ const AdminHome: React.FC = () => {
                     <option value="Admin">Admin</option>
                     <option value="Veterinarian">Veterinarian</option>
                     <option value="Clinic Staff">Clinic Staff</option>
+                    <option value="Nurse">Nurse</option>
                   </select>
 
                   <select
@@ -998,17 +995,12 @@ const AdminHome: React.FC = () => {
                       const uName = user.username;
                       const uContact = user.contact_number;
                       
-                      let uImage = user.employee_image;
-                      if (uImage && !uImage.startsWith('data:image')) {
-                          uImage = `data:image/jpeg;base64,${uImage}`;
-                      }
-
                       return (
                         <tr key={user.id || Math.random()}>
                           <td>
                             <div className="userCell">
                               <img 
-                                src={uImage || '../assets/userImg.jpg'} 
+                                src={getEmployeeProfileImage(user)}
                                 alt={uName}
                                 className="userAvatar"
                               />
@@ -1115,7 +1107,7 @@ const AdminHome: React.FC = () => {
                 <div className="accountAvatarField">
                   <button className="uploadBtn" onClick={pickImage}>
                     {userImage ? (
-                      <img src={userImage} alt="User" className="uploadedImage" />
+                      <img src={resolveProfileImage(userImage, defaultUserImg)} alt="User" className="uploadedImage" />
                     ) : (
                       <div className="uploadPlaceholder">
                         <IoImageOutline size={16} />
@@ -1220,6 +1212,7 @@ const AdminHome: React.FC = () => {
                       <option value="Admin">Admin</option>
                       <option value="Veterinarian">Veterinarian</option>
                       <option value="Clinic Staff">Clinic Staff</option>
+                      <option value="Nurse">Nurse</option>
                     </select>
                   </div>
                   {formErrors.role && <p className="fieldError">{formErrors.role}</p>}
@@ -1282,7 +1275,7 @@ const AdminHome: React.FC = () => {
                 <div className="accountAvatarField">
                   <button className="uploadBtn" onClick={pickImage}>
                     {userImage ? (
-                      <img src={userImage} alt="User" className="uploadedImage" />
+                      <img src={resolveProfileImage(userImage, defaultUserImg)} alt="User" className="uploadedImage" />
                     ) : (
                       <div className="uploadPlaceholder">
                         <IoImageOutline size={16} />
@@ -1394,6 +1387,7 @@ const AdminHome: React.FC = () => {
                       <option value="Admin">Admin</option>
                       <option value="Veterinarian">Veterinarian</option>
                       <option value="Clinic Staff">Clinic Staff</option>
+                      <option value="Nurse">Nurse</option>
                     </select>
                   </div>
                   {formErrors.role && <p className="fieldError">{formErrors.role}</p>}
@@ -1473,19 +1467,11 @@ const AdminHome: React.FC = () => {
                 <label>Employee Photo</label>
                 <div className="accountAvatarField">
                   <div className="uploadBtn" style={{ cursor: 'default' }}>
-                    {((selectedAccount as User).employee_image) ? (
-                      <img
-                        src={((selectedAccount as User).employee_image?.startsWith('data:image')
-                          ? (selectedAccount as User).employee_image
-                          : `data:image/jpeg;base64,${(selectedAccount as User).employee_image}`)}
-                        alt="Employee Avatar"
-                        className="uploadedImage"
-                      />
-                    ) : (
-                      <div className="uploadPlaceholder">
-                        <IoPersonCircleOutline size={46} color="#3d67ee" />
-                      </div>
-                    )}
+                    <img
+                      src={getEmployeeProfileImage(selectedAccount as User)}
+                      alt="Employee Avatar"
+                      className="uploadedImage"
+                    />
                   </div>
                   <div>
                     <h3>{`${(selectedAccount as User).first_name || ''} ${(selectedAccount as User).last_name || ''}`.trim() || 'Employee Profile'}</h3>

@@ -4,6 +4,7 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 import os
 import json
+import math
 import random
 import re
 import string
@@ -11,8 +12,6 @@ import secrets
 import hashlib
 import uuid
 import time
-from urllib import error as urllib_error
-from urllib import request as urllib_request
 from datetime import datetime, timedelta, date, timezone
 import smtplib
 import ssl
@@ -21,6 +20,38 @@ from zoneinfo import ZoneInfo
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import resend
+from routes.ai_routes import ai_bp
+from routes.analytics_routes import analytics_bp
+from routes.audit_routes import audit_bp
+from routes.billing_routes import billing_bp
+from routes.notification_routes import notification_bp
+from services.ai_service import configure_ai_service
+from services.analytics_service import configure_analytics_service
+from services.billing_service import configure_billing_service
+from services.audit_service import (
+    configure_audit_service,
+    get_audit_profile_display_name,
+    normalize_audit_log,
+    normalize_audit_status,
+    parse_uuid_or_none,
+    record_system_audit_log,
+    trim_audit_text,
+)
+from services.notification_service import (
+    admin_notification_event_exists,
+    configure_notification_service,
+    create_admin_notification,
+    create_appointment_admin_notification,
+    create_billing_admin_notification,
+    create_emr_admin_notification,
+    create_inventory_admin_notification,
+    get_admin_notification_reads_map,
+    normalize_admin_notification,
+    safe_create_appointment_admin_notification,
+    safe_create_billing_admin_notification,
+    safe_create_emr_admin_notification,
+    safe_create_inventory_admin_notification,
+)
 
 day_availability_store = {
     "sunday": False,
@@ -41,6 +72,16 @@ BILLING_DISCOUNT_RATES = {
     "senior": 0.20,
     "pwd": 0.20,
     "promo": 0.10,
+}
+BILLING_INSTALLMENT_INTEREST_RATES = {
+    3: 0.0,
+    6: 0.06,
+    9: 0.09,
+}
+BILLING_INSTALLMENT_DOWN_PAYMENT_RATES = {
+    3: 0.20,
+    6: 0.30,
+    9: 0.40,
 }
 BILLING_TABLES_SETUP_MESSAGE = "Billing tables are not ready yet. Run backend/sql/billing_schema.sql first."
 BILLING_SERVICE_SEED_ROWS = [
@@ -916,9 +957,6 @@ EMAIL_PROVIDER       = (
     or ('smtp' if SMTP_EMAIL and SMTP_PASSWORD else 'resend')
 )
 EMPLOYEE_SETUP_URL_BASE = os.environ.get('EMPLOYEE_SETUP_URL_BASE', 'http://localhost:5173/employee/setup-account')
-GEMINI_API_KEY       = os.environ.get('GEMINI_API_KEY')
-GEMINI_MODEL         = os.environ.get('GEMINI_MODEL', 'gemini-2.5-flash')
-AI_BUSY_MESSAGE      = "Server is busy. Please try again later."
 
 if not SUPABASE_URL or not SUPABASE_KEY or not SUPABASE_SERVICE_KEY:
     raise ValueError("Missing Supabase credentials in .env")
@@ -931,769 +969,6 @@ supabase       = create_client(SUPABASE_URL, SUPABASE_KEY)
 supabase_admin = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 if RESEND_API_KEY:
     resend.api_key = RESEND_API_KEY
-
-ADMIN_AI_SUMMARY_SCHEMA = {
-    "type": "OBJECT",
-    "properties": {
-        "summary": {"type": "STRING"},
-        "important_flags": {
-            "type": "ARRAY",
-            "items": {"type": "STRING"}
-        },
-        "follow_up_questions": {
-            "type": "ARRAY",
-            "items": {"type": "STRING"}
-        },
-        "missing_information": {
-            "type": "ARRAY",
-            "items": {"type": "STRING"}
-        }
-    },
-    "required": [
-        "summary",
-        "important_flags",
-        "follow_up_questions",
-        "missing_information"
-    ]
-}
-
-DOCTOR_EMR_BRIEF_SCHEMA = {
-    "type": "OBJECT",
-    "properties": {
-        "summary": {"type": "STRING"},
-        "important_flags": {"type": "ARRAY", "items": {"type": "STRING"}},
-        "relevant_history": {"type": "ARRAY", "items": {"type": "STRING"}},
-        "exam_focus": {"type": "ARRAY", "items": {"type": "STRING"}},
-        "care_continuity_notes": {"type": "ARRAY", "items": {"type": "STRING"}},
-        "missing_information": {"type": "ARRAY", "items": {"type": "STRING"}},
-    },
-    "required": [
-        "summary",
-        "important_flags",
-        "relevant_history",
-        "exam_focus",
-        "care_continuity_notes",
-        "missing_information",
-    ]
-}
-
-CLIENT_CARE_SUMMARY_SCHEMA = {
-    "type": "OBJECT",
-    "properties": {
-        "summary": {"type": "STRING"},
-        "visit_summary": {"type": "STRING"},
-        "home_care_instructions": {"type": "ARRAY", "items": {"type": "STRING"}},
-        "medication_notes": {"type": "ARRAY", "items": {"type": "STRING"}},
-        "watch_for": {"type": "ARRAY", "items": {"type": "STRING"}},
-        "follow_up": {"type": "ARRAY", "items": {"type": "STRING"}},
-        "friendly_message": {"type": "STRING"},
-        "missing_information": {"type": "ARRAY", "items": {"type": "STRING"}},
-    },
-    "required": [
-        "summary",
-        "visit_summary",
-        "home_care_instructions",
-        "medication_notes",
-        "watch_for",
-        "follow_up",
-        "friendly_message",
-        "missing_information",
-    ]
-}
-
-USER_SYMPTOM_SUMMARY_SCHEMA = {
-    "type": "OBJECT",
-    "properties": {
-        "summary": {"type": "STRING"}
-    },
-    "required": ["summary"]
-}
-
-
-def _text_or_default(value, default="Not provided"):
-    raw = str(value or "").strip()
-    return raw or default
-
-
-def _bool_to_phrase(value):
-    if value is True:
-        return "Yes"
-    if value is False:
-        return "No"
-    return "Not provided"
-
-
-def _has_meaningful_value(value):
-    if value is None:
-        return False
-    if isinstance(value, bool):
-        return True
-    if isinstance(value, (int, float)):
-        return True
-    if isinstance(value, str):
-        return value.strip().lower() not in {"", "not provided", "unknown", "n/a", "none"}
-    if isinstance(value, list):
-        return any(_has_meaningful_value(item) for item in value)
-    if isinstance(value, dict):
-        return any(_has_meaningful_value(item) for item in value.values())
-    return bool(value)
-
-
-def _generated_at_manila_iso():
-    return get_current_manila_datetime().replace(microsecond=0).isoformat()
-
-
-def build_ai_support_metadata(case_context, missing_information=None, mode="admin"):
-    sources = []
-    missing_context = list(missing_information or [])
-
-    pet = case_context.get("pet") or {}
-    current_record = case_context.get("current_record") or {}
-    current_visit = case_context.get("current_visit") or {}
-    visit_history = case_context.get("visit_history") if isinstance(case_context.get("visit_history"), list) else []
-
-    if _has_meaningful_value(pet):
-        sources.append("pet profile")
-    if _has_meaningful_value(current_record):
-        sources.append("current record")
-    if _has_meaningful_value(current_visit):
-        sources.append("current visit")
-    if visit_history:
-        sources.append("visit history")
-    if any(_has_meaningful_value((visit or {}).get("medical_information")) for visit in visit_history):
-        sources.append("medical intake")
-    if any(_has_meaningful_value((visit or {}).get("clinical_exam")) for visit in visit_history):
-        sources.append("clinical exam entries")
-    if any(_has_meaningful_value((visit or {}).get("lab_results")) for visit in visit_history):
-        sources.append("lab results")
-    if any(_has_meaningful_value((visit or {}).get("prescriptions")) for visit in visit_history):
-        sources.append("prescriptions")
-
-    if mode == "doctor" and not visit_history:
-        missing_context.append("Visit history")
-    if mode == "doctor" and not any(_has_meaningful_value((visit or {}).get("clinical_exam")) for visit in visit_history):
-        missing_context.append("Clinical exam findings")
-
-    deduped_sources = list(dict.fromkeys(sources))
-    deduped_missing = list(dict.fromkeys(item for item in missing_context if _has_meaningful_value(item)))
-
-    if len(deduped_sources) >= 5 and len(deduped_missing) <= 2:
-        reliability = "High"
-        reason = "Generated from multiple relevant record sources with few major gaps."
-    elif len(deduped_sources) >= 3 and len(deduped_missing) <= 5:
-        reliability = "Moderate"
-        reason = "Generated from useful case data, but some context still needs review."
-    else:
-        reliability = "Low"
-        reason = "Generated from limited case data or several missing clinical details."
-
-    reasons = [reason]
-    if deduped_missing:
-        reasons.append("Missing or incomplete: " + ", ".join(deduped_missing[:4]))
-
-    return {
-        "label": "AI-generated clinical support",
-        "review_required": True,
-        "reliability": reliability,
-        "reasons": reasons,
-        "sources": deduped_sources,
-        "missing_context": deduped_missing,
-        "generated_at": _generated_at_manila_iso(),
-        "disclaimer": "Review and verify before use. This output does not diagnose, prescribe, or replace veterinary judgment.",
-    }
-
-
-def attach_ai_support_metadata(ai_result, case_context, mode="admin"):
-    result = dict(ai_result or {})
-    result["support_metadata"] = build_ai_support_metadata(
-        case_context,
-        result.get("missing_information") if isinstance(result.get("missing_information"), list) else [],
-        mode,
-    )
-    return result
-
-
-def _normalized_text(value):
-    return str(value or "").strip().lower()
-
-
-def _answer_is_yes(value):
-    return _normalized_text(value) in {"yes", "true", "1", "y"}
-
-
-def _answer_is_no(value):
-    return _normalized_text(value) in {"no", "false", "0", "n"}
-
-
-def _make_risk_flag(flag_id, severity, title, detail, action, source):
-    return {
-        "id": flag_id,
-        "severity": severity,
-        "title": title,
-        "detail": detail,
-        "suggested_action": action,
-        "source": source,
-    }
-
-
-def _make_follow_up_reminder(reminder_id, priority, title, detail, timing, action, source):
-    return {
-        "id": reminder_id,
-        "priority": priority,
-        "title": title,
-        "detail": detail,
-        "suggested_timing": timing,
-        "suggested_action": action,
-        "source": source,
-    }
-
-
-def build_admin_ai_case_context(payload):
-    medical = payload.get("medicalInformation") or payload.get("medical_information") or {}
-
-    return {
-        "patient_name": _text_or_default(payload.get("name")),
-        "patient_email": _text_or_default(
-            payload.get("email")
-            or payload.get("patientEmail")
-            or payload.get("patient_email")
-            or payload.get("walk_in_email")
-        ),
-        "patient_phone": _text_or_default(
-            payload.get("phone")
-            or payload.get("contact_number")
-            or payload.get("patientPhone")
-            or payload.get("patient_phone")
-            or payload.get("walk_in_phone")
-        ),
-        "reason_for_visit": _text_or_default(
-            payload.get("reasonForVisit")
-            or payload.get("patient_reason")
-            or payload.get("reason")
-        ),
-        "reschedule_reason": _text_or_default(
-            payload.get("rescheduleReason")
-            or payload.get("reschedule_reason")
-        ),
-        "pet_name": _text_or_default(payload.get("petName") or payload.get("pet_name"), "Unknown Pet"),
-        "pet_type": _text_or_default(
-            payload.get("type")
-            or payload.get("petType")
-            or payload.get("pet_type")
-            or payload.get("walk_in_pet_type"),
-            "Unknown"
-        ),
-        "pet_breed": _text_or_default(
-            payload.get("breed")
-            or payload.get("petBreed")
-            or payload.get("pet_breed")
-            or payload.get("walk_in_breed"),
-            "Unknown"
-        ),
-        "pet_gender": _text_or_default(
-            payload.get("gender")
-            or payload.get("petGender")
-            or payload.get("pet_gender")
-            or payload.get("walk_in_gender"),
-            "Unknown"
-        ),
-        "service": _text_or_default(payload.get("service"), "Appointment"),
-        "date_time": _text_or_default(payload.get("date_time"), "Schedule not set"),
-        "assigned_doctor": _text_or_default(payload.get("doctor"), "Not Assigned"),
-        "branch": _text_or_default(payload.get("branch") or payload.get("branchName")),
-        "medical_information": {
-            "on_medication": _bool_to_phrase(medical.get("on_medication")),
-            "flea_tick_prevention": _bool_to_phrase(medical.get("flea_tick_prevention")),
-            "is_vaccinated": _bool_to_phrase(medical.get("is_vaccinated")),
-            "is_pregnant": _bool_to_phrase(medical.get("is_pregnant")),
-            "has_allergies": _bool_to_phrase(medical.get("has_allergies")),
-            "has_skin_condition": _bool_to_phrase(medical.get("has_skin_condition")),
-            "medication_details": _text_or_default(medical.get("medication_details")),
-            "additional_notes": _text_or_default(medical.get("additional_notes")),
-            "reported_symptoms": medical.get("reported_symptoms") or [],
-            "owner_symptom_notes": _text_or_default(medical.get("owner_symptom_notes")),
-            "symptom_duration": _text_or_default(medical.get("symptom_duration")),
-            "eating_status": _text_or_default(medical.get("eating_status")),
-            "drinking_status": _text_or_default(medical.get("drinking_status")),
-            "worsening_status": _text_or_default(medical.get("worsening_status")),
-        }
-    }
-
-
-def build_admin_ai_prompt(case_context):
-    service_name = str(case_context.get("service") or "").strip().lower()
-    if "boarding" in service_name:
-        service_focus = (
-            "This is a boarding-related request. Prioritize missing boarding-clearance details "
-            "such as vaccination status, parasite prevention, allergies, current medication, "
-            "and any condition that staff should confirm before boarding."
-        )
-    elif "groom" in service_name:
-        service_focus = (
-            "This is a grooming-related request. Prioritize coat, skin, allergy, parasite, and "
-            "medication details that may affect grooming preparation."
-        )
-    elif "vaccin" in service_name:
-        service_focus = (
-            "This is a vaccination-related request. Prioritize missing vaccine history, current "
-            "health concerns, allergies, and medication details that may affect the visit."
-        )
-    else:
-        service_focus = (
-            "This is a general clinic appointment. Prioritize the most relevant admin-facing intake "
-            "issues and missing details needed before veterinary review."
-        )
-
-    return f"""
-You are an AI assistant for veterinary clinic admins.
-
-Your role:
-- help admin staff understand the appointment quickly
-- summarize the provided case details clearly
-- identify possible admin-relevant flags that may need clarification
-- suggest follow-up questions for staff before endorsement to the veterinarian
-- use symptom intake details when they are provided, especially the reported symptoms, owner notes, duration, appetite, drinking, and worsening status
-
-Rules:
-- Do NOT provide a diagnosis
-- Do NOT prescribe treatment
-- Do NOT claim certainty beyond the provided data
-- Keep the summary concise and practical
-- Write the summary in 2 to 4 sentences only
-- Return at most 4 important_flags
-- Return at most 5 follow_up_questions
-- Return at most 6 missing_information items
-- If data is missing, list it under missing_information
-- Do NOT list AI-generated summary fields as missing; staff-side summaries are generated from the raw symptom intake
-- If reported_symptoms or owner_symptom_notes are present, do NOT treat symptom intake as missing
-- important_flags should focus on intake concerns, missing preventive info, recent medication, skin concerns, pregnancy, and anything that may need staff attention
-- If symptom intake is present, reflect it naturally in the summary and use it to improve follow-up questions
-- follow_up_questions should be short and directly usable by clinic staff
-- Avoid repeating the exact same issue in all sections unless absolutely necessary
-- If a field is already clearly identified as missing, prefer one good follow-up question instead of many similar ones
-- Make the wording sound professional and suitable for clinic admin use
-
-Service-aware focus:
-{service_focus}
-
-Use only the data below.
-
-Case context:
-{json.dumps(case_context, indent=2)}
-""".strip()
-
-
-def build_user_symptom_summary_prompt(payload):
-    pet = payload.get("pet") or {}
-    symptom_intake = payload.get("symptom_intake") or {}
-
-    context = {
-        "pet": {
-            "name": _text_or_default(pet.get("name"), "Unknown Pet"),
-            "species": _text_or_default(pet.get("species"), "Unknown"),
-            "breed": _text_or_default(pet.get("breed"), "Unknown"),
-            "gender": _text_or_default(pet.get("gender"), "Unknown"),
-        },
-        "service": _text_or_default(payload.get("service"), "Appointment"),
-        "symptom_intake": {
-            "selected_symptoms": symptom_intake.get("selected_symptoms") or [],
-            "owner_symptom_notes": _text_or_default(symptom_intake.get("owner_symptom_notes")),
-            "duration": _text_or_default(symptom_intake.get("duration")),
-            "eating_status": _text_or_default(symptom_intake.get("eating_status")),
-            "drinking_status": _text_or_default(symptom_intake.get("drinking_status")),
-            "worsening_status": _text_or_default(symptom_intake.get("worsening_status")),
-        }
-    }
-
-    return f"""
-You are an AI assistant helping a veterinary clinic collect booking information.
-
-Your role:
-- summarize the owner's reported symptoms clearly
-- keep the wording neutral and practical
-- prepare a short intake-ready summary for clinic staff
-
-Rules:
-- Do NOT provide a diagnosis
-- Do NOT prescribe treatment
-- Do NOT mention probabilities or disease names
-- Use only the information provided
-- Keep the summary to 1 to 3 sentences
-- Write in a professional tone suitable for clinic intake notes
-- If no symptoms were clearly reported, say that no specific symptoms were reported during booking
-
-Return a JSON object matching the requested schema.
-
-Booking context:
-{json.dumps(context, indent=2)}
-""".strip()
-
-
-def build_doctor_emr_case_context(payload):
-    pet = payload.get("pet") or {}
-    owner = payload.get("owner") or {}
-    current_record = payload.get("current_record") or {}
-    current_visit = payload.get("current_visit") or {}
-    visit_history = payload.get("visit_history") if isinstance(payload.get("visit_history"), list) else []
-
-    return {
-        "pet": {
-            "name": _text_or_default(pet.get("name"), "Unknown Pet"),
-            "species": _text_or_default(pet.get("species"), "Unknown"),
-            "breed": _text_or_default(pet.get("breed"), "Unknown"),
-            "gender": _text_or_default(pet.get("gender"), "Unknown"),
-            "age": _text_or_default(pet.get("age")),
-            "weight": _text_or_default(pet.get("weight")),
-            "neutered": _bool_to_phrase(pet.get("neutered")),
-            "vaccinated": _bool_to_phrase(pet.get("vaccinated")),
-        },
-        "owner": {
-            "name": _text_or_default(owner.get("name")),
-            "contact": _text_or_default(owner.get("contact")),
-            "email": _text_or_default(owner.get("email")),
-        },
-        "current_record": {
-            "reason_for_visit": _text_or_default(current_record.get("reason_for_visit")),
-            "assigned_doctor": _text_or_default(current_record.get("assigned_doctor")),
-        },
-        "current_visit": current_visit,
-        "visit_history": visit_history[-6:],
-    }
-
-
-def build_doctor_emr_prompt(case_context):
-    return f"""
-You are an AI assistant supporting a licensed veterinarian reviewing an EMR.
-
-Your role:
-- create a concise clinical prep brief from the EMR and booking intake
-- highlight relevant history, symptom intake, preventive-care concerns, and owner-reported changes
-- suggest exam focus areas and clarifying questions the veterinarian may consider
-- help the doctor prepare faster, not replace clinical judgment
-
-Rules:
-- Do NOT provide a diagnosis
-- Do NOT prescribe treatment
-- Do NOT rank diseases or claim probabilities
-- Do NOT tell the doctor what final decision to make
-- Use cautious language such as "consider checking", "owner reported", and "may be relevant"
-- If symptoms are present, connect them to exam focus areas without naming a definitive disease
-- If information is missing, list only items that could affect the doctor's assessment
-- Return at most 4 important_flags
-- Return at most 4 relevant_history items
-- Return at most 4 exam_focus items
-- Return at most 4 care_continuity_notes items
-- Return at most 6 missing_information items
-- Keep the summary in 2 to 4 sentences
-
-Interpret the output fields this way:
-- summary: doctor-facing clinical prep overview
-- important_flags: relevant clinical or intake considerations, not diagnoses
-- relevant_history: important previous visits, intake patterns, or findings
-- exam_focus: exam areas the veterinarian may consider checking
-- care_continuity_notes: continuity reminders for follow-up, meds, vaccines, labs, or owner education
-- missing_information: data gaps that may matter before or during exam
-
-Use only the data below.
-
-EMR context:
-{json.dumps(case_context, indent=2)}
-""".strip()
-
-
-def call_gemini_with_structured_output(prompt, schema):
-    if not GEMINI_API_KEY:
-        raise ValueError("Missing GEMINI_API_KEY in backend environment.")
-
-    endpoint = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-    )
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": prompt}
-                ]
-            }
-        ],
-        "generationConfig": {
-            "temperature": 0.2,
-            "responseMimeType": "application/json",
-            "responseSchema": schema
-        }
-    }
-
-    req = urllib_request.Request(
-        endpoint,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST"
-    )
-
-    try:
-        with urllib_request.urlopen(req, timeout=45) as response:
-            raw = response.read().decode("utf-8")
-    except urllib_error.HTTPError as e:
-        error_body = e.read().decode("utf-8", errors="replace")
-        raise ValueError(f"Gemini API error ({e.code}): {error_body}")
-    except urllib_error.URLError as e:
-        raise ValueError(f"Gemini API connection error: {e}")
-
-    parsed = json.loads(raw)
-    candidates = parsed.get("candidates") or []
-    if not candidates:
-        raise ValueError("Gemini returned no candidates.")
-
-    parts = (((candidates[0] or {}).get("content") or {}).get("parts") or [])
-    text = "".join(part.get("text", "") for part in parts if isinstance(part, dict)).strip()
-    if not text:
-        raise ValueError("Gemini returned an empty response.")
-
-    result = json.loads(text)
-    return {
-        "summary": _text_or_default(result.get("summary")),
-        "important_flags": result.get("important_flags") if isinstance(result.get("important_flags"), list) else [],
-        "follow_up_questions": result.get("follow_up_questions") if isinstance(result.get("follow_up_questions"), list) else [],
-        "missing_information": result.get("missing_information") if isinstance(result.get("missing_information"), list) else [],
-        "model": GEMINI_MODEL
-    }
-
-
-def call_gemini_with_raw_structured_output(prompt, schema):
-    if not GEMINI_API_KEY:
-        raise ValueError("Missing GEMINI_API_KEY in backend environment.")
-
-    endpoint = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}"
-    )
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.2,
-            "responseMimeType": "application/json",
-            "responseSchema": schema
-        }
-    }
-    req = urllib_request.Request(
-        endpoint,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST"
-    )
-
-    try:
-        with urllib_request.urlopen(req, timeout=45) as response:
-            raw = response.read().decode("utf-8")
-    except urllib_error.HTTPError as e:
-        error_body = e.read().decode("utf-8", errors="replace")
-        raise ValueError(f"Gemini API error ({e.code}): {error_body}")
-    except urllib_error.URLError as e:
-        raise ValueError(f"Gemini API connection error: {e}")
-
-    parsed = json.loads(raw)
-    candidates = parsed.get("candidates") or []
-    if not candidates:
-        raise ValueError("Gemini returned no candidates.")
-
-    parts = (((candidates[0] or {}).get("content") or {}).get("parts") or [])
-    text = "".join(part.get("text", "") for part in parts if isinstance(part, dict)).strip()
-    if not text:
-        raise ValueError("Gemini returned an empty response.")
-
-    result = json.loads(text)
-    result["model"] = GEMINI_MODEL
-    return result
-
-
-def build_client_care_summary_prompt(case_context):
-    return f"""
-You are helping veterinary clinic staff draft a client-friendly care summary.
-
-Rules:
-- Use plain language for pet owners.
-- Do not diagnose, prescribe, or replace veterinarian judgment.
-- Base the summary only on the provided record.
-- Keep bullets short and practical.
-- Mention that clinic staff should review before sharing when details are incomplete.
-
-Return JSON matching the schema.
-
-Case context:
-{json.dumps(case_context, indent=2)}
-""".strip()
-
-
-def build_clinical_risk_flags(case_context):
-    flags = []
-    current_visit = case_context.get("current_visit") or {}
-    medical = current_visit.get("medical_information") or {}
-    history = case_context.get("visit_history") if isinstance(case_context.get("visit_history"), list) else []
-
-    if _answer_is_yes(medical.get("on_medication")) or _has_meaningful_value(medical.get("medication_details")):
-        flags.append(_make_risk_flag(
-            "current-medication",
-            "medium",
-            "Recent medication reported",
-            "Owner intake indicates recent or current medication use.",
-            "Confirm medication name, dose, timing, and reason before treatment decisions.",
-            "current visit intake",
-        ))
-    if _answer_is_no(medical.get("flea_tick_prevention")):
-        flags.append(_make_risk_flag(
-            "parasite-prevention-gap",
-            "low",
-            "Parasite prevention may be incomplete",
-            "Flea/tick prevention was not confirmed in the intake.",
-            "Verify prevention status, especially before grooming or boarding.",
-            "current visit intake",
-        ))
-    if _answer_is_no(medical.get("up_to_date_vaccinations")) or _answer_is_no(medical.get("is_vaccinated")):
-        flags.append(_make_risk_flag(
-            "vaccine-status-gap",
-            "medium",
-            "Vaccination status needs review",
-            "Vaccination status is missing or not up to date.",
-            "Check vaccine history and clinic requirements before proceeding.",
-            "current visit intake",
-        ))
-    if _answer_is_yes(medical.get("pregnant")) or _answer_is_yes(medical.get("is_pregnant")):
-        flags.append(_make_risk_flag(
-            "pregnancy-reported",
-            "high",
-            "Pregnancy reported",
-            "Owner intake indicates the pet may be pregnant.",
-            "Use pregnancy-aware handling and confirm with the veterinarian.",
-            "current visit intake",
-        ))
-    if _has_meaningful_value(medical.get("reported_symptoms")) or _has_meaningful_value(medical.get("owner_symptom_notes")):
-        flags.append(_make_risk_flag(
-            "owner-symptoms",
-            "medium",
-            "Owner symptoms require review",
-            "Owner submitted symptom details that may affect the exam plan.",
-            "Review duration, appetite, drinking, and worsening status with the owner.",
-            "current visit intake",
-        ))
-    if any(_has_meaningful_value((visit or {}).get("lab_results")) for visit in history):
-        flags.append(_make_risk_flag(
-            "previous-labs",
-            "low",
-            "Previous labs available",
-            "Visit history contains lab or diagnostic results.",
-            "Review prior interpretations before finalizing today's assessment.",
-            "visit history",
-        ))
-
-    missing = []
-    if not _has_meaningful_value(current_visit.get("clinical_exam")):
-        missing.append("Current clinical exam findings")
-    if not _has_meaningful_value(medical):
-        missing.append("Current medical intake")
-
-    return {
-        "summary": "Clinical support flags were prepared from the current visit and recent EMR history.",
-        "flags": flags[:6],
-        "missing_information": missing,
-        "model": "rules",
-        "support_metadata": build_ai_support_metadata(case_context, missing, mode="doctor"),
-    }
-
-
-def build_follow_up_reminders(case_context):
-    reminders = []
-    current_visit = case_context.get("current_visit") or {}
-    medical = current_visit.get("medical_information") or {}
-    history = case_context.get("visit_history") if isinstance(case_context.get("visit_history"), list) else []
-
-    if _has_meaningful_value(current_visit.get("prescriptions")):
-        reminders.append(_make_follow_up_reminder(
-            "prescription-check",
-            "high",
-            "Medication follow-up",
-            "Current visit includes prescription details.",
-            "Within the medication course or as directed by the veterinarian.",
-            "Confirm owner understands dosage, duration, and warning signs.",
-            "current visit",
-        ))
-    if _has_meaningful_value(current_visit.get("vaccination_details")):
-        reminders.append(_make_follow_up_reminder(
-            "vaccine-next-due",
-            "medium",
-            "Vaccine continuity",
-            "Vaccination details were recorded for this visit.",
-            "Use the next due date in the vaccination record.",
-            "Schedule or remind owner about the next vaccine due date.",
-            "current visit",
-        ))
-    if _has_meaningful_value(current_visit.get("lab_results")):
-        reminders.append(_make_follow_up_reminder(
-            "lab-review",
-            "high",
-            "Lab result review",
-            "Current visit includes lab results or interpretations.",
-            "As soon as results are finalized.",
-            "Review results with the veterinarian and communicate owner instructions.",
-            "current visit",
-        ))
-    if _has_meaningful_value(medical.get("reported_symptoms")) or _has_meaningful_value(medical.get("owner_symptom_notes")):
-        reminders.append(_make_follow_up_reminder(
-            "symptom-recheck",
-            "medium",
-            "Symptom recheck",
-            "Owner reported symptoms during intake.",
-            "Follow clinic guidance after today's exam.",
-            "Document whether symptoms improve, persist, or worsen.",
-            "current visit intake",
-        ))
-    if not reminders and history:
-        reminders.append(_make_follow_up_reminder(
-            "routine-continuity",
-            "low",
-            "Routine care continuity",
-            "No urgent follow-up trigger was detected from the provided data.",
-            "At the next routine wellness or service interval.",
-            "Confirm preventive care, vaccines, and owner concerns.",
-            "visit history",
-        ))
-
-    missing = []
-    if not _has_meaningful_value(current_visit):
-        missing.append("Current visit details")
-
-    return {
-        "summary": "Follow-up reminders were prepared from the current visit details and EMR history.",
-        "reminders": reminders[:6],
-        "missing_information": missing,
-        "model": "rules",
-        "support_metadata": build_ai_support_metadata(case_context, missing, mode="doctor"),
-    }
-
-
-def build_ai_error_response(error, fallback_message):
-    message = str(error or "")
-    lowered = message.lower()
-    busy_markers = (
-        "429",
-        "503",
-        "overload",
-        "overloaded",
-        "busy",
-        "rate limit",
-        "resource_exhausted",
-        "unavailable",
-        "quota",
-        "high demand",
-    )
-
-    if any(marker in lowered for marker in busy_markers):
-        return jsonify({"error": AI_BUSY_MESSAGE}), 503
-
-    if "missing gemini_api_key" in lowered:
-        return jsonify({"error": "AI service is not configured yet."}), 500
-
-    return jsonify({"error": fallback_message}), 502
 
 otp_store = {}
 RESEND_COOLDOWN_SECONDS = 60
@@ -2798,6 +2073,8 @@ def get_emr_records(
                 "id": str(visit.get("medical_record_visit_id") or ""),
                 "sourceType": (visit.get("source_type") or "manual").strip().lower() or "manual",
                 "sourceId": str(visit.get("source_id")) if visit.get("source_id") not in (None, "") else None,
+                "branchId": visit.get("branch_id"),
+                "branch_id": visit.get("branch_id"),
                 "date": format_emr_display_date(visit.get("visit_date")),
                 "time": format_display_time(visit.get("visit_time")) or "",
                 "veterinarian": visit.get("veterinarian_name") or "",
@@ -2968,8 +2245,13 @@ def save_emr_record_payload(data, existing_record_id=None, branch_scope=None):
     owner_visibility_maps = get_emr_owner_visibility_maps(medical_record_id)
     supabase_admin.table("medical_record_visits").delete().eq("medical_record_id", medical_record_id).execute()
 
-    visit_history = data.get("visitHistory") or []
-    if not visit_history:
+    raw_visit_history = data.get("visitHistory")
+    visit_history = raw_visit_history if isinstance(raw_visit_history, list) else []
+    should_create_default_visit = parse_bool(
+        data.get("createDefaultVisit", data.get("create_default_visit", False)),
+        default=False,
+    )
+    if not visit_history and should_create_default_visit:
         default_visit = build_emr_default_visit(data)
         visit_history = [default_visit] if default_visit else []
 
@@ -2990,7 +2272,11 @@ def save_emr_record_payload(data, existing_record_id=None, branch_scope=None):
             branch_scope=branch_scope,
             fallback_branch_id=visit.get("branchId") or visit.get("branch_id") or data.get("branchId") or data.get("branch_id"),
         )
-        _, branch_access_error = validate_branch_scope_access(branch_scope, visit_branch_id)
+        _, branch_access_error = validate_branch_scope_access(
+            branch_scope,
+            visit_branch_id,
+            allow_unassigned=True,
+        )
         if branch_access_error:
             raise ValueError(branch_access_error)
 
@@ -3244,7 +2530,7 @@ def get_profile_display_name(profile):
     )
 
 
-def normalize_public_profile(profile):
+def normalize_public_profile(profile, source_table=None):
     if not profile:
         return None
 
@@ -3263,12 +2549,22 @@ def normalize_public_profile(profile):
         last_name = last_name or split_last
 
     contact = profile.get("contact_number") or profile.get("contactNumber") or profile.get("contactnumber") or ""
-    user_image = (
-        profile.get("userImage")
-        or profile.get("userimage")
-        or profile.get("user_image")
-        or profile.get("profileImage")
-    )
+    if source_table == "employee_accounts":
+        user_image = (
+            profile.get("employee_image")
+            or profile.get("profileImage")
+            or profile.get("userImage")
+            or profile.get("userimage")
+            or profile.get("user_image")
+        )
+    else:
+        user_image = (
+            profile.get("profileImage")
+            or profile.get("userImage")
+            or profile.get("userimage")
+            or profile.get("user_image")
+            or profile.get("employee_image")
+        )
     created_at = profile.get("created_at") or profile.get("dateJoined") or profile.get("date_joined") or ""
     raw_status = (profile.get("status") or "active").strip().lower()
 
@@ -3299,222 +2595,6 @@ def build_reschedule_action_links(token):
         "choose_another": f"{base_url}/reschedule/choose-another-date/{token}",
         "cancel": f"{base_url}/reschedule/cancel/{token}",
     }
-
-
-def parse_uuid_or_none(value):
-    if not value:
-        return None
-
-    try:
-        return str(uuid.UUID(str(value)))
-    except (ValueError, TypeError, AttributeError):
-        return None
-
-
-def trim_audit_text(value, default="", limit=500):
-    text = str(value or "").strip()
-    if not text:
-        text = default
-    return text[:limit]
-
-
-def normalize_audit_status(value):
-    raw_status = str(value or "Success").strip().lower()
-    if raw_status in {"success", "successful", "completed", "ok"}:
-        return "Success"
-    if raw_status in {"warning", "warn", "review", "needs review", "sensitive"}:
-        return "Warning"
-    if raw_status in {"failed", "failure", "error", "rejected", "blocked"}:
-        return "Failed"
-    return "Success"
-
-
-def normalize_audit_role(role):
-    role_value = str(role or "").strip()
-    lowered = role_value.lower()
-    if "admin" in lowered:
-        return "Admin"
-    if "vet" in lowered or "doctor" in lowered:
-        return "Veterinarian"
-    if "reception" in lowered or "front" in lowered or "clinical" in lowered or "clinic staff" in lowered:
-        return "Clinic Staff"
-    if "patient" in lowered or "user" in lowered or "client" in lowered or "owner" in lowered:
-        return "User"
-    return role_value or "System"
-
-
-def normalize_audit_account_type(value):
-    raw_value = str(value or "").strip().lower()
-    if raw_value in {"employee", "staff", "clinical staff", "clinic staff", "admin", "doctor", "vet", "veterinarian", "receptionist", "employee_accounts"}:
-        return "employee"
-    if raw_value in {"patient", "user", "client", "owner", "patient_account"}:
-        return "patient"
-    if raw_value == "system":
-        return "system"
-    return "unknown" if raw_value else None
-
-
-def get_audit_profile_display_name(profile):
-    if not profile:
-        return ""
-
-    first_name = profile.get("firstName") or profile.get("first_name") or ""
-    last_name = profile.get("lastName") or profile.get("last_name") or ""
-    return (
-        profile.get("username")
-        or f"{first_name} {last_name}".strip()
-        or profile.get("full_name")
-        or profile.get("fullname")
-        or profile.get("email")
-        or ""
-    )
-
-
-def resolve_audit_actor_context(data):
-    current_user = data.get("currentUser") or data.get("current_user") or {}
-    if not isinstance(current_user, dict):
-        current_user = {}
-
-    raw_actor_id = (
-        data.get("actorId")
-        or data.get("actor_id")
-        or data.get("userId")
-        or data.get("user_id")
-        or data.get("processedBy")
-        or data.get("processed_by")
-        or current_user.get("id")
-        or current_user.get("pk")
-    )
-    actor_account_id = parse_uuid_or_none(raw_actor_id)
-
-    actor = (
-        data.get("actor")
-        or data.get("actorName")
-        or data.get("actor_name")
-        or data.get("username")
-        or current_user.get("username")
-        or current_user.get("fullName")
-        or current_user.get("fullname")
-    )
-    raw_role = (
-        data.get("role")
-        or data.get("actorRole")
-        or data.get("actor_role")
-        or current_user.get("role")
-    )
-    actor_account_type = normalize_audit_account_type(
-        data.get("actorAccountType")
-        or data.get("actor_account_type")
-        or data.get("userType")
-        or data.get("user_type")
-        or current_user.get("account_type")
-    )
-
-    if actor_account_id:
-        try:
-            profile, source_table = find_account_by_user_id(actor_account_id)
-            if profile:
-                actor = actor or get_audit_profile_display_name(profile)
-                raw_role = raw_role or profile.get("role")
-                actor_account_type = "employee" if source_table == "employee_accounts" else "patient"
-        except Exception as profile_error:
-            print("Audit actor lookup failed:", str(profile_error))
-
-    return {
-        "actor": trim_audit_text(actor, "system", 160),
-        "actor_account_id": actor_account_id,
-        "actor_account_type": actor_account_type or "system",
-        "actor_role": normalize_audit_role(raw_role),
-    }
-
-
-def get_request_ip_address():
-    try:
-        forwarded_for = request.headers.get("X-Forwarded-For", "")
-        if forwarded_for:
-            return forwarded_for.split(",")[0].strip() or None
-        return request.remote_addr
-    except RuntimeError:
-        return None
-
-
-def get_request_user_agent():
-    try:
-        return request.headers.get("User-Agent")
-    except RuntimeError:
-        return None
-
-
-def normalize_audit_log(row):
-    if not row:
-        return None
-
-    return {
-        "id": row.get("audit_log_id") or row.get("id"),
-        "module": row.get("module") or "System",
-        "event": row.get("event") or "Action Recorded",
-        "actor": row.get("actor") or "system",
-        "role": row.get("actor_role") or row.get("role") or "System",
-        "target": row.get("target") or "System",
-        "summary": row.get("summary") or "",
-        "dateTime": row.get("created_at") or row.get("dateTime") or row.get("date_time"),
-        "status": normalize_audit_status(row.get("status")),
-    }
-
-
-def record_system_audit_log(data, *, raise_on_missing=False, raise_errors=False):
-    data = data or {}
-    if not isinstance(data, dict):
-        data = {}
-    actor_context = resolve_audit_actor_context(data)
-    metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
-
-    try:
-        branch_id = coerce_int(
-            data.get("branchId", data.get("branch_id")),
-            "branch_id",
-            minimum=1,
-            allow_none=True,
-        )
-    except ValueError:
-        branch_id = None
-
-    payload = {
-        "module": trim_audit_text(data.get("module"), "System", 80),
-        "event": trim_audit_text(data.get("event"), "Action Recorded", 120),
-        "actor": actor_context["actor"],
-        "actor_account_id": actor_context["actor_account_id"],
-        "actor_account_type": actor_context["actor_account_type"],
-        "actor_role": actor_context["actor_role"],
-        "target": trim_audit_text(data.get("target"), "System", 180),
-        "target_type": trim_audit_text(data.get("targetType") or data.get("target_type"), "", 80) or None,
-        "target_id": trim_audit_text(data.get("targetId") or data.get("target_id"), "", 80) or None,
-        "summary": trim_audit_text(data.get("summary"), "", 700),
-        "status": normalize_audit_status(data.get("status")),
-        "branch_id": branch_id,
-        "metadata": metadata,
-        "ip_address": data.get("ipAddress") or data.get("ip_address") or get_request_ip_address(),
-        "user_agent": data.get("userAgent") or data.get("user_agent") or get_request_user_agent(),
-    }
-
-    try:
-        response = execute_with_retry(
-            lambda: supabase_admin.table(AUDIT_LOGS_TABLE).insert(payload).execute(),
-            context="Create audit log"
-        )
-        rows = response.data or []
-        return normalize_audit_log(rows[0] if rows else payload)
-    except Exception as e:
-        missing_table = (
-            is_missing_relation_error(e, AUDIT_LOGS_TABLE)
-            or is_missing_supabase_resource_error(e)
-        )
-        if missing_table and raise_on_missing:
-            raise RuntimeError(AUDIT_LOGS_SETUP_MESSAGE)
-        if raise_errors:
-            raise
-        print("Audit log insert failed:", str(e))
-        return None
 
 
 def resolve_appointment_target(target_id, record_type=None):
@@ -3798,6 +2878,596 @@ def record_appointment_audit_event(
     })
 
 
+def format_audit_money(value):
+    try:
+        return f"PHP {float(value or 0):,.2f}"
+    except (TypeError, ValueError):
+        return "PHP 0.00"
+
+
+def get_emr_record_id(record=None, fallback_id=None):
+    record = record or {}
+    return (
+        record.get("medical_record_id")
+        or record.get("id")
+        or record.get("pk")
+        or fallback_id
+    )
+
+
+def get_emr_pet_id(record=None, data=None):
+    record = record or {}
+    data = data or {}
+    pet_details = data.get("petDetails") or data.get("pet_details") or {}
+    return (
+        record.get("petId")
+        or record.get("pet_id")
+        or data.get("petId")
+        or data.get("pet_id")
+        or pet_details.get("petId")
+        or pet_details.get("pet_id")
+    )
+
+
+def get_emr_pet_name(record=None, data=None):
+    record = record or {}
+    data = data or {}
+    pet_details = data.get("petDetails") or data.get("pet_details") or {}
+    pet_name = (
+        record.get("petName")
+        or record.get("pet_name")
+        or data.get("petName")
+        or data.get("pet_name")
+        or pet_details.get("name")
+        or pet_details.get("petName")
+    )
+    if pet_name:
+        return str(pet_name).strip()
+
+    pet_id = get_emr_pet_id(record, data)
+    if pet_id not in (None, ""):
+        try:
+            pet = get_single_row("pet_profile", "pet_id", pet_id)
+            return str((pet or {}).get("pet_name") or "").strip()
+        except Exception as pet_error:
+            print(f"EMR audit pet lookup error: {pet_error}")
+    return ""
+
+
+def get_emr_owner_id(record=None, data=None):
+    record = record or {}
+    data = data or {}
+    owner_id = record.get("ownerId") or record.get("owner_id") or data.get("ownerId") or data.get("owner_id")
+    if owner_id:
+        return owner_id
+
+    pet_id = get_emr_pet_id(record, data)
+    if pet_id not in (None, ""):
+        try:
+            pet = get_single_row("pet_profile", "pet_id", pet_id)
+            return (pet or {}).get("owner_id")
+        except Exception as pet_error:
+            print(f"EMR audit owner lookup error: {pet_error}")
+    return None
+
+
+def get_emr_visit_history(record=None, data=None):
+    record = record or {}
+    data = data or {}
+    visits = record.get("visitHistory") or record.get("visit_history")
+    if isinstance(visits, list):
+        return visits
+    visits = data.get("visitHistory") or data.get("visit_history")
+    return visits if isinstance(visits, list) else []
+
+
+def get_emr_branch_id_from_visit_source(source_type, source_id):
+    normalized_type = str(source_type or "").strip().lower()
+    if normalized_type in {"walk-in", "walkin_appointment"}:
+        normalized_type = "walkin"
+    if normalized_type not in {"appointment", "walkin"} or source_id in (None, ""):
+        return None
+
+    try:
+        table_name = "walkin_appointments" if normalized_type == "walkin" else "appointments"
+        id_column = "walkin_id" if normalized_type == "walkin" else "appointment_id"
+        source_record = get_single_row(table_name, id_column, source_id)
+        return (source_record or {}).get("branch_id")
+    except Exception as source_error:
+        print(f"EMR audit branch lookup error: {source_error}")
+        return None
+
+
+def get_emr_branch_id(record=None, data=None, record_id=None, branch_id=None):
+    if branch_id not in (None, ""):
+        return branch_id
+
+    record = record or {}
+    data = data or {}
+    direct_branch_id = (
+        record.get("branchId")
+        or record.get("branch_id")
+        or data.get("branchId")
+        or data.get("branch_id")
+    )
+    if direct_branch_id not in (None, ""):
+        return direct_branch_id
+
+    for visit in get_emr_visit_history(record, data):
+        source_type = visit.get("sourceType") or visit.get("source_type")
+        source_id = (
+            visit.get("sourceId")
+            or visit.get("source_id")
+            or visit.get("appointmentId")
+            or visit.get("appointment_id")
+            or visit.get("walkinId")
+            or visit.get("walkin_id")
+        )
+        resolved_branch_id = get_emr_branch_id_from_visit_source(source_type, source_id)
+        if resolved_branch_id not in (None, ""):
+            return resolved_branch_id
+
+    resolved_record_id = record_id or get_emr_record_id(record)
+    if resolved_record_id in (None, ""):
+        return None
+
+    try:
+        visits = execute_with_retry(
+            lambda: supabase_admin.table("medical_record_visits")
+            .select("source_type,source_id")
+            .eq("medical_record_id", resolved_record_id)
+            .execute(),
+            context="Fetch EMR audit visit sources",
+        ).data or []
+        for visit in visits:
+            resolved_branch_id = get_emr_branch_id_from_visit_source(visit.get("source_type"), visit.get("source_id"))
+            if resolved_branch_id not in (None, ""):
+                return resolved_branch_id
+    except Exception as visits_error:
+        print(f"EMR audit visit lookup error: {visits_error}")
+
+    return None
+
+
+def get_emr_record_audit_target(record=None, data=None, record_id=None):
+    resolved_record_id = get_emr_record_id(record, record_id)
+    pet_name = get_emr_pet_name(record, data)
+    if pet_name:
+        return trim_audit_text(f"{pet_name} Medical Record", f"Medical Record #{resolved_record_id}", 180)
+    if resolved_record_id:
+        return f"Medical Record #{resolved_record_id}"
+    return "Medical Record"
+
+
+def get_emr_record_audit_counts(record=None, data=None):
+    visits = get_emr_visit_history(record, data)
+    prescription_count = 0
+    lab_result_count = 0
+    service_count = 0
+    vaccination_count = 0
+
+    for visit in visits:
+        prescriptions = visit.get("prescriptions") if isinstance(visit, dict) else []
+        lab_results = visit.get("labResults") or visit.get("lab_results") if isinstance(visit, dict) else []
+        services = visit.get("selectedServices") or visit.get("selected_services") if isinstance(visit, dict) else []
+        vaccination = visit.get("vaccinationDetails") or visit.get("vaccination_details") if isinstance(visit, dict) else None
+
+        prescription_count += len(prescriptions) if isinstance(prescriptions, list) else 0
+        lab_result_count += len(lab_results) if isinstance(lab_results, list) else 0
+        service_count += len(services) if isinstance(services, list) else 0
+        if isinstance(vaccination, dict) and (vaccination.get("vaccineName") or vaccination.get("vaccine_name")):
+            vaccination_count += 1
+
+    return {
+        "visit_count": len(visits),
+        "prescription_count": prescription_count,
+        "lab_result_count": lab_result_count,
+        "service_count": service_count,
+        "vaccination_count": vaccination_count,
+    }
+
+
+def get_emr_record_value(record, paths, default=None):
+    if not isinstance(record, dict):
+        return default
+
+    for path in paths:
+        current = record
+        found = True
+        for key in path:
+            if isinstance(current, dict) and key in current:
+                current = current.get(key)
+            else:
+                found = False
+                break
+        if found and current is not None:
+            return current
+    return default
+
+
+def normalize_emr_audit_compare_value(value):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def emr_record_field_changed(previous_record, current_record, paths):
+    previous_value = get_emr_record_value(previous_record, paths)
+    current_value = get_emr_record_value(current_record, paths)
+    return normalize_emr_audit_compare_value(previous_value) != normalize_emr_audit_compare_value(current_value)
+
+
+def get_emr_record_deceased_state(record):
+    value = get_emr_record_value(record, [("deceased",), ("petDetails", "deceased")])
+    if value is None:
+        return None
+    return parse_bool(value, default=False)
+
+
+def build_emr_record_update_summary(record=None, previous_record=None, data=None):
+    pet_name = get_emr_pet_name(record, data) or "this pet"
+    counts = get_emr_record_audit_counts(record, data)
+
+    if not previous_record:
+        return f"Medical record for {pet_name} was updated."
+
+    changed_parts = []
+    previous_deceased = get_emr_record_deceased_state(previous_record)
+    current_deceased = get_emr_record_deceased_state(record)
+    if previous_deceased != current_deceased and current_deceased is not None:
+        changed_parts.append("pet status was marked deceased" if current_deceased else "pet status was marked active")
+
+    pet_profile_fields = [
+        [("petName",), ("petDetails", "name")],
+        [("petDetails", "species")],
+        [("petDetails", "breed")],
+        [("petDetails", "gender")],
+        [("petDetails", "dateOfBirth")],
+        [("petDetails", "age")],
+        [("petDetails", "weight")],
+        [("petDetails", "weightUnit")],
+        [("petDetails", "colorMarkings")],
+        [("petDetails", "neutered")],
+        [("petDetails", "vaccinated")],
+        [("petDetails", "vaccinationProof")],
+        [("petDetails", "image")],
+    ]
+    if any(emr_record_field_changed(previous_record, record, paths) for paths in pet_profile_fields):
+        changed_parts.append("pet profile details")
+
+    owner_fields = [
+        [("ownerFirstName",)],
+        [("ownerLastName",)],
+        [("ownerEmail",)],
+        [("ownerContact",)],
+    ]
+    if any(emr_record_field_changed(previous_record, record, paths) for paths in owner_fields):
+        changed_parts.append("owner contact details")
+
+    record_fields = [
+        [("veterinarian",), ("petDetails", "doctorAssigned")],
+        [("reason",), ("petDetails", "reasonForVisit")],
+        [("petDetails", "doctorRemarks")],
+    ]
+    if any(emr_record_field_changed(previous_record, record, paths) for paths in record_fields):
+        changed_parts.append("record details")
+
+    if not changed_parts:
+        changed_parts.append(f"visit history ({counts['visit_count']} visit(s))")
+
+    detail = ", ".join(dict.fromkeys(changed_parts))
+    return f"Medical record for {pet_name} was updated: {detail}."
+
+
+def build_emr_record_saved_summary(action, record=None, data=None, previous_record=None):
+    if action == "updated":
+        return build_emr_record_update_summary(record, previous_record, data)
+
+    pet_name = get_emr_pet_name(record, data) or "this pet"
+    counts = get_emr_record_audit_counts(record, data)
+    parts = [f"{counts['visit_count']} visit(s)"] if counts["visit_count"] else ["record details"]
+    if counts["prescription_count"]:
+        parts.append(f"{counts['prescription_count']} prescription(s)")
+    if counts["lab_result_count"]:
+        parts.append(f"{counts['lab_result_count']} lab result(s)")
+    if counts["vaccination_count"]:
+        parts.append(f"{counts['vaccination_count']} vaccination record(s)")
+    if counts["service_count"]:
+        parts.append(f"{counts['service_count']} billed service reference(s)")
+
+    detail = ", ".join(parts) if parts else "record details"
+    return f"Medical record for {pet_name} was {action} with {detail}."
+
+
+def record_emr_audit_event(
+    event,
+    record=None,
+    *,
+    data=None,
+    record_id=None,
+    target=None,
+    target_type="medical_record",
+    target_id=None,
+    branch_id=None,
+    summary="",
+    status="Success",
+    metadata=None,
+):
+    data = data or {}
+    record = record or {}
+    resolved_record_id = get_emr_record_id(record, record_id)
+    resolved_target_id = target_id if target_id not in (None, "") else resolved_record_id
+    pet_id = get_emr_pet_id(record, data)
+    counts = get_emr_record_audit_counts(record, data)
+
+    audit_metadata = {
+        "medical_record_id": resolved_record_id,
+        "pet_id": pet_id,
+        **counts,
+    }
+    if metadata:
+        audit_metadata.update(serialize_audit_metadata_value(metadata))
+
+    record_system_audit_log({
+        **get_appointment_audit_actor_fields(data),
+        "module": "EMR",
+        "event": event,
+        "target": target or get_emr_record_audit_target(record, data, resolved_record_id),
+        "targetType": target_type,
+        "targetId": resolved_target_id,
+        "branchId": get_emr_branch_id(record, data, resolved_record_id, branch_id),
+        "summary": summary,
+        "status": status,
+        "metadata": {
+            key: value
+            for key, value in audit_metadata.items()
+            if value not in (None, "")
+        },
+    })
+
+
+def get_emr_child_record_context(child_table, child_id_column, child_id):
+    child_record = get_single_row(child_table, child_id_column, child_id)
+    if not child_record:
+        return None
+
+    visit_id = child_record.get("medical_record_visit_id")
+    visit_record = get_single_row("medical_record_visits", "medical_record_visit_id", visit_id) if visit_id else None
+    medical_record = (
+        get_single_row("medical_records", "medical_record_id", visit_record.get("medical_record_id"))
+        if visit_record else None
+    )
+    pet = get_single_row("pet_profile", "pet_id", medical_record.get("pet_id")) if medical_record else None
+
+    return {
+        "child": child_record,
+        "visit": visit_record or {},
+        "record": medical_record or {},
+        "pet": pet or {},
+        "branch_id": get_emr_branch_id_from_visit_source(
+            (visit_record or {}).get("source_type"),
+            (visit_record or {}).get("source_id"),
+        ),
+    }
+
+
+def record_emr_child_visibility_audit(event, context, *, data=None, child_type, child_id, visible_to_owner):
+    context = context or {}
+    medical_record = context.get("record") or {}
+    pet = context.get("pet") or {}
+    pet_name = pet.get("pet_name") or get_emr_pet_name(medical_record, data) or "this pet"
+    visibility_label = "shared with" if visible_to_owner else "hidden from"
+
+    record_emr_audit_event(
+        event,
+        medical_record,
+        data=data,
+        target=f"{pet_name} {child_type}",
+        target_type=child_type.lower().replace(" ", "_"),
+        target_id=child_id,
+        branch_id=context.get("branch_id"),
+        summary=f"{child_type} for {pet_name} was {visibility_label} the owner portal.",
+        status="Success",
+        metadata={
+            "visible_to_owner": bool(visible_to_owner),
+            "medical_record_visit_id": (context.get("visit") or {}).get("medical_record_visit_id"),
+        },
+    )
+
+
+def get_billing_invoice_id(invoice=None, fallback_id=None):
+    invoice = invoice or {}
+    return invoice.get("billing_invoice_id") or invoice.get("id") or fallback_id
+
+
+def get_billing_invoice_number(invoice=None):
+    invoice = invoice or {}
+    return invoice.get("invoice_number") or invoice.get("invoiceNumber") or ""
+
+
+def get_billing_invoice_target(invoice=None, fallback_id=None):
+    invoice = invoice or {}
+    invoice_number = get_billing_invoice_number(invoice)
+    pet_name = invoice.get("pet_name") or invoice.get("petName") or ""
+    if invoice_number and pet_name:
+        return trim_audit_text(f"{invoice_number} - {pet_name}", invoice_number, 180)
+    if invoice_number:
+        return invoice_number
+    invoice_id = get_billing_invoice_id(invoice, fallback_id)
+    return f"Invoice #{invoice_id}" if invoice_id else "Billing Invoice"
+
+
+def record_billing_audit_event(
+    event,
+    invoice=None,
+    *,
+    actor_data=None,
+    target=None,
+    target_type="billing_invoice",
+    target_id=None,
+    branch_id=None,
+    summary="",
+    status="Success",
+    metadata=None,
+):
+    invoice = invoice or {}
+    actor_data = actor_data or {}
+    resolved_invoice_id = get_billing_invoice_id(invoice, target_id)
+    resolved_branch_id = (
+        branch_id
+        or invoice.get("branch_id")
+        or invoice.get("branchId")
+        or actor_data.get("branch_id")
+        or actor_data.get("branchId")
+    )
+
+    audit_metadata = {
+        "billing_invoice_id": resolved_invoice_id,
+        "invoice_number": get_billing_invoice_number(invoice),
+        "invoice_type": invoice.get("invoice_type") or invoice.get("invoiceType"),
+        "source_record_type": invoice.get("source_record_type") or invoice.get("sourceRecordType"),
+        "source_record_id": invoice.get("source_record_id") or invoice.get("sourceRecordId"),
+        "payment_status": invoice.get("payment_status") or invoice.get("paymentStatus"),
+        "total_amount": invoice.get("total_amount") or invoice.get("total"),
+        "amount_paid": invoice.get("amount_paid") or invoice.get("amountPaid"),
+        "remaining_balance": invoice.get("remaining_balance") or invoice.get("remainingBalance"),
+        "installment_months": invoice.get("installment_months") or invoice.get("installmentMonths"),
+        "installment_interest_rate": invoice.get("installment_interest_rate") or invoice.get("installmentInterestRate"),
+        "installment_interest_amount": invoice.get("installment_interest_amount") or invoice.get("installmentInterestAmount"),
+        "installment_monthly_due": invoice.get("installment_monthly_due") or invoice.get("installmentMonthlyDue"),
+    }
+    if metadata:
+        audit_metadata.update(serialize_audit_metadata_value(metadata))
+
+    record_system_audit_log({
+        **get_appointment_audit_actor_fields(actor_data),
+        "module": "Billing",
+        "event": event,
+        "target": target or get_billing_invoice_target(invoice, resolved_invoice_id),
+        "targetType": target_type,
+        "targetId": resolved_invoice_id,
+        "branchId": resolved_branch_id,
+        "summary": summary,
+        "status": status,
+        "metadata": {
+            key: value
+            for key, value in audit_metadata.items()
+            if value not in (None, "")
+        },
+    })
+
+
+def title_case_day(day_name):
+    return str(day_name or "").strip().capitalize() or "Day"
+
+
+def record_availability_audit_event(
+    event,
+    *,
+    data=None,
+    target="Availability Settings",
+    target_type="availability_settings",
+    target_id=None,
+    summary="",
+    status="Success",
+    metadata=None,
+):
+    data = data or {}
+    record_system_audit_log({
+        **get_appointment_audit_actor_fields(data),
+        "module": "Availability Settings",
+        "event": event,
+        "target": trim_audit_text(target, "Availability Settings", 180),
+        "targetType": target_type,
+        "targetId": target_id,
+        "summary": trim_audit_text(summary, "", 700),
+        "status": status,
+        "metadata": serialize_audit_metadata_value(metadata or {}),
+    })
+
+
+PET_PROFILE_AUDIT_FIELDS = {
+    "pet_name": "name",
+    "pet_species": "species",
+    "pet_breed": "breed",
+    "pet_gender": "gender",
+    "pet_size": "size",
+    "birthday": "birthday",
+    "age": "age",
+    "weight_kg": "weight",
+    "pet_photo_url": "photo",
+    "is_vaccinated": "vaccination status",
+    "vaccination_urls": "vaccination records",
+}
+
+
+def get_pet_profile_target(pet=None, fallback_id=None):
+    pet = pet or {}
+    pet_name = pet.get("pet_name") or pet.get("petName") or ""
+    pet_id = pet.get("pet_id") or pet.get("petId") or fallback_id
+    if pet_name:
+        return trim_audit_text(f"{pet_name} Pet Profile", f"Pet Profile #{pet_id}", 180)
+    return f"Pet Profile #{pet_id}" if pet_id else "Pet Profile"
+
+
+def get_pet_vaccination_record_count(pet=None):
+    urls = (pet or {}).get("vaccination_urls")
+    return len(urls) if isinstance(urls, list) else 0
+
+
+def get_pet_profile_changed_fields(old_pet=None, new_pet=None):
+    old_pet = old_pet or {}
+    new_pet = new_pet or {}
+    changed_fields = []
+    for field, label in PET_PROFILE_AUDIT_FIELDS.items():
+        if field in new_pet and old_pet.get(field) != new_pet.get(field):
+            changed_fields.append(label)
+    return changed_fields
+
+
+def record_pet_profile_audit_event(
+    event,
+    pet=None,
+    *,
+    data=None,
+    old_pet=None,
+    new_pet=None,
+    target_id=None,
+    summary="",
+    status="Success",
+    metadata=None,
+):
+    pet = pet or new_pet or old_pet or {}
+    data = data or {}
+    resolved_pet_id = pet.get("pet_id") or target_id
+    audit_metadata = {
+        "pet_id": resolved_pet_id,
+        "owner_id": pet.get("owner_id") or data.get("owner_id"),
+        "changed_fields": get_pet_profile_changed_fields(old_pet, new_pet),
+        "vaccination_record_count": get_pet_vaccination_record_count(new_pet or pet),
+    }
+    if metadata:
+        audit_metadata.update(serialize_audit_metadata_value(metadata))
+
+    record_system_audit_log({
+        **get_appointment_audit_actor_fields(data, fallback_actor_id=pet.get("owner_id") or data.get("owner_id")),
+        "module": "Pet Profiles",
+        "event": event,
+        "target": get_pet_profile_target(pet, resolved_pet_id),
+        "targetType": "pet_profile",
+        "targetId": resolved_pet_id,
+        "summary": trim_audit_text(summary, "", 700),
+        "status": status,
+        "metadata": {
+            key: value
+            for key, value in audit_metadata.items()
+            if value not in (None, "", [])
+        },
+    })
+
+
 def get_appointment_status_audit_event(status):
     normalized_status = str(status or "").strip().lower()
     if normalized_status == "confirmed":
@@ -3806,6 +3476,8 @@ def get_appointment_status_audit_event(status):
         return "Appointment Completed"
     if normalized_status == "cancelled":
         return "Appointment Cancelled"
+    if normalized_status == "declined":
+        return "Appointment Declined"
     if normalized_status == "no_show":
         return "Appointment Marked No-Show"
     if normalized_status == "expired":
@@ -4625,6 +4297,266 @@ def normalize_inventory_log(record):
     }
 
 
+INVENTORY_AUDIT_SNAPSHOT_FIELDS = (
+    'inventory_item_id',
+    'branch_id',
+    'item_code',
+    'item_name',
+    'unit',
+    'category',
+    'base_price',
+    'selling_price',
+    'current_stock',
+    'critical_stock_level',
+    'no_expiration',
+    'expiration_date',
+    'use_max_quantity',
+    'max_quantity',
+    'is_archived',
+    'archived_at',
+    'archived_by',
+    'archive_reason',
+)
+
+
+INVENTORY_AUDIT_FIELD_LABELS = {
+    'item_code': 'code',
+    'item_name': 'name',
+    'unit': 'unit',
+    'category': 'category',
+    'base_price': 'base price',
+    'selling_price': 'selling price',
+    'current_stock': 'stock',
+    'critical_stock_level': 'critical stock level',
+    'expiration_date': 'expiration date',
+    'no_expiration': 'expiration setting',
+    'max_quantity': 'max quantity',
+    'use_max_quantity': 'max quantity setting',
+    'is_archived': 'archive state',
+}
+
+
+def get_inventory_audit_actor_payload(data=None, actor_id=None):
+    payload = dict(data) if isinstance(data, dict) else {}
+    if actor_id and not (
+        payload.get('actorId')
+        or payload.get('actor_id')
+        or payload.get('userId')
+        or payload.get('user_id')
+        or payload.get('processedBy')
+        or payload.get('processed_by')
+    ):
+        payload['actorId'] = actor_id
+        payload['userId'] = actor_id
+        payload['processedBy'] = actor_id
+    return payload
+
+
+def get_inventory_audit_snapshot(record):
+    if not record:
+        return {}
+    return {
+        field: serialize_audit_metadata_value(record.get(field))
+        for field in INVENTORY_AUDIT_SNAPSHOT_FIELDS
+        if field in record and record.get(field) not in (None, '')
+    }
+
+
+def get_inventory_audit_target(item=None, fallback_id=None):
+    item = item or {}
+    item_id = item.get('inventory_item_id') or item.get('id') or fallback_id
+    item_name = item.get('item_name') or item.get('item') or 'Inventory Item'
+    item_code = item.get('item_code') or item.get('code') or ''
+
+    if item_code:
+        return trim_audit_text(f"{item_name} ({item_code})", f"Inventory Item #{item_id}", 180)
+    if item_name:
+        return trim_audit_text(str(item_name), f"Inventory Item #{item_id}", 180)
+    return f"Inventory Item #{item_id}"
+
+
+def get_inventory_changed_fields(before_item, after_item):
+    before_item = before_item or {}
+    after_item = after_item or {}
+    changed_fields = []
+
+    for field_name, label in INVENTORY_AUDIT_FIELD_LABELS.items():
+        if before_item.get(field_name) != after_item.get(field_name):
+            changed_fields.append(label)
+
+    return changed_fields
+
+
+def get_inventory_threshold_state(item):
+    if not item:
+        return 'none'
+
+    raw_stock = item.get('current_stock')
+    if raw_stock is None and 'new_stock' in item:
+        raw_stock = item.get('new_stock')
+    if raw_stock is None:
+        return 'none'
+
+    current_stock = int(raw_stock or 0)
+    critical_stock_level = int(item.get('critical_stock_level') or 10)
+    if current_stock <= 0:
+        return 'out_of_stock'
+    if current_stock <= critical_stock_level:
+        return 'critical_stock'
+    if current_stock <= critical_stock_level + 10:
+        return 'low_stock'
+    return 'normal'
+
+
+def record_inventory_audit_event(
+    event,
+    item=None,
+    *,
+    actor_data=None,
+    actor_id=None,
+    old_record=None,
+    new_record=None,
+    summary='',
+    status='Success',
+    metadata=None,
+    target_type='inventory_item',
+    target_id=None,
+):
+    item = item or new_record or old_record or {}
+    resolved_target_id = target_id or item.get('inventory_item_id') or item.get('id')
+    audit_metadata = {
+        'item': get_inventory_audit_snapshot(item),
+    }
+    if old_record:
+        audit_metadata['old_record'] = get_inventory_audit_snapshot(old_record)
+    if new_record:
+        audit_metadata['new_record'] = get_inventory_audit_snapshot(new_record)
+    if metadata:
+        audit_metadata.update(serialize_audit_metadata_value(metadata))
+
+    record_system_audit_log({
+        **get_inventory_audit_actor_payload(actor_data, actor_id=actor_id),
+        'module': 'Inventory',
+        'event': event,
+        'target': get_inventory_audit_target(item, fallback_id=resolved_target_id),
+        'targetType': target_type,
+        'targetId': resolved_target_id,
+        'branchId': item.get('branch_id') or (new_record or {}).get('branch_id') or (old_record or {}).get('branch_id'),
+        'summary': summary,
+        'status': status,
+        'metadata': audit_metadata,
+    })
+
+
+def record_inventory_transaction_audit(result, payload, *, event=None, actor_data=None, metadata=None):
+    transaction = (result or {}).get('transaction') or {}
+    items = (result or {}).get('items') or []
+    transaction_type = (payload or {}).get('transaction_type')
+    reference_number = transaction.get('reference_number') or (payload or {}).get('reference_number')
+    item_count = len(items)
+    item_summary = summarize_inventory_transaction_items(items)
+
+    if not event:
+        event = 'Stock In Recorded' if transaction_type == 'IN' else 'Stock Out Recorded'
+
+    action_label = 'stock in' if transaction_type == 'IN' else 'stock out'
+    summary = f"Recorded {action_label} for {item_count} item(s): {item_summary}. Reference: {reference_number}."
+    if (payload or {}).get('reason'):
+        summary += f" Reason: {(payload or {}).get('reason')}."
+
+    record_system_audit_log({
+        **get_inventory_audit_actor_payload(actor_data or {}, actor_id=(payload or {}).get('processed_by')),
+        'module': 'Inventory',
+        'event': event,
+        'target': f"Inventory Transaction {reference_number}",
+        'targetType': 'inventory_transaction',
+        'targetId': transaction.get('inventory_transaction_id'),
+        'branchId': (payload or {}).get('branch_id'),
+        'summary': summary,
+        'status': 'Success',
+        'metadata': {
+            'reference_number': reference_number,
+            'transaction_type': transaction_type,
+            'transaction_id': transaction.get('inventory_transaction_id'),
+            'reason': (payload or {}).get('reason'),
+            'counterparty_name': (payload or {}).get('counterparty_name'),
+            'notes': (payload or {}).get('notes'),
+            'total_amount': (payload or {}).get('total_amount'),
+            'item_count': item_count,
+            'items': [
+                {
+                    'inventory_item_id': item.get('inventory_item_id'),
+                    'item_code': item.get('item_code'),
+                    'item_name': item.get('item_name'),
+                    'quantity': item.get('quantity'),
+                    'previous_stock': item.get('previous_stock'),
+                    'new_stock': item.get('new_stock'),
+                    'critical_stock_level': item.get('critical_stock_level'),
+                }
+                for item in items
+            ],
+            **(serialize_audit_metadata_value(metadata) if metadata else {}),
+        },
+    })
+
+
+def record_inventory_stock_threshold_audit(before_item, after_item, *, actor_id=None, source_event=None):
+    before_item = before_item or {}
+    after_item = after_item or {}
+    before_state = get_inventory_threshold_state(before_item)
+    after_state = get_inventory_threshold_state(after_item)
+    if after_state in {'none', 'normal'} or before_state == after_state:
+        return
+
+    event_lookup = {
+        'out_of_stock': 'Out Of Stock Reached',
+        'critical_stock': 'Critical Stock Reached',
+        'low_stock': 'Low Stock Reached',
+    }
+    event = event_lookup.get(after_state)
+    if not event:
+        return
+
+    current_stock = int((after_item or {}).get('current_stock') or (after_item or {}).get('new_stock') or 0)
+    critical_stock_level = int((after_item or {}).get('critical_stock_level') or (before_item or {}).get('critical_stock_level') or 10)
+    record_inventory_audit_event(
+        event,
+        after_item,
+        actor_id=actor_id,
+        old_record=before_item,
+        new_record=after_item,
+        summary=f"{get_inventory_audit_target(after_item)} stock changed from {before_item.get('current_stock', before_item.get('new_stock', 'unknown'))} to {current_stock}.",
+        status='Warning',
+        metadata={
+            'source_event': source_event,
+            'previous_state': before_state,
+            'new_state': after_state,
+            'current_stock': current_stock,
+            'critical_stock_level': critical_stock_level,
+        },
+    )
+
+
+def record_inventory_expiry_audit(item, days_until_expiry):
+    expiration_date = parse_iso_date((item or {}).get('expiration_date'))
+    if not expiration_date:
+        return
+
+    day_label = 'today' if days_until_expiry == 0 else f"in {days_until_expiry} day(s)"
+    record_inventory_audit_event(
+        'Expiry Risk Flagged',
+        item,
+        summary=f"{get_inventory_audit_target(item)} will expire {day_label} on {expiration_date.isoformat()}.",
+        status='Warning',
+        metadata={
+            'expiration_date': expiration_date.isoformat(),
+            'days_until_expiry': days_until_expiry,
+            'current_stock': int((item or {}).get('current_stock') or 0),
+            'critical_stock_level': int((item or {}).get('critical_stock_level') or 10),
+        },
+    )
+
+
 def build_employee_display_name(employee_id):
     if not employee_id:
         return "An admin"
@@ -4637,384 +4569,58 @@ def build_employee_display_name(employee_id):
     return full_name or employee.get('username') or employee.get('email') or "An admin"
 
 
-def create_admin_notification(
-    *,
-    branch_id,
-    event_type,
-    title,
-    message,
-    severity='info',
-    module='inventory',
-    link=None,
-    actor_id=None,
-    entity_type=None,
-    entity_id=None,
-    event_key=None,
-    metadata=None,
-):
-    if module not in ADMIN_NOTIFICATION_MODULES:
-        raise ValueError(f"Unsupported notification module: {module}")
-    if severity not in ADMIN_NOTIFICATION_SEVERITIES:
-        raise ValueError(f"Unsupported notification severity: {severity}")
-
-    payload = {
-        'branch_id': branch_id,
-        'module': module,
-        'event_type': event_type,
-        'severity': severity,
-        'title': title.strip(),
-        'message': message.strip(),
-        'link': link.strip() if isinstance(link, str) and link.strip() else None,
-        'actor_id': actor_id,
-        'entity_type': entity_type,
-        'entity_id': entity_id,
-        'event_key': event_key.strip() if isinstance(event_key, str) and event_key.strip() else None,
-        'metadata': metadata or {},
-    }
-
-    response = supabase_admin.table('admin_notifications').insert(payload).execute()
-    created = response.data[0] if response.data else None
-    if not created:
-        raise ValueError('Failed to create admin notification')
-    return created
-
-
-def normalize_admin_notification(record, admin_user_id=None):
-    read_at = record.get('read_at')
-    metadata = record.get('metadata') or {}
-
-    return {
-        'id': record.get('notification_id'),
-        'notificationId': record.get('notification_id'),
-        'branchId': record.get('branch_id'),
-        'module': record.get('module') or 'inventory',
-        'eventType': record.get('event_type') or '',
-        'type': record.get('severity') or 'info',
-        'title': record.get('title') or '',
-        'message': record.get('message') or '',
-        'timestamp': record.get('created_at'),
-        'read': bool(read_at),
-        'readAt': read_at,
-        'link': record.get('link') or None,
-        'actorId': record.get('actor_id'),
-        'entityType': record.get('entity_type'),
-        'entityId': record.get('entity_id'),
-        'eventKey': record.get('event_key'),
-        'metadata': metadata,
-        'adminUserId': admin_user_id,
-    }
-
-
-def create_inventory_admin_notification(
-    *,
-    branch_id,
-    event_type,
-    title,
-    message,
-    severity='info',
-    link='/inventory',
-    actor_id=None,
-    entity_type=None,
-    entity_id=None,
-    event_key=None,
-    metadata=None,
-):
-    return create_admin_notification(
-        branch_id=branch_id,
-        event_type=event_type,
-        title=title,
-        message=message,
-        severity=severity,
-        module='inventory',
-        link=link,
-        actor_id=actor_id,
-        entity_type=entity_type,
-        entity_id=entity_id,
-        event_key=event_key,
-        metadata=metadata,
-    )
-
-
-def safe_create_inventory_admin_notification(**kwargs):
+def validate_patient_appointment_lead_time(appointment_date_value, label="Appointment date"):
     try:
-        return create_inventory_admin_notification(**kwargs)
-    except Exception as notification_error:
-        print("Inventory admin notification error:", str(notification_error))
-        return None
+        selected_date = datetime.strptime(str(appointment_date_value or ""), "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError(f"{label} must be a valid date.")
+
+    earliest_allowed = get_current_manila_date() + timedelta(days=2)
+    if selected_date < earliest_allowed:
+        raise ValueError(f"{label} must be at least 2 days after today.")
+
+    validate_appointment_date_not_special(selected_date.isoformat(), label)
+    return selected_date
 
 
-def create_appointment_admin_notification(
-    *,
-    table_name,
-    id_column,
-    record_id,
-    event_type,
-    title,
-    action_text,
-    severity='info',
-    link='/admin/schedule',
-    metadata=None,
-):
-    email_context = get_reschedule_email_context(table_name, id_column, record_id)
-    record = email_context.get("record") or {}
-    branch_id = record.get("branch_id")
-    if not branch_id:
-        raise ValueError("Appointment notification requires branch_id")
-
-    entity_type = 'walkin' if table_name == 'walkin_appointments' else 'appointment'
-    patient_name = email_context.get("patient_name") or "Patient"
-    pet_name = email_context.get("pet_name") or "your pet"
-    service_name = email_context.get("service_name") or "Appointment"
-    appointment_date = record.get("appointment_date") or ""
-    appointment_time = format_display_time(record.get("appointment_time"))
-    schedule_text = " ".join(
-        part for part in [
-            str(appointment_date).strip(),
-            f"at {appointment_time}" if appointment_time else ""
-        ] if part
-    ).strip()
-    message = f"{patient_name}'s appointment for {pet_name} ({service_name}) {action_text}."
-    if schedule_text:
-        message = f"{message} Schedule: {schedule_text}."
-
-    return create_admin_notification(
-        branch_id=branch_id,
-        event_type=event_type,
-        title=title,
-        message=message,
-        severity=severity,
-        module='appointments',
-        link=link,
-        entity_type=entity_type,
-        entity_id=record_id,
-        metadata={
-            "recordType": entity_type,
-            "patientName": patient_name,
-            "petName": pet_name,
-            "serviceName": service_name,
-            "appointmentDate": appointment_date,
-            "appointmentTime": record.get("appointment_time"),
-            **(metadata or {}),
-        },
-    )
-
-
-def safe_create_appointment_admin_notification(**kwargs):
+def validate_appointment_date_not_special(appointment_date_value, label="Appointment date"):
     try:
-        return create_appointment_admin_notification(**kwargs)
-    except Exception as notification_error:
-        print("Appointment admin notification error:", str(notification_error))
-        return None
+        selected_date = datetime.strptime(str(appointment_date_value or ""), "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError(f"{label} must be a valid date.")
 
-
-def resolve_emr_notification_context(medical_record_id=None, visit_id=None):
-    visit = None
-    if visit_id not in (None, ""):
-        visit = get_single_row("medical_record_visits", "medical_record_visit_id", visit_id)
-        if visit and medical_record_id in (None, ""):
-            medical_record_id = visit.get("medical_record_id")
-
-    record = get_single_row("medical_records", "medical_record_id", medical_record_id) if medical_record_id not in (None, "") else None
-    if not record:
-        raise ValueError("Medical record not found for EMR notification")
-
-    pet = get_single_row("pet_profile", "pet_id", record.get("pet_id")) if record.get("pet_id") not in (None, "") else None
-    owner = get_single_row("patient_account", "id", pet.get("owner_id")) if pet and pet.get("owner_id") else None
-
-    if not visit:
-        visit_res = execute_with_retry(
-            lambda: supabase_admin.table("medical_record_visits")
-            .select("*")
-            .eq("medical_record_id", medical_record_id)
-            .order("visit_date", desc=True)
-            .limit(1)
-            .execute(),
-            context="Fetch EMR notification latest visit"
-        )
-        visit = (visit_res.data or [None])[0]
-
-    branch_id = (visit or {}).get("branch_id") or record.get("branch_id")
-    if not branch_id:
-        raise ValueError("EMR notification requires branch_id")
-
-    owner_name = get_profile_display_name(owner) if owner else "Unknown owner"
-    return {
-        "medicalRecordId": record.get("medical_record_id"),
-        "branchId": branch_id,
-        "record": record,
-        "visit": visit,
-        "pet": pet,
-        "owner": owner,
-        "petName": (pet or {}).get("pet_name") or "Unknown pet",
-        "ownerName": owner_name,
-    }
-
-
-def create_emr_admin_notification(
-    *,
-    medical_record_id=None,
-    visit_id=None,
-    event_type,
-    title,
-    action_text,
-    severity='info',
-    link='/patient-records',
-    entity_type='medical_record',
-    entity_id=None,
-    metadata=None,
-):
-    context = resolve_emr_notification_context(medical_record_id=medical_record_id, visit_id=visit_id)
-    resolved_record_id = context.get("medicalRecordId")
-    resolved_entity_id = entity_id if entity_id not in (None, "") else resolved_record_id
-    message = f"{context.get('petName')} ({context.get('ownerName')}) {action_text}."
-
-    return create_admin_notification(
-        branch_id=context.get("branchId"),
-        event_type=event_type,
-        title=title,
-        message=message,
-        severity=severity,
-        module='emr',
-        link=link,
-        entity_type=entity_type,
-        entity_id=resolved_entity_id,
-        metadata={
-            "medicalRecordId": resolved_record_id,
-            "petId": (context.get("pet") or {}).get("pet_id"),
-            "petName": context.get("petName"),
-            "ownerId": (context.get("owner") or {}).get("id"),
-            "ownerName": context.get("ownerName"),
-            "visitId": (context.get("visit") or {}).get("medical_record_visit_id"),
-            **(metadata or {}),
-        },
-    )
-
-
-def safe_create_emr_admin_notification(**kwargs):
     try:
-        return create_emr_admin_notification(**kwargs)
-    except Exception as notification_error:
-        print("EMR admin notification error:", str(notification_error))
-        return None
+        special_dates = supabase_admin.table('special_dates').select('*').execute().data or []
+    except Exception as e:
+        print(f"Special date validation warning: {e}")
+        return selected_date
+
+    if is_special_date_blocked(selected_date, special_dates):
+        raise ValueError(f"{label} is blocked by clinic special dates. Please choose another date.")
+
+    return selected_date
 
 
-def get_default_admin_notification_branch_id():
-    response = execute_with_retry(
-        lambda: supabase_admin.table("branches").select("*").limit(1).execute(),
-        context="Fetch default notification branch"
-    )
-    branch = (response.data or [{}])[0]
-    return branch.get("branch_id") or branch.get("id")
-
-
-def create_billing_admin_notification(
-    *,
-    invoice_record,
-    event_type,
-    title,
-    action_text,
-    severity='info',
-    link='/billing',
-    metadata=None,
-):
-    invoice = invoice_record or {}
-    branch_id = invoice.get("branch_id") or get_default_admin_notification_branch_id()
-    if not branch_id:
-        raise ValueError("Billing notification requires a branch_id")
-
-    invoice_id = invoice.get("billing_invoice_id")
-    invoice_number = invoice.get("invoice_number") or f"Invoice {invoice_id or ''}".strip()
-    customer_name = invoice.get("customer_name") or "Customer"
-    pet_name = invoice.get("pet_name") or "pet"
-    total_amount = round(float(invoice.get("total_amount") or 0), 2)
-    amount_paid = round(float(invoice.get("amount_paid") or 0), 2)
-    payment_status = invoice.get("payment_status") or derive_billing_payment_state(total_amount, amount_paid)["payment_status"]
-    message = (
-        f"{invoice_number} for {customer_name} / {pet_name} {action_text}. "
-        f"Total: PHP {total_amount:,.2f}. Status: {payment_status}."
-    )
-
-    return create_admin_notification(
-        branch_id=branch_id,
-        event_type=event_type,
-        title=title,
-        message=message,
-        severity=severity,
-        module='billing',
-        link=link,
-        entity_type='billing_invoice',
-        entity_id=invoice_id,
-        metadata={
-            "invoiceId": invoice_id,
-            "invoiceNumber": invoice_number,
-            "customerName": customer_name,
-            "petName": pet_name,
-            "totalAmount": total_amount,
-            "amountPaid": amount_paid,
-            "paymentStatus": payment_status,
-            "sourceRecordType": invoice.get("source_record_type"),
-            "sourceRecordId": invoice.get("source_record_id"),
-            **(metadata or {}),
-        },
-    )
-
-
-def safe_create_billing_admin_notification(**kwargs):
+def validate_admin_appointment_not_same_day(appointment_date_value, label="Appointment date"):
     try:
-        return create_billing_admin_notification(**kwargs)
-    except Exception as notification_error:
-        print("Billing admin notification error:", str(notification_error))
-        return None
+        selected_date = datetime.strptime(str(appointment_date_value or ""), "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError(f"{label} must be a valid date.")
+
+    if selected_date <= get_current_manila_date():
+        raise ValueError(f"{label} cannot be today or in the past. Please choose tomorrow or a later date.")
+
+    validate_appointment_date_not_special(selected_date.isoformat(), label)
+    return selected_date
 
 
-def admin_notification_event_exists(event_key):
-    if not event_key:
-        return False
-
-    response = supabase_admin.table('admin_notifications') \
-        .select('notification_id') \
-        .eq('event_key', event_key) \
-        .limit(1) \
-        .execute()
-    return bool(response.data)
-
-
-def get_employee_account_or_400(user_id):
-    if not user_id:
-        return None, "admin_user_id is required"
-
-    employee = get_single_row('employee_accounts', 'id', user_id)
-    if not employee:
-        return None, "Employee account not found"
-
-    return employee, None
-
-
-def mark_admin_notification_read(notification_id, admin_user_id):
-    supabase_admin.table('admin_notification_reads').upsert({
-        'notification_id': notification_id,
-        'admin_user_id': admin_user_id,
-        'read_at': datetime.utcnow().isoformat(),
-    }).execute()
-
-
-def get_admin_notification_reads_map(admin_user_id, notification_ids):
-    if not admin_user_id or not notification_ids:
-        return {}
-
-    response = execute_with_retry(
-        lambda: supabase_admin.table('admin_notification_reads')
-        .select('notification_id,read_at')
-        .eq('admin_user_id', admin_user_id)
-        .in_('notification_id', notification_ids)
-        .execute(),
-        context='Fetch admin notification reads'
-    )
-
-    reads_map = {}
-    for row in (response.data or []):
-        reads_map[row.get('notification_id')] = row.get('read_at')
-    return reads_map
+def validate_admin_reschedule_window(existing_record):
+    appointment_date = parse_emr_date((existing_record or {}).get("appointment_date"))
+    if not appointment_date:
+        return
+    days_until_appointment = (appointment_date - get_current_manila_date()).days
+    if 0 <= days_until_appointment <= 2:
+        raise ValueError("Appointments within 2 days can no longer be rescheduled. You may cancel the appointment instead.")
 
 
 def summarize_inventory_transaction_items(items, max_names=3):
@@ -5261,6 +4867,12 @@ def get_inventory_alert_state(item):
 def notify_inventory_stock_state_transition(before_item, after_item, actor_id=None, source_event=None):
     before_state = get_inventory_alert_state(before_item or {})
     after_state = get_inventory_alert_state(after_item or {})
+    record_inventory_stock_threshold_audit(
+        before_item or {},
+        after_item or {},
+        actor_id=actor_id,
+        source_event=source_event,
+    )
 
     if after_state == 'normal' or before_state == after_state:
         return None
@@ -5329,7 +4941,7 @@ def notify_inventory_item_expiring_soon(item, days_until_expiry):
         return None
 
     day_label = 'today' if days_until_expiry == 0 else f"in {days_until_expiry} day(s)"
-    return safe_create_inventory_admin_notification(
+    created_notification = safe_create_inventory_admin_notification(
         branch_id=branch_id,
         event_type='inventory_expiring_soon',
         title='Product expiring soon',
@@ -5349,6 +4961,9 @@ def notify_inventory_item_expiring_soon(item, days_until_expiry):
             'criticalStockLevel': int(item.get('critical_stock_level') or 10),
         },
     )
+    if created_notification:
+        record_inventory_expiry_audit(item, days_until_expiry)
+    return created_notification
 
 
 def reconcile_inventory_expiring_notifications(branch_id=None, expiry_windows=None, today=None):
@@ -5937,11 +5552,11 @@ def login():
 @app.route('/profile/<user_id>', methods=['GET'])
 def get_profile(user_id):
     try:
-        profile, _ = find_account_by_user_id(user_id)
+        profile, source_table = find_account_by_user_id(user_id)
         if not profile:
             return jsonify({"error": "User not found"}), 404
 
-        normalized = normalize_public_profile(profile)
+        normalized = normalize_public_profile(profile, source_table)
         return jsonify({**normalized, "user": normalized}), 200
 
     except Exception as e:
@@ -5957,12 +5572,29 @@ def update_profile(user_id):
     data = request.get_json() or {}
 
     try:
-        profile = get_single_row('patient_account', 'id', user_id)
-        table_name = 'patient_account'
+        requested_account_type = str(
+            data.get("accountType")
+            or data.get("account_type")
+            or data.get("userType")
+            or data.get("actorAccountType")
+            or (data.get("currentUser") or {}).get("account_type")
+            or ""
+        ).strip().lower()
 
-        if not profile:
+        if requested_account_type in ("patient", "owner", "user", "patient_account"):
+            profile = get_single_row('patient_account', 'id', user_id)
+            table_name = 'patient_account'
+            if not profile:
+                profile = get_single_row('employee_accounts', 'id', user_id)
+                table_name = 'employee_accounts'
+        elif requested_account_type in ("employee", "staff", "admin", "administrator", "employee_accounts"):
             profile = get_single_row('employee_accounts', 'id', user_id)
             table_name = 'employee_accounts'
+            if not profile:
+                profile = get_single_row('patient_account', 'id', user_id)
+                table_name = 'patient_account'
+        else:
+            profile, table_name = find_account_by_user_id(user_id)
 
         if not profile:
             return jsonify({"error": "Profile not found"}), 404
@@ -6104,7 +5736,13 @@ def update_profile(user_id):
             raise last_error if last_error else Exception("Unable to update profile")
 
         updated_profile = response.data[0] if response.data else get_single_row(table_name, 'id', user_id)
-        normalized = normalize_public_profile(updated_profile or profile)
+        if not updated_profile:
+            return jsonify({"error": "Profile update did not match an account record"}), 404
+
+        normalized = normalize_public_profile(updated_profile or profile, table_name)
+        if has_image_update and user_image and normalized.get("profileImage") != user_image:
+            return jsonify({"error": "Profile photo could not be saved to the account record"}), 400
+
         return jsonify({"message": "Profile updated successfully", **normalized, "user": normalized}), 200
 
     except Exception as e:
@@ -6243,7 +5881,7 @@ def verify_profile_email_change(user_id):
             raise db_error
 
         updated_profile = response.data[0] if response.data else get_single_row(table_name, 'id', user_id)
-        normalized = normalize_public_profile(updated_profile or {**profile, "email": new_email})
+        normalized = normalize_public_profile(updated_profile or {**profile, "email": new_email}, table_name)
         del otp_store[otp_key]
 
         return jsonify({
@@ -6392,6 +6030,14 @@ def add_pet():
             "owner_id": owner_id, "pet_name": pet_name, "pet_type": pet_type,
             "breed": breed, "pet_size": pet_size, "gender": gender
         }.items() if not v]
+        record_pet_profile_audit_event(
+            "Pet Profile Creation Failed",
+            data=data,
+            target_id=None,
+            summary=f"Pet profile creation failed because required fields were missing: {', '.join(missing)}.",
+            status="Failed",
+            metadata={"missing_fields": missing},
+        )
         return jsonify({"error": f"Missing required fields: {missing}"}), 400
 
     try:
@@ -6411,10 +6057,29 @@ def add_pet():
         }).execute()
 
         pet = response.data[0] if response.data else None
+        record_pet_profile_audit_event(
+            "Pet Profile Created",
+            pet,
+            data=data,
+            new_pet=pet,
+            summary=f"Pet profile for {pet_name} was created.",
+            status="Success",
+            metadata={
+                "species": pet_type,
+                "vaccination_record_count": get_pet_vaccination_record_count(pet),
+            },
+        )
         return jsonify({"message": "Pet added successfully", "pet": pet}), 200
 
     except Exception as e:
         print("Add pet error:", str(e))
+        record_pet_profile_audit_event(
+            "Pet Profile Creation Failed",
+            data=data,
+            target_id=None,
+            summary=f"Pet profile creation failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -6450,19 +6115,64 @@ def update_pet(pet_id):
     update_data = {k: v for k, v in data.items() if k in allowed}
 
     if not update_data:
+        record_pet_profile_audit_event(
+            "Pet Profile Update Failed",
+            data=data,
+            target_id=pet_id,
+            summary=f"Pet profile #{pet_id} update failed because no valid fields were provided.",
+            status="Failed",
+        )
         return jsonify({"error": "No valid fields to update"}), 400
 
     try:
+        existing_pet = get_single_row("pet_profile", "pet_id", pet_id) or {}
         response = supabase_admin.table('pet_profile') \
             .update(update_data) \
             .eq('pet_id', pet_id) \
             .execute()
 
-        pet = response.data[0] if response.data else None
+        pet = response.data[0] if response.data else get_single_row("pet_profile", "pet_id", pet_id)
+        old_vaccination_count = get_pet_vaccination_record_count(existing_pet)
+        new_vaccination_count = get_pet_vaccination_record_count(pet)
+        changed_fields = get_pet_profile_changed_fields(existing_pet, pet)
+        if "vaccination records" in changed_fields and new_vaccination_count > old_vaccination_count:
+            event = "Vaccination Record Added"
+            summary = f"Vaccination record was added to {get_pet_profile_target(pet, pet_id)}."
+        elif "vaccination records" in changed_fields and new_vaccination_count < old_vaccination_count:
+            event = "Vaccination Record Removed"
+            summary = f"Vaccination record was removed from {get_pet_profile_target(pet, pet_id)}."
+        else:
+            event = "Pet Profile Updated"
+            summary = (
+                f"Pet profile for {(pet or {}).get('pet_name') or (existing_pet or {}).get('pet_name') or 'this pet'} "
+                f"was updated: {', '.join(changed_fields) if changed_fields else 'profile details'}."
+            )
+
+        record_pet_profile_audit_event(
+            event,
+            pet or existing_pet,
+            data=data,
+            old_pet=existing_pet,
+            new_pet=pet or {**existing_pet, **update_data},
+            target_id=pet_id,
+            summary=summary,
+            status="Success",
+            metadata={
+                "old_vaccination_record_count": old_vaccination_count,
+                "new_vaccination_record_count": new_vaccination_count,
+            },
+        )
         return jsonify({"message": "Pet updated successfully", "pet": pet}), 200
 
     except Exception as e:
         print("Update pet error:", str(e))
+        record_pet_profile_audit_event(
+            "Pet Profile Update Failed",
+            data=data,
+            target_id=pet_id,
+            summary=f"Pet profile update failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -6471,16 +6181,33 @@ def update_pet(pet_id):
 # -----------------------------------------------
 @app.route('/pets/<int:pet_id>', methods=['DELETE'])
 def delete_pet(pet_id):
+    data = request.get_json(silent=True) or {}
     try:
+        existing_pet = get_single_row("pet_profile", "pet_id", pet_id) or {}
         supabase_admin.table('pet_profile') \
             .delete() \
             .eq('pet_id', pet_id) \
             .execute()
 
+        record_pet_profile_audit_event(
+            "Pet Profile Deleted",
+            existing_pet,
+            data=data,
+            target_id=pet_id,
+            summary=f"Pet profile for {existing_pet.get('pet_name') or 'this pet'} was deleted.",
+            status="Warning",
+        )
         return jsonify({"message": "Pet deleted successfully"}), 200
 
     except Exception as e:
         print("Delete pet error:", str(e))
+        record_pet_profile_audit_event(
+            "Pet Profile Delete Failed",
+            data=data,
+            target_id=pet_id,
+            summary=f"Pet profile delete failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -6517,6 +6244,11 @@ def create_appointment_record(data, allow_walk_in=False, branch_scope=None):
         missing_guest_fields = [label for label, value in guest_required_fields.items() if value in (None, "")]
         if missing_guest_fields:
             raise ValueError(format_missing_required_fields(missing_guest_fields))
+
+        validate_appointment_date_not_special(
+            data.get('appointment_date') or data.get('date'),
+            "Appointment date"
+        )
 
         walk_in_email = data.get('walk_in_email') or ''
         walk_in_phone = data.get('walk_in_phone') or ''
@@ -6614,6 +6346,8 @@ def create_appointment_record(data, allow_walk_in=False, branch_scope=None):
     if missing:
         raise ValueError(format_missing_required_fields(missing))
 
+    validate_appointment_date_not_special(appointment_date, "Appointment date")
+
     response = supabase_admin.table('appointments').insert({
         "owner_id": owner_id,
         "pet_id": pet_id,
@@ -6695,7 +6429,9 @@ def create_appointment_record(data, allow_walk_in=False, branch_scope=None):
 @app.route('/appointments', methods=['POST'])
 def book_appointment():
     try:
-        created = create_appointment_record(request.get_json() or {}, allow_walk_in=False)
+        data = request.get_json() or {}
+        validate_patient_appointment_lead_time(data.get('appointment_date') or data.get('date'))
+        created = create_appointment_record(data, allow_walk_in=False)
         return jsonify(created), 200
     except ValueError as value_error:
         return jsonify({"error": str(value_error)}), 400
@@ -6782,6 +6518,7 @@ def reschedule_appointment(appointment_id):
         return jsonify({"error": "new_date and new_time are required"}), 400
 
     try:
+        validate_patient_appointment_lead_time(new_date, "New appointment date")
         check = supabase_admin.table('appointments') \
             .select('*') \
             .eq('appointment_id', appointment_id) \
@@ -7004,132 +6741,8 @@ def get_medical_information_by_target(appointment_id):
         return jsonify({"medicalInformation": None}), 200
 
 
-@app.route('/api/ai/symptom-summary', methods=['POST'])
-def generate_user_symptom_summary():
-    payload = request.get_json() or {}
-    if not payload:
-        return jsonify({"error": "Symptom intake context is required"}), 400
-
-    try:
-        prompt = build_user_symptom_summary_prompt(payload)
-        ai_result = call_gemini_with_structured_output(prompt, USER_SYMPTOM_SUMMARY_SCHEMA)
-        summary = str(ai_result.get("summary") or "").strip()
-        if not summary:
-            return jsonify({"error": "AI summary could not be generated"}), 502
-
-        return jsonify({
-            "summary": summary,
-            "model": GEMINI_MODEL,
-        }), 200
-    except ValueError as value_error:
-        return build_ai_error_response(value_error, "Unable to generate the symptom summary right now.")
-    except Exception as e:
-        print("Symptom summary AI error:", str(e))
-        return build_ai_error_response(e, "Unable to generate the symptom summary right now.")
-
-
-@app.route('/api/ai/admin-appointment-summary', methods=['POST'])
-def generate_admin_appointment_summary():
-    payload = request.get_json() or {}
-    if not payload:
-        return jsonify({"error": "Appointment context is required"}), 400
-
-    try:
-        case_context = build_admin_ai_case_context(payload)
-        prompt = build_admin_ai_prompt(case_context)
-        ai_result = call_gemini_with_structured_output(prompt, ADMIN_AI_SUMMARY_SCHEMA)
-        return jsonify({
-            "summary": ai_result,
-            "caseContext": case_context
-        }), 200
-    except ValueError as e:
-        return build_ai_error_response(e, "Unable to generate the AI summary right now.")
-    except Exception as e:
-        print("Admin AI summary error:", str(e))
-        return build_ai_error_response(e, "Unable to generate the AI summary right now.")
-
-
-@app.route('/api/ai/doctor-emr-brief', methods=['POST'])
-def generate_doctor_emr_brief():
-    payload = request.get_json() or {}
-    if not payload:
-        return jsonify({"error": "EMR context is required"}), 400
-
-    try:
-        case_context = build_doctor_emr_case_context(payload)
-        prompt = build_doctor_emr_prompt(case_context)
-        ai_result = call_gemini_with_raw_structured_output(prompt, DOCTOR_EMR_BRIEF_SCHEMA)
-        ai_result = attach_ai_support_metadata(ai_result, case_context, mode="doctor")
-        return jsonify({
-            "summary": ai_result,
-            "caseContext": case_context
-        }), 200
-    except ValueError as e:
-        return build_ai_error_response(e, "Unable to generate the EMR prep brief right now.")
-    except Exception as e:
-        print("Doctor EMR AI brief error:", str(e))
-        return build_ai_error_response(e, "Unable to generate the EMR prep brief right now.")
-
-
-@app.route('/api/ai/clinical-risk-flags', methods=['POST'])
-def generate_clinical_risk_flags():
-    payload = request.get_json() or {}
-    if not payload:
-        return jsonify({"error": "EMR context is required"}), 400
-
-    try:
-        case_context = build_doctor_emr_case_context(payload)
-        risk_flags = build_clinical_risk_flags(case_context)
-        return jsonify({
-            "riskFlags": risk_flags,
-            "caseContext": case_context,
-        }), 200
-    except Exception as e:
-        print("Clinical risk flags error:", str(e))
-        return build_ai_error_response(e, "Unable to generate clinical risk flags right now.")
-
-
-@app.route('/api/ai/follow-up-reminders', methods=['POST'])
-def generate_follow_up_reminders():
-    payload = request.get_json() or {}
-    if not payload:
-        return jsonify({"error": "EMR context is required"}), 400
-
-    try:
-        case_context = build_doctor_emr_case_context(payload)
-        follow_up_reminders = build_follow_up_reminders(case_context)
-        return jsonify({
-            "followUpReminders": follow_up_reminders,
-            "caseContext": case_context,
-        }), 200
-    except Exception as e:
-        print("Follow-up reminders error:", str(e))
-        return build_ai_error_response(e, "Unable to generate follow-up reminders right now.")
-
-
-@app.route('/api/ai/client-care-summary', methods=['POST'])
-def generate_client_care_summary():
-    payload = request.get_json() or {}
-    if not payload:
-        return jsonify({"error": "EMR context is required"}), 400
-
-    try:
-        case_context = build_doctor_emr_case_context(payload)
-        prompt = build_client_care_summary_prompt(case_context)
-        ai_result = call_gemini_with_raw_structured_output(prompt, CLIENT_CARE_SUMMARY_SCHEMA)
-        ai_result = attach_ai_support_metadata(ai_result, case_context, mode="doctor")
-        return jsonify({
-            "clientCareSummary": ai_result,
-            "caseContext": case_context,
-        }), 200
-    except ValueError as e:
-        return build_ai_error_response(e, "Unable to generate the client care summary right now.")
-    except Exception as e:
-        print("Client care summary error:", str(e))
-        return build_ai_error_response(e, "Unable to generate the client care summary right now.")
-
-
 # -----------------------------------------------
+# EMR SEARCH / RECORDS# -----------------------------------------------
 # EMR SEARCH / RECORDS
 # -----------------------------------------------
 @app.route('/api/emr/search-pets', methods=['GET'])
@@ -7156,32 +6769,67 @@ def emr_records_collection():
             print("EMR records fetch error:", str(e))
             return jsonify({"error": str(e)}), 400
 
+    data = request.get_json(silent=True) or {}
     try:
-        payload = request.get_json() or {}
+        payload = data
         branch_scope, branch_error = require_actor_branch_scope(payload)
         if branch_error:
             return jsonify({"error": branch_error}), 400
-        pet_id = payload.get("petId") or payload.get("pet_id")
-        existing_record = get_single_row("medical_records", "pet_id", int(pet_id)) if pet_id not in (None, "") else None
+        existing_record_before_save = None
+        previous_record_snapshot = None
+        pet_id_for_audit = payload.get("petId") or payload.get("pet_id")
+        if pet_id_for_audit not in (None, ""):
+            try:
+                existing_record_before_save = get_single_row("medical_records", "pet_id", int(pet_id_for_audit))
+                if existing_record_before_save and existing_record_before_save.get("medical_record_id"):
+                    previous_records = get_emr_records([int(existing_record_before_save.get("medical_record_id"))], include_billing=True)
+                    previous_record_snapshot = previous_records[0] if previous_records else None
+            except Exception as audit_lookup_error:
+                print(f"EMR audit existing record lookup error: {audit_lookup_error}")
+
         saved_record = save_emr_record_payload(payload, branch_scope=branch_scope)
         saved_record_id = saved_record.get("id") or saved_record.get("medical_record_id") if saved_record else None
         safe_create_emr_admin_notification(
             medical_record_id=saved_record_id,
-            event_type='medical_record_updated' if existing_record else 'medical_record_created',
-            title='Medical record updated' if existing_record else 'Medical record created',
-            action_text='had a medical record updated' if existing_record else 'had a medical record created',
-            severity='info' if existing_record else 'success',
+            event_type='medical_record_updated' if existing_record_before_save else 'medical_record_created',
+            title='Medical record updated' if existing_record_before_save else 'Medical record created',
+            action_text='had a medical record updated' if existing_record_before_save else 'had a medical record created',
+            severity='info' if existing_record_before_save else 'success',
             link='/patient-records',
             metadata={"source": "emr_create"},
+        )
+        saved_event = "Medical Record Updated" if existing_record_before_save else "Medical Record Created"
+        saved_action = "updated" if existing_record_before_save else "created"
+        record_emr_audit_event(
+            saved_event,
+            saved_record,
+            data=payload,
+            summary=build_emr_record_saved_summary(saved_action, saved_record, payload, previous_record_snapshot),
+            status="Success",
+            metadata={"action": "update" if existing_record_before_save else "create"},
         )
         return jsonify({
             "message": "Medical record saved successfully!",
             "record": saved_record,
         }), 200
     except ValueError as value_error:
+        record_emr_audit_event(
+            "Medical Record Save Failed",
+            data=data,
+            summary=f"Medical record save failed: {str(value_error)}",
+            status="Failed",
+            metadata={"action": "create"},
+        )
         return jsonify({"error": str(value_error)}), 400
     except Exception as e:
         print("EMR create error:", str(e))
+        record_emr_audit_event(
+            "Medical Record Save Failed",
+            data=data,
+            summary=f"Medical record save failed: {str(e)}",
+            status="Failed",
+            metadata={"action": "create"},
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -7201,11 +6849,14 @@ def emr_record_detail(record_id):
             return jsonify({"error": str(e)}), 400
 
     if request.method == 'PUT':
+        data = request.get_json(silent=True) or {}
         try:
-            payload = request.get_json() or {}
+            payload = data
             branch_scope, branch_error = require_actor_branch_scope(payload)
             if branch_error:
                 return jsonify({"error": branch_error}), 400
+            previous_records = get_emr_records([record_id], include_billing=True)
+            previous_record_snapshot = previous_records[0] if previous_records else None
             saved_record = save_emr_record_payload(payload, existing_record_id=record_id, branch_scope=branch_scope)
             safe_create_emr_admin_notification(
                 medical_record_id=record_id,
@@ -7216,20 +6867,60 @@ def emr_record_detail(record_id):
                 link='/patient-records',
                 metadata={"source": "emr_update"},
             )
+            record_emr_audit_event(
+                "Medical Record Updated",
+                saved_record,
+                data=payload,
+                record_id=record_id,
+                summary=build_emr_record_saved_summary("updated", saved_record, payload, previous_record_snapshot),
+                status="Success",
+                metadata={"action": "update"},
+            )
             return jsonify({
                 "message": "Medical record updated successfully!",
                 "record": saved_record,
             }), 200
         except ValueError as value_error:
+            record_emr_audit_event(
+                "Medical Record Save Failed",
+                data=data,
+                record_id=record_id,
+                summary=f"Medical record save failed: {str(value_error)}",
+                status="Failed",
+                metadata={"action": "update"},
+            )
             return jsonify({"error": str(value_error)}), 400
         except Exception as e:
             print("EMR update error:", str(e))
+            record_emr_audit_event(
+                "Medical Record Save Failed",
+                data=data,
+                record_id=record_id,
+                summary=f"Medical record save failed: {str(e)}",
+                status="Failed",
+                metadata={"action": "update"},
+            )
             return jsonify({"error": str(e)}), 400
 
+    data = request.get_json(silent=True) or {}
     try:
-        branch_scope, branch_error = require_actor_branch_scope()
+        branch_scope, branch_error = require_actor_branch_scope(data)
         if branch_error:
             return jsonify({"error": branch_error}), 400
+        existing_record = get_single_row("medical_records", "medical_record_id", record_id)
+        if not existing_record:
+            record_emr_audit_event(
+                "Medical Record Delete Failed",
+                data=data,
+                record_id=record_id,
+                summary=f"Medical record #{record_id} delete failed because the record was not found.",
+                status="Failed",
+                metadata={"action": "delete"},
+            )
+            return jsonify({"error": "Medical record not found."}), 404
+
+        pet_name = get_emr_pet_name(existing_record, data) or "this pet"
+        branch_id = get_emr_branch_id(existing_record, data, record_id)
         if not get_emr_records([record_id], include_details=False, branch_scope=branch_scope):
             return jsonify({"error": "Medical record not found."}), 404
 
@@ -7243,9 +6934,27 @@ def emr_record_detail(record_id):
             metadata={"source": "emr_delete"},
         )
         supabase_admin.table("medical_records").delete().eq("medical_record_id", record_id).execute()
+        record_emr_audit_event(
+            "Medical Record Deleted",
+            existing_record,
+            data=data,
+            record_id=record_id,
+            branch_id=branch_id,
+            summary=f"Medical record for {pet_name} was deleted.",
+            status="Warning",
+            metadata={"action": "delete"},
+        )
         return jsonify({"message": "Medical record deleted successfully."}), 200
     except Exception as e:
         print("EMR delete error:", str(e))
+        record_emr_audit_event(
+            "Medical Record Delete Failed",
+            data=data,
+            record_id=record_id,
+            summary=f"Medical record delete failed: {str(e)}",
+            status="Failed",
+            metadata={"action": "delete"},
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -7271,15 +6980,33 @@ def update_emr_lab_result_owner_visibility(lab_result_id):
 
         existing_row = get_single_row("medical_record_lab_results", "medical_record_lab_result_id", lab_result_id)
         if not existing_row:
+            record_emr_audit_event(
+                "Lab Result Visibility Update Failed",
+                data=data,
+                target="Lab Result",
+                target_type="lab_result",
+                target_id=lab_result_id,
+                summary=f"Lab result #{lab_result_id} visibility update failed because the lab result was not found.",
+                status="Failed",
+            )
             return jsonify({"error": "Lab result not found."}), 404
         branch_scope, branch_error = require_actor_branch_scope(data)
         if branch_error:
             return jsonify({"error": branch_error}), 400
         visit_row = get_single_row("medical_record_visits", "medical_record_visit_id", existing_row.get("medical_record_visit_id"))
-        _, branch_access_error = validate_branch_scope_access(branch_scope, (visit_row or {}).get("branch_id"))
+        _, branch_access_error = validate_branch_scope_access(
+            branch_scope,
+            (visit_row or {}).get("branch_id"),
+            allow_unassigned=True,
+        )
         if branch_access_error:
             return jsonify({"error": branch_access_error}), 403
 
+        audit_context = get_emr_child_record_context(
+            "medical_record_lab_results",
+            "medical_record_lab_result_id",
+            lab_result_id,
+        )
         payload = build_owner_visibility_payload(
             {"visibleToOwner": visible_to_owner, **data},
             existing_row=existing_row,
@@ -7306,6 +7033,14 @@ def update_emr_lab_result_owner_visibility(lab_result_id):
             },
         )
 
+        record_emr_child_visibility_audit(
+            "Lab Result Shared With Owner" if visible_to_owner else "Lab Result Hidden From Owner",
+            audit_context,
+            data=data,
+            child_type="Lab Result",
+            child_id=lab_result_id,
+            visible_to_owner=visible_to_owner,
+        )
         return jsonify({
             "message": "Lab result owner visibility updated successfully.",
             "labResult": {
@@ -7317,6 +7052,15 @@ def update_emr_lab_result_owner_visibility(lab_result_id):
         }), 200
     except Exception as e:
         print("EMR lab result visibility update error:", str(e))
+        record_emr_audit_event(
+            "Lab Result Visibility Update Failed",
+            data=request.get_json(silent=True) or {},
+            target="Lab Result",
+            target_type="lab_result",
+            target_id=lab_result_id,
+            summary=f"Lab result visibility update failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -7330,15 +7074,33 @@ def update_emr_vaccination_owner_visibility(vaccination_id):
 
         existing_row = get_single_row("medical_record_vaccinations", "medical_record_vaccination_id", vaccination_id)
         if not existing_row:
+            record_emr_audit_event(
+                "Vaccination Visibility Update Failed",
+                data=data,
+                target="Vaccination Record",
+                target_type="vaccination_record",
+                target_id=vaccination_id,
+                summary=f"Vaccination record #{vaccination_id} visibility update failed because the record was not found.",
+                status="Failed",
+            )
             return jsonify({"error": "Vaccination record not found."}), 404
         branch_scope, branch_error = require_actor_branch_scope(data)
         if branch_error:
             return jsonify({"error": branch_error}), 400
         visit_row = get_single_row("medical_record_visits", "medical_record_visit_id", existing_row.get("medical_record_visit_id"))
-        _, branch_access_error = validate_branch_scope_access(branch_scope, (visit_row or {}).get("branch_id"))
+        _, branch_access_error = validate_branch_scope_access(
+            branch_scope,
+            (visit_row or {}).get("branch_id"),
+            allow_unassigned=True,
+        )
         if branch_access_error:
             return jsonify({"error": branch_access_error}), 403
 
+        audit_context = get_emr_child_record_context(
+            "medical_record_vaccinations",
+            "medical_record_vaccination_id",
+            vaccination_id,
+        )
         payload = build_owner_visibility_payload(
             {"visibleToOwner": visible_to_owner, **data},
             existing_row=existing_row,
@@ -7365,6 +7127,14 @@ def update_emr_vaccination_owner_visibility(vaccination_id):
             },
         )
 
+        record_emr_child_visibility_audit(
+            "Vaccination Record Shared With Owner" if visible_to_owner else "Vaccination Record Hidden From Owner",
+            audit_context,
+            data=data,
+            child_type="Vaccination Record",
+            child_id=vaccination_id,
+            visible_to_owner=visible_to_owner,
+        )
         return jsonify({
             "message": "Vaccination owner visibility updated successfully.",
             "vaccination": {
@@ -7376,6 +7146,15 @@ def update_emr_vaccination_owner_visibility(vaccination_id):
         }), 200
     except Exception as e:
         print("EMR vaccination visibility update error:", str(e))
+        record_emr_audit_event(
+            "Vaccination Visibility Update Failed",
+            data=request.get_json(silent=True) or {},
+            target="Vaccination Record",
+            target_type="vaccination_record",
+            target_id=vaccination_id,
+            summary=f"Vaccination record visibility update failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -7692,9 +7471,11 @@ def require_actor_branch_scope(data=None):
     return get_actor_branch_scope(actor_id)
 
 
-def validate_branch_scope_access(scope, branch_id):
+def validate_branch_scope_access(scope, branch_id, allow_unassigned=False):
     normalized_branch_id = parse_branch_id(branch_id)
     if normalized_branch_id is None:
+        if allow_unassigned and (not scope or scope.get("can_access_all")):
+            return None, None
         return None, "Branch is required"
     if scope and not scope.get("can_access_all") and scope.get("branch_id") != normalized_branch_id:
         return None, "You can only access records from your assigned branch"
@@ -8164,691 +7945,6 @@ def logout():
     return jsonify({"message": "Logout acknowledged"}), 200
 
 
-@app.route('/api/audit-logs', methods=['GET'])
-def get_audit_logs():
-    try:
-        limit = coerce_int(request.args.get('limit'), 'limit', minimum=1, maximum=1000, default=300)
-        search = (request.args.get('search') or '').strip()
-        module = (request.args.get('module') or '').strip()
-        role = (request.args.get('role') or '').strip()
-        status = (request.args.get('status') or '').strip()
-
-        query = supabase_admin.table(AUDIT_LOGS_TABLE).select('*')
-        if module and module != 'All Modules':
-            query = query.eq('module', module)
-        if role and role != 'All Roles':
-            query = query.eq('actor_role', role)
-        if status and status != 'All Statuses':
-            query = query.eq('status', normalize_audit_status(status))
-        if search:
-            escaped_search = search.replace(',', '\\,')
-            query = query.or_(
-                f"module.ilike.%{escaped_search}%,"
-                f"event.ilike.%{escaped_search}%,"
-                f"actor.ilike.%{escaped_search}%,"
-                f"actor_role.ilike.%{escaped_search}%,"
-                f"target.ilike.%{escaped_search}%,"
-                f"summary.ilike.%{escaped_search}%"
-            )
-
-        response = execute_with_retry(
-            lambda: query.order('created_at', desc=True).limit(limit).execute(),
-            context='Fetch audit logs'
-        )
-        logs = [
-            normalized
-            for normalized in (normalize_audit_log(row) for row in (response.data or []))
-            if normalized
-        ]
-        return jsonify({"logs": logs}), 200
-    except Exception as e:
-        if (
-            is_missing_relation_error(e, AUDIT_LOGS_TABLE)
-            or is_missing_supabase_resource_error(e)
-        ):
-            return jsonify({"logs": [], "warning": AUDIT_LOGS_SETUP_MESSAGE}), 200
-        print("Fetch audit logs error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-
-@app.route('/api/audit-logs', methods=['POST'])
-def create_audit_log():
-    data = request.get_json(silent=True) or {}
-    if not isinstance(data, dict):
-        data = {}
-    if not str(data.get('module') or '').strip():
-        return jsonify({"error": "module is required"}), 400
-    if not str(data.get('event') or '').strip():
-        return jsonify({"error": "event is required"}), 400
-
-    try:
-        log = record_system_audit_log(data, raise_on_missing=True, raise_errors=True)
-        return jsonify({"message": "Audit log recorded", "log": log}), 201
-    except RuntimeError as setup_error:
-        return jsonify({"error": str(setup_error)}), 503
-    except Exception as e:
-        print("Create audit log error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-
-@app.route('/api/billing/services', methods=['GET'])
-def get_billing_services():
-    try:
-        return jsonify({"services": build_billing_service_lookups()["services"]}), 200
-    except Exception as e:
-        print("Fetch billing services error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-
-@app.route('/api/billing/products', methods=['GET'])
-def get_billing_products():
-    try:
-        branch_scope, branch_error = require_actor_branch_scope()
-        if branch_error:
-            return jsonify({"error": branch_error}), 400
-        return jsonify({"products": build_billing_product_catalog(branch_scope=branch_scope)}), 200
-    except Exception as e:
-        print("Fetch billing products error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-
-@app.route('/api/billing/source-records', methods=['GET'])
-def get_billing_source_records():
-    try:
-        actor_id = request.args.get("userId") or request.args.get("user_id") or request.args.get("adminUserId")
-        if not actor_id:
-            return jsonify({"error": "userId is required to load branch-scoped billing records"}), 400
-        return jsonify(build_billing_source_records(actor_id=actor_id)), 200
-    except Exception as e:
-        print("Fetch billing source records error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-
-@app.route('/api/billing/invoices', methods=['GET'])
-def get_billing_invoices():
-    try:
-        branch_scope, branch_error = require_actor_branch_scope()
-        if branch_error:
-            return jsonify({"error": branch_error}), 400
-        invoice_response = execute_with_retry(
-            lambda: apply_branch_scope_to_query(
-                supabase_admin.table("billing_invoices").select("*"),
-                branch_scope,
-            ).order("invoice_date", desc=True).order("invoice_time", desc=True).execute(),
-            context="Fetch billing invoices"
-        )
-        invoices = invoice_response.data or []
-    except Exception as e:
-        if is_missing_relation_error(e, "billing_invoices"):
-            return jsonify({"invoices": [], "warning": BILLING_TABLES_SETUP_MESSAGE}), 200
-        print("Fetch billing invoices error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-    invoice_ids = [invoice.get("billing_invoice_id") for invoice in invoices if invoice.get("billing_invoice_id") not in (None, "")]
-    service_items_by_invoice = {}
-    product_items_by_invoice = {}
-    payments_by_invoice = {}
-    payment_handler_lookup = {}
-
-    if invoice_ids:
-        try:
-            service_response = execute_with_retry(
-                lambda: supabase_admin.table("billing_invoice_service_items").select("*").in_("billing_invoice_id", invoice_ids).order("billing_invoice_id").order("sort_order").execute(),
-                context="Fetch billing invoice service items"
-            )
-            for record in (service_response.data or []):
-                service_items_by_invoice.setdefault(record.get("billing_invoice_id"), []).append(record)
-
-            product_response = execute_with_retry(
-                lambda: supabase_admin.table("billing_invoice_product_items").select("*").in_("billing_invoice_id", invoice_ids).order("billing_invoice_id").order("sort_order").execute(),
-                context="Fetch billing invoice product items"
-            )
-            for record in (product_response.data or []):
-                product_items_by_invoice.setdefault(record.get("billing_invoice_id"), []).append(record)
-
-            payment_response = execute_with_retry(
-                lambda: supabase_admin.table("billing_invoice_payments").select("*").in_("billing_invoice_id", invoice_ids).order("billing_invoice_id").order("payment_date", desc=True).order("payment_time", desc=True).execute(),
-                context="Fetch billing invoice payments"
-            )
-            payment_records = payment_response.data or []
-            payment_handler_lookup = build_billing_payment_handler_lookup(payment_records)
-            for record in payment_records:
-                payments_by_invoice.setdefault(record.get("billing_invoice_id"), []).append(record)
-        except Exception as e:
-            if (
-                is_missing_relation_error(e, "billing_invoice_service_items")
-                or is_missing_relation_error(e, "billing_invoice_product_items")
-                or is_missing_relation_error(e, "billing_invoice_payments")
-            ):
-                return jsonify({"invoices": [], "warning": BILLING_TABLES_SETUP_MESSAGE}), 200
-            print("Fetch billing invoice line items error:", str(e))
-            return jsonify({"error": str(e)}), 400
-
-    normalized_invoices = [
-        normalize_billing_invoice_record(
-            invoice,
-            service_items=service_items_by_invoice.get(invoice.get("billing_invoice_id"), []),
-            product_items=product_items_by_invoice.get(invoice.get("billing_invoice_id"), []),
-            payment_history=payments_by_invoice.get(invoice.get("billing_invoice_id"), []),
-            payment_handler_lookup=payment_handler_lookup,
-        )
-        for invoice in invoices
-    ]
-    return jsonify({"invoices": normalized_invoices}), 200
-
-
-@app.route('/api/billing/invoices', methods=['POST'])
-def create_billing_invoice():
-    data = request.get_json() or {}
-
-    try:
-        branch_scope, branch_error = require_actor_branch_scope(data)
-        if branch_error:
-            return jsonify({"error": branch_error}), 400
-
-        invoice_type = str(data.get("invoiceType") or data.get("invoice_type") or "").strip().lower()
-        if invoice_type not in {"appointment", "walkin"}:
-            raise ValueError("invoiceType is invalid")
-
-        source_record_type_raw = data.get("sourceRecordType") or data.get("source_record_type")
-        if source_record_type_raw in (None, ""):
-            raise ValueError("sourceRecordType is required")
-
-        source_record_type = str(source_record_type_raw).strip().lower()
-        if source_record_type not in {"appointment", "walkin", "visit"}:
-            raise ValueError("sourceRecordType is invalid")
-
-        source_record_id = coerce_int(
-            data.get("sourceRecordId", data.get("source_record_id")),
-            "sourceRecordId",
-            minimum=1,
-            allow_none=True,
-        )
-        if (invoice_type == "appointment" or source_record_type in {"appointment", "visit"}) and source_record_id is None:
-            raise ValueError("sourceRecordId is required for appointment invoices")
-
-        customer_name = str(data.get("customerName") or data.get("customer_name") or "").strip()
-        pet_name = str(data.get("petName") or data.get("pet_name") or "").strip()
-        if not customer_name:
-            raise ValueError("customerName is required")
-        if not pet_name:
-            raise ValueError("petName is required")
-
-        customer_email = str(data.get("customerEmail") or data.get("customer_email") or "").strip()
-        customer_phone = str(data.get("customerPhone") or data.get("customer_phone") or "").strip()
-        payment_method = str(data.get("paymentMethod") or data.get("payment_method") or "cash").strip().lower()
-        if payment_method not in {"cash", "card", "gcash", "bank", "installment"}:
-            raise ValueError("paymentMethod is invalid")
-        initial_payment_method = str(
-            data.get("initialPaymentMethod")
-            or data.get("initial_payment_method")
-            or ("cash" if payment_method == "installment" else payment_method)
-        ).strip().lower()
-        if initial_payment_method not in {"cash", "card", "gcash", "bank"}:
-            raise ValueError("initialPaymentMethod is invalid")
-        payment_actor_id = resolve_billing_payment_actor_id(
-            data.get("handledByUserId")
-            or data.get("handled_by_user_id")
-            or data.get("createdBy")
-            or data.get("created_by")
-            or data.get("userId")
-            or data.get("user_id")
-        )
-
-        discount_type = str(data.get("discountType") or data.get("discount_type") or "none").strip().lower()
-        if discount_type not in {"none", "senior", "pwd", "promo", "custom"}:
-            raise ValueError("discountType is invalid")
-
-        discount_value = None
-        discount_is_percentage = False
-        if discount_type == "custom":
-            discount_value = coerce_number(
-                data.get("discountValue", data.get("discount_value", 0)),
-                "discountValue",
-                minimum=0,
-                default=0,
-            )
-            discount_is_percentage = parse_bool(data.get("discountIsPercentage", data.get("discount_is_percentage", False)))
-
-        branch_id = coerce_int(
-            data.get("branchId", data.get("branch_id")),
-            "branchId",
-            minimum=1,
-            allow_none=True,
-        )
-        if branch_id is None and branch_scope and not branch_scope.get("can_access_all"):
-            branch_id = branch_scope.get("branch_id")
-        branch_id, branch_access_error = validate_branch_scope_access(branch_scope, branch_id)
-        if branch_access_error:
-            return jsonify({"error": branch_access_error}), 403
-
-        existing_invoice = get_active_billing_invoice_for_source(source_record_type, source_record_id)
-        if existing_invoice:
-            normalized_existing_invoice = fetch_billing_invoice_with_details(existing_invoice.get("billing_invoice_id"))
-            return jsonify({
-                "error": "An active invoice already exists for this billing source.",
-                "invoice": normalized_existing_invoice,
-            }), 409
-
-        service_lookups = build_billing_service_lookups()
-        product_lookup = build_billing_product_lookup(branch_scope=branch_scope)
-
-        raw_service_items = data.get("items", data.get("services")) or []
-        raw_product_items = data.get("products") or []
-        if not isinstance(raw_service_items, list):
-            raise ValueError("items must be a list")
-        if not isinstance(raw_product_items, list):
-            raise ValueError("products must be a list")
-
-        service_payloads = []
-        for index, item in enumerate(raw_service_items, start=1):
-            if not isinstance(item, dict):
-                continue
-
-            service_name = str(item.get("name") or "").strip()
-            if not service_name:
-                continue
-
-            quantity = coerce_int(item.get("quantity", 1), "service quantity", minimum=1, default=1)
-            matched_service = resolve_billing_service_match(
-                raw_name=service_name,
-                service_id=item.get("serviceId"),
-                service_code=item.get("serviceCode"),
-                lookups=service_lookups,
-            )
-            unit_price = coerce_number(
-                item.get("unitPrice", item.get("unit_price", (matched_service or {}).get("price", 0))),
-                "service unitPrice",
-                minimum=0,
-                default=0,
-            )
-
-            service_payloads.append({
-                "billing_service_id": (matched_service or {}).get("serviceId"),
-                "item_name": (matched_service or {}).get("name") or service_name,
-                "item_description": str(item.get("description") or (matched_service or {}).get("description") or "").strip(),
-                "item_category": str(item.get("category") or (matched_service or {}).get("category") or "Other").strip(),
-                "item_subcategory": str(item.get("subcategory") or (matched_service or {}).get("subcategory") or "").strip(),
-                "quantity": quantity,
-                "unit_price": unit_price,
-                "line_total": round(quantity * unit_price, 2),
-                "sort_order": coerce_int(item.get("sortOrder", item.get("sort_order", index)), "service sortOrder", minimum=1, default=index),
-            })
-
-        product_payloads = []
-        for index, item in enumerate(raw_product_items, start=1):
-            if not isinstance(item, dict):
-                continue
-
-            product_id_raw = item.get("inventoryItemId", item.get("inventory_item_id", item.get("id")))
-            matched_product = product_lookup.get(str(product_id_raw)) if product_id_raw not in (None, "") else None
-
-            product_name = str(item.get("name") or (matched_product or {}).get("name") or "").strip()
-            if not product_name:
-                continue
-
-            quantity = coerce_int(item.get("quantity", 1), "product quantity", minimum=1, default=1)
-            unit_price = coerce_number(
-                item.get("unitPrice", item.get("unit_price", (matched_product or {}).get("price", 0))),
-                "product unitPrice",
-                minimum=0,
-                default=0,
-            )
-
-            inventory_item_id = None
-            if product_id_raw not in (None, ""):
-                try:
-                    inventory_item_id = coerce_int(product_id_raw, "inventoryItemId", minimum=1, allow_none=True)
-                except ValueError:
-                    inventory_item_id = None
-
-            product_payloads.append({
-                "inventory_item_id": inventory_item_id,
-                "item_name": product_name,
-                "sku": str(item.get("sku") or (matched_product or {}).get("sku") or "").strip(),
-                "item_description": str(item.get("description") or (matched_product or {}).get("description") or "").strip(),
-                "item_category": str(item.get("category") or (matched_product or {}).get("category") or "other").strip().lower(),
-                "quantity": quantity,
-                "unit_price": unit_price,
-                "line_total": round(quantity * unit_price, 2),
-                "sort_order": coerce_int(item.get("sortOrder", item.get("sort_order", index)), "product sortOrder", minimum=1, default=index),
-            })
-
-        if not service_payloads and not product_payloads:
-            raise ValueError("At least one service or product is required")
-
-        subtotal = round(
-            sum(item.get("line_total", 0) for item in service_payloads)
-            + sum(item.get("line_total", 0) for item in product_payloads),
-            2,
-        )
-        tax_amount = round(subtotal * BILLING_TAX_RATE, 2)
-        discount_amount = calculate_billing_discount_amount(
-            subtotal,
-            discount_type,
-            discount_value=discount_value,
-            discount_is_percentage=discount_is_percentage,
-        )
-        total_amount = round(subtotal + tax_amount - discount_amount, 2)
-        initial_payment_amount = 0.0
-        if payment_method == "installment":
-            initial_payment_amount = coerce_number(
-                data.get("initialPaymentAmount", data.get("initial_payment_amount", 0)),
-                "initialPaymentAmount",
-                minimum=0,
-                default=0,
-            )
-            if initial_payment_amount > total_amount:
-                raise ValueError("initialPaymentAmount cannot be greater than the total amount")
-        else:
-            initial_payment_amount = total_amount
-
-        payment_state = derive_billing_payment_state(total_amount, initial_payment_amount)
-        manila_now = get_current_manila_datetime()
-
-        invoice_payload = {
-            "invoice_number": generate_billing_invoice_number(),
-            "invoice_type": invoice_type,
-            "source_record_type": source_record_type or invoice_type,
-            "source_record_id": source_record_id,
-            "branch_id": branch_id,
-            "customer_name": customer_name,
-            "customer_email": customer_email or None,
-            "customer_phone": customer_phone or None,
-            "pet_name": pet_name,
-            "subtotal": subtotal,
-            "tax_rate": BILLING_TAX_RATE,
-            "tax_amount": tax_amount,
-            "discount_amount": discount_amount,
-            "discount_type": discount_type,
-            "discount_value": discount_value,
-            "discount_is_percentage": discount_is_percentage if discount_type == "custom" else None,
-            "total_amount": total_amount,
-            "amount_paid": payment_state["amount_paid"],
-            "remaining_balance": payment_state["remaining_balance"],
-            "payment_method": payment_method,
-            "payment_status": payment_state["payment_status"],
-            "status": "completed",
-            "notes": str(data.get("notes") or "").strip() or None,
-            "invoice_date": manila_now.date().isoformat(),
-            "invoice_time": manila_now.strftime("%H:%M:%S"),
-        }
-
-        prepared_inventory_stock_out_payloads = []
-        if payment_state["payment_status"] == "paid":
-            prepared_inventory_stock_out_payloads = prepare_billing_invoice_inventory_stock_out_payloads(
-                invoice_payload,
-                product_items=product_payloads,
-                processed_by=payment_actor_id,
-            )
-
-        invoice_response = supabase_admin.table("billing_invoices").insert(invoice_payload).execute()
-        created_invoice = invoice_response.data[0] if invoice_response.data else get_single_row("billing_invoices", "invoice_number", invoice_payload["invoice_number"])
-        if not created_invoice:
-            raise ValueError("Invoice could not be created")
-
-        invoice_id = created_invoice.get("billing_invoice_id")
-
-        created_service_items = []
-        if service_payloads:
-            service_insert_payload = [
-                {
-                    **item,
-                    "billing_invoice_id": invoice_id,
-                }
-                for item in service_payloads
-            ]
-            service_insert_response = supabase_admin.table("billing_invoice_service_items").insert(service_insert_payload).execute()
-            created_service_items = service_insert_response.data or service_insert_payload
-
-        created_product_items = []
-        if product_payloads:
-            product_insert_payload = [
-                {
-                    **item,
-                    "billing_invoice_id": invoice_id,
-                }
-                for item in product_payloads
-            ]
-            product_insert_response = supabase_admin.table("billing_invoice_product_items").insert(product_insert_payload).execute()
-            created_product_items = product_insert_response.data or product_insert_payload
-
-        created_payment_history = []
-        if payment_state["amount_paid"] > 0:
-            payment_payload = {
-                "billing_invoice_id": invoice_id,
-                "payment_amount": payment_state["amount_paid"],
-                "payment_method": initial_payment_method,
-                "payment_date": manila_now.date().isoformat(),
-                "payment_time": manila_now.strftime("%H:%M:%S"),
-                "notes": "Initial payment" if payment_method == "installment" else "Invoice payment",
-                "created_by": payment_actor_id,
-            }
-            payment_response = supabase_admin.table("billing_invoice_payments").insert(payment_payload).execute()
-            created_payment_history = payment_response.data or [payment_payload]
-
-        if payment_state["payment_status"] == "paid":
-            sync_billing_invoice_inventory_stock_out(
-                created_invoice,
-                product_items=created_product_items,
-                processed_by=payment_actor_id,
-                prepared_payloads=prepared_inventory_stock_out_payloads,
-            )
-
-        normalized_invoice = fetch_billing_invoice_with_details(invoice_id)
-        if not normalized_invoice:
-            normalized_invoice = normalize_billing_invoice_record(
-                created_invoice,
-                service_items=created_service_items,
-                product_items=created_product_items,
-                payment_history=created_payment_history,
-                payment_handler_lookup=build_billing_payment_handler_lookup(created_payment_history),
-            )
-
-        if source_record_type in {"appointment", "walkin"} and source_record_id:
-            try:
-                source_table = "walkin_appointments" if source_record_type == "walkin" else "appointments"
-                source_id_column = "walkin_id" if source_record_type == "walkin" else "appointment_id"
-                source_record = get_single_row(source_table, source_id_column, source_record_id) or {}
-                record_appointment_audit_event(
-                    "Billing Generated From Appointment",
-                    source_record,
-                    table_name=source_table,
-                    fallback_id=source_record_id,
-                    actor_data=data,
-                    summary=f"Billing invoice {created_invoice.get('invoice_number')} was generated for this appointment.",
-                    status="Success",
-                    metadata={
-                        "billing_invoice_id": invoice_id,
-                        "invoice_number": created_invoice.get("invoice_number"),
-                        "total_amount": created_invoice.get("total_amount"),
-                        "payment_status": created_invoice.get("payment_status"),
-                    },
-                )
-            except Exception as audit_error:
-                print(f"Appointment billing audit error: {audit_error}")
-
-        notification_invoice = get_single_row("billing_invoices", "billing_invoice_id", invoice_id) or created_invoice
-        safe_create_billing_admin_notification(
-            invoice_record=notification_invoice,
-            event_type='invoice_created',
-            title='Invoice created',
-            action_text='was created',
-            severity='success' if payment_state["payment_status"] == "paid" else 'info',
-            link='/billing',
-            metadata={
-                "serviceItemCount": len(created_service_items),
-                "productItemCount": len(created_product_items),
-                "initialPaymentAmount": payment_state["amount_paid"],
-            },
-        )
-
-        return jsonify({
-            "message": "Invoice created successfully",
-            "invoice": normalized_invoice,
-        }), 201
-    except Exception as e:
-        if (
-            is_missing_relation_error(e, "billing_invoices")
-            or is_missing_relation_error(e, "billing_invoice_service_items")
-            or is_missing_relation_error(e, "billing_invoice_product_items")
-            or is_missing_relation_error(e, "billing_invoice_payments")
-        ):
-            return jsonify({"error": BILLING_TABLES_SETUP_MESSAGE}), 400
-        print("Create billing invoice error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-
-@app.route('/api/billing/invoices/<int:invoice_id>/payments', methods=['POST'])
-def record_billing_invoice_payment(invoice_id):
-    data = request.get_json() or {}
-
-    try:
-        branch_scope, branch_error = require_actor_branch_scope(data)
-        if branch_error:
-            return jsonify({"error": branch_error}), 400
-
-        invoice_record = get_single_row("billing_invoices", "billing_invoice_id", invoice_id)
-        if not invoice_record:
-            return jsonify({"error": "Invoice not found"}), 404
-        _, branch_access_error = validate_branch_scope_access(branch_scope, invoice_record.get("branch_id"))
-        if branch_access_error:
-            return jsonify({"error": branch_access_error}), 403
-
-        total_amount = round(float(invoice_record.get("total_amount") or 0), 2)
-        current_amount_paid = round(float(invoice_record.get("amount_paid") or 0), 2)
-        current_state = derive_billing_payment_state(total_amount, current_amount_paid)
-        if current_state["remaining_balance"] <= 0:
-            raise ValueError("This invoice is already fully paid")
-
-        payment_amount = coerce_number(
-            data.get("amount", data.get("payment_amount")),
-            "amount",
-            minimum=0.01,
-        )
-        if payment_amount > current_state["remaining_balance"]:
-            raise ValueError("Payment amount cannot be greater than the remaining balance")
-
-        payment_method = str(data.get("paymentMethod") or data.get("payment_method") or "").strip().lower()
-        if payment_method not in {"cash", "card", "gcash", "bank"}:
-            raise ValueError("paymentMethod is invalid")
-
-        payment_note = str(data.get("notes") or "").strip()
-        payment_actor_id = resolve_billing_payment_actor_id(
-            data.get("handledByUserId")
-            or data.get("handled_by_user_id")
-            or data.get("createdBy")
-            or data.get("created_by")
-            or data.get("userId")
-            or data.get("user_id")
-        )
-        manila_now = get_current_manila_datetime()
-        updated_state = derive_billing_payment_state(total_amount, current_amount_paid + payment_amount)
-
-        supabase_admin.table("billing_invoices").update({
-            "amount_paid": updated_state["amount_paid"],
-            "remaining_balance": updated_state["remaining_balance"],
-            "payment_status": updated_state["payment_status"],
-        }).eq("billing_invoice_id", invoice_id).execute()
-
-        payment_payload = {
-            "billing_invoice_id": invoice_id,
-            "payment_amount": payment_amount,
-            "payment_method": payment_method,
-            "payment_date": manila_now.date().isoformat(),
-            "payment_time": manila_now.strftime("%H:%M:%S"),
-            "notes": payment_note or None,
-            "created_by": payment_actor_id,
-        }
-        supabase_admin.table("billing_invoice_payments").insert(payment_payload).execute()
-
-        if updated_state["payment_status"] == "paid":
-            product_items = execute_with_retry(
-                lambda: supabase_admin.table("billing_invoice_product_items").select("*").eq("billing_invoice_id", invoice_id).order("sort_order").execute(),
-                context="Fetch billing invoice product items for stock sync",
-            ).data or []
-            sync_billing_invoice_inventory_stock_out(
-                invoice_record,
-                product_items=product_items,
-                processed_by=payment_actor_id,
-            )
-
-        normalized_invoice = fetch_billing_invoice_with_details(invoice_id)
-        if not normalized_invoice:
-            raise ValueError("Updated invoice could not be loaded")
-
-        notification_invoice = get_single_row("billing_invoices", "billing_invoice_id", invoice_id) or invoice_record
-        safe_create_billing_admin_notification(
-            invoice_record=notification_invoice,
-            event_type='payment_recorded',
-            title='Payment recorded',
-            action_text=f"received a payment of PHP {payment_amount:,.2f}",
-            severity='success' if updated_state["payment_status"] == "paid" else 'info',
-            link='/billing',
-            metadata={
-                "paymentAmount": payment_amount,
-                "paymentMethod": payment_method,
-                "paymentStatusBefore": current_state["payment_status"],
-                "paymentStatusAfter": updated_state["payment_status"],
-            },
-        )
-
-        return jsonify({
-            "message": "Payment recorded successfully",
-            "invoice": normalized_invoice,
-        }), 200
-    except Exception as e:
-        if (
-            is_missing_relation_error(e, "billing_invoices")
-            or is_missing_relation_error(e, "billing_invoice_payments")
-        ):
-            return jsonify({"error": BILLING_TABLES_SETUP_MESSAGE}), 400
-        print("Record billing payment error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-
-@app.route('/api/billing/invoices/bulk', methods=['DELETE'])
-def delete_billing_invoices():
-    data = request.get_json(silent=True) or {}
-
-    try:
-        branch_scope, branch_error = require_actor_branch_scope(data)
-        if branch_error:
-            return jsonify({"error": branch_error}), 400
-
-        invoice_ids_raw = data.get("invoiceIds", data.get("invoice_ids")) or []
-        if not isinstance(invoice_ids_raw, list) or not invoice_ids_raw:
-            raise ValueError("invoiceIds is required")
-
-        parsed_ids = [
-            coerce_int(invoice_id, "invoiceId", minimum=1)
-            for invoice_id in invoice_ids_raw
-        ]
-
-        invoices = supabase_admin.table("billing_invoices").select("*").in_("billing_invoice_id", parsed_ids).execute().data or []
-        for invoice in invoices:
-            _, branch_access_error = validate_branch_scope_access(branch_scope, invoice.get("branch_id"))
-            if branch_access_error:
-                return jsonify({"error": branch_access_error}), 403
-
-        supabase_admin.table("billing_invoices").delete().in_("billing_invoice_id", parsed_ids).execute()
-        for invoice in invoices:
-            safe_create_billing_admin_notification(
-                invoice_record=invoice,
-                event_type='invoice_deleted',
-                title='Invoice deleted',
-                action_text='was deleted',
-                severity='warning',
-                link='/billing',
-            )
-        return jsonify({"message": "Invoices deleted successfully"}), 200
-    except Exception as e:
-        if is_missing_relation_error(e, "billing_invoices"):
-            return jsonify({"error": BILLING_TABLES_SETUP_MESSAGE}), 400
-        print("Delete billing invoices error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-
 @app.route('/api/inventory/items', methods=['GET'])
 def get_inventory_items():
     try:
@@ -8931,6 +8027,19 @@ def create_inventory_item():
         created = response.data[0] if response.data else None
         item_record = created or payload
         notify_inventory_item_created(item_record, actor_id=payload.get('created_by') or payload.get('updated_by'))
+        record_inventory_audit_event(
+            'Inventory Item Created',
+            item_record,
+            actor_data=data,
+            actor_id=payload.get('created_by') or payload.get('updated_by'),
+            new_record=item_record,
+            summary=f"Created inventory item {get_inventory_audit_target(item_record)} with {item_record.get('current_stock', 0)} unit(s).",
+            metadata={
+                'category': item_record.get('category'),
+                'unit': item_record.get('unit'),
+                'initial_stock': item_record.get('current_stock'),
+            },
+        )
         notify_inventory_stock_state_transition(
             {
                 'inventory_item_id': item_record.get('inventory_item_id'),
@@ -8981,6 +8090,19 @@ def update_inventory_item(item_id):
         updated = response.data[0] if response.data else get_single_row('inventory_items', 'inventory_item_id', item_id)
         updated_record = updated or existing
         notify_inventory_item_updated(existing, updated_record, actor_id=payload.get('updated_by'))
+        changed_fields = get_inventory_changed_fields(existing, updated_record)
+        record_inventory_audit_event(
+            'Inventory Item Updated',
+            updated_record,
+            actor_data=data,
+            actor_id=payload.get('updated_by'),
+            old_record=existing,
+            new_record=updated_record,
+            summary=f"Updated {get_inventory_audit_target(updated_record)}: {', '.join(changed_fields) if changed_fields else 'product details'}.",
+            metadata={
+                'changed_fields': changed_fields,
+            },
+        )
         notify_inventory_stock_state_transition(
             existing,
             updated_record,
@@ -9031,6 +8153,20 @@ def archive_inventory_item(item_id):
             actor_id=update_data.get('archived_by'),
             reason=update_data.get('archive_reason'),
         )
+        archived_record = archived or {**item, **update_data}
+        record_inventory_audit_event(
+            'Inventory Item Archived',
+            archived_record,
+            actor_data=data,
+            actor_id=update_data.get('archived_by'),
+            old_record=item,
+            new_record=archived_record,
+            summary=f"Archived {get_inventory_audit_target(archived_record)}." + (f" Reason: {update_data.get('archive_reason')}." if update_data.get('archive_reason') else ""),
+            status='Warning',
+            metadata={
+                'archive_reason': update_data.get('archive_reason'),
+            },
+        )
         return jsonify({'message': 'Inventory item archived successfully', 'item': normalize_inventory_item(archived or item)}), 200
     except Exception as e:
         print("Archive inventory item error:", str(e))
@@ -9076,6 +8212,16 @@ def restore_inventory_item(item_id):
             .execute()
         restored = response.data[0] if response.data else get_single_row('inventory_items', 'inventory_item_id', item_id)
         notify_inventory_item_restored(restored or item, actor_id=data.get('userId') or data.get('processedBy') or data.get('processed_by'))
+        restored_record = restored or {**item, 'is_archived': False, 'archived_at': None, 'archived_by': None, 'archive_reason': None}
+        record_inventory_audit_event(
+            'Inventory Item Restored',
+            restored_record,
+            actor_data=data,
+            actor_id=data.get('userId') or data.get('processedBy') or data.get('processed_by'),
+            old_record=item,
+            new_record=restored_record,
+            summary=f"Restored {get_inventory_audit_target(restored_record)} to active inventory.",
+        )
         return jsonify({'message': 'Inventory item restored successfully', 'item': normalize_inventory_item(restored or item)}), 200
     except Exception as e:
         print("Restore inventory item error:", str(e))
@@ -9097,6 +8243,7 @@ def create_inventory_stock_in():
 
         result = persist_inventory_transaction(payload)
         notify_inventory_transaction_created(result, payload)
+        record_inventory_transaction_audit(result, payload, event='Stock In Recorded', actor_data=data)
         for item in (result.get('items') or []):
             notify_inventory_stock_state_transition(
                 {
@@ -9143,6 +8290,9 @@ def create_inventory_stock_out():
 
         result = persist_inventory_transaction(payload)
         notify_inventory_transaction_created(result, payload)
+        stock_out_reason = str(payload.get('reason') or '').strip().lower()
+        stock_out_event = 'Stock Out Recorded' if stock_out_reason == 'sale' else 'Stock Adjustment Recorded'
+        record_inventory_transaction_audit(result, payload, event=stock_out_event, actor_data=data)
         for item in (result.get('items') or []):
             notify_inventory_stock_state_transition(
                 {
@@ -9187,6 +8337,7 @@ def get_inventory_logs():
         search = (request.args.get('search') or '').strip()
         start_date = (request.args.get('start_date') or request.args.get('startDate') or '').strip()
         end_date = (request.args.get('end_date') or request.args.get('endDate') or '').strip()
+        limit_raw = request.args.get('limit')
 
         query = supabase_admin.table('inventory_logs_view').select('*')
         if branch_id:
@@ -9210,286 +8361,18 @@ def get_inventory_logs():
                 f"productCode.ilike.%{escaped}%,productName.ilike.%{escaped}%,referenceNumber.ilike.%{escaped}%,user.ilike.%{escaped}%"
             )
 
+        if limit_raw:
+            try:
+                limit = max(1, min(int(limit_raw), 100))
+                query = query.limit(limit)
+            except (TypeError, ValueError):
+                pass
+
         response = query.order('id', desc=True).execute()
         logs = [normalize_inventory_log(item) for item in (response.data or [])]
         return jsonify({'logs': logs}), 200
     except Exception as e:
         print("Fetch inventory logs error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-
-@app.route('/api/admin-notifications', methods=['GET'])
-def get_admin_notifications():
-    try:
-        admin_user_id = (request.args.get('admin_user_id') or request.args.get('adminUserId') or '').strip()
-        branch_id_raw = request.args.get('branch_id', request.args.get('branchId'))
-        module = (request.args.get('module') or '').strip()
-        unread_only = parse_bool(request.args.get('unread_only', request.args.get('unreadOnly')), default=False)
-        limit_raw = request.args.get('limit')
-
-        _, employee_error = get_employee_account_or_400(admin_user_id)
-        if employee_error:
-            return jsonify({'error': employee_error}), 400
-        branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
-        if branch_error:
-            return jsonify({"error": branch_error}), 400
-
-        query = supabase_admin.table('admin_notifications').select('*')
-        if branch_id_raw not in (None, '', 'all', 'All'):
-            branch_id, branch_error = validate_branch_scope_access(branch_scope, branch_id_raw)
-            if branch_error:
-                return jsonify({"error": branch_error}), 403
-            query = query.eq('branch_id', branch_id)
-        else:
-            query = apply_branch_scope_to_query(query, branch_scope)
-        if module:
-            query = query.eq('module', module)
-
-        limit_value = None
-        if limit_raw not in (None, ''):
-            limit_value = coerce_int(limit_raw, 'limit', minimum=1, maximum=200)
-
-        query = query.order('created_at', desc=True)
-        if limit_value:
-            query = query.limit(limit_value)
-
-        response = execute_with_retry(
-            lambda: query.execute(),
-            context='Fetch admin notifications'
-        )
-        rows = response.data or []
-        notification_ids = [row.get('notification_id') for row in rows if row.get('notification_id') is not None]
-        reads_map = get_admin_notification_reads_map(admin_user_id, notification_ids)
-
-        notifications = []
-        unread_count = 0
-
-        for row in rows:
-            enriched = dict(row)
-            enriched['read_at'] = reads_map.get(row.get('notification_id'))
-            normalized = normalize_admin_notification(enriched, admin_user_id=admin_user_id)
-            if not normalized['read']:
-                unread_count += 1
-            if unread_only and normalized['read']:
-                continue
-            notifications.append(normalized)
-
-        return jsonify({
-            'notifications': notifications,
-            'unreadCount': unread_count,
-            'totalCount': len(notifications),
-        }), 200
-    except Exception as e:
-        print("Fetch admin notifications error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-
-@app.route('/api/admin-notifications/<int:notification_id>/read', methods=['POST'])
-def read_admin_notification(notification_id):
-    data = request.get_json() or {}
-    try:
-        admin_user_id = (data.get('admin_user_id') or data.get('adminUserId') or '').strip()
-        _, employee_error = get_employee_account_or_400(admin_user_id)
-        if employee_error:
-            return jsonify({'error': employee_error}), 400
-
-        notification = get_single_row('admin_notifications', 'notification_id', notification_id)
-        if not notification:
-            return jsonify({'error': 'Notification not found'}), 404
-        branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
-        if branch_error:
-            return jsonify({"error": branch_error}), 400
-        _, branch_access_error = validate_branch_scope_access(branch_scope, notification.get('branch_id'))
-        if branch_access_error:
-            return jsonify({"error": branch_access_error}), 403
-
-        mark_admin_notification_read(notification_id, admin_user_id)
-
-        enriched = dict(notification)
-        enriched['read_at'] = datetime.utcnow().isoformat()
-        return jsonify({
-            'message': 'Notification marked as read',
-            'notification': normalize_admin_notification(enriched, admin_user_id=admin_user_id),
-        }), 200
-    except Exception as e:
-        print("Mark admin notification read error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-
-def ensure_admin_notification_access(notification, branch_scope):
-    if not notification:
-        return 'Notification not found', 404
-    if branch_scope and branch_scope.get('can_access_all'):
-        return None, None
-    _, branch_error = validate_branch_scope_access(branch_scope, notification.get('branch_id'))
-    if branch_error:
-        return branch_error, 403
-    return None, None
-
-
-def get_accessible_admin_notifications(notification_ids, branch_scope):
-    response = supabase_admin.table('admin_notifications') \
-        .select('notification_id, branch_id') \
-        .in_('notification_id', notification_ids) \
-        .execute()
-    notifications = response.data or []
-    found_ids = {int(row.get('notification_id')) for row in notifications if row.get('notification_id') is not None}
-    missing_ids = [notification_id for notification_id in notification_ids if notification_id not in found_ids]
-    if missing_ids:
-        return notifications, f"Notification not found: {missing_ids[0]}", 404
-
-    if branch_scope and branch_scope.get('can_access_all'):
-        return notifications, None, None
-
-    for notification in notifications:
-        _, branch_error = validate_branch_scope_access(branch_scope, notification.get('branch_id'))
-        if branch_error:
-            return notifications, branch_error, 403
-
-    return notifications, None, None
-
-
-@app.route('/api/admin-notifications/<int:notification_id>', methods=['DELETE'])
-def delete_admin_notification(notification_id):
-    data = request.get_json(silent=True) or {}
-    try:
-        admin_user_id = (data.get('admin_user_id') or data.get('adminUserId') or request.args.get('admin_user_id') or request.args.get('adminUserId') or '').strip()
-        _, employee_error = get_employee_account_or_400(admin_user_id)
-        if employee_error:
-            return jsonify({'error': employee_error}), 400
-        branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
-        if branch_error:
-            return jsonify({"error": branch_error}), 400
-
-        notification = get_single_row('admin_notifications', 'notification_id', notification_id)
-        access_error, status_code = ensure_admin_notification_access(notification, branch_scope)
-        if access_error:
-            return jsonify({'error': access_error}), status_code
-
-        supabase_admin.table('admin_notification_reads').delete().eq('notification_id', notification_id).execute()
-        supabase_admin.table('admin_notifications').delete().eq('notification_id', notification_id).execute()
-
-        return jsonify({'message': 'Notification deleted', 'deletedCount': 1}), 200
-    except Exception as e:
-        print("Delete admin notification error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-
-@app.route('/api/admin-notifications', methods=['DELETE'])
-def delete_admin_notifications():
-    data = request.get_json(silent=True) or {}
-    try:
-        admin_user_id = (data.get('admin_user_id') or data.get('adminUserId') or '').strip()
-        raw_ids = data.get('notificationIds') or data.get('notification_ids') or []
-        _, employee_error = get_employee_account_or_400(admin_user_id)
-        if employee_error:
-            return jsonify({'error': employee_error}), 400
-        branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
-        if branch_error:
-            return jsonify({"error": branch_error}), 400
-
-        notification_ids = []
-        for raw_id in raw_ids:
-            try:
-                notification_ids.append(int(raw_id))
-            except (TypeError, ValueError):
-                continue
-        notification_ids = list(dict.fromkeys(notification_ids))
-
-        if not notification_ids:
-            return jsonify({'error': 'notificationIds is required'}), 400
-
-        _, access_error, status_code = get_accessible_admin_notifications(notification_ids, branch_scope)
-        if access_error:
-            return jsonify({'error': access_error}), status_code
-
-        supabase_admin.table('admin_notification_reads').delete().in_('notification_id', notification_ids).execute()
-        supabase_admin.table('admin_notifications').delete().in_('notification_id', notification_ids).execute()
-
-        return jsonify({'message': 'Notifications deleted', 'deletedCount': len(notification_ids)}), 200
-    except Exception as e:
-        print("Bulk delete admin notifications error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-
-@app.route('/api/admin-notifications/read-all', methods=['POST'])
-def read_all_admin_notifications():
-    data = request.get_json() or {}
-    try:
-        admin_user_id = (data.get('admin_user_id') or data.get('adminUserId') or '').strip()
-        branch_id_raw = data.get('branch_id', data.get('branchId'))
-        module = (data.get('module') or '').strip()
-
-        _, employee_error = get_employee_account_or_400(admin_user_id)
-        if employee_error:
-            return jsonify({'error': employee_error}), 400
-        branch_scope, branch_error = get_actor_branch_scope(admin_user_id)
-        if branch_error:
-            return jsonify({"error": branch_error}), 400
-
-        query = supabase_admin.table('admin_notifications').select('notification_id')
-        if branch_id_raw not in (None, '', 'all', 'All'):
-            branch_id, branch_error = validate_branch_scope_access(branch_scope, branch_id_raw)
-            if branch_error:
-                return jsonify({"error": branch_error}), 403
-            query = query.eq('branch_id', branch_id)
-        else:
-            query = apply_branch_scope_to_query(query, branch_scope)
-        if module:
-            query = query.eq('module', module)
-
-        notifications_response = query.execute()
-        notifications = notifications_response.data or []
-        notification_ids = [
-            row.get('notification_id')
-            for row in notifications
-            if row.get('notification_id') is not None
-        ]
-
-        if not notification_ids:
-            return jsonify({'message': 'No notifications to mark as read', 'updatedCount': 0}), 200
-
-        read_at = datetime.utcnow().isoformat()
-        read_rows = [
-            {
-                'notification_id': notification_id,
-                'admin_user_id': admin_user_id,
-                'read_at': read_at,
-            }
-            for notification_id in notification_ids
-        ]
-        supabase_admin.table('admin_notification_reads').upsert(read_rows).execute()
-
-        return jsonify({
-            'message': 'Notifications marked as read',
-            'updatedCount': len(notification_ids),
-        }), 200
-    except Exception as e:
-        print("Mark all admin notifications read error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-
-@app.route('/api/admin-notifications/reconcile/inventory-expiring-soon', methods=['POST'])
-def reconcile_inventory_expiring_soon_notifications():
-    data = request.get_json() or {}
-    try:
-        branch_id_raw = data.get('branch_id', data.get('branchId'))
-        branch_id = None
-        if branch_id_raw not in (None, ''):
-            branch_id = coerce_int(branch_id_raw, 'branch_id', minimum=1)
-
-        expiry_windows = data.get('windows', data.get('expiryWindows'))
-        result = reconcile_inventory_expiring_notifications(
-            branch_id=branch_id,
-            expiry_windows=expiry_windows,
-        )
-
-        return jsonify({
-            'message': 'Inventory expiring-soon reconciliation completed',
-            **result,
-        }), 200
-    except Exception as e:
-        print("Reconcile inventory expiring notifications error:", str(e))
         return jsonify({"error": str(e)}), 400
 
 
@@ -9561,7 +8444,7 @@ def build_admin_appointment_rows(include_history=False, actor_id=None):
         if normalized_medical.get("target_id") not in (None, "") and medical_key not in medical_information_by_target:
             medical_information_by_target[medical_key] = normalized_medical
 
-    history_statuses = {"completed", "cancelled", "no_show", "expired"}
+    history_statuses = {"completed", "cancelled", "declined", "no_show", "expired"}
     formatted = []
     today_in_manila = get_current_manila_date()
 
@@ -9574,18 +8457,117 @@ def build_admin_appointment_rows(include_history=False, actor_id=None):
             else normalized_status
         )
 
-        appointment_date = parse_emr_date(appointment_date_value)
-        if appointment_date and appointment_date < today_in_manila:
-            if effective_status in {"confirmed", "scheduled"}:
-                return "no_show"
-            if effective_status == "pending":
-                return "expired"
-
         return effective_status
 
     def should_include(status_value):
         normalized = (status_value or "").lower()
         return normalized in history_statuses if include_history else normalized not in history_statuses
+
+    def reconcile_appointment_schedule_state(table_name, id_column, record, status_value):
+        normalized_status = (status_value or "pending").strip().lower()
+        record_id = record.get(id_column)
+        appointment_date_value = record.get("appointment_date")
+        appointment_date = parse_emr_date(appointment_date_value)
+        if not appointment_date or record_id in (None, ""):
+            return record, normalized_status
+
+        entity_type = "walkin" if table_name == "walkin_appointments" else "appointment"
+
+        if normalized_status == "pending" and appointment_date <= today_in_manila:
+            updated_record = {**record, "status": "cancelled"}
+            supabase_admin.table(table_name).update({"status": "cancelled"}).eq(id_column, record_id).execute()
+            for open_status in ("pending", "needs_new_schedule"):
+                supabase_admin.table("reschedule_requests").update({
+                    "status": "cancelled",
+                    "responded_at": datetime.utcnow().isoformat(),
+                    "response_note": "Auto-cancelled because the appointment reached its scheduled date while still pending",
+                }).eq("target_type", entity_type).eq("target_id", record_id).eq("status", open_status).execute()
+            record_appointment_audit_event(
+                "Appointment Auto-Cancelled",
+                updated_record,
+                table_name=table_name,
+                fallback_id=record_id,
+                old_record=record,
+                new_record=updated_record,
+                summary=f"Pending appointment was automatically cancelled on its scheduled date {appointment_date_value}.",
+                status="Warning",
+                metadata={"source": "appointment_table_reconcile"},
+            )
+            event_key = f"appointment-auto-cancelled:{entity_type}:{record_id}:{appointment_date_value}"
+            if not admin_notification_event_exists(event_key):
+                safe_create_appointment_admin_notification(
+                    table_name=table_name,
+                    id_column=id_column,
+                    record_id=record_id,
+                    event_type="appointment_auto_cancelled",
+                    title="Appointment auto-cancelled",
+                    action_text="was automatically cancelled because it was still pending on its scheduled date",
+                    severity="warning",
+                    link="/admin/history",
+                    event_key=event_key,
+                    metadata={"source": "appointment_table_reconcile"},
+                )
+            return updated_record, "cancelled"
+
+        if normalized_status in {"confirmed", "scheduled"} and appointment_date < today_in_manila:
+            event_key = f"appointment-passed-needs-completion:{entity_type}:{record_id}:{appointment_date_value}"
+            if not admin_notification_event_exists(event_key):
+                safe_create_appointment_admin_notification(
+                    table_name=table_name,
+                    id_column=id_column,
+                    record_id=record_id,
+                    event_type="appointment_passed_needs_completion",
+                    title="This appointment has already passed, do you want to mark it as complete?",
+                    action_text="has already passed. Do you want to mark it as complete?",
+                    severity="warning",
+                    link=f"/admin/schedule?appointment={entity_type}-{record_id}",
+                    event_key=event_key,
+                    metadata={
+                        "source": "appointment_table_reconcile",
+                        "actionPrompt": "This appointment has already passed, do you want to mark it as complete?",
+                    },
+                )
+
+        return record, normalized_status
+
+    def get_pending_urgency(status_value, appointment_date_value):
+        if (status_value or "").strip().lower() != "pending":
+            return {"is_urgent": False, "days_remaining": None}
+        appointment_date = parse_emr_date(appointment_date_value)
+        if not appointment_date:
+            return {"is_urgent": False, "days_remaining": None}
+        days_remaining = (appointment_date - today_in_manila).days
+        return {
+            "is_urgent": 0 <= days_remaining <= 5,
+            "days_remaining": days_remaining,
+        }
+
+    def maybe_create_pending_urgency_notification(table_name, id_column, record_id, status_value, appointment_date_value):
+        urgency = get_pending_urgency(status_value, appointment_date_value)
+        if include_history or not urgency["is_urgent"]:
+            return urgency
+        entity_type = "walkin" if table_name == "walkin_appointments" else "appointment"
+        event_key = f"pending-appointment-urgent:{entity_type}:{record_id}:{appointment_date_value}"
+        if not admin_notification_event_exists(event_key):
+            days_remaining = urgency["days_remaining"]
+            day_label = "today" if days_remaining == 0 else f"in {days_remaining} day{'s' if days_remaining != 1 else ''}"
+            safe_create_appointment_admin_notification(
+                table_name=table_name,
+                id_column=id_column,
+                record_id=record_id,
+                event_type='pending_appointment_urgent',
+                title='Pending appointment needs review',
+                action_text=f'is still pending and scheduled {day_label}',
+                severity='warning',
+                link='/admin/schedule',
+                event_key=event_key,
+                metadata={
+                    "daysRemaining": days_remaining,
+                    "urgencyWindowDays": 5,
+                    "source": "appointment_table_reconcile",
+                },
+            )
+        return urgency
 
     for app in appointments:
         owner = patients_by_id.get(str(app.get("owner_id")), {})
@@ -9596,8 +8578,16 @@ def build_admin_appointment_rows(include_history=False, actor_id=None):
         latest_reschedule_request = latest_request_by_target.get(f"appointment-{app.get('appointment_id')}")
         medical_information = medical_information_by_target.get(f"appointment-{app.get('appointment_id')}")
         status = derive_schedule_status(app.get("status"), app.get("appointment_date"), latest_reschedule_request)
+        app, status = reconcile_appointment_schedule_state("appointments", "appointment_id", app, status)
         if not should_include(status):
             continue
+        urgency = maybe_create_pending_urgency_notification(
+            "appointments",
+            "appointment_id",
+            app.get("appointment_id"),
+            status,
+            app.get("appointment_date"),
+        )
 
         owner_name = get_profile_display_name(owner) or "Unknown Owner"
         pet_name = pet.get("pet_name") or "Unknown Pet"
@@ -9679,6 +8669,8 @@ def build_admin_appointment_rows(include_history=False, actor_id=None):
             "status": status,
             "displayStatus": status,
             "rawStatus": (app.get("status") or "pending").lower(),
+            "isUrgentPending": urgency["is_urgent"],
+            "urgencyDaysRemaining": urgency["days_remaining"],
             "medicalInformation": medical_information,
             "medical_information": medical_information,
             "latestRescheduleRequest": latest_reschedule_request,
@@ -9701,8 +8693,16 @@ def build_admin_appointment_rows(include_history=False, actor_id=None):
         latest_reschedule_request = latest_request_by_target.get(f"walkin-{walkin.get('walkin_id')}")
         medical_information = medical_information_by_target.get(f"walkin-{walkin.get('walkin_id')}")
         status = derive_schedule_status(walkin.get("status"), walkin.get("appointment_date"), latest_reschedule_request)
+        walkin, status = reconcile_appointment_schedule_state("walkin_appointments", "walkin_id", walkin, status)
         if not should_include(status):
             continue
+        urgency = maybe_create_pending_urgency_notification(
+            "walkin_appointments",
+            "walkin_id",
+            walkin.get("walkin_id"),
+            status,
+            walkin.get("appointment_date"),
+        )
         patient_name = f"{walkin.get('first_name', '')} {walkin.get('last_name', '')}".strip() or "Guest Patient"
         pet_name = walkin.get("pet_name") or "Unknown Pet"
         time_range = format_display_time_range(walkin.get("appointment_time"))
@@ -9784,6 +8784,8 @@ def build_admin_appointment_rows(include_history=False, actor_id=None):
             "status": status,
             "displayStatus": status,
             "rawStatus": (walkin.get("status") or "pending").lower(),
+            "isUrgentPending": urgency["is_urgent"],
+            "urgencyDaysRemaining": urgency["days_remaining"],
             "medicalInformation": medical_information,
             "medical_information": medical_information,
             "latestRescheduleRequest": latest_reschedule_request,
@@ -9800,7 +8802,13 @@ def build_admin_appointment_rows(include_history=False, actor_id=None):
         })
 
     formatted.sort(
-        key=lambda item: (item.get("sort_date") or "", item.get("sort_time") or "", item.get("id") or ""),
+        key=lambda item: (
+            0 if item.get("isUrgentPending") else 1,
+            item.get("urgencyDaysRemaining") if item.get("urgencyDaysRemaining") is not None else 999,
+            item.get("sort_date") or "",
+            item.get("sort_time") or "",
+            item.get("id") or "",
+        ),
         reverse=include_history
     )
 
@@ -9822,6 +8830,22 @@ def is_missing_relation_error(error, relation_name):
             or "does not exist" in normalized_message
             or "pgrst205" in normalized_message
             or "42p01" in normalized_message
+        )
+    )
+
+
+def is_missing_column_error(error, column_name):
+    message = str(error or "")
+    normalized_message = message.lower()
+    normalized_column = str(column_name or "").lower()
+    return (
+        normalized_column in normalized_message
+        and (
+            "schema cache" in normalized_message
+            or "could not find" in normalized_message
+            or "does not exist" in normalized_message
+            or "pgrst204" in normalized_message
+            or "42703" in normalized_message
         )
     )
 
@@ -10347,6 +9371,34 @@ def sync_billing_invoice_inventory_stock_out(invoice_record, product_items=None,
     for payload in payloads:
         result = persist_inventory_transaction(payload)
         notify_inventory_transaction_created(result, payload)
+        record_inventory_transaction_audit(
+            result,
+            payload,
+            event="Billing Stock Deducted",
+            actor_data={"processedBy": payload.get("processed_by")},
+            metadata={
+                "source_event": "billing_invoice_stock_out",
+                "billing_invoice_id": (invoice_record or {}).get("billing_invoice_id"),
+                "invoice_number": (invoice_record or {}).get("invoice_number"),
+                "customer_name": (invoice_record or {}).get("customer_name"),
+            },
+        )
+        record_billing_audit_event(
+            "Billing Inventory Deducted",
+            invoice_record,
+            actor_data={"processedBy": payload.get("processed_by")},
+            branch_id=payload.get("branch_id"),
+            summary=(
+                f"Inventory was deducted for billing invoice "
+                f"{(invoice_record or {}).get('invoice_number') or (invoice_record or {}).get('billing_invoice_id')}."
+            ),
+            status="Success",
+            metadata={
+                "inventory_transaction_id": (result.get("transaction") or {}).get("inventory_transaction_id"),
+                "reference_number": (result.get("transaction") or {}).get("reference_number"),
+                "item_count": len(result.get("items") or []),
+            },
+        )
         for item in (result.get("items") or []):
             notify_inventory_stock_state_transition(
                 {
@@ -10664,7 +9716,7 @@ def build_billing_source_records(actor_id=None):
                 "services": service_names,
                 "serviceItems": service_items,
                 "amount": amount,
-                "branchId": None,
+                "branchId": visit.get("branchId") or visit.get("branch_id"),
                 "status": "completed",
                 "billingInvoiceId": visit.get("billingInvoiceId"),
                 "billingInvoiceNumber": visit.get("billingInvoiceNumber"),
@@ -10859,6 +9911,26 @@ def build_billing_source_records(actor_id=None):
     }
 
 
+def resolve_billing_source_branch_id(source_record_type, source_record_id):
+    normalized_type = str(source_record_type or "").strip().lower()
+    if normalized_type in {"walk-in", "walkin_appointment"}:
+        normalized_type = "walkin"
+    if normalized_type not in {"appointment", "walkin", "visit"} or source_record_id in (None, ""):
+        return None
+
+    try:
+        if normalized_type == "appointment":
+            source_record = get_single_row("appointments", "appointment_id", source_record_id)
+        elif normalized_type == "walkin":
+            source_record = get_single_row("walkin_appointments", "walkin_id", source_record_id)
+        else:
+            source_record = get_single_row("medical_record_visits", "medical_record_visit_id", source_record_id)
+        return parse_branch_id((source_record or {}).get("branch_id"))
+    except Exception as source_error:
+        print(f"Billing source branch lookup error: {source_error}")
+        return None
+
+
 def generate_billing_invoice_number():
     current_year = get_current_manila_date().year
     response = execute_with_retry(
@@ -10890,6 +9962,66 @@ def calculate_billing_discount_amount(subtotal, discount_type, discount_value=No
         return round(min(numeric_value, rounded_subtotal), 2)
 
     return 0.0
+
+
+def build_billing_installment_plan(payment_method, base_total, requested_months=None):
+    if str(payment_method or "").strip().lower() != "installment":
+        return {
+            "months": None,
+            "interest_rate": 0.0,
+            "interest_amount": 0.0,
+            "down_payment_rate": 0.0,
+            "down_payment_amount": 0.0,
+            "total_amount": round(float(base_total or 0), 2),
+        }
+
+    if requested_months in (None, ""):
+        raise ValueError("installmentMonths is required")
+
+    months = coerce_int(requested_months, "installmentMonths", minimum=1)
+    if months not in BILLING_INSTALLMENT_INTEREST_RATES:
+        raise ValueError("installmentMonths must be 3, 6, or 9")
+
+    safe_base_total = round(max(float(base_total or 0), 0), 2)
+    interest_rate = BILLING_INSTALLMENT_INTEREST_RATES[months]
+    interest_amount = round(safe_base_total * interest_rate, 2)
+    total_amount = round(safe_base_total + interest_amount, 2)
+    down_payment_rate = BILLING_INSTALLMENT_DOWN_PAYMENT_RATES[months]
+    down_payment_amount = calculate_billing_installment_down_payment(total_amount, months)
+
+    return {
+        "months": months,
+        "interest_rate": interest_rate,
+        "interest_amount": interest_amount,
+        "down_payment_rate": down_payment_rate,
+        "down_payment_amount": down_payment_amount,
+        "total_amount": total_amount,
+    }
+
+
+def calculate_billing_installment_down_payment(total_amount, installment_months):
+    months = int(installment_months or 0)
+    down_payment_rate = BILLING_INSTALLMENT_DOWN_PAYMENT_RATES.get(months, 0)
+    safe_total = round(max(float(total_amount or 0), 0), 2)
+    if safe_total <= 0 or down_payment_rate <= 0:
+        return 0.0
+    return float(min(math.ceil(safe_total * down_payment_rate), safe_total))
+
+
+def calculate_billing_contract_monthly_due(total_amount, installment_months):
+    months = int(installment_months or 0)
+    if months <= 0:
+        return 0.0
+    down_payment_amount = calculate_billing_installment_down_payment(total_amount, months)
+    financed_balance = max(float(total_amount or 0) - down_payment_amount, 0)
+    return round(financed_balance / months, 2)
+
+
+def calculate_billing_monthly_due(remaining_balance, installment_months):
+    months = int(installment_months or 0)
+    if months <= 0:
+        return 0.0
+    return round(max(float(remaining_balance or 0), 0) / months, 2)
 
 
 def derive_billing_payment_status(payment_method, explicit_status=None):
@@ -10964,6 +10096,186 @@ def build_billing_payment_handler_lookup(payment_records):
         return {}
 
 
+def normalize_billing_payment_reference(value):
+    return str(value or "").strip()[:120]
+
+
+def is_billing_numeric_payment_reference(value):
+    return bool(re.fullmatch(r"\d+", str(value or "").strip()))
+
+
+def get_payment_reference_from_request(data, *keys):
+    data = data or {}
+    for key in keys:
+        value = data.get(key)
+        if value not in (None, ""):
+            return normalize_billing_payment_reference(value)
+    return ""
+
+
+def payment_state_requires_reference(payment_method, initial_payment_method, payment_amount):
+    normalized_payment_method = str(payment_method or "").strip().lower()
+    normalized_entry_method = str(initial_payment_method or "").strip().lower()
+    resolved_method = normalized_entry_method if normalized_payment_method == "installment" else normalized_payment_method
+    return resolved_method == "gcash" and float(payment_amount or 0) > 0
+
+
+def merge_payment_note_with_reference(note, reference):
+    clean_note = str(note or "").strip()
+    clean_reference = normalize_billing_payment_reference(reference)
+    if not clean_reference:
+        return clean_note or None
+    reference_note = f"Reference: {clean_reference}"
+    return f"{reference_note} | {clean_note}" if clean_note else reference_note
+
+
+def insert_billing_payment_record(payment_payload):
+    try:
+        payment_response = supabase_admin.table("billing_invoice_payments").insert(payment_payload).execute()
+        return payment_response.data or [payment_payload]
+    except Exception as e:
+        if "payment_reference" in (payment_payload or {}) and is_missing_column_error(e, "payment_reference"):
+            fallback_payload = dict(payment_payload)
+            reference = fallback_payload.pop("payment_reference", "")
+            fallback_payload["notes"] = merge_payment_note_with_reference(fallback_payload.get("notes"), reference)
+            payment_response = supabase_admin.table("billing_invoice_payments").insert(fallback_payload).execute()
+            return payment_response.data or [fallback_payload]
+        raise
+
+
+def merge_invoice_note_with_installment_plan(note, invoice_payload):
+    clean_note = str(note or "").strip()
+    if str((invoice_payload or {}).get("payment_method") or "").lower() != "installment":
+        return clean_note or None
+
+    plan_note = (
+        f"Installment plan: {(invoice_payload or {}).get('installment_months')} months, "
+        f"{round(float((invoice_payload or {}).get('installment_interest_rate') or 0) * 100)}% interest, "
+        f"downpayment {format_audit_money((invoice_payload or {}).get('amount_paid'))}, "
+        f"monthly due {format_audit_money((invoice_payload or {}).get('installment_monthly_due'))}."
+    )
+    return f"{clean_note} | {plan_note}" if clean_note else plan_note
+
+
+def parse_billing_installment_plan_from_note(note):
+    clean_note = str(note or "")
+    if "Installment plan:" not in clean_note:
+        return {}
+
+    match = re.search(
+        r"Installment plan:\s*(?P<months>\d+)\s+months,\s*"
+        r"(?P<interest_rate>\d+(?:\.\d+)?)%\s+interest,\s*"
+        r"downpayment\s+(?P<downpayment>(?:PHP|\u20b1)?\s*[\d,]+(?:\.\d+)?),\s*"
+        r"monthly due\s+(?P<monthly_due>(?:PHP|\u20b1)?\s*[\d,]+(?:\.\d+)?)",
+        clean_note,
+        re.IGNORECASE,
+    )
+    if not match:
+        return {}
+
+    return {
+        "installment_months": int(match.group("months")),
+        "installment_interest_rate": round(float(match.group("interest_rate")) / 100, 4),
+        "installment_downpayment_amount": parse_billing_money_amount(match.group("downpayment")),
+        "installment_monthly_due": parse_billing_money_amount(match.group("monthly_due")),
+    }
+
+
+def parse_billing_money_amount(value):
+    clean_value = re.sub(r"[^\d.]", "", str(value or ""))
+    try:
+        return round(float(clean_value), 2)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def coerce_billing_optional_int(value):
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def resolve_billing_installment_metadata(record, payment_state):
+    if str((record or {}).get("payment_method") or "").lower() != "installment":
+        return {
+            "months": None,
+            "interest_rate": 0.0,
+            "interest_amount": 0.0,
+            "monthly_due": 0.0,
+        }
+
+    note_plan = parse_billing_installment_plan_from_note((record or {}).get("notes"))
+    months = coerce_billing_optional_int(
+        (record or {}).get("installment_months")
+        or note_plan.get("installment_months")
+    )
+    interest_rate = float(
+        (record or {}).get("installment_interest_rate")
+        or note_plan.get("installment_interest_rate")
+        or 0
+    )
+
+    base_total = round(
+        float((record or {}).get("subtotal") or 0)
+        + float((record or {}).get("tax_amount") or 0)
+        - float((record or {}).get("discount_amount") or 0),
+        2,
+    )
+    stored_interest_amount = float((record or {}).get("installment_interest_amount") or 0)
+    interest_amount = stored_interest_amount
+    if interest_amount <= 0 and interest_rate > 0 and base_total > 0:
+        interest_amount = round(base_total * interest_rate, 2)
+
+    monthly_due = float((record or {}).get("installment_monthly_due") or 0)
+    if monthly_due <= 0:
+        monthly_due = calculate_billing_contract_monthly_due((record or {}).get("total_amount"), months)
+    if monthly_due <= 0:
+        monthly_due = float(note_plan.get("installment_monthly_due") or 0)
+    if monthly_due <= 0:
+        monthly_due = calculate_billing_monthly_due(payment_state["remaining_balance"], months)
+
+    return {
+        "months": months,
+        "interest_rate": interest_rate,
+        "interest_amount": round(float(interest_amount or 0), 2),
+        "monthly_due": round(float(monthly_due or 0), 2),
+    }
+
+
+def insert_billing_invoice_record(invoice_payload):
+    try:
+        invoice_response = supabase_admin.table("billing_invoices").insert(invoice_payload).execute()
+        return invoice_response.data or []
+    except Exception as e:
+        if any(
+            key in (invoice_payload or {}) and is_missing_column_error(e, key)
+            for key in (
+                "installment_months",
+                "installment_interest_rate",
+                "installment_interest_amount",
+                "installment_monthly_due",
+            )
+        ):
+            fallback_payload = dict(invoice_payload)
+            fallback_payload["notes"] = merge_invoice_note_with_installment_plan(
+                fallback_payload.get("notes"),
+                fallback_payload,
+            )
+            for key in (
+                "installment_months",
+                "installment_interest_rate",
+                "installment_interest_amount",
+                "installment_monthly_due",
+            ):
+                fallback_payload.pop(key, None)
+            invoice_response = supabase_admin.table("billing_invoices").insert(fallback_payload).execute()
+            return invoice_response.data or []
+        raise
+
+
 def normalize_billing_payment_record(record, handler_lookup=None):
     payment_date = str(record.get("payment_date") or "")
     if payment_date and "T" in payment_date:
@@ -10975,6 +10287,7 @@ def normalize_billing_payment_record(record, handler_lookup=None):
         "id": str(record.get("billing_invoice_payment_id") or ""),
         "amount": round(float(record.get("payment_amount") or 0), 2),
         "paymentMethod": record.get("payment_method") or "cash",
+        "paymentReference": record.get("payment_reference") or "",
         "date": payment_date,
         "time": format_display_time(str(record.get("payment_time") or "")),
         "handledBy": (handler_lookup or {}).get(actor_id, ""),
@@ -11031,6 +10344,7 @@ def normalize_billing_invoice_record(record, service_items=None, product_items=N
         record.get("amount_paid"),
     )
     payment_method = record.get("payment_method") or "cash"
+    installment_metadata = resolve_billing_installment_metadata(record, payment_state)
 
     return {
         "id": str(record.get("billing_invoice_id") or ""),
@@ -11050,6 +10364,10 @@ def normalize_billing_invoice_record(record, service_items=None, product_items=N
         "discountType": record.get("discount_type") or "none",
         "discountValue": float(record.get("discount_value") or 0) if record.get("discount_value") not in (None, "") else None,
         "discountIsPercentage": bool(record.get("discount_is_percentage")) if record.get("discount_is_percentage") is not None else None,
+        "installmentMonths": installment_metadata["months"],
+        "installmentInterestRate": installment_metadata["interest_rate"],
+        "installmentInterestAmount": installment_metadata["interest_amount"],
+        "installmentMonthlyDue": installment_metadata["monthly_due"],
         "total": round(float(record.get("total_amount") or 0), 2),
         "amountPaid": payment_state["amount_paid"],
         "remainingBalance": payment_state["remaining_balance"],
@@ -11092,1137 +10410,6 @@ def fetch_billing_invoice_with_details(invoice_id):
     )
 
 
-def parse_analytics_date(value, fallback):
-    raw = str(value or "").strip()
-    if not raw:
-        return fallback
-    try:
-        return datetime.strptime(raw, "%Y-%m-%d").date()
-    except ValueError:
-        return fallback
-
-
-def parse_analytics_row_date(value):
-    if isinstance(value, date):
-        return value
-    raw = str(value or "").strip()
-    if not raw:
-        return None
-    if "T" in raw:
-        raw = raw.split("T", 1)[0]
-    try:
-        return datetime.strptime(raw[:10], "%Y-%m-%d").date()
-    except ValueError:
-        return None
-
-
-def analytics_float(value, default=0.0):
-    try:
-        return float(value or default)
-    except (TypeError, ValueError):
-        return float(default)
-
-
-def analytics_int(value, default=0):
-    try:
-        return int(value or default)
-    except (TypeError, ValueError):
-        return int(default)
-
-
-def analytics_change_percent(current_value, previous_value):
-    current_number = analytics_float(current_value)
-    previous_number = analytics_float(previous_value)
-    if previous_number == 0:
-        return 100 if current_number > 0 else 0
-    return round(((current_number - previous_number) / previous_number) * 100)
-
-
-def analytics_invoice_revenue(invoice):
-    amount_paid = analytics_float(invoice.get("amount_paid"))
-    total_amount = analytics_float(invoice.get("total_amount"))
-    payment_status = str(invoice.get("payment_status") or "").strip().lower()
-    if amount_paid > 0:
-        return amount_paid
-    if payment_status == "paid":
-        return total_amount
-    return 0.0
-
-
-def analytics_is_valid_invoice(invoice):
-    status = str(invoice.get("status") or "").strip().lower()
-    return status in ("", "completed")
-
-
-def analytics_hour_label(hour_value):
-    hour_number = int(hour_value)
-    suffix = "AM" if hour_number < 12 else "PM"
-    display_hour = hour_number % 12 or 12
-    return f"{display_hour} {suffix}"
-
-
-def analytics_extract_hour(value):
-    raw = str(value or "").strip()
-    if not raw:
-        return None
-    try:
-        return int(raw.split(":", 1)[0])
-    except (TypeError, ValueError):
-        return None
-
-
-def fetch_analytics_table_rows(table_name, date_column=None, start_date=None, end_date=None, branch_id=None, context=None):
-    query = supabase_admin.table(table_name).select("*")
-    if date_column and start_date:
-        query = query.gte(date_column, start_date.isoformat())
-    if date_column and end_date:
-        query = query.lte(date_column, end_date.isoformat())
-    if branch_id not in (None, ""):
-        query = query.eq("branch_id", int(branch_id))
-    return execute_with_retry(
-        lambda: query.execute(),
-        context=context or f"Fetch analytics {table_name}"
-    ).data or []
-
-
-def analytics_get_random_forest_regressor():
-    try:
-        from sklearn.ensemble import RandomForestRegressor
-        return RandomForestRegressor, None
-    except Exception as exc:
-        return None, str(exc)
-
-
-def analytics_date_features(day_value, base_date):
-    days_from_start = (day_value - base_date).days
-    return [
-        days_from_start,
-        day_value.weekday(),
-        day_value.day,
-        day_value.month,
-        1 if day_value.weekday() >= 5 else 0,
-    ]
-
-
-def analytics_average_for_window(value_by_date, end_date, days=7):
-    values = [
-        analytics_float(value_by_date.get(end_date - timedelta(days=offset)))
-        for offset in range(1, days + 1)
-    ]
-    return round(sum(values) / len(values), 2) if values else 0
-
-
-def analytics_build_rich_daily_feature(day_value, base_date, metrics_by_date):
-    revenue_by_date = metrics_by_date.get("revenue", {})
-    transaction_count_by_date = metrics_by_date.get("transactions", {})
-    appointment_count_by_date = metrics_by_date.get("appointments", {})
-    service_revenue_by_date = metrics_by_date.get("serviceRevenue", {})
-    product_revenue_by_date = metrics_by_date.get("productRevenue", {})
-
-    previous_day = day_value - timedelta(days=1)
-    return [
-        *analytics_date_features(day_value, base_date),
-        analytics_float(revenue_by_date.get(previous_day)),
-        analytics_average_for_window(revenue_by_date, day_value, 7),
-        analytics_average_for_window(transaction_count_by_date, day_value, 7),
-        analytics_average_for_window(appointment_count_by_date, day_value, 7),
-        analytics_average_for_window(service_revenue_by_date, day_value, 7),
-        analytics_average_for_window(product_revenue_by_date, day_value, 7),
-    ]
-
-
-def analytics_rich_weekday_fallback_predictions(metrics_by_date, future_dates, fallback_average):
-    revenue_by_date = metrics_by_date.get("revenue", {})
-    return analytics_weekday_fallback_predictions(revenue_by_date, future_dates, fallback_average)
-
-
-def analytics_predict_rich_daily_revenue(metrics_by_date, history_start, history_end, future_dates, fallback_average=0, min_samples=21, min_positive_samples=5):
-    future_dates = list(future_dates or [])
-    revenue_by_date = metrics_by_date.get("revenue", {})
-    if not future_dates:
-        return {
-            "mode": "trend",
-            "reason": "no future dates requested",
-            "predictions": [],
-            "trainingSamples": 0,
-        }
-
-    history_days = max((history_end - history_start).days + 1, 1)
-    history_dates = [history_start + timedelta(days=offset) for offset in range(history_days)]
-    samples = [
-        analytics_build_rich_daily_feature(day_value, history_start, metrics_by_date)
-        for day_value in history_dates
-    ]
-    targets = [analytics_float(revenue_by_date.get(day_value)) for day_value in history_dates]
-
-    RandomForestRegressor, dependency_error = analytics_get_random_forest_regressor()
-    if dependency_error:
-        return {
-            "mode": "trend",
-            "reason": "scikit-learn is not installed",
-            "dependencyError": dependency_error,
-            "predictions": analytics_rich_weekday_fallback_predictions(
-                metrics_by_date,
-                future_dates,
-                analytics_float(fallback_average),
-            ),
-            "trainingSamples": 0,
-            "featureSet": "rich_daily_lagged",
-        }
-
-    clean_samples = []
-    clean_targets = []
-    for sample, target in zip(samples, targets):
-        try:
-            clean_samples.append([float(value) for value in sample])
-            clean_targets.append(float(target or 0))
-        except (TypeError, ValueError):
-            continue
-
-    positive_samples = sum(1 for target in clean_targets if target > 0)
-    unique_targets = {round(target, 2) for target in clean_targets}
-    if len(clean_samples) < min_samples or positive_samples < min_positive_samples or len(unique_targets) < 2:
-        return {
-            "mode": "trend",
-            "reason": "not enough historical data for RandomForestRegressor",
-            "predictions": analytics_rich_weekday_fallback_predictions(
-                metrics_by_date,
-                future_dates,
-                analytics_float(fallback_average),
-            ),
-            "trainingSamples": len(clean_samples),
-            "positiveSamples": positive_samples,
-            "featureSet": "rich_daily_lagged",
-        }
-
-    future_metrics = {
-        key: dict(value or {})
-        for key, value in (metrics_by_date or {}).items()
-    }
-
-    try:
-        model = RandomForestRegressor(
-            n_estimators=180,
-            random_state=42,
-            min_samples_leaf=1,
-            max_features="sqrt",
-        )
-        model.fit(clean_samples, clean_targets)
-        predictions = []
-        for day_value in future_dates:
-            feature = analytics_build_rich_daily_feature(day_value, history_start, future_metrics)
-            prediction = round(max(float(model.predict([[float(value) for value in feature]])[0]), 0), 2)
-            predictions.append(prediction)
-            future_metrics.setdefault("revenue", {})[day_value] = prediction
-            future_metrics.setdefault("transactions", {})[day_value] = analytics_average_for_window(future_metrics.get("transactions", {}), day_value, 7)
-            future_metrics.setdefault("appointments", {})[day_value] = analytics_average_for_window(future_metrics.get("appointments", {}), day_value, 7)
-            future_metrics.setdefault("serviceRevenue", {})[day_value] = analytics_average_for_window(future_metrics.get("serviceRevenue", {}), day_value, 7)
-            future_metrics.setdefault("productRevenue", {})[day_value] = analytics_average_for_window(future_metrics.get("productRevenue", {}), day_value, 7)
-
-        return {
-            "mode": "ml",
-            "reason": None,
-            "predictions": predictions,
-            "trainingSamples": len(clean_samples),
-            "positiveSamples": positive_samples,
-            "featureSet": "rich_daily_lagged",
-        }
-    except Exception as exc:
-        return {
-            "mode": "trend",
-            "reason": f"RandomForestRegressor failed: {exc}",
-            "predictions": analytics_rich_weekday_fallback_predictions(
-                metrics_by_date,
-                future_dates,
-                analytics_float(fallback_average),
-            ),
-            "trainingSamples": len(clean_samples),
-            "positiveSamples": positive_samples,
-            "featureSet": "rich_daily_lagged",
-        }
-
-
-def analytics_hour_features(day_value, hour_value, base_date):
-    return [*analytics_date_features(day_value, base_date), int(hour_value)]
-
-
-def analytics_fit_predict_random_forest(samples, targets, future_samples, min_samples=14, min_positive_samples=5):
-    RandomForestRegressor, dependency_error = analytics_get_random_forest_regressor()
-    if dependency_error:
-        return {
-            "mode": "trend",
-            "reason": "scikit-learn is not installed",
-            "dependencyError": dependency_error,
-            "predictions": [],
-            "trainingSamples": 0,
-        }
-
-    clean_samples = []
-    clean_targets = []
-    for sample, target in zip(samples, targets):
-        try:
-            clean_samples.append([float(value) for value in sample])
-            clean_targets.append(float(target or 0))
-        except (TypeError, ValueError):
-            continue
-
-    positive_samples = sum(1 for target in clean_targets if target > 0)
-    unique_targets = {round(target, 2) for target in clean_targets}
-    if len(clean_samples) < min_samples or positive_samples < min_positive_samples or len(unique_targets) < 2:
-        return {
-            "mode": "trend",
-            "reason": "not enough historical data for RandomForestRegressor",
-            "predictions": [],
-            "trainingSamples": len(clean_samples),
-            "positiveSamples": positive_samples,
-        }
-
-    try:
-        model = RandomForestRegressor(
-            n_estimators=120,
-            random_state=42,
-            min_samples_leaf=1,
-        )
-        model.fit(clean_samples, clean_targets)
-        predictions = model.predict(future_samples)
-        return {
-            "mode": "ml",
-            "reason": None,
-            "predictions": [round(max(float(value), 0), 2) for value in predictions],
-            "trainingSamples": len(clean_samples),
-            "positiveSamples": positive_samples,
-        }
-    except Exception as exc:
-        return {
-            "mode": "trend",
-            "reason": f"RandomForestRegressor failed: {exc}",
-            "predictions": [],
-            "trainingSamples": len(clean_samples),
-            "positiveSamples": positive_samples,
-        }
-
-
-def analytics_weekday_fallback_predictions(dated_values, future_dates, fallback_average):
-    predictions = []
-    for future_date in future_dates:
-        weekday_values = [
-            value
-            for date_key, value in dated_values.items()
-            if date_key.weekday() == future_date.weekday()
-        ]
-        forecast_value = round(sum(weekday_values) / len(weekday_values), 2) if weekday_values else fallback_average
-        predictions.append(round(max(forecast_value, 0), 2))
-    return predictions
-
-
-def analytics_predict_daily_values(dated_values, history_start, history_end, future_dates, fallback_average=0, min_samples=14, min_positive_samples=5):
-    future_dates = list(future_dates or [])
-    if not future_dates:
-        return {
-            "mode": "trend",
-            "reason": "no future dates requested",
-            "predictions": [],
-            "trainingSamples": 0,
-        }
-
-    history_days = max((history_end - history_start).days + 1, 1)
-    history_dates = [history_start + timedelta(days=offset) for offset in range(history_days)]
-    samples = [analytics_date_features(day_value, history_start) for day_value in history_dates]
-    targets = [analytics_float(dated_values.get(day_value)) for day_value in history_dates]
-    future_samples = [analytics_date_features(day_value, history_start) for day_value in future_dates]
-    result = analytics_fit_predict_random_forest(
-        samples,
-        targets,
-        future_samples,
-        min_samples=min_samples,
-        min_positive_samples=min_positive_samples,
-    )
-    result["featureSet"] = "calendar_date"
-    if result.get("mode") == "ml":
-        return result
-
-    result["predictions"] = analytics_weekday_fallback_predictions(
-        dated_values,
-        future_dates,
-        analytics_float(fallback_average),
-    )
-    result["featureSet"] = "calendar_date"
-    return result
-
-
-def analytics_predict_hourly_counts(hourly_counts, history_start, history_end, target_date, display_hours):
-    display_hours = list(display_hours or [])
-    if not display_hours:
-        return {
-            "mode": "trend",
-            "reason": "no display hours requested",
-            "predictionsByHour": {},
-            "trainingSamples": 0,
-        }
-
-    history_days = max((history_end - history_start).days + 1, 1)
-    history_dates = [history_start + timedelta(days=offset) for offset in range(history_days)]
-    samples = []
-    targets = []
-    for day_value in history_dates:
-        for hour_value in display_hours:
-            samples.append(analytics_hour_features(day_value, hour_value, history_start))
-            targets.append(analytics_float(hourly_counts.get((day_value, hour_value))))
-
-    future_samples = [
-        analytics_hour_features(target_date, hour_value, history_start)
-        for hour_value in display_hours
-    ]
-    result = analytics_fit_predict_random_forest(
-        samples,
-        targets,
-        future_samples,
-        min_samples=30,
-        min_positive_samples=5,
-    )
-    if result.get("mode") == "ml":
-        result["predictionsByHour"] = {
-            hour_value: round(prediction, 2)
-            for hour_value, prediction in zip(display_hours, result.get("predictions", []))
-        }
-        return result
-
-    day_count = max(len(history_dates), 1)
-    fallback_by_hour = {}
-    for hour_value in display_hours:
-        hour_total = sum(
-            analytics_float(hourly_counts.get((day_value, hour_value)))
-            for day_value in history_dates
-        )
-        fallback_by_hour[hour_value] = round(hour_total / day_count, 2)
-    result["predictionsByHour"] = fallback_by_hour
-    return result
-
-
-def analytics_trim_metrics_to_date(metrics_by_date, end_date):
-    return {
-        key: {
-            day_value: value
-            for day_value, value in (value_by_date or {}).items()
-            if day_value <= end_date
-        }
-        for key, value_by_date in (metrics_by_date or {}).items()
-    }
-
-
-def analytics_build_revenue_validation(dated_values, history_start, available_end, fallback_average=0, days=14, metrics_by_date=None):
-    available_dates = sorted(day_value for day_value, value in dated_values.items() if day_value <= available_end and analytics_float(value) > 0)
-    if len(available_dates) < 8:
-        return {
-            "mode": "trend",
-            "reason": "not enough actual revenue days for validation",
-            "accuracy": None,
-            "meanAbsoluteError": None,
-            "rows": [],
-            "trainingSamples": 0,
-        }
-
-    validation_end = available_dates[-1]
-    validation_start = max(available_dates[0], validation_end - timedelta(days=days - 1))
-    validation_dates = [
-        validation_start + timedelta(days=offset)
-        for offset in range((validation_end - validation_start).days + 1)
-    ]
-    validation_dates = [day_value for day_value in validation_dates if day_value in dated_values]
-    train_end = validation_start - timedelta(days=1)
-    if train_end < history_start or len(validation_dates) < 3:
-        return {
-            "mode": "trend",
-            "reason": "not enough earlier data for validation split",
-            "accuracy": None,
-            "meanAbsoluteError": None,
-            "rows": [],
-            "trainingSamples": 0,
-        }
-
-    if metrics_by_date:
-        validation_forecast = analytics_predict_rich_daily_revenue(
-            analytics_trim_metrics_to_date(metrics_by_date, train_end),
-            history_start,
-            train_end,
-            validation_dates,
-            fallback_average=fallback_average,
-            min_samples=21,
-            min_positive_samples=5,
-        )
-    else:
-        validation_forecast = analytics_predict_daily_values(
-            dated_values,
-            history_start,
-            train_end,
-            validation_dates,
-            fallback_average=fallback_average,
-            min_samples=21,
-            min_positive_samples=5,
-        )
-    predictions = validation_forecast.get("predictions", [])
-    rows = []
-    absolute_errors = []
-    percentage_errors = []
-    for day_value, predicted_value in zip(validation_dates, predictions):
-        actual_value = round(analytics_float(dated_values.get(day_value)), 2)
-        predicted_value = round(analytics_float(predicted_value), 2)
-        absolute_error = round(abs(actual_value - predicted_value), 2)
-        error_percent = round((absolute_error / actual_value) * 100, 1) if actual_value > 0 else None
-        rows.append({
-            "date": day_value.isoformat(),
-            "day": day_value.strftime("%b %d"),
-            "actual": actual_value,
-            "predicted": predicted_value,
-            "error": absolute_error,
-            "errorPercent": error_percent,
-        })
-        absolute_errors.append(absolute_error)
-        if error_percent is not None:
-            percentage_errors.append(error_percent)
-
-    mean_absolute_error = round(sum(absolute_errors) / len(absolute_errors), 2) if absolute_errors else None
-    mean_percentage_error = round(sum(percentage_errors) / len(percentage_errors), 1) if percentage_errors else None
-    accuracy = max(0, round(100 - mean_percentage_error, 1)) if mean_percentage_error is not None else None
-
-    return {
-        "mode": validation_forecast.get("mode"),
-        "reason": validation_forecast.get("reason"),
-        "accuracy": accuracy,
-        "meanAbsoluteError": mean_absolute_error,
-        "meanAbsolutePercentageError": mean_percentage_error,
-        "rows": rows,
-        "trainingSamples": validation_forecast.get("trainingSamples", 0),
-        "positiveSamples": validation_forecast.get("positiveSamples", 0),
-        "featureSet": validation_forecast.get("featureSet"),
-        "validationStartDate": validation_dates[0].isoformat() if validation_dates else None,
-        "validationEndDate": validation_dates[-1].isoformat() if validation_dates else None,
-    }
-
-
-def analytics_validation_score(validation_result):
-    accuracy = validation_result.get("accuracy") if validation_result else None
-    return float(accuracy) if accuracy is not None else -1
-
-
-def build_admin_analytics_overview(branch_id=None, start_date=None, end_date=None):
-    today = get_current_manila_date()
-    current_end = end_date or today
-    current_start = start_date or (current_end - timedelta(days=29))
-    if current_start > current_end:
-        current_start, current_end = current_end, current_start
-
-    period_days = max((current_end - current_start).days + 1, 1)
-    previous_end = current_start - timedelta(days=1)
-    previous_start = previous_end - timedelta(days=period_days - 1)
-    analytics_history_start = min(previous_start, current_end - timedelta(days=179))
-
-    branch_filter = int(branch_id) if branch_id not in (None, "", "all", "All") else None
-
-    branch_rows = execute_with_retry(
-        lambda: supabase_admin.table("branches").select("*").order("branch_id").execute(),
-        context="Fetch analytics branches"
-    ).data or []
-    branches = [
-        {
-            "id": row.get("branch_id"),
-            "name": row.get("branch_name") or f"Branch {row.get('branch_id')}",
-        }
-        for row in branch_rows
-    ]
-
-    invoice_rows = fetch_analytics_table_rows(
-        "billing_invoices",
-        "invoice_date",
-        analytics_history_start,
-        current_end,
-        branch_filter,
-        context="Fetch analytics billing invoices"
-    )
-    invoice_rows = [row for row in invoice_rows if analytics_is_valid_invoice(row)]
-    current_invoices = []
-    previous_invoices = []
-    current_invoice_ids = []
-    previous_invoice_ids = []
-    history_invoice_ids = []
-    invoice_date_by_id = {}
-
-    for invoice in invoice_rows:
-        invoice_date = parse_analytics_row_date(invoice.get("invoice_date"))
-        if not invoice_date:
-            continue
-        invoice_id = invoice.get("billing_invoice_id")
-        if invoice_id not in (None, ""):
-            history_invoice_ids.append(invoice_id)
-            invoice_date_by_id[str(invoice_id)] = invoice_date
-        if current_start <= invoice_date <= current_end:
-            current_invoices.append(invoice)
-            current_invoice_ids.append(invoice.get("billing_invoice_id"))
-        elif previous_start <= invoice_date <= previous_end:
-            previous_invoices.append(invoice)
-            previous_invoice_ids.append(invoice.get("billing_invoice_id"))
-
-    all_invoice_ids = [
-        invoice_id
-        for invoice_id in history_invoice_ids
-        if invoice_id not in (None, "")
-    ]
-    service_rows = []
-    product_rows = []
-    payment_rows = []
-    if all_invoice_ids:
-        service_rows = execute_with_retry(
-            lambda: supabase_admin.table("billing_invoice_service_items").select("*").in_("billing_invoice_id", all_invoice_ids).execute(),
-            context="Fetch analytics billing service items"
-        ).data or []
-        product_rows = execute_with_retry(
-            lambda: supabase_admin.table("billing_invoice_product_items").select("*").in_("billing_invoice_id", all_invoice_ids).execute(),
-            context="Fetch analytics billing product items"
-        ).data or []
-        payment_rows = execute_with_retry(
-            lambda: supabase_admin.table("billing_invoice_payments").select("*").in_("billing_invoice_id", all_invoice_ids).execute(),
-            context="Fetch analytics billing payments"
-        ).data or []
-
-    current_invoice_id_set = {str(invoice_id) for invoice_id in current_invoice_ids if invoice_id not in (None, "")}
-    previous_invoice_id_set = {str(invoice_id) for invoice_id in previous_invoice_ids if invoice_id not in (None, "")}
-
-    current_revenue = round(sum(analytics_invoice_revenue(invoice) for invoice in current_invoices), 2)
-    previous_revenue = round(sum(analytics_invoice_revenue(invoice) for invoice in previous_invoices), 2)
-    current_transaction_count = len(current_invoices)
-    previous_transaction_count = len(previous_invoices)
-    current_avg_transaction = round(current_revenue / current_transaction_count, 2) if current_transaction_count else 0
-    previous_avg_transaction = round(previous_revenue / previous_transaction_count, 2) if previous_transaction_count else 0
-
-    appointment_rows = fetch_analytics_table_rows(
-        "appointments",
-        "appointment_date",
-        analytics_history_start,
-        current_end,
-        branch_filter,
-        context="Fetch analytics appointments"
-    )
-    walkin_rows = fetch_analytics_table_rows(
-        "walkin_appointments",
-        "appointment_date",
-        analytics_history_start,
-        current_end,
-        branch_filter,
-        context="Fetch analytics walk-in appointments"
-    )
-
-    def split_completed_appointment_rows(rows):
-        current_rows = []
-        previous_rows = []
-        for row in rows:
-            if str(row.get("status") or "").strip().lower() != "completed":
-                continue
-            appointment_date = parse_analytics_row_date(row.get("appointment_date"))
-            if not appointment_date:
-                continue
-            if current_start <= appointment_date <= current_end:
-                current_rows.append(row)
-            elif previous_start <= appointment_date <= previous_end:
-                previous_rows.append(row)
-        return current_rows, previous_rows
-
-    current_appointments, previous_appointments = split_completed_appointment_rows(appointment_rows)
-    current_walkins, previous_walkins = split_completed_appointment_rows(walkin_rows)
-    completed_appointments = [*current_appointments, *current_walkins]
-    previous_completed_appointments = [*previous_appointments, *previous_walkins]
-
-    revenue_by_date = {}
-    historical_revenue_by_date = {}
-    historical_transaction_count_by_date = {}
-    historical_service_revenue_by_date = {}
-    historical_product_revenue_by_date = {}
-    historical_appointment_count_by_date = {}
-    appointments_by_date = {}
-    completed_appointment_history = []
-    appointments_by_date_hour = {}
-    for invoice in invoice_rows:
-        invoice_id = str(invoice.get("billing_invoice_id") or "")
-        invoice_date = invoice_date_by_id.get(invoice_id) or parse_analytics_row_date(invoice.get("invoice_date"))
-        if invoice_date:
-            historical_revenue_by_date[invoice_date] = historical_revenue_by_date.get(invoice_date, 0) + analytics_invoice_revenue(invoice)
-            historical_transaction_count_by_date[invoice_date] = historical_transaction_count_by_date.get(invoice_date, 0) + 1
-    for invoice in current_invoices:
-        invoice_date = parse_analytics_row_date(invoice.get("invoice_date"))
-        if invoice_date:
-            revenue_by_date[invoice_date] = revenue_by_date.get(invoice_date, 0) + analytics_invoice_revenue(invoice)
-    for appointment in [*appointment_rows, *walkin_rows]:
-        if str(appointment.get("status") or "").strip().lower() != "completed":
-            continue
-        appointment_date = parse_analytics_row_date(appointment.get("appointment_date"))
-        appointment_hour = analytics_extract_hour(appointment.get("appointment_time"))
-        if not appointment_date:
-            continue
-        completed_appointment_history.append(appointment)
-        historical_appointment_count_by_date[appointment_date] = historical_appointment_count_by_date.get(appointment_date, 0) + 1
-        if appointment_hour is not None:
-            key = (appointment_date, appointment_hour)
-            appointments_by_date_hour[key] = appointments_by_date_hour.get(key, 0) + 1
-    for appointment in completed_appointments:
-        appointment_date = parse_analytics_row_date(appointment.get("appointment_date"))
-        if appointment_date:
-            appointments_by_date[appointment_date] = appointments_by_date.get(appointment_date, 0) + 1
-
-    for service in service_rows:
-        invoice_id = str(service.get("billing_invoice_id") or "")
-        invoice_date = invoice_date_by_id.get(invoice_id)
-        if invoice_date:
-            historical_service_revenue_by_date[invoice_date] = historical_service_revenue_by_date.get(invoice_date, 0) + analytics_float(service.get("line_total"))
-
-    for product in product_rows:
-        invoice_id = str(product.get("billing_invoice_id") or "")
-        invoice_date = invoice_date_by_id.get(invoice_id)
-        if invoice_date:
-            historical_product_revenue_by_date[invoice_date] = historical_product_revenue_by_date.get(invoice_date, 0) + analytics_float(product.get("line_total"))
-
-    recent_start = max(current_start, current_end - timedelta(days=6))
-    recent_dates = [recent_start + timedelta(days=offset) for offset in range((current_end - recent_start).days + 1)]
-    recent_values = [revenue_by_date.get(day_value, 0) for day_value in recent_dates]
-    recent_average = round(sum(recent_values) / len(recent_values), 2) if recent_values else 0
-    if recent_average <= 0 and current_revenue > 0:
-        recent_average = round(current_revenue / period_days, 2)
-
-    future_period_dates = [current_end + timedelta(days=offset) for offset in range(1, period_days + 1)]
-    daily_forecast_metrics = {
-        "revenue": historical_revenue_by_date,
-        "transactions": historical_transaction_count_by_date,
-        "appointments": historical_appointment_count_by_date,
-        "serviceRevenue": historical_service_revenue_by_date,
-        "productRevenue": historical_product_revenue_by_date,
-    }
-    rich_revenue_forecast = analytics_predict_rich_daily_revenue(
-        daily_forecast_metrics,
-        analytics_history_start,
-        current_end,
-        future_period_dates,
-        fallback_average=recent_average,
-        min_samples=21,
-        min_positive_samples=5,
-    )
-    rich_revenue_validation = analytics_build_revenue_validation(
-        historical_revenue_by_date,
-        analytics_history_start,
-        current_end,
-        fallback_average=recent_average,
-        days=14,
-        metrics_by_date=daily_forecast_metrics,
-    )
-    calendar_revenue_forecast = analytics_predict_daily_values(
-        historical_revenue_by_date,
-        analytics_history_start,
-        current_end,
-        future_period_dates,
-        fallback_average=recent_average,
-        min_samples=21,
-        min_positive_samples=5,
-    )
-    calendar_revenue_validation = analytics_build_revenue_validation(
-        historical_revenue_by_date,
-        analytics_history_start,
-        current_end,
-        fallback_average=recent_average,
-        days=14,
-    )
-    if analytics_validation_score(rich_revenue_validation) >= analytics_validation_score(calendar_revenue_validation):
-        revenue_forecast = rich_revenue_forecast
-        revenue_validation = rich_revenue_validation
-    else:
-        revenue_forecast = calendar_revenue_forecast
-        revenue_validation = calendar_revenue_validation
-
-    future_revenue_by_date = {
-        day_value: prediction
-        for day_value, prediction in zip(future_period_dates, revenue_forecast.get("predictions", []))
-    }
-
-    sales_trend = []
-    for day_value in recent_dates:
-        actual_revenue = round(revenue_by_date.get(day_value, 0), 2)
-        sales_trend.append({
-            "day": day_value.strftime("%a"),
-            "actual": actual_revenue,
-            "predicted": actual_revenue,
-            "appointments": appointments_by_date.get(day_value, 0),
-        })
-    for offset in range(1, 4):
-        future_date = current_end + timedelta(days=offset)
-        weekday_values = [
-            revenue
-            for date_key, revenue in revenue_by_date.items()
-            if date_key.weekday() == future_date.weekday()
-        ]
-        forecast_value = future_revenue_by_date.get(future_date)
-        if forecast_value is None:
-            forecast_value = round(sum(weekday_values) / len(weekday_values), 2) if weekday_values else recent_average
-        sales_trend.append({
-            "day": f"{future_date.strftime('%a')} (Fcst)",
-            "actual": None,
-            "predicted": forecast_value,
-            "appointments": None,
-        })
-
-    invoice_period_by_id = {
-        **{str(invoice_id): "current" for invoice_id in current_invoice_ids if invoice_id not in (None, "")},
-        **{str(invoice_id): "previous" for invoice_id in previous_invoice_ids if invoice_id not in (None, "")},
-    }
-    service_current = {}
-    service_previous = {}
-    service_counts = {}
-    product_current = {}
-    product_previous = {}
-    product_counts = {}
-    product_revenue = {}
-    product_quantity_by_key_date = {}
-
-    for service in service_rows:
-        invoice_id = str(service.get("billing_invoice_id") or "")
-        period = invoice_period_by_id.get(invoice_id)
-        if not period:
-            continue
-        service_name = str(service.get("item_name") or "Service").strip() or "Service"
-        amount = analytics_float(service.get("line_total"))
-        quantity = analytics_int(service.get("quantity"), default=1)
-        if period == "current":
-            service_current[service_name] = service_current.get(service_name, 0) + amount
-            service_counts[service_name] = service_counts.get(service_name, 0) + quantity
-        else:
-            service_previous[service_name] = service_previous.get(service_name, 0) + amount
-
-    for product in product_rows:
-        invoice_id = str(product.get("billing_invoice_id") or "")
-        product_key = str(product.get("inventory_item_id") or product.get("item_name") or "").strip()
-        product_name = str(product.get("item_name") or "Product").strip() or "Product"
-        amount = analytics_float(product.get("line_total"))
-        quantity = analytics_int(product.get("quantity"), default=1)
-        invoice_date = invoice_date_by_id.get(invoice_id)
-        if product_key and invoice_date:
-            product_date_values = product_quantity_by_key_date.setdefault(product_key, {})
-            product_date_values[invoice_date] = product_date_values.get(invoice_date, 0) + quantity
-        period = invoice_period_by_id.get(invoice_id)
-        if not period:
-            continue
-        if period == "current":
-            product_current[product_key] = product_name
-            product_counts[product_key] = product_counts.get(product_key, 0) + quantity
-            product_revenue[product_key] = product_revenue.get(product_key, 0) + amount
-        else:
-            product_previous[product_key] = product_previous.get(product_key, 0) + quantity
-
-    top_services = [
-        {
-            "service": service_name,
-            "revenue": round(revenue, 2),
-            "count": service_counts.get(service_name, 0),
-            "trend": analytics_change_percent(revenue, service_previous.get(service_name, 0)),
-        }
-        for service_name, revenue in sorted(service_current.items(), key=lambda item: item[1], reverse=True)[:6]
-    ]
-
-    inventory_rows = fetch_analytics_table_rows(
-        "inventory_items",
-        None,
-        None,
-        None,
-        branch_filter,
-        context="Fetch analytics inventory items"
-    )
-    inventory_by_id = {
-        str(item.get("inventory_item_id")): item
-        for item in inventory_rows
-        if item.get("inventory_item_id") not in (None, "")
-    }
-
-    top_products = []
-    product_forecast_modes = []
-    product_future_dates = [current_end + timedelta(days=offset) for offset in range(1, 8)]
-    for product_key, quantity in sorted(product_counts.items(), key=lambda item: item[1], reverse=True)[:6]:
-        item = inventory_by_id.get(product_key)
-        stock = analytics_int((item or {}).get("current_stock"))
-        daily_usage = quantity / period_days if period_days else 0
-        days_until_out = round(stock / daily_usage, 1) if daily_usage > 0 else 999
-        product_forecast = analytics_predict_daily_values(
-            product_quantity_by_key_date.get(product_key, {}),
-            analytics_history_start,
-            current_end,
-            product_future_dates,
-            fallback_average=daily_usage,
-            min_samples=14,
-            min_positive_samples=3,
-        )
-        product_forecast_modes.append(product_forecast.get("mode", "trend"))
-        predicted_demand = round(sum(product_forecast.get("predictions", [])), 2)
-        top_products.append({
-            "product": product_current.get(product_key) or (item or {}).get("item_name") or "Product",
-            "quantitySold": quantity,
-            "revenue": round(product_revenue.get(product_key, 0), 2),
-            "daysUntilOut": days_until_out,
-            "predictedDemand": predicted_demand,
-            "demandForecastMode": product_forecast.get("mode", "trend"),
-        })
-
-    service_sales_total = round(sum(service_current.values()), 2)
-    product_sales_total = round(sum(product_revenue.values()), 2)
-    total_item_sales = service_sales_total + product_sales_total
-    if total_item_sales > 0:
-        service_share = round((service_sales_total / total_item_sales) * 100, 1)
-        product_share = round((product_sales_total / total_item_sales) * 100, 1)
-    else:
-        service_share = 0
-        product_share = 0
-
-    sales_distribution = [
-        {"name": "Services", "value": service_share, "color": "#3d67ee"},
-        {"name": "Products", "value": product_share, "color": "#10b981"},
-    ]
-
-    invoice_sales_by_hour = {}
-    for invoice in current_invoices:
-        invoice_hour = analytics_extract_hour(invoice.get("invoice_time"))
-        if invoice_hour is not None:
-            invoice_sales_by_hour[invoice_hour] = invoice_sales_by_hour.get(invoice_hour, 0) + analytics_invoice_revenue(invoice)
-
-    appointments_by_hour = {}
-    for appointment in completed_appointments:
-        appointment_hour = analytics_extract_hour(appointment.get("appointment_time"))
-        if appointment_hour is not None:
-            appointments_by_hour[appointment_hour] = appointments_by_hour.get(appointment_hour, 0) + 1
-
-    display_hours = sorted(set([*range(8, 18), *appointments_by_hour.keys(), *invoice_sales_by_hour.keys()]))
-    hourly_appointment_forecast = analytics_predict_hourly_counts(
-        appointments_by_date_hour,
-        analytics_history_start,
-        current_end,
-        current_end + timedelta(days=1),
-        display_hours,
-    )
-    predicted_appointments_by_hour = hourly_appointment_forecast.get("predictionsByHour", {})
-    peak_hours = [
-        {
-            "hour": analytics_hour_label(hour_value),
-            "appointments": appointments_by_hour.get(hour_value, 0),
-            "sales": round(invoice_sales_by_hour.get(hour_value, 0), 2),
-            "predicted": predicted_appointments_by_hour.get(hour_value, appointments_by_hour.get(hour_value, 0)),
-        }
-        for hour_value in display_hours
-    ]
-
-    inventory_items = []
-    for item in inventory_rows:
-        if bool(item.get("is_archived")):
-            continue
-        item_id = str(item.get("inventory_item_id") or "")
-        stock = analytics_int(item.get("current_stock"))
-        reorder_point = analytics_int(item.get("critical_stock_level"), default=10)
-        sold_quantity = product_counts.get(item_id, 0)
-        daily_usage = round(sold_quantity / period_days, 2) if period_days else 0
-        if daily_usage >= 3:
-            movement_rate = "fast"
-        elif daily_usage >= 1:
-            movement_rate = "medium"
-        else:
-            movement_rate = "slow"
-        days_until_out = round(stock / daily_usage, 1) if daily_usage > 0 else 999
-        recommended_reorder = max(reorder_point * 2, int(round(daily_usage * 14)))
-        inventory_items.append({
-            "id": item_id,
-            "name": item.get("item_name") or "Inventory Item",
-            "stock": stock,
-            "reorderPoint": reorder_point,
-            "movementRate": movement_rate,
-            "dailyUsage": daily_usage,
-            "daysUntilOut": days_until_out,
-            "recommendedReorder": recommended_reorder,
-        })
-    inventory_items = sorted(
-        inventory_items,
-        key=lambda item: (
-            item["stock"] > item["reorderPoint"],
-            item["daysUntilOut"],
-            item["stock"],
-        )
-    )[:10]
-
-    predicted_revenue = round(sum(revenue_forecast.get("predictions", [])), 2)
-    if predicted_revenue <= 0:
-        predicted_revenue = round((recent_average or (current_revenue / period_days if period_days else 0)) * period_days, 2)
-    predicted_revenue_change = analytics_change_percent(predicted_revenue, current_revenue)
-    forecast_mode = "ml" if revenue_forecast.get("mode") == "ml" else "trend"
-    ml_components = [
-        revenue_forecast.get("mode") == "ml",
-        hourly_appointment_forecast.get("mode") == "ml",
-        any(mode == "ml" for mode in product_forecast_modes),
-    ]
-    ml_component_count = sum(1 for is_ml in ml_components if is_ml)
-    forecast_label = "Random Forest Active" if forecast_mode == "ml" else "Trend Forecast Active"
-    selected_feature_label = "rich daily samples" if revenue_forecast.get("featureSet") == "rich_daily_lagged" else "calendar-day samples"
-    forecast_description = (
-        f"RandomForestRegressor trained on {revenue_forecast.get('trainingSamples', 0)} {selected_feature_label}"
-        if forecast_mode == "ml"
-        else f"Trend fallback: {revenue_forecast.get('reason') or 'not enough data for ML yet'}"
-    )
-
-    insights = []
-    revenue_change = analytics_change_percent(current_revenue, previous_revenue)
-    if current_revenue > 0:
-        revenue_direction = "up" if revenue_change >= 0 else "down"
-        insights.append({
-            "id": "growth-revenue",
-            "text": f"Revenue is {revenue_direction} {abs(revenue_change)}% versus the previous comparable period, indicating {'stronger recent sales activity' if revenue_change >= 0 else 'a period that needs sales review'}",
-            "type": "growth" if revenue_change >= 0 else "warning",
-            "icon": "📈" if revenue_change >= 0 else "⚠️",
-            "action": "Review the services and products driving this movement" if revenue_change >= 0 else "Review billing activity and recent appointment volume",
-        })
-
-    if top_services:
-        top_service = top_services[0]
-        insights.append({
-            "id": "growth-service",
-            "text": f"{top_service['service']} generated the highest service revenue at PHP {round(top_service['revenue']):,}, making it a strong candidate for promotion",
-            "type": "growth",
-            "icon": "✨",
-            "action": "Highlight this service in scheduling and package offers",
-        })
-
-    critical_inventory = [
-        item for item in inventory_items
-        if item["stock"] <= item["reorderPoint"] or item["daysUntilOut"] <= 3
-    ]
-    for critical_item in critical_inventory[:5]:
-        days_text = "soon" if critical_item["daysUntilOut"] >= 999 else f"in {critical_item['daysUntilOut']} days"
-        stock_context = (
-            f"stock is at {critical_item['stock']} unit(s), below the critical level of {critical_item['reorderPoint']}"
-            if critical_item["stock"] <= critical_item["reorderPoint"]
-            else f"recent movement projects stockout {days_text}"
-        )
-        insights.append({
-            "id": f"warning-stock-{critical_item['id']}",
-            "text": f"{critical_item['name']} needs inventory review because {stock_context}",
-            "type": "warning",
-            "icon": "💊",
-            "action": "Review reorder quantity and supplier lead time",
-        })
-
-    if peak_hours:
-        busiest_hour = max(peak_hours, key=lambda item: item.get("appointments") or 0)
-        if busiest_hour.get("appointments", 0) > 0:
-            insights.append({
-                "id": "opportunity-peak-hour",
-                "text": f"{busiest_hour['hour']} has the highest completed appointment volume in the selected period",
-                "type": "opportunity",
-                "icon": "⏰",
-                "action": "Use this hour as the staffing and slot-planning baseline",
-            })
-
-    if top_services and top_products:
-        insights.append({
-            "id": "opportunity-bundle",
-            "text": f"Pair {top_services[0]['service']} with {top_products[0]['product']} because both are top performers in the selected period",
-            "type": "opportunity",
-            "icon": "🎯",
-            "action": "Consider a service-and-product bundle offer",
-        })
-
-    if not insights:
-        insights.append({
-            "id": "opportunity-record-data",
-            "text": "Analytics intelligence will become more useful as more invoices, appointments, and product sales are recorded",
-            "type": "opportunity",
-            "icon": "AI",
-            "action": "Continue recording transactions to strengthen the forecast dataset",
-        })
-
-    return {
-        "branches": branches,
-        "filters": {
-            "branchId": branch_filter,
-            "startDate": current_start.isoformat(),
-            "endDate": current_end.isoformat(),
-            "previousStartDate": previous_start.isoformat(),
-            "previousEndDate": previous_end.isoformat(),
-            "trainingStartDate": analytics_history_start.isoformat(),
-            "trainingEndDate": current_end.isoformat(),
-        },
-        "kpis": {
-            "totalRevenue": current_revenue,
-            "totalRevenueChange": revenue_change,
-            "totalTransactions": current_transaction_count,
-            "totalTransactionsChange": analytics_change_percent(current_transaction_count, previous_transaction_count),
-            "averageTransaction": current_avg_transaction,
-            "averageTransactionChange": analytics_change_percent(current_avg_transaction, previous_avg_transaction),
-            "completedAppointments": len(completed_appointments),
-            "completedAppointmentsChange": analytics_change_percent(len(completed_appointments), len(previous_completed_appointments)),
-            "predictedRevenue": predicted_revenue,
-            "predictedRevenueChange": predicted_revenue_change,
-        },
-        "salesTrend": sales_trend,
-        "topServices": top_services,
-        "topProducts": top_products,
-        "salesDistribution": sales_distribution,
-        "peakHours": peak_hours,
-        "inventory": inventory_items,
-        "insights": insights,
-        "forecast": {
-            "mode": forecast_mode,
-            "label": forecast_label,
-            "description": forecast_description,
-            "algorithm": "RandomForestRegressor",
-            "mlComponentsActive": ml_component_count,
-            "revenue": {
-                "mode": revenue_forecast.get("mode"),
-                "reason": revenue_forecast.get("reason"),
-                "trainingSamples": revenue_forecast.get("trainingSamples", 0),
-                "positiveSamples": revenue_forecast.get("positiveSamples", 0),
-                "featureSet": revenue_forecast.get("featureSet", "rich_daily_lagged"),
-            },
-            "appointments": {
-                "mode": hourly_appointment_forecast.get("mode"),
-                "reason": hourly_appointment_forecast.get("reason"),
-                "trainingSamples": hourly_appointment_forecast.get("trainingSamples", 0),
-                "positiveSamples": hourly_appointment_forecast.get("positiveSamples", 0),
-            },
-            "validation": revenue_validation,
-            "dataRange": {
-                "trainingStartDate": analytics_history_start.isoformat(),
-                "trainingEndDate": current_end.isoformat(),
-                "forecastStartDate": future_period_dates[0].isoformat() if future_period_dates else None,
-                "forecastEndDate": future_period_dates[-1].isoformat() if future_period_dates else None,
-            },
-        },
-    }
-
-
-@app.route('/api/admin/analytics/overview', methods=['GET'])
-def get_admin_analytics_overview():
-    try:
-        branch_id_raw = request.args.get("branch_id", request.args.get("branchId"))
-        branch_id = None
-        if branch_id_raw not in (None, "", "all", "All"):
-            branch_id = coerce_int(branch_id_raw, "branch_id", minimum=1)
-
-        today = get_current_manila_date()
-        start_date = parse_analytics_date(
-            request.args.get("start_date", request.args.get("startDate")),
-            today - timedelta(days=29)
-        )
-        end_date = parse_analytics_date(
-            request.args.get("end_date", request.args.get("endDate")),
-            today
-        )
-
-        return jsonify(build_admin_analytics_overview(
-            branch_id=branch_id,
-            start_date=start_date,
-            end_date=end_date,
-        )), 200
-    except Exception as e:
-        print("Admin analytics overview error:", str(e))
-        return jsonify({"error": str(e)}), 400
-
-
 @app.route('/api/day-availability', methods=['GET'])
 def get_day_availability():
     try:
@@ -12246,8 +10433,28 @@ def create_day_availability():
             "day_of_week": day,
             "is_active": is_available,
         }).execute()
+        record_availability_audit_event(
+            "Day Availability Updated",
+            data=data,
+            target=f"{title_case_day(day)} Availability",
+            target_type="working_day",
+            target_id=day,
+            summary=f"{title_case_day(day)} was set to {'available' if is_available else 'unavailable'}.",
+            status="Success",
+            metadata={"day_of_week": day, "is_available": is_available},
+        )
         return jsonify({"message": "Day availability saved", "day_of_week": day, "is_available": is_available}), 200
     except Exception as e:
+        record_availability_audit_event(
+            "Day Availability Update Failed",
+            data=data,
+            target=f"{title_case_day(day)} Availability",
+            target_type="working_day",
+            target_id=day,
+            summary=f"{title_case_day(day)} availability update failed: {str(e)}",
+            status="Failed",
+            metadata={"day_of_week": day, "is_available": is_available},
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -12255,13 +10462,34 @@ def create_day_availability():
 def update_day_availability(day_name):
     data = request.get_json() or {}
     is_available = bool(data.get('is_available'))
+    day = (day_name or '').lower()
     try:
         supabase_admin.table('working_days').upsert({
-            "day_of_week": (day_name or '').lower(),
+            "day_of_week": day,
             "is_active": is_available,
         }).execute()
+        record_availability_audit_event(
+            "Day Availability Updated",
+            data=data,
+            target=f"{title_case_day(day)} Availability",
+            target_type="working_day",
+            target_id=day,
+            summary=f"{title_case_day(day)} was set to {'available' if is_available else 'unavailable'}.",
+            status="Success",
+            metadata={"day_of_week": day, "is_available": is_available},
+        )
         return jsonify({"message": f"{day_name} updated successfully"}), 200
     except Exception as e:
+        record_availability_audit_event(
+            "Day Availability Update Failed",
+            data=data,
+            target=f"{title_case_day(day)} Availability",
+            target_type="working_day",
+            target_id=day,
+            summary=f"{title_case_day(day)} availability update failed: {str(e)}",
+            status="Failed",
+            metadata={"day_of_week": day, "is_available": is_available},
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -12297,19 +10525,70 @@ def handle_time_slots_api(param):
                 }).execute()
 
             res = supabase_admin.table('time_slots').select('*').eq('day_of_week', day).execute()
+            saved_slots = res.data or []
+            record_availability_audit_event(
+                "Time Slots Updated",
+                data=data,
+                target=f"{title_case_day(day)} Time Slots",
+                target_type="time_slots",
+                target_id=day,
+                summary=f"Time slots for {title_case_day(day)} were saved with {len(saved_slots)} slot(s).",
+                status="Success",
+                metadata={
+                    "day_of_week": day,
+                    "slot_count": len(saved_slots),
+                },
+            )
             return jsonify({"timeSlots": res.data or []}), 200
         except Exception as e:
             print("Time slot save error:", str(e))
+            record_availability_audit_event(
+                "Time Slots Update Failed",
+                data=data,
+                target=f"{title_case_day(day)} Time Slots",
+                target_type="time_slots",
+                target_id=day,
+                summary=f"Time slots for {title_case_day(day)} failed to save: {str(e)}",
+                status="Failed",
+                metadata={"day_of_week": day, "slot_count": len(slots) if isinstance(slots, list) else 0},
+            )
             return jsonify({"error": str(e)}), 400
 
     slot_id = param
+    data = request.get_json(silent=True) or {}
     try:
         if str(slot_id).startswith('temp-'):
             return jsonify({"message": "Temp slot removed"}), 200
 
+        existing_slot = get_single_row("time_slots", "id", slot_id) or {}
         supabase_admin.table('time_slots').delete().eq('id', slot_id).execute()
+        day = existing_slot.get("day_of_week") or ""
+        record_availability_audit_event(
+            "Time Slot Deleted",
+            data=data,
+            target=f"{title_case_day(day)} Time Slot",
+            target_type="time_slot",
+            target_id=slot_id,
+            summary=f"Time slot {existing_slot.get('start_time') or ''} to {existing_slot.get('end_time') or ''} was deleted from {title_case_day(day)}.",
+            status="Warning",
+            metadata={
+                "day_of_week": day,
+                "slot_id": slot_id,
+                "start_time": existing_slot.get("start_time"),
+                "end_time": existing_slot.get("end_time"),
+            },
+        )
         return jsonify({"message": "Slot deleted successfully"}), 200
     except Exception as e:
+        record_availability_audit_event(
+            "Time Slot Delete Failed",
+            data=data,
+            target="Time Slot",
+            target_type="time_slot",
+            target_id=slot_id,
+            summary=f"Time slot delete failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -12343,6 +10622,7 @@ def create_admin_appointment():
         branch_scope, branch_error = require_actor_branch_scope(data)
         if branch_error:
             return jsonify({"error": branch_error}), 400
+        validate_admin_appointment_not_same_day(data.get('appointment_date') or data.get('date'))
         created = create_appointment_record(data, allow_walk_in=True, branch_scope=branch_scope)
         return jsonify(created), 200
     except ValueError as value_error:
@@ -12467,6 +10747,9 @@ def create_admin_reschedule_request(appointment_id):
         requested_by = parse_uuid_or_none(data.get("requested_by"))
         target_type = 'walkin' if table_name == 'walkin_appointments' else 'appointment'
 
+        validate_admin_reschedule_window(existing_record)
+        validate_admin_appointment_not_same_day(new_date, "New appointment date")
+
         for open_status in ('pending', 'needs_new_schedule'):
             supabase_admin.table('reschedule_requests').update({
                 "status": "cancelled",
@@ -12573,6 +10856,7 @@ def create_patient_reschedule_request(appointment_id):
 
         if not preferred_date or not preferred_time:
             return jsonify({"error": "Preferred date and time are required"}), 400
+        validate_patient_appointment_lead_time(preferred_date, "Preferred date")
 
         combined_note = build_patient_preference_note(
             preferred_date,
@@ -12798,6 +11082,11 @@ def choose_another_date(token):
             "Please choose a date within the current month or next month only."
         )
 
+    try:
+        validate_appointment_date_not_special(selected_preferred_date.isoformat(), "Preferred date")
+    except ValueError as value_error:
+        return render_choose_another_date_page(req, str(value_error))
+
     combined_note = build_patient_preference_note(
         preferred_date,
         preferred_time,
@@ -12849,12 +11138,12 @@ def choose_another_date(token):
 
 @app.route('/api/available-time-slots', methods=['GET'])
 def get_available_time_slots():
-    date = (request.args.get('date') or '').strip()
-    if not date:
+    date_param = (request.args.get('date') or '').strip()
+    if not date_param:
         return jsonify({"timeSlots": []}), 200
 
     try:
-        selected_date = datetime.strptime(date, "%Y-%m-%d").date()
+        selected_date = datetime.strptime(date_param, "%Y-%m-%d").date()
     except ValueError:
         return jsonify({"error": "Invalid date format. Expected YYYY-MM-DD."}), 400
 
@@ -13052,10 +11341,7 @@ def choose_another_date_from_web(request_id):
         if not preferred_date or not preferred_time:
             return jsonify({"error": "Preferred date and time are required"}), 400
 
-        try:
-            selected_preferred_date = datetime.strptime(preferred_date, "%Y-%m-%d").date()
-        except ValueError:
-            return jsonify({"error": "Please choose a valid preferred date."}), 400
+        selected_preferred_date = validate_patient_appointment_lead_time(preferred_date, "Preferred date")
 
         today_in_manila = get_current_manila_date()
         current_month_start = date(today_in_manila.year, today_in_manila.month, 1)
@@ -13184,6 +11470,11 @@ def review_reschedule_request(request_id):
 
             if not preferred_date or not preferred_time:
                 return jsonify({"error": "Patient preference is missing a preferred date or time"}), 400
+
+            table_name, id_column, resolved_id = resolve_appointment_target(req.get('target_id'), req.get('target_type'))
+            original_context = get_reschedule_email_context(table_name, id_column, resolved_id)
+            validate_admin_reschedule_window(original_context.get("record") or {})
+            validate_admin_appointment_not_same_day(preferred_date, "Preferred appointment date")
 
             table_name, id_column, resolved_id = apply_reschedule_to_target(req, preferred_date, preferred_time)
             supabase_admin.table('reschedule_requests').update({
@@ -13391,10 +11682,30 @@ def handle_special_dates():
         if special_date_payload["event_recurrence"] == "annual":
             existing_res = supabase_admin.table('special_dates').select('event_month,event_day').eq('event_recurrence', 'annual').eq('event_month', special_date_payload["event_month"]).eq('event_day', special_date_payload["event_day"]).execute()
             if existing_res.data:
+                record_availability_audit_event(
+                    "Special Date Creation Failed",
+                    data=data,
+                    target=special_date_payload.get("event_name") or "Special Date",
+                    target_type="special_date",
+                    target_id=f"{special_date_payload.get('event_month')}-{special_date_payload.get('event_day')}",
+                    summary="Special date creation failed because this annual special day already exists.",
+                    status="Failed",
+                    metadata=special_date_payload,
+                )
                 return jsonify({"error": "This annual special day already exists"}), 409
         else:
             existing_res = supabase_admin.table('special_dates').select('event_date').eq('event_recurrence', 'once').eq('event_date', special_date_payload["event_date"]).execute()
             if existing_res.data:
+                record_availability_audit_event(
+                    "Special Date Creation Failed",
+                    data=data,
+                    target=special_date_payload.get("event_name") or "Special Date",
+                    target_type="special_date",
+                    target_id=special_date_payload.get("event_date"),
+                    summary="Special date creation failed because this date is already marked as a special date.",
+                    status="Failed",
+                    metadata=special_date_payload,
+                )
                 return jsonify({"error": "This date is already marked as a special date"}), 409
 
         try:
@@ -13411,11 +11722,35 @@ def handle_special_dates():
             insert_res = supabase_admin.table('special_dates').insert(special_date_payload).execute()
 
         created_special_date = (insert_res.data or [special_date_payload])[0]
+        record_availability_audit_event(
+            "Special Date Added",
+            data=data,
+            target=created_special_date.get("event_name") or "Special Date",
+            target_type="special_date",
+            target_id=created_special_date.get("event_date") or f"{created_special_date.get('event_month')}-{created_special_date.get('event_day')}",
+            summary=f"Special date {created_special_date.get('event_name') or 'Special Date'} was added.",
+            status="Success",
+            metadata={
+                "event_recurrence": created_special_date.get("event_recurrence"),
+                "event_date": created_special_date.get("event_date"),
+                "event_month": created_special_date.get("event_month"),
+                "event_day": created_special_date.get("event_day"),
+            },
+        )
         return jsonify({
             "message": "Special date added successfully",
             "specialDate": created_special_date
         }), 200
     except Exception as e:
+        record_availability_audit_event(
+            "Special Date Creation Failed",
+            data=data,
+            target=data.get("event_name") or "Special Date",
+            target_type="special_date",
+            target_id=data.get("event_date"),
+            summary=f"Special date creation failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -13443,6 +11778,16 @@ def update_special_date(date):
                 if normalize_special_date_record(record) != normalize_special_date_record(current_record)
             ]
             if duplicate_records:
+                record_availability_audit_event(
+                    "Special Date Update Failed",
+                    data=data,
+                    target=special_date_payload.get("event_name") or "Special Date",
+                    target_type="special_date",
+                    target_id=f"{special_date_payload.get('event_month')}-{special_date_payload.get('event_day')}",
+                    summary="Special date update failed because this annual special day already exists.",
+                    status="Failed",
+                    metadata=special_date_payload,
+                )
                 return jsonify({"error": "This annual special day already exists"}), 409
         else:
             existing_res = supabase_admin.table('special_dates').select('*').eq('event_recurrence', 'once').eq('event_date', special_date_payload["event_date"]).execute()
@@ -13451,6 +11796,16 @@ def update_special_date(date):
                 if normalize_special_date_record(record) != normalize_special_date_record(current_record)
             ]
             if duplicate_records:
+                record_availability_audit_event(
+                    "Special Date Update Failed",
+                    data=data,
+                    target=special_date_payload.get("event_name") or "Special Date",
+                    target_type="special_date",
+                    target_id=special_date_payload.get("event_date"),
+                    summary="Special date update failed because this date is already marked as a special date.",
+                    status="Failed",
+                    metadata=special_date_payload,
+                )
                 return jsonify({"error": "This date is already marked as a special date"}), 409
 
         update_query = supabase_admin.table('special_dates').update(special_date_payload)
@@ -13472,28 +11827,81 @@ def update_special_date(date):
             update_res = supabase_admin.table('special_dates').update(special_date_payload).eq('event_date', date).execute()
 
         updated_special_date = (update_res.data or [special_date_payload])[0]
+        record_availability_audit_event(
+            "Special Date Updated",
+            data=data,
+            target=updated_special_date.get("event_name") or "Special Date",
+            target_type="special_date",
+            target_id=updated_special_date.get("event_date") or f"{updated_special_date.get('event_month')}-{updated_special_date.get('event_day')}",
+            summary=f"Special date {updated_special_date.get('event_name') or 'Special Date'} was updated.",
+            status="Success",
+            metadata={
+                "old_record": normalize_special_date_record(current_record),
+                "new_record": normalize_special_date_record(updated_special_date),
+            },
+        )
         return jsonify({
             "message": "Special date updated successfully",
             "specialDate": updated_special_date
         }), 200
     except Exception as e:
+        record_availability_audit_event(
+            "Special Date Update Failed",
+            data=data,
+            target=data.get("event_name") or "Special Date",
+            target_type="special_date",
+            target_id=date,
+            summary=f"Special date update failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
 @app.route('/api/special-dates/<date>', methods=['DELETE'])
 def delete_special_date(date):
+    data = request.get_json(silent=True) or {}
     try:
         recurrence = normalize_special_date_recurrence(request.args.get('event_recurrence') or request.args.get('recurrence_type'))
         event_month = request.args.get('event_month')
         event_day = request.args.get('event_day')
+        current_query = supabase_admin.table('special_dates').select('*')
+        if recurrence == "annual" and event_month and event_day:
+            current_query = current_query.eq('event_recurrence', 'annual').eq('event_month', int(event_month)).eq('event_day', int(event_day))
+        else:
+            current_query = current_query.eq('event_date', date)
+        current_rows = current_query.execute().data or []
+        deleted_record = current_rows[0] if current_rows else {}
+
         delete_query = supabase_admin.table('special_dates').delete()
         if recurrence == "annual" and event_month and event_day:
             delete_query = delete_query.eq('event_recurrence', 'annual').eq('event_month', int(event_month)).eq('event_day', int(event_day))
         else:
             delete_query = delete_query.eq('event_date', date)
         delete_query.execute()
+        record_availability_audit_event(
+            "Special Date Deleted",
+            data=data,
+            target=deleted_record.get("event_name") or data.get("event_name") or "Special Date",
+            target_type="special_date",
+            target_id=date,
+            summary=f"Special date {deleted_record.get('event_name') or data.get('event_name') or date} was deleted.",
+            status="Warning",
+            metadata={
+                "deleted_record": normalize_special_date_record(deleted_record) if deleted_record else {},
+                "event_recurrence": recurrence,
+            },
+        )
         return jsonify({"message": "Special date deleted successfully"}), 200
     except Exception as e:
+        record_availability_audit_event(
+            "Special Date Delete Failed",
+            data=data,
+            target=data.get("event_name") or "Special Date",
+            target_type="special_date",
+            target_id=date,
+            summary=f"Special date delete failed: {str(e)}",
+            status="Failed",
+        )
         return jsonify({"error": str(e)}), 400
 
 
@@ -13772,9 +12180,97 @@ def change_password():
         return jsonify({"error": str(e)}), 400
 
 
+configure_ai_service(
+    get_current_manila_datetime=get_current_manila_datetime,
+    record_emr_audit_event=record_emr_audit_event,
+)
+configure_analytics_service(
+    coerce_int=coerce_int,
+    execute_with_retry=execute_with_retry,
+    get_current_manila_date=get_current_manila_date,
+    supabase_admin=supabase_admin,
+)
+configure_audit_service(
+    audit_logs_setup_message=AUDIT_LOGS_SETUP_MESSAGE,
+    audit_logs_table=AUDIT_LOGS_TABLE,
+    coerce_int=coerce_int,
+    execute_with_retry=execute_with_retry,
+    find_account_by_user_id=find_account_by_user_id,
+    is_missing_relation_error=is_missing_relation_error,
+    is_missing_supabase_resource_error=is_missing_supabase_resource_error,
+    supabase_admin=supabase_admin,
+)
+configure_billing_service(
+    BILLING_TABLES_SETUP_MESSAGE=BILLING_TABLES_SETUP_MESSAGE,
+    BILLING_TAX_RATE=BILLING_TAX_RATE,
+    apply_branch_scope_to_query=apply_branch_scope_to_query,
+    build_billing_payment_handler_lookup=build_billing_payment_handler_lookup,
+    build_billing_product_catalog=build_billing_product_catalog,
+    build_billing_product_lookup=build_billing_product_lookup,
+    build_billing_service_lookups=build_billing_service_lookups,
+    build_billing_source_records=build_billing_source_records,
+    build_billing_installment_plan=build_billing_installment_plan,
+    calculate_billing_discount_amount=calculate_billing_discount_amount,
+    calculate_billing_monthly_due=calculate_billing_monthly_due,
+    coerce_int=coerce_int,
+    coerce_number=coerce_number,
+    derive_billing_payment_state=derive_billing_payment_state,
+    execute_with_retry=execute_with_retry,
+    fetch_billing_invoice_with_details=fetch_billing_invoice_with_details,
+    format_audit_money=format_audit_money,
+    generate_billing_invoice_number=generate_billing_invoice_number,
+    get_active_billing_invoice_for_source=get_active_billing_invoice_for_source,
+    get_current_manila_datetime=get_current_manila_datetime,
+    get_payment_reference_from_request=get_payment_reference_from_request,
+    get_single_row=get_single_row,
+    insert_billing_invoice_record=insert_billing_invoice_record,
+    insert_billing_payment_record=insert_billing_payment_record,
+    is_billing_numeric_payment_reference=is_billing_numeric_payment_reference,
+    is_missing_relation_error=is_missing_relation_error,
+    math=math,
+    normalize_billing_invoice_record=normalize_billing_invoice_record,
+    parse_bool=parse_bool,
+    payment_state_requires_reference=payment_state_requires_reference,
+    prepare_billing_invoice_inventory_stock_out_payloads=prepare_billing_invoice_inventory_stock_out_payloads,
+    record_appointment_audit_event=record_appointment_audit_event,
+    record_billing_audit_event=record_billing_audit_event,
+    require_actor_branch_scope=require_actor_branch_scope,
+    resolve_billing_installment_metadata=resolve_billing_installment_metadata,
+    resolve_billing_payment_actor_id=resolve_billing_payment_actor_id,
+    resolve_billing_service_match=resolve_billing_service_match,
+    resolve_billing_source_branch_id=resolve_billing_source_branch_id,
+    safe_create_billing_admin_notification=safe_create_billing_admin_notification,
+    supabase_admin=supabase_admin,
+    sync_billing_invoice_inventory_stock_out=sync_billing_invoice_inventory_stock_out,
+    validate_branch_scope_access=validate_branch_scope_access,
+)
+app.register_blueprint(ai_bp)
+app.register_blueprint(analytics_bp)
+app.register_blueprint(audit_bp)
+app.register_blueprint(billing_bp)
+configure_notification_service(
+    admin_notification_modules=ADMIN_NOTIFICATION_MODULES,
+    admin_notification_severities=ADMIN_NOTIFICATION_SEVERITIES,
+    apply_branch_scope_to_query=apply_branch_scope_to_query,
+    coerce_int=coerce_int,
+    derive_billing_payment_state=derive_billing_payment_state,
+    execute_with_retry=execute_with_retry,
+    format_display_time=format_display_time,
+    get_actor_branch_scope=get_actor_branch_scope,
+    get_profile_display_name=get_profile_display_name,
+    get_reschedule_email_context=get_reschedule_email_context,
+    get_single_row=get_single_row,
+    parse_bool=parse_bool,
+    reconcile_inventory_expiring_notifications=reconcile_inventory_expiring_notifications,
+    supabase_admin=supabase_admin,
+    validate_branch_scope_access=validate_branch_scope_access,
+)
+app.register_blueprint(notification_bp)
+
+
 if __name__ == '__main__':
     app.run(
-        debug=os.environ.get("FLASK_DEBUG", "").lower() == "true",
+        debug=True,
         host='0.0.0.0',
         port=int(os.environ.get("PORT", 5000)),
     )

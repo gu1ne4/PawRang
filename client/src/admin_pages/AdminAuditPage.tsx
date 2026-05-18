@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   IoAlertCircleOutline,
@@ -9,7 +9,10 @@ import {
   IoCheckmarkCircleOutline,
   IoCloseCircleOutline,
   IoCloseCircleSharp,
+  IoCloseOutline,
+  IoChevronDownOutline,
   IoDocumentTextOutline,
+  IoDownloadOutline,
   IoFilterSharp,
   IoFlashOutline,
   IoPeopleOutline,
@@ -19,10 +22,11 @@ import {
 } from 'react-icons/io5';
 
 import './AdminStyles.css';
+import './AnalyticsStyles.css';
 import API_URL from '../API';
 import Navbar from '../reusable_components/NavBar';
 import Notifications from '../reusable_components/Notifications';
-import { fetchAuditLogs, getStoredAuditLogs, type AuditLogEntry } from './auditLogService';
+import { fetchAuditLogs, getStoredAuditLogs, recordSettingsAuditLog, type AuditLogEntry } from './auditLogService';
 
 interface CurrentUser {
   id?: string | number;
@@ -41,6 +45,11 @@ interface ModalConfigType {
   showCancel: boolean;
 }
 
+interface BranchOption {
+  id: string;
+  name: string;
+}
+
 const MODULE_OPTIONS = [
   'All Modules',
   'Authentication',
@@ -55,8 +64,35 @@ const MODULE_OPTIONS = [
   'Billing'
 ];
 
-const ROLE_OPTIONS = ['All Roles', 'Admin', 'Veterinarian', 'Clinic Staff', 'User'];
+const ROLE_OPTIONS = ['All Roles', 'Admin', 'Veterinarian', 'Clinic Staff', 'Nurse', 'User'];
 const STATUS_OPTIONS = ['All Statuses', 'Success', 'Warning', 'Failed'];
+const ALL_BRANCHES_OPTION = 'All Branches';
+const SYSTEM_WIDE_BRANCH_OPTION = 'System-wide';
+const RECORDS_BILLING_MODULE_GROUP = 'Records & Billing';
+
+type AuditReportPreset = 'thisWeek' | 'thisMonth' | 'last7Days' | 'last30Days' | 'custom';
+type AuditReportSectionKey = 'summary' | 'details';
+
+const AUDIT_REPORT_PRESETS: Array<{ key: AuditReportPreset; label: string }> = [
+  { key: 'thisWeek', label: 'This Week' },
+  { key: 'thisMonth', label: 'This Month' },
+  { key: 'last7Days', label: 'Last 7 Days' },
+  { key: 'last30Days', label: 'Last 30 Days' },
+  { key: 'custom', label: 'Custom Range' }
+];
+
+const AUDIT_REPORT_SECTIONS: Array<{ key: AuditReportSectionKey; label: string }> = [
+  { key: 'summary', label: 'Audit Summary' },
+  { key: 'details', label: 'Detailed Logs' }
+];
+
+const auditModuleMatchesFilter = (moduleName: string, filterName: string) => {
+  if (filterName === 'All Modules') return true;
+  if (filterName === RECORDS_BILLING_MODULE_GROUP) {
+    return moduleName === 'EMR' || moduleName === 'Billing';
+  }
+  return moduleName === filterName;
+};
 
 const getStatusClassName = (status: AuditLogEntry['status']) => {
   if (status === 'Success') return 'activeBadge';
@@ -69,6 +105,66 @@ const getStatusTextClassName = (status: AuditLogEntry['status']) => {
   if (status === 'Warning') return 'auditWarningText';
   return 'auditFailedText';
 };
+
+const isAdminRole = (role?: string) => /admin/i.test(String(role || ''));
+
+const formatAuditReportDate = (dateTime: string) => {
+  const date = new Date(dateTime);
+  if (Number.isNaN(date.getTime())) return dateTime || 'N/A';
+
+  return date.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+};
+
+const buildAuditReportFilename = (startDate: string, endDate: string) =>
+  `PetShield_Audit_Report_${startDate}_to_${endDate}.pdf`;
+
+const formatInputDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const addDays = (date: Date, days: number) => {
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + days);
+  return nextDate;
+};
+
+const getAuditPresetRange = (preset: AuditReportPreset) => {
+  const today = new Date();
+  if (preset === 'thisWeek') {
+    const mondayOffset = today.getDay() === 0 ? -6 : 1 - today.getDay();
+    return { startDate: formatInputDate(addDays(today, mondayOffset)), endDate: formatInputDate(today) };
+  }
+  if (preset === 'thisMonth') {
+    return { startDate: formatInputDate(new Date(today.getFullYear(), today.getMonth(), 1)), endDate: formatInputDate(today) };
+  }
+  if (preset === 'last7Days') {
+    return { startDate: formatInputDate(addDays(today, -6)), endDate: formatInputDate(today) };
+  }
+  if (preset === 'last30Days') {
+    return { startDate: formatInputDate(addDays(today, -29)), endDate: formatInputDate(today) };
+  }
+  return { startDate: formatInputDate(today), endDate: formatInputDate(today) };
+};
+
+const formatReportDateRange = (startDate: string, endDate: string) =>
+  `${formatAuditReportDate(`${startDate}T00:00:00`).replace(/, 12:00 AM$/, '')} - ${formatAuditReportDate(`${endDate}T00:00:00`).replace(/, 12:00 AM$/, '')}`;
+
+const countBy = <T,>(items: T[], getKey: (item: T) => string) => (
+  Object.entries(items.reduce<Record<string, number>>((counts, item) => {
+    const key = getKey(item) || 'Unspecified';
+    counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {})).sort((first, second) => second[1] - first[1])
+);
 
 export default function AdminAuditPage() {
   const navigate = useNavigate();
@@ -86,8 +182,24 @@ export default function AdminAuditPage() {
   const [statusFilter, setStatusFilter] = useState('All Statuses');
   const [selectedModule, setSelectedModule] = useState('All Modules');
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [branches, setBranches] = useState<BranchOption[]>([]);
   const [auditLoading, setAuditLoading] = useState(true);
   const [auditStatusMessage, setAuditStatusMessage] = useState('');
+  const [exportingAuditReport, setExportingAuditReport] = useState(false);
+  const [auditExportModalOpen, setAuditExportModalOpen] = useState(false);
+  const [auditExportError, setAuditExportError] = useState('');
+  const [auditReportPreset, setAuditReportPreset] = useState<AuditReportPreset>('thisMonth');
+  const defaultAuditRange = useMemo(() => getAuditPresetRange('thisMonth'), []);
+  const [auditReportStartDate, setAuditReportStartDate] = useState(defaultAuditRange.startDate);
+  const [auditReportEndDate, setAuditReportEndDate] = useState(defaultAuditRange.endDate);
+  const [auditReportBranch, setAuditReportBranch] = useState(ALL_BRANCHES_OPTION);
+  const [auditReportModule, setAuditReportModule] = useState('All Modules');
+  const [auditReportRole, setAuditReportRole] = useState('All Roles');
+  const [auditReportStatus, setAuditReportStatus] = useState('All Statuses');
+  const [auditReportSections, setAuditReportSections] = useState<Record<AuditReportSectionKey, boolean>>({
+    summary: true,
+    details: true
+  });
 
   const [modalVisible, setModalVisible] = useState(false);
   const [modalConfig, setModalConfig] = useState<ModalConfigType>({
@@ -99,6 +211,8 @@ export default function AdminAuditPage() {
   });
 
   const itemsPerPage = 7;
+  const canExportAuditReport = isAdminRole(currentUser?.role);
+  const allAuditReportSectionsSelected = AUDIT_REPORT_SECTIONS.every(section => auditReportSections[section.key]);
 
   const showAlert = (
     type: 'info' | 'success' | 'error' | 'confirm',
@@ -131,6 +245,30 @@ export default function AdminAuditPage() {
   useEffect(() => {
     let isMounted = true;
 
+    const loadBranches = async () => {
+      try {
+        const response = await fetch(`${API_URL}/branches`);
+        const payload = await response.json().catch(() => ({ branches: [] }));
+        if (!isMounted || !Array.isArray(payload.branches)) return;
+
+        const nextBranches = payload.branches
+          .map((branch: any): BranchOption | null => {
+            const id = branch?.branch_id ?? branch?.id;
+            if (id === undefined || id === null || id === '') return null;
+
+            return {
+              id: String(id),
+              name: branch?.branch_name || branch?.name || `Branch ${id}`
+            };
+          })
+          .filter((branch: BranchOption | null): branch is BranchOption => Boolean(branch));
+
+        setBranches(nextBranches);
+      } catch (error) {
+        console.error('Failed to load branches for audit filters', error);
+      }
+    };
+
     const loadAuditLogs = async () => {
       setAuditLoading(true);
       try {
@@ -152,6 +290,7 @@ export default function AdminAuditPage() {
       }
     };
 
+    loadBranches();
     loadAuditLogs();
     window.addEventListener('focus', loadAuditLogs);
     return () => {
@@ -190,8 +329,27 @@ export default function AdminAuditPage() {
     );
   }, [auditLogs]);
 
+  const branchesById = useMemo(() => {
+    return branches.reduce<Record<string, BranchOption>>((lookup, branch) => {
+      lookup[branch.id] = branch;
+      return lookup;
+    }, {});
+  }, [branches]);
+
+  const getLogBranchId = useCallback((log: AuditLogEntry) => {
+    const branchId = log.branchId ?? log.branch_id;
+    return branchId === undefined || branchId === null || branchId === '' ? '' : String(branchId);
+  }, []);
+
+  const getLogBranchName = useCallback((log: AuditLogEntry) => {
+    const branchId = getLogBranchId(log);
+    if (!branchId) return SYSTEM_WIDE_BRANCH_OPTION;
+    return branchesById[branchId]?.name || `Branch ${branchId}`;
+  }, [branchesById, getLogBranchId]);
+
   const filteredLogs = useMemo(() => {
     return orderedAuditLogs.filter((log) => {
+      const branchName = getLogBranchName(log);
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch =
         searchLower === '' ||
@@ -199,16 +357,16 @@ export default function AdminAuditPage() {
         log.event.toLowerCase().includes(searchLower) ||
         log.module.toLowerCase().includes(searchLower) ||
         log.target.toLowerCase().includes(searchLower) ||
-        log.summary.toLowerCase().includes(searchLower);
+        log.summary.toLowerCase().includes(searchLower) ||
+        branchName.toLowerCase().includes(searchLower);
 
       const activeModuleFilter = selectedModule !== 'All Modules' ? selectedModule : moduleFilter;
-      const matchesModule = activeModuleFilter === 'All Modules' ? true : log.module === activeModuleFilter;
+      const matchesModule = auditModuleMatchesFilter(log.module, activeModuleFilter);
       const matchesRole = roleFilter === 'All Roles' ? true : log.role === roleFilter;
       const matchesStatus = statusFilter === 'All Statuses' ? true : log.status === statusFilter;
-
       return matchesSearch && matchesModule && matchesRole && matchesStatus;
     });
-  }, [orderedAuditLogs, moduleFilter, roleFilter, searchQuery, selectedModule, statusFilter]);
+  }, [getLogBranchName, moduleFilter, orderedAuditLogs, roleFilter, searchQuery, selectedModule, statusFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredLogs.length / itemsPerPage));
   const paginatedLogs = filteredLogs.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
@@ -244,7 +402,7 @@ export default function AdminAuditPage() {
       {
         title: 'Settings',
         count: orderedAuditLogs.filter((log) => log.module === 'Settings').length,
-        detail: 'Homepage, services, prices, and publishing changes',
+        detail: 'Account profile, password, and email security changes',
         icon: <IoSettingsOutline size={22} />
       },
       {
@@ -254,7 +412,7 @@ export default function AdminAuditPage() {
         icon: <IoAlbumsOutline size={22} />
       },
       {
-        title: 'Records & Billing',
+        title: RECORDS_BILLING_MODULE_GROUP,
         count: orderedAuditLogs.filter((log) => log.module === 'EMR' || log.module === 'Billing').length,
         detail: 'Medical records, invoices, and sensitive edits',
         icon: <IoDocumentTextOutline size={22} />
@@ -275,6 +433,257 @@ export default function AdminAuditPage() {
     setPage(0);
   };
 
+  const getAuditReportBranchLabel = (branchValue: string) => {
+    if (branchValue === ALL_BRANCHES_OPTION) return `${ALL_BRANCHES_OPTION} including ${SYSTEM_WIDE_BRANCH_OPTION}`;
+    if (branchValue === SYSTEM_WIDE_BRANCH_OPTION) return SYSTEM_WIDE_BRANCH_OPTION;
+    return branchesById[branchValue]?.name || `Branch ${branchValue}`;
+  };
+
+  const getAuditLogsForReport = () => {
+    const startTime = new Date(`${auditReportStartDate}T00:00:00`).getTime();
+    const endTime = new Date(`${auditReportEndDate}T23:59:59`).getTime();
+
+    return orderedAuditLogs.filter((log) => {
+      const logTime = new Date(log.dateTime).getTime();
+      const matchesDate = !Number.isNaN(logTime) && logTime >= startTime && logTime <= endTime;
+      const matchesModule = auditModuleMatchesFilter(log.module, auditReportModule);
+      const matchesRole = auditReportRole === 'All Roles' ? true : log.role === auditReportRole;
+      const matchesStatus = auditReportStatus === 'All Statuses' ? true : log.status === auditReportStatus;
+      const matchesBranch =
+        auditReportBranch === ALL_BRANCHES_OPTION ? true :
+          auditReportBranch === SYSTEM_WIDE_BRANCH_OPTION ? getLogBranchId(log) === '' :
+            getLogBranchId(log) === auditReportBranch;
+
+      return matchesDate && matchesModule && matchesRole && matchesStatus && matchesBranch;
+    });
+  };
+
+  const openAuditExportModal = () => {
+    const range = getAuditPresetRange('thisMonth');
+    setAuditReportPreset('thisMonth');
+    setAuditReportStartDate(range.startDate);
+    setAuditReportEndDate(range.endDate);
+    setAuditReportBranch(ALL_BRANCHES_OPTION);
+    setAuditReportModule(selectedModule !== 'All Modules' ? selectedModule : moduleFilter);
+    setAuditReportRole(roleFilter);
+    setAuditReportStatus(statusFilter);
+    setAuditReportSections({ summary: true, details: true });
+    setAuditExportError('');
+    setAuditExportModalOpen(true);
+  };
+
+  const handleAuditPresetChange = (preset: AuditReportPreset) => {
+    setAuditReportPreset(preset);
+    if (preset === 'custom') return;
+    const range = getAuditPresetRange(preset);
+    setAuditReportStartDate(range.startDate);
+    setAuditReportEndDate(range.endDate);
+  };
+
+  const handleAuditReportDateChange = (type: 'start' | 'end', value: string) => {
+    setAuditReportPreset('custom');
+    if (type === 'start') {
+      setAuditReportStartDate(value);
+    } else {
+      setAuditReportEndDate(value);
+    }
+  };
+
+  const toggleAuditReportSection = (sectionKey: AuditReportSectionKey) => {
+    setAuditReportSections(prev => ({ ...prev, [sectionKey]: !prev[sectionKey] }));
+  };
+
+  const toggleAllAuditReportSections = () => {
+    const nextValue = !allAuditReportSectionsSelected;
+    setAuditReportSections({ summary: nextValue, details: nextValue });
+  };
+
+  const handleExportAuditPdf = async () => {
+    if (!canExportAuditReport) return;
+    setAuditExportError('');
+
+    if (!auditReportStartDate || !auditReportEndDate) {
+      setAuditExportError('Select a valid start and end date.');
+      return;
+    }
+    if (new Date(`${auditReportStartDate}T00:00:00`) > new Date(`${auditReportEndDate}T00:00:00`)) {
+      setAuditExportError('Start date cannot be later than end date.');
+      return;
+    }
+    if (!Object.values(auditReportSections).some(Boolean)) {
+      setAuditExportError('Select at least one report section.');
+      return;
+    }
+
+    const reportLogs = getAuditLogsForReport();
+    if (reportLogs.length === 0) {
+      setAuditExportError('There are no audit logs to export with the selected filters.');
+      return;
+    }
+
+    setExportingAuditReport(true);
+    try {
+      const { jsPDF } = await import('jspdf');
+      const autoTableModule = await import('jspdf-autotable');
+      const autoTable = ((autoTableModule as any).default || (autoTableModule as any).autoTable) as (doc: any, options: any) => void;
+      if (!autoTable) throw new Error('PDF export library is unavailable.');
+
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const generatedAt = new Date().toLocaleString();
+      const exportedBy = currentUser?.fullName || currentUser?.username || 'Admin';
+      const exportedById = currentUser?.id || currentUser?.pk || 'N/A';
+      const branchLabel = getAuditReportBranchLabel(auditReportBranch);
+      const filterRows = [
+        ['Date Range', formatReportDateRange(auditReportStartDate, auditReportEndDate), 'Branch', branchLabel],
+        ['Module', auditReportModule, 'Role', auditReportRole],
+        ['Status', auditReportStatus, 'Generated By', exportedBy],
+        ['Sections', AUDIT_REPORT_SECTIONS.filter(section => auditReportSections[section.key]).map(section => section.label).join(', '), 'Rows Matched', String(reportLogs.length)]
+      ];
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text('PetShield Audit Report', 40, 44);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(`Generated: ${generatedAt}`, 40, 64);
+      doc.text(`Exported By: ${exportedBy}`, 220, 64);
+      doc.text(`Range: ${formatReportDateRange(auditReportStartDate, auditReportEndDate)}`, 420, 64);
+      doc.text(`Exporter Role: ${currentUser?.role || 'Admin'}`, 40, 82);
+      doc.text(`Exporter ID: ${exportedById}`, 220, 82);
+
+      let currentY = 104;
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Filters Applied', '', '', '']],
+        body: filterRows,
+        theme: 'grid',
+        margin: { left: 40, right: 40 },
+        styles: { fontSize: 8, cellPadding: 5, overflow: 'linebreak' },
+        headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 74, fontStyle: 'bold' },
+          1: { cellWidth: 265 },
+          2: { cellWidth: 74, fontStyle: 'bold' },
+          3: { cellWidth: 337 }
+        }
+      });
+      currentY = ((doc as any).lastAutoTable?.finalY || currentY + 90) + 22;
+
+      if (auditReportSections.summary) {
+        const summaryRows = [
+          ['Total Events', String(reportLogs.length)],
+          ['Successful', String(reportLogs.filter(log => log.status === 'Success').length)],
+          ['Warnings', String(reportLogs.filter(log => log.status === 'Warning').length)],
+          ['Failed', String(reportLogs.filter(log => log.status === 'Failed').length)],
+          ['System-wide Events', String(reportLogs.filter(log => getLogBranchId(log) === '').length)]
+        ];
+
+        autoTable(doc, {
+          startY: currentY,
+          head: [['Metric', 'Value']],
+          body: summaryRows,
+          theme: 'grid',
+          margin: { left: 40, right: 40 },
+          styles: { fontSize: 8, cellPadding: 5 },
+          headStyles: { fillColor: [61, 103, 238], textColor: 255, fontStyle: 'bold' },
+        });
+        currentY = ((doc as any).lastAutoTable?.finalY || currentY + 90) + 18;
+
+        const breakdownTables = [
+          { title: 'Totals by Module', rows: countBy(reportLogs, log => log.module) },
+          { title: 'Totals by Role', rows: countBy(reportLogs, log => log.role) },
+          { title: 'Totals by Status', rows: countBy(reportLogs, log => log.status) },
+          { title: 'Totals by Branch', rows: countBy(reportLogs, getLogBranchName) }
+        ];
+
+        for (const table of breakdownTables) {
+          if (currentY > pageHeight - 110) {
+            doc.addPage();
+            currentY = 48;
+          }
+          autoTable(doc, {
+            startY: currentY,
+            head: [[table.title, 'Count']],
+            body: table.rows.length ? table.rows : [['No data', '0']],
+            theme: 'grid',
+            margin: { left: 40, right: 40 },
+            styles: { fontSize: 8, cellPadding: 5 },
+            headStyles: { fillColor: [61, 103, 238], textColor: 255, fontStyle: 'bold' },
+          });
+          currentY = ((doc as any).lastAutoTable?.finalY || currentY + 70) + 18;
+        }
+      }
+
+      if (auditReportSections.details) {
+        if (currentY > pageHeight - 130) {
+          doc.addPage();
+          currentY = 48;
+        }
+        autoTable(doc, {
+          startY: currentY,
+          head: [['Date & Time', 'Module', 'Event', 'Actor', 'Role', 'Branch', 'Target', 'Status', 'Summary']],
+          body: reportLogs.map((log) => [
+            formatAuditReportDate(log.dateTime),
+            log.module,
+            log.event,
+            log.actor,
+            log.role,
+            getLogBranchName(log),
+            log.target,
+            log.status,
+            log.summary
+          ]),
+          theme: 'grid',
+          margin: { left: 40, right: 40 },
+          styles: { fontSize: 7.5, cellPadding: 4, overflow: 'linebreak', valign: 'top' },
+          headStyles: { fillColor: [61, 103, 238], textColor: 255, fontStyle: 'bold' },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+          columnStyles: {
+            0: { cellWidth: 70 },
+            1: { cellWidth: 72 },
+            2: { cellWidth: 86 },
+            3: { cellWidth: 80 },
+            4: { cellWidth: 64 },
+            5: { cellWidth: 82 },
+            6: { cellWidth: 86 },
+            7: { cellWidth: 48 },
+            8: { cellWidth: 190 }
+          }
+        });
+      }
+
+      const pageCount = (doc as any).internal.getNumberOfPages();
+      for (let reportPage = 1; reportPage <= pageCount; reportPage += 1) {
+        doc.setPage(reportPage);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.text('Confidential audit report', 40, pageHeight - 24);
+        doc.text(`Page ${reportPage} of ${pageCount}`, pageWidth - 95, pageHeight - 24);
+      }
+
+      doc.save(buildAuditReportFilename(auditReportStartDate, auditReportEndDate));
+      recordSettingsAuditLog({
+        module: 'Audit',
+        event: 'Audit Report Exported',
+        target: 'Audit Report',
+        targetType: 'audit_report',
+        targetId: `${auditReportStartDate}:${auditReportEndDate}`,
+        summary: `${exportedBy} exported an audit PDF report for ${branchLabel} with ${reportLogs.length} matching event(s).`,
+        status: 'Success',
+        branchId: auditReportBranch === ALL_BRANCHES_OPTION || auditReportBranch === SYSTEM_WIDE_BRANCH_OPTION ? null : auditReportBranch
+      }, currentUser);
+      setAuditExportModalOpen(false);
+    } catch (error) {
+      console.error('Audit PDF export failed:', error);
+      setAuditExportError(error instanceof Error ? error.message : 'Unable to export the audit report.');
+    } finally {
+      setExportingAuditReport(false);
+    }
+  };
+
   return (
     <div className="biContainer">
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
@@ -286,6 +695,18 @@ export default function AdminAuditPage() {
             <span className="blueText">Audit Logs</span>
           </div>
           <div className="subTopContainer notificationContainer auditNotificationContainer">
+            {canExportAuditReport && (
+              <button
+                type="button"
+                className="export-btn auditExportPdfBtn"
+                onClick={openAuditExportModal}
+                disabled={exportingAuditReport}
+              >
+                <IoDownloadOutline size={16} />
+                <span>Export</span>
+                <IoChevronDownOutline size={12} />
+              </button>
+            )}
             <Notifications
               buttonClassName="iconButton"
               iconClassName="blueIcon"
@@ -435,12 +856,13 @@ export default function AdminAuditPage() {
                 <table className="dataTable auditDesktopTable">
                   <thead>
                     <tr>
-                      <th style={{ width: '18%' }}>Module</th>
-                      <th style={{ width: '17%' }}>Event</th>
-                      <th style={{ width: '16%' }}>Actor</th>
-                      <th style={{ width: '14%', textAlign: 'center' }}>Role</th>
-                      <th style={{ width: '15%' }}>Target</th>
-                      <th style={{ width: '13%' }}>Date & Time</th>
+                      <th style={{ width: '16%' }}>Module</th>
+                      <th style={{ width: '14%' }}>Event</th>
+                      <th style={{ width: '14%' }}>Actor</th>
+                      <th style={{ width: '11%', textAlign: 'center' }}>Role</th>
+                      <th style={{ width: '13%' }}>Branch</th>
+                      <th style={{ width: '13%' }}>Target</th>
+                      <th style={{ width: '12%' }}>Date & Time</th>
                       <th style={{ width: '7%', textAlign: 'center' }}>Status</th>
                     </tr>
                   </thead>
@@ -482,6 +904,7 @@ export default function AdminAuditPage() {
                               </div>
                             </td>
                             <td style={{ textAlign: 'center' }} className="tableFont">{log.role}</td>
+                            <td className="tableFont">{getLogBranchName(log)}</td>
                             <td className="tableFont">{log.target}</td>
                             <td>
                               <div className="auditDateCell">
@@ -499,7 +922,7 @@ export default function AdminAuditPage() {
                       })
                     ) : (
                       <tr>
-                        <td colSpan={7} className="noData">
+                        <td colSpan={8} className="noData">
                           No audit entries match the current filters.
                         </td>
                       </tr>
@@ -548,6 +971,10 @@ export default function AdminAuditPage() {
                             <div className="auditMobileInfoItem">
                               <label>Role</label>
                               <span>{log.role}</span>
+                            </div>
+                            <div className="auditMobileInfoItem">
+                              <label>Branch</label>
+                              <span>{getLogBranchName(log)}</span>
                             </div>
                             <div className="auditMobileInfoItem auditMobileInfoItemWide">
                               <label>Target</label>
@@ -604,6 +1031,166 @@ export default function AdminAuditPage() {
           )}
         </div>
       </div>
+
+      {auditExportModalOpen && (
+        <div className="analytics-export-modal-overlay" onClick={() => !exportingAuditReport && setAuditExportModalOpen(false)}>
+          <div className="analytics-export-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="analytics-export-modal-header">
+              <div>
+                <h2>Export Audit Report</h2>
+                <span>{formatReportDateRange(auditReportStartDate, auditReportEndDate)}</span>
+              </div>
+              <button
+                type="button"
+                className="analytics-export-modal-close"
+                onClick={() => setAuditExportModalOpen(false)}
+                disabled={exportingAuditReport}
+                aria-label="Close export modal"
+              >
+                <IoCloseOutline size={22} />
+              </button>
+            </div>
+
+            <div className="analytics-export-modal-body">
+              <div className="analytics-export-field-group">
+                <label>File Type</label>
+                <div className="analytics-export-format-toggle audit-single-format">
+                  <button type="button" className="active">
+                    <IoDocumentTextOutline size={16} />
+                    PDF Report
+                  </button>
+                </div>
+              </div>
+
+              <div className="analytics-export-field-group">
+                <label>Date Range</label>
+                <div className="analytics-export-preset-grid">
+                  {AUDIT_REPORT_PRESETS.map((preset) => (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      className={auditReportPreset === preset.key ? 'active' : ''}
+                      onClick={() => handleAuditPresetChange(preset.key)}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="analytics-export-date-grid">
+                <div className="analytics-export-field-group">
+                  <label>Start Date</label>
+                  <input
+                    type="date"
+                    value={auditReportStartDate}
+                    onChange={(event) => handleAuditReportDateChange('start', event.target.value)}
+                  />
+                </div>
+                <div className="analytics-export-field-group">
+                  <label>End Date</label>
+                  <input
+                    type="date"
+                    value={auditReportEndDate}
+                    onChange={(event) => handleAuditReportDateChange('end', event.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="analytics-export-field-group">
+                <label>Branch</label>
+                <select value={auditReportBranch} onChange={(event) => setAuditReportBranch(event.target.value)}>
+                  <option value={ALL_BRANCHES_OPTION}>{ALL_BRANCHES_OPTION}</option>
+                  <option value={SYSTEM_WIDE_BRANCH_OPTION}>{SYSTEM_WIDE_BRANCH_OPTION}</option>
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>{branch.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="audit-export-filter-grid">
+                <div className="analytics-export-field-group">
+                  <label>Module</label>
+                  <select value={auditReportModule} onChange={(event) => setAuditReportModule(event.target.value)}>
+                    {MODULE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="analytics-export-field-group">
+                  <label>Role</label>
+                  <select value={auditReportRole} onChange={(event) => setAuditReportRole(event.target.value)}>
+                    {ROLE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="analytics-export-field-group">
+                  <label>Status</label>
+                  <select value={auditReportStatus} onChange={(event) => setAuditReportStatus(event.target.value)}>
+                    {STATUS_OPTIONS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="analytics-export-field-group">
+                <div className="analytics-export-sections-header">
+                  <label>Report Sections</label>
+                  <label className="analytics-export-select-all">
+                    <input
+                      type="checkbox"
+                      checked={allAuditReportSectionsSelected}
+                      onChange={toggleAllAuditReportSections}
+                    />
+                    <span>Select All</span>
+                  </label>
+                </div>
+                <div className="analytics-export-section-grid">
+                  {AUDIT_REPORT_SECTIONS.map((section) => (
+                    <label key={section.key} className="analytics-export-section-option">
+                      <input
+                        type="checkbox"
+                        checked={auditReportSections[section.key]}
+                        onChange={() => toggleAuditReportSection(section.key)}
+                      />
+                      <span>{section.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {auditExportError && (
+                <div className="analytics-export-error">
+                  <IoAlertCircleOutline size={14} />
+                  <span>{auditExportError}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="analytics-export-modal-footer">
+              <button
+                type="button"
+                className="analytics-export-secondary"
+                onClick={() => setAuditExportModalOpen(false)}
+                disabled={exportingAuditReport}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="analytics-export-primary"
+                onClick={handleExportAuditPdf}
+                disabled={exportingAuditReport}
+              >
+                <IoDownloadOutline size={16} />
+                {exportingAuditReport ? 'Preparing Report...' : 'Generate PDF'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {modalVisible && (
         <div className="modalOverlay">

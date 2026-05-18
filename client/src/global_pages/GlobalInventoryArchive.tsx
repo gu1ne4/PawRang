@@ -64,7 +64,7 @@ const SORT_OPTIONS = [
 ];
 
 const ROWS_PER_PAGE_OPTIONS = [5, 8, 10, 15, 20, 25, 50];
-const CATEGORIES = ['Pet Supplies', 'Deworming', 'Vitamins', 'Food', 'Accessories', 'Medication'];
+const CATEGORIES = ['Pet Supplies', 'Deworming', 'Vitamins', 'Food', 'Accessories', 'Medication', 'Vaccine', 'Supplies'];
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 const getStoredInventoryUserId = (): string => {
   try {

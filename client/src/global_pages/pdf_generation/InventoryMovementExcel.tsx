@@ -23,6 +23,12 @@ const imageUrlToArrayBuffer = async (url: string): Promise<ArrayBuffer> => {
   return await response.arrayBuffer();
 };
 
+const formatMovementReason = (reason: string): string => {
+  return String(reason || '').trim().toLowerCase() === 'billing invoice sale'
+    ? 'Sales'
+    : reason;
+};
+
 export const exportInventoryMovementExcel = async (logs: InventoryLog[]): Promise<void> => {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet('Inventory Movement');
@@ -169,7 +175,7 @@ export const exportInventoryMovementExcel = async (logs: InventoryLog[]): Promis
       log.type,
       log.quantity,
       log.referenceNumber,
-      log.reason,
+      formatMovementReason(log.reason),
       log.supplierOrIssuedTo,
       log.user,
       log.notes || ''

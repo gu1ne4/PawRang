@@ -25,6 +25,13 @@ export const isDoctorRole = (role?: string | null): boolean => {
   return normalized === 'doctor' || normalized === 'vet' || normalized === 'veterinarian';
 };
 
+export const isClinicStaffRole = (role?: string | null): boolean => {
+  const normalized = normalizeRole(role);
+  return normalized === 'clinicstaff' || normalized === 'staff' || normalized === 'clinicassistant';
+};
+
+export const isNurseRole = (role?: string | null): boolean => normalizeRole(role) === 'nurse';
+
 export const isPatientUser = (user?: SessionUser | null): boolean =>
   normalizeRole(user?.role) === 'user' || normalizeRole(user?.userType) === 'patient';
 
@@ -41,6 +48,8 @@ export const getDefaultRouteForUser = (user?: SessionUser | null): string => {
   if (!user) return '/login';
   if (isAdminRole(user.role)) return '/admin/home';
   if (isDoctorRole(user.role)) return '/doctor/home';
+  if (isClinicStaffRole(user.role)) return '/clinic-staff/home';
+  if (isNurseRole(user.role)) return '/nurse/home';
   return '/user/home';
 };
 
@@ -54,6 +63,14 @@ export const userHasAllowedRole = (user: SessionUser | null, allowedRoles?: stri
 
   if (isDoctorRole(user?.role)) {
     return allowed.some((role) => role === 'doctor' || role === 'vet' || role === 'veterinarian');
+  }
+
+  if (isClinicStaffRole(user?.role)) {
+    return allowed.some((role) => role === 'clinicstaff' || role === 'staff' || role === 'clinicassistant');
+  }
+
+  if (isNurseRole(user?.role)) {
+    return allowed.some((role) => role === 'nurse');
   }
 
   if (isPatientUser(user)) {

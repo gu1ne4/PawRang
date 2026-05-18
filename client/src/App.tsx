@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import AdminHome from './admin_pages/AdminHome'
 import DoctorHome from './doctor_pages/DoctorHome'
 import DoctorAppointments from './doctor_pages/DoctorAppointments'
+import DoctorSettings from './doctor_pages/DoctorSettings'
+import NurseHome from './nurse_pages/NurseHome'
 import UserHome from './user_pages/UserHome'
 import UserAppointmentBook from './user_pages/UserAppointmentBook'
 import UserPetProfile from './user_pages/UserPetProfile'
@@ -95,11 +97,54 @@ function App() {
           <Route path="/patient-records" element={<GlobalEMR />} />
         </Route>
 
+        <Route element={<ProtectedRoute allowedRoles={['Clinic Staff', 'Staff']} />}>
+          <Route path="/clinic-staff" element={<Navigate to="/clinic-staff/home" replace />} />
+          <Route path="/clinic-staff/home" element={<AdminDashboard />} />
+          <Route path="/clinic-staff/analytics" element={<AdminAnalytics />} />
+          <Route path="/clinic-staff/appointments" element={<Navigate to="/clinic-staff/appointments/schedule" replace />} />
+          <Route path="/clinic-staff/appointments/schedule" element={<AdminSchedule />} />
+          <Route path="/clinic-staff/appointments/availability" element={<AdminAvailSettings />} />
+          <Route path="/clinic-staff/appointments/history" element={<AdminHistory />} />
+          <Route path="/clinic-staff/billing" element={<GlobalBilling />} />
+          <Route path="/clinic-staff/inventory" element={<GlobalInventory />} />
+          <Route path="/clinic-staff/inventory-in" element={<GlobalInventoryIN />} />
+          <Route path="/clinic-staff/inventory-out" element={<GlobalInventoryOUT />} />
+          <Route path="/clinic-staff/inventory-logs" element={<GlobalInventoryLogs />} />
+          <Route path="/clinic-staff/inventory-archive" element={<GlobalInventoryArchive />} />
+          <Route path="/clinic-staff/medical-records" element={<GlobalEMR layoutMode="clinic-staff" readOnly />} />
+          <Route path="/clinic-staff/patient-records" element={<Navigate to="/clinic-staff/medical-records" replace />} />
+          <Route path="/clinic-staff/settings" element={<AdminSettingsPage />} />
+        </Route>
+
+        <Route element={<ProtectedRoute allowedRoles={['Nurse']} />}>
+          <Route path="/nurse" element={<Navigate to="/nurse/home" replace />} />
+          <Route path="/nurse/home" element={<NurseHome />} />
+          <Route path="/nurse/appointments" element={<Navigate to="/nurse/appointments/schedule" replace />} />
+          <Route path="/nurse/appointments/schedule" element={<AdminSchedule />} />
+          <Route path="/nurse/appointments/availability" element={<AdminAvailSettings readOnly />} />
+          <Route path="/nurse/appointments/history" element={<AdminHistory />} />
+          <Route path="/nurse/medical-records" element={<GlobalEMR />} />
+          <Route path="/nurse/patient-records" element={<Navigate to="/nurse/medical-records" replace />} />
+          <Route path="/nurse/billing" element={<GlobalBilling />} />
+          <Route path="/nurse/inventory" element={<GlobalInventory />} />
+          <Route path="/nurse/inventory-in" element={<GlobalInventoryIN />} />
+          <Route path="/nurse/inventory-out" element={<GlobalInventoryOUT />} />
+          <Route path="/nurse/inventory-logs" element={<GlobalInventoryLogs />} />
+          <Route path="/nurse/inventory-archive" element={<GlobalInventoryArchive />} />
+          <Route path="/nurse/settings" element={<AdminSettingsPage />} />
+        </Route>
+
         <Route element={<ProtectedRoute allowedRoles={['Admin', 'Administrator', 'Doctor', 'Vet', 'Veterinarian']} />}>
           <Route path="/doctor/home" element={<DoctorHome />} />
-          <Route path="/doctor/appointments" element={<DoctorAppointments />} />
+          <Route path="/doctor/appointments" element={<Navigate to="/doctor/appointments/schedule" replace />} />
+          <Route path="/doctor/appointments/schedule" element={<DoctorAppointments />} />
+          <Route path="/doctor/appointments/availability" element={<AdminAvailSettings viewerRole="doctor" readOnly />} />
+          <Route path="/doctor/appointments/history" element={<AdminHistory viewerRole="doctor" hideBillingActions />} />
           <Route path="/doctor/inventory" element={<GlobalInventory layoutMode="doctor" readOnly />} />
+          <Route path="/doctor/inventory/catalog" element={<GlobalInventory layoutMode="doctor" readOnly />} />
+          <Route path="/doctor/inventory-logs" element={<GlobalInventoryLogs readOnly />} />
           <Route path="/doctor/medical-records" element={<GlobalEMR layoutMode="doctor" doctorMode />} />
+          <Route path="/doctor/settings" element={<DoctorSettings />} />
           <Route path="/doctor-home" element={<Navigate to="/doctor/home" replace />} />
         </Route>
 

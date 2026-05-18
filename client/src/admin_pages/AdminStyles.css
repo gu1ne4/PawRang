@@ -3258,6 +3258,25 @@ html, body {
   overflow: auto;
 }
 
+.appointmentTableScroll {
+  min-height: 360px;
+  max-height: 460px;
+  border: 1px solid #f0f2f7;
+  border-radius: 12px;
+  overflow: auto;
+}
+
+.appointmentTableScroll .dataTable {
+  min-width: 980px;
+}
+
+.appointmentTableScroll .dataTable thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: 0 1px 0 #f0f0f0;
+}
+
 .dataTable {
   width: 100%;
   border-collapse: collapse;
@@ -3358,6 +3377,138 @@ html, body {
   color: #666;
 }
 
+.appointmentPaginationBar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-top: 14px;
+  margin-top: 12px;
+  border-top: 1px solid #f0f2f7;
+}
+
+.appointmentPaginationInfo {
+  font-size: 13px;
+  color: #6b7280;
+  min-width: 210px;
+}
+
+.appointmentRowsControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #5f6b7a;
+}
+
+.appointmentRowsSelect {
+  height: 34px;
+  border: 1px solid #d7deed;
+  border-radius: 8px;
+  background-color: #ffffff;
+  color: #1f2937;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.appointmentPageControls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.appointmentPageBtn {
+  height: 34px;
+  min-width: 84px;
+  padding: 0 12px;
+  border-radius: 8px;
+}
+
+.appointmentPageNumber {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #d7deed;
+  border-radius: 8px;
+  background-color: #ffffff;
+  color: #3d67ee;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.appointmentPageNumber.active {
+  background-color: #3d67ee;
+  border-color: #3d67ee;
+  color: #ffffff;
+}
+
+.appointmentPageNumber:hover:not(.active) {
+  background-color: #f4f7ff;
+}
+
+.appointmentPageGap {
+  color: #8a94a6;
+  font-size: 13px;
+  padding: 0 2px;
+}
+
+.dataTable tbody tr.urgentPendingAppointmentRow {
+  background-color: #fff1f2;
+  box-shadow: inset 4px 0 0 #dc2626;
+}
+
+.dataTable tbody tr.urgentPendingAppointmentRow:hover {
+  background-color: #ffe4e6;
+}
+
+.appointmentTableLegend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  color: #5f6b7a;
+  font-size: 12px;
+}
+
+.appointmentLegendLabel {
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.appointmentLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.appointmentLegendSwatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+}
+
+.appointmentLegendSwatch.urgent {
+  background: #fff1f2;
+  border-color: #dc2626;
+  box-shadow: inset 3px 0 0 #dc2626;
+}
+
+.appointmentLegendSwatch.pending {
+  background: #fff3e0;
+  border-color: #f57c00;
+}
+
+.appointmentLegendSwatch.confirmed {
+  background: #e8f5e9;
+  border-color: #2e7d32;
+}
+
 .accountPagination {
   justify-content: flex-end;
   gap: 12px;
@@ -3383,6 +3534,17 @@ html, body {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.adminInlineButtonSpinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+  animation: spin 0.75s linear infinite;
 }
 
 /* Modal Styles */
@@ -4477,6 +4639,9 @@ input:checked + .slider:before {
   border-radius: 12px;
   padding: 12px;
   min-height: 0;
+  flex: 0 0 auto;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .auditTableContainer {
@@ -4686,6 +4851,37 @@ input:checked + .slider:before {
   color: #6b7280;
   font-size: 12px;
   font-weight: 600;
+}
+
+.auditActionMeta {
+  align-items: center;
+  gap: 12px;
+}
+
+.auditExportPdfBtn {
+  white-space: nowrap;
+  color: #ffffff;
+}
+
+.auditExportPdfBtn span,
+.auditExportPdfBtn svg {
+  color: #ffffff;
+}
+
+.auditExportPdfBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.audit-single-format {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.audit-export-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .auditModuleCell {
@@ -4963,9 +5159,6 @@ input:checked + .slider:before {
     width: 72px;
     margin-left: 0;
   }
-
- 
-
   .tableWrapper {
     overflow: visible;
   }
@@ -5138,6 +5331,10 @@ input:checked + .slider:before {
   display: grid;
   grid-template-columns: 1.35fr 1fr;
   gap: 18px;
+}
+
+.settingsHeroDefenseMode {
+  grid-template-columns: 1fr;
 }
 
 .settingsHeroPanel {
@@ -5580,6 +5777,35 @@ input:checked + .slider:before {
   color: #c53e3e;
   font-size: 12px;
   line-height: 1.45;
+}
+
+.settingsPasswordRequirements {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.settingsPasswordRequirement {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #c53e3e;
+}
+
+.settingsPasswordRequirement.met {
+  color: #25824f;
+}
+
+.settingsPasswordRequirementMark {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .settingsActionRow {

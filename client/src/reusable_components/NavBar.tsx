@@ -11,7 +11,8 @@ import { TbArrowsUpDown } from "react-icons/tb";
 import { IoIosArchive } from "react-icons/io";
 import petShieldLogo from '../assets/PetshieldLogo.png';
 import pawRangLogomarkWhite from '../assets/PawRang Logomark White.png';
-import { isAdminRole, isDoctorRole, normalizeRole } from '../auth/roles';
+import defaultUserAvatar from '../assets/userAvatar.jpg';
+import { isAdminRole, isClinicStaffRole, isDoctorRole, isNurseRole, normalizeRole } from '../auth/roles';
 import PetshieldFooter from './PetshieldFooter';
 
 // Icons
@@ -45,13 +46,19 @@ interface NavbarProps {
     username?: string;
     fullName?: string;
     role?: string;
+    image?: string;
     userImage?: string;
+    userimage?: string;
+    user_image?: string;
+    profileImage?: string;
+    employee_image?: string;
   } | null;
   onLogout: () => void;
   onNavigateAttempt?: (path: string, navigateFn: () => void) => void;
+  confirmLogout?: boolean;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttempt }) => {
+const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttempt, confirmLogout = false }) => {
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -70,20 +77,93 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
   const [isMobile, setIsMobile] = useState<boolean>(() => window.innerWidth <= 900);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [footerTarget, setFooterTarget] = useState<HTMLElement | null>(null);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
   const accountDropdownRef = useRef<HTMLDivElement>(null);
   const appointmentsDropdownRef = useRef<HTMLDivElement>(null);
   const inventoryDropdownRef = useRef<HTMLDivElement>(null);
   const normalizedRole = normalizeRole(currentUser?.role);
-  const isAdminWorkspace = isAdminRole(currentUser?.role);
+  const isDoctorPath = location.pathname.startsWith('/doctor');
+  const isClinicStaffPath = location.pathname.startsWith('/clinic-staff');
+  const isNursePath = location.pathname.startsWith('/nurse');
+  const isAdminWorkspace = !isDoctorPath && !isClinicStaffPath && !isNursePath && isAdminRole(currentUser?.role);
   const isDoctorWorkspace =
     !isAdminWorkspace &&
-    (location.pathname.startsWith('/doctor') || isDoctorRole(normalizedRole));
-  const homePath = isDoctorWorkspace ? '/doctor/home' : '/admin/home';
-  const appointmentsPath = isDoctorWorkspace ? '/doctor/appointments' : '/admin/schedule';
-  const recordsPath = isDoctorWorkspace ? '/doctor/medical-records' : '/patient-records';
-  const inventoryPath = isDoctorWorkspace ? '/doctor/inventory' : '/inventory';
-  const accountSettingsPath = '/admin/settings';
+    (isDoctorPath || isDoctorRole(normalizedRole));
+  const isClinicStaffWorkspace =
+    !isAdminWorkspace &&
+    !isDoctorWorkspace &&
+    (isClinicStaffPath || isClinicStaffRole(normalizedRole));
+  const isNurseWorkspace =
+    !isAdminWorkspace &&
+    !isDoctorWorkspace &&
+    !isClinicStaffWorkspace &&
+    (isNursePath || isNurseRole(normalizedRole));
+  const homePath = isDoctorWorkspace
+    ? '/doctor/home'
+    : isClinicStaffWorkspace
+      ? '/clinic-staff/home'
+      : isNurseWorkspace
+        ? '/nurse/home'
+        : '/admin/home';
+  const analyticsPath = isClinicStaffWorkspace ? '/clinic-staff/analytics' : '/analytics';
+  const appointmentSchedulePath = isDoctorWorkspace
+    ? '/doctor/appointments/schedule'
+    : isClinicStaffWorkspace
+      ? '/clinic-staff/appointments/schedule'
+      : isNurseWorkspace
+        ? '/nurse/appointments/schedule'
+        : '/admin/schedule';
+  const appointmentAvailabilityPath = isDoctorWorkspace
+    ? '/doctor/appointments/availability'
+    : isClinicStaffWorkspace
+      ? '/clinic-staff/appointments/availability'
+      : isNurseWorkspace
+        ? '/nurse/appointments/availability'
+      : '/admin/availability';
+  const appointmentHistoryPath = isDoctorWorkspace
+    ? '/doctor/appointments/history'
+    : isClinicStaffWorkspace
+      ? '/clinic-staff/appointments/history'
+      : isNurseWorkspace
+        ? '/nurse/appointments/history'
+      : '/admin/history';
+  const recordsPath = isDoctorWorkspace
+    ? '/doctor/medical-records'
+    : isClinicStaffWorkspace
+      ? '/clinic-staff/medical-records'
+      : isNurseWorkspace
+        ? '/nurse/medical-records'
+        : '/patient-records';
+  const billingPath = isClinicStaffWorkspace ? '/clinic-staff/billing' : isNurseWorkspace ? '/nurse/billing' : '/billing';
+  const inventoryPath = isDoctorWorkspace
+    ? '/doctor/inventory'
+    : isClinicStaffWorkspace
+      ? '/clinic-staff/inventory'
+      : isNurseWorkspace
+        ? '/nurse/inventory'
+        : '/inventory';
+  const inventoryLogsPath = isDoctorWorkspace ? '/doctor/inventory-logs' : isClinicStaffWorkspace ? '/clinic-staff/inventory-logs' : isNurseWorkspace ? '/nurse/inventory-logs' : '/inventory-logs';
+  const inventoryInPath = isClinicStaffWorkspace ? '/clinic-staff/inventory-in' : isNurseWorkspace ? '/nurse/inventory-in' : '/inventory-in';
+  const inventoryOutPath = isClinicStaffWorkspace ? '/clinic-staff/inventory-out' : isNurseWorkspace ? '/nurse/inventory-out' : '/inventory-out';
+  const inventoryArchivePath = isClinicStaffWorkspace ? '/clinic-staff/inventory-archive' : isNurseWorkspace ? '/nurse/inventory-archive' : '/inventory-archive';
+  const settingsPath = isDoctorWorkspace
+    ? '/doctor/settings'
+    : isClinicStaffWorkspace
+      ? '/clinic-staff/settings'
+      : isNurseWorkspace
+        ? '/nurse/settings'
+        : '/admin/settings';
+  const accountSettingsPath = settingsPath;
+  const profileImage =
+    currentUser?.profileImage ||
+    currentUser?.employee_image ||
+    currentUser?.image ||
+    currentUser?.userImage ||
+    currentUser?.userimage ||
+    currentUser?.user_image ||
+    '';
+  const avatarSource = profileImage || defaultUserAvatar;
 
   const isActive = (path: string): boolean => {
     return location.pathname === path;
@@ -91,9 +171,12 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
 
   const isAppointmentsActive = (): boolean => {
     if (isDoctorWorkspace) {
-      return isActive('/doctor/appointments');
+      return location.pathname === '/doctor/appointments' || location.pathname.startsWith('/doctor/appointments/');
     }
-    return isActive('/admin/schedule') || isActive('/admin/availability') || isActive('/admin/history');
+    if (isNurseWorkspace) {
+      return location.pathname === '/nurse/appointments' || location.pathname.startsWith('/nurse/appointments/');
+    }
+    return isActive(appointmentSchedulePath) || isActive(appointmentAvailabilityPath) || isActive(appointmentHistoryPath);
   };
 
   const isAccountActive = (): boolean => {
@@ -102,9 +185,9 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
 
   const isInventoryActive = (): boolean => {
     if (isDoctorWorkspace) {
-      return isActive('/doctor/inventory');
+      return isActive('/doctor/inventory') || isActive('/doctor/inventory/catalog') || isActive('/doctor/inventory-logs');
     }
-    return isActive('/manage-inventory') || isActive('/inventory') || isActive('/inventory-logs') || isActive('/inventory-in') || isActive('/inventory-out') || isActive('/inventory-archive');
+    return isActive('/manage-inventory') || isActive(inventoryPath) || isActive(inventoryLogsPath) || isActive(inventoryInPath) || isActive(inventoryOutPath) || isActive(inventoryArchivePath);
   };
   
   useEffect(() => {
@@ -153,7 +236,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
         setShowInventoryDropdown(true);
       }
     }
-  }, [location.pathname, isCollapsed, isDoctorWorkspace]);
+  }, [location.pathname, isCollapsed, isDoctorWorkspace, isClinicStaffWorkspace, isNurseWorkspace]);
 
   useEffect(() => {
     if (isMobile) {
@@ -247,6 +330,20 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
     runNavigation();
   };
 
+  const handleLogoutClick = () => {
+    if (confirmLogout) {
+      setShowLogoutConfirm(true);
+      return;
+    }
+
+    onLogout();
+  };
+
+  const confirmLogoutClick = () => {
+    setShowLogoutConfirm(false);
+    onLogout();
+  };
+
   const renderTooltip = () => {
     if (!hoveredItem || !isCollapsed || isMobile) return null;
 
@@ -257,6 +354,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
       case 'Account Overview': tooltipText = 'Account Overview'; break;
       case 'Appointments': tooltipText = 'Appointments'; break;
       case 'Patient Records': tooltipText = isDoctorWorkspace ? 'Medical Records' : 'Patient Records'; break;
+      case 'Billing': tooltipText = 'Billing'; break;
       case 'Inventory': tooltipText = 'Inventory'; break;
       case 'System Audit': tooltipText = 'System Audit'; break;
       case 'Settings': tooltipText = 'Settings'; break;
@@ -349,7 +447,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
           <div className="navAccountContainer">
             <div className="navAccount">
               <img 
-                src={(currentUser && currentUser.userImage) ? currentUser.userImage : "/src/assets/userAvatar.jpg"} 
+                src={avatarSource} 
                 alt="User"
                 className="navAvatar"
               />
@@ -387,11 +485,11 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                 </button>
               </div>
 
-              {!isDoctorWorkspace && (
+              {!isDoctorWorkspace && !isNurseWorkspace && (
                 <div className="navMenuSection">
                   <button 
-                    className={`navBtn ${isActive('/analytics') ? 'active' : ''}`} 
-                    onClick={() => handleNavigate('/analytics')}
+                    className={`navBtn ${isActive(analyticsPath) ? 'active' : ''}`}
+                    onClick={() => handleNavigate(analyticsPath)}
                     onMouseEnter={(e) => handleMouseEnter(e, 'Analytics')}
                     onMouseLeave={handleMouseLeave}
                   >
@@ -401,7 +499,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                 </div>
               )}
 
-              {!isDoctorWorkspace && (
+              {!isDoctorWorkspace && !isClinicStaffWorkspace && !isNurseWorkspace && (
               <div className="navMenuSection" ref={accountDropdownRef}>
                 {!isCollapsed ? (
                   <>
@@ -465,17 +563,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
               )}
 
               <div className="navMenuSection" ref={appointmentsDropdownRef}>
-                {isDoctorWorkspace ? (
-                  <button 
-                    className={`navBtn ${isAppointmentsActive() ? 'active' : ''}`}
-                    onClick={() => handleNavigate(appointmentsPath)}
-                    onMouseEnter={(e) => handleMouseEnter(e, 'Appointments')}
-                    onMouseLeave={handleMouseLeave}
-                  >
-                    <IoCalendarClearOutline size={isCollapsed ? 20 : 16} />
-                    {!isCollapsed && <span>Appointments</span>}
-                  </button>
-                ) : !isCollapsed ? (
+                {!isCollapsed || isMobile ? (
                   <>
                     <button 
                       className={`navBtn ${isAppointmentsActive() ? 'active' : ''}`}
@@ -489,22 +577,22 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                     {showAppointmentsDropdown && (
                       <div className="navSubMenu">
                         <button 
-                          className={`navBtn subNavBtn ${isActive('/admin/schedule') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/admin/schedule')}
+                          className={`navBtn subNavBtn ${isActive(appointmentSchedulePath) || (isDoctorWorkspace && isActive('/doctor/appointments')) ? 'active' : ''}`}
+                          onClick={() => handleNavigate(appointmentSchedulePath)}
                         >
                           <IoCalendarOutline size={14} />
                           <span>Schedule</span>
                         </button>
                         <button 
-                          className={`navBtn subNavBtn ${isActive('/admin/availability') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/admin/availability')}
+                          className={`navBtn subNavBtn ${isActive(appointmentAvailabilityPath) ? 'active' : ''}`}
+                          onClick={() => handleNavigate(appointmentAvailabilityPath)}
                         >
                           <IoTodayOutline size={14} />
                           <span>Availability Settings</span>
                         </button>
                         <button 
-                          className={`navBtn subNavBtn ${isActive('/admin/history') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/admin/history')}
+                          className={`navBtn subNavBtn ${isActive(appointmentHistoryPath) ? 'active' : ''}`}
+                          onClick={() => handleNavigate(appointmentHistoryPath)}
                         >
                           <IoTimeOutline size={14} />
                           <span>History</span>
@@ -525,19 +613,19 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                     {showAppointmentsDropdown && (
                       <div className="collapsedDropdown">
                         <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/admin/schedule', () => setShowAppointmentsDropdown(false));
+                          handleNavigate(appointmentSchedulePath, () => setShowAppointmentsDropdown(false));
                         }}>
                           <IoCalendarOutline size={14} />
                           <span>Schedule</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/admin/availability', () => setShowAppointmentsDropdown(false));
+                          handleNavigate(appointmentAvailabilityPath, () => setShowAppointmentsDropdown(false));
                         }}>
                           <IoTodayOutline size={14} />
                           <span>Availability Settings</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/admin/history', () => setShowAppointmentsDropdown(false));
+                          handleNavigate(appointmentHistoryPath, () => setShowAppointmentsDropdown(false));
                         }}>
                           <IoTimeOutline size={14} />
                           <span>History</span>
@@ -550,8 +638,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
 
               {/* Patient Records */}
               <div className="navMenuSection">
-                <button 
-                  className={`navBtn ${isActive(recordsPath) ? 'active' : ''}`} 
+                <button
+                  className={`navBtn ${isActive(recordsPath) ? 'active' : ''}`}
                   onClick={() => handleNavigate(recordsPath)}
                   onMouseEnter={(e) => handleMouseEnter(e, 'Patient Records')}
                   onMouseLeave={handleMouseLeave}
@@ -564,8 +652,8 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
               {!isDoctorWorkspace && (
                 <div className="navMenuSection">
                   <button 
-                    className={`navBtn ${isActive('/billing') ? 'active' : ''}`} 
-                    onClick={() => handleNavigate('/billing')}
+                    className={`navBtn ${isActive(billingPath) ? 'active' : ''}`}
+                    onClick={() => handleNavigate(billingPath)}
                     onMouseEnter={(e) => handleMouseEnter(e, 'Billing')}
                     onMouseLeave={handleMouseLeave}
                   >
@@ -577,17 +665,7 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
 
               {/* Inventory with Dropdown */}
               <div className="navMenuSection" ref={inventoryDropdownRef}>
-                {isDoctorWorkspace ? (
-                  <button 
-                    className={`navBtn ${isInventoryActive() ? 'active' : ''}`}
-                    onClick={() => handleNavigate(inventoryPath)}
-                    onMouseEnter={(e) => handleMouseEnter(e, 'Inventory')}
-                    onMouseLeave={handleMouseLeave}
-                  >
-                    <IoLayersOutline size={isCollapsed ? 20 : 16} />
-                    {!isCollapsed && <span>Inventory</span>}
-                  </button>
-                ) : !isCollapsed ? (
+                {!isCollapsed ? (
                   <>
                     <button 
                       className={`navBtn ${isInventoryActive() ? 'active' : ''}`}
@@ -601,40 +679,44 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                     {showInventoryDropdown && (
                       <div className="navSubMenu">
                         <button 
-                          className={`navBtn subNavBtn ${isActive('/manage-inventory') ? 'active' : ''}`}
+                          className={`navBtn subNavBtn ${isActive(inventoryPath) || (isDoctorWorkspace && isActive('/doctor/inventory/catalog')) || isActive('/manage-inventory') ? 'active' : ''}`}
                           onClick={() => handleNavigate(inventoryPath)}
                         >
                           <CiBoxes size={14} />
                           <span>Item Catalog</span>
                         </button>
                         <button 
-                          className={`navBtn subNavBtn ${isActive('/inventory-logs') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/inventory-logs')}
+                          className={`navBtn subNavBtn ${isActive(inventoryLogsPath) ? 'active' : ''}`}
+                          onClick={() => handleNavigate(inventoryLogsPath)}
                         >
                           <TbArrowsUpDown size={16} />
                           <span>Movement Logs</span>
                         </button>
-                        <button 
-                          className={`navBtn subNavBtn ${isActive('/inventory-in') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/inventory-in')}
-                        >
-                          <IoArrowDownOutline size={16} />
-                          <span>Inventory IN</span>
-                        </button>
-                        <button 
-                          className={`navBtn subNavBtn ${isActive('/inventory-out') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/inventory-out')}
-                        >
-                          <IoArrowUpOutline size={16} />
-                          <span>Inventory OUT</span>
-                        </button>
-                        <button 
-                          className={`navBtn subNavBtn ${isActive('/inventory-archive') ? 'active' : ''}`}
-                          onClick={() => handleNavigate('/inventory-archive')}
-                        >
-                          <IoIosArchive size={16} />
-                          <span>Archived Items</span>
-                        </button>
+                        {!isDoctorWorkspace && (
+                          <>
+                            <button
+                              className={`navBtn subNavBtn ${isActive(inventoryInPath) ? 'active' : ''}`}
+                              onClick={() => handleNavigate(inventoryInPath)}
+                            >
+                              <IoArrowDownOutline size={16} />
+                              <span>Inventory IN</span>
+                            </button>
+                            <button
+                              className={`navBtn subNavBtn ${isActive(inventoryOutPath) ? 'active' : ''}`}
+                              onClick={() => handleNavigate(inventoryOutPath)}
+                            >
+                              <IoArrowUpOutline size={16} />
+                              <span>Inventory OUT</span>
+                            </button>
+                            <button
+                              className={`navBtn subNavBtn ${isActive(inventoryArchivePath) ? 'active' : ''}`}
+                              onClick={() => handleNavigate(inventoryArchivePath)}
+                            >
+                              <IoIosArchive size={16} />
+                              <span>Archived Items</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </>
@@ -651,42 +733,46 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                     {showInventoryDropdown && (
                       <div className="collapsedDropdown">
                         <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/inventory', () => setShowInventoryDropdown(false));
+                          handleNavigate(inventoryPath, () => setShowInventoryDropdown(false));
                         }}>
                           <CiBoxes size={16} />
                           <span>Item Catalog</span>
                         </button>
                         <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/inventory-logs', () => setShowInventoryDropdown(false));
+                          handleNavigate(inventoryLogsPath, () => setShowInventoryDropdown(false));
                         }}>
                           <TbArrowsUpDown size={16} />
                           <span>Movement Logs</span>
                         </button>
-                        <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/inventory-in', () => setShowInventoryDropdown(false));
-                        }}>
-                          <IoArrowDownOutline size={16} />
-                          <span>Inventory IN</span>
-                        </button>
-                        <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/inventory-out', () => setShowInventoryDropdown(false));
-                        }}>
-                          <IoArrowUpOutline size={16} />
-                          <span>Inventory OUT</span>
-                        </button>
-                        <button className="collapsedDropdownItem" onClick={() => {
-                          handleNavigate('/inventory-archive', () => setShowInventoryDropdown(false));
-                        }}>
-                          <IoIosArchive size={16} />
-                          <span>Archived Items</span>
-                        </button>
+                        {!isDoctorWorkspace && (
+                          <>
+                            <button className="collapsedDropdownItem" onClick={() => {
+                              handleNavigate(inventoryInPath, () => setShowInventoryDropdown(false));
+                            }}>
+                              <IoArrowDownOutline size={16} />
+                              <span>Inventory IN</span>
+                            </button>
+                            <button className="collapsedDropdownItem" onClick={() => {
+                              handleNavigate(inventoryOutPath, () => setShowInventoryDropdown(false));
+                            }}>
+                              <IoArrowUpOutline size={16} />
+                              <span>Inventory OUT</span>
+                            </button>
+                            <button className="collapsedDropdownItem" onClick={() => {
+                              handleNavigate(inventoryArchivePath, () => setShowInventoryDropdown(false));
+                            }}>
+                              <IoIosArchive size={16} />
+                              <span>Archived Items</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </>
                 )}
               </div>
 
-              {!isDoctorWorkspace && (
+              {!isDoctorWorkspace && !isClinicStaffWorkspace && !isNurseWorkspace && (
                 <div className="navMenuSection">
                   <button 
                     className={`navBtn ${isActive('/admin/audit') ? 'active' : ''}`} 
@@ -700,32 +786,32 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
                 </div>
               )}
 
-              {!isDoctorWorkspace && (
-                <div className="navMenuSection">
-                  <button 
-                    className={`navBtn ${isActive('/admin/settings') ? 'active' : ''}`} 
-                    onClick={() => handleNavigate('/admin/settings')}
-                    onMouseEnter={(e) => handleMouseEnter(e, 'Settings')}
-                    onMouseLeave={handleMouseLeave}
-                  >
-                    <IoSettingsOutline size={isCollapsed ? 20 : 16} />
-                    {!isCollapsed && <span>Settings</span>}
-                  </button>
-                </div>
-              )}
+              <div className="navMenuSection">
+                <button
+                  className={`navBtn ${isActive(settingsPath) ? 'active' : ''}`}
+                  onClick={() => handleNavigate(settingsPath)}
+                  onMouseEnter={(e) => handleMouseEnter(e, 'Settings')}
+                  onMouseLeave={handleMouseLeave}
+                >
+                  <IoSettingsOutline size={isCollapsed ? 20 : 16} />
+                  {!isCollapsed && <span>Settings</span>}
+                </button>
+              </div>
             </div>
           </div>
 
           <div className="navFooter">
-            <button
-              className="navBtn navLogoutBtn"
-              onClick={onLogout}
-              onMouseEnter={(e) => handleMouseEnter(e, 'Log Out')}
-              onMouseLeave={handleMouseLeave}
-            >
-              <IoLogOutOutline size={isCollapsed ? 20 : 16} />
-              {!isCollapsed && <span>Log Out</span>}
-            </button>
+            <div className="navGlassContainer">
+              <button 
+                className="navBtn" 
+                onClick={handleLogoutClick}
+                onMouseEnter={(e) => handleMouseEnter(e, 'Log Out')}
+                onMouseLeave={handleMouseLeave}
+              >
+                <IoLogOutOutline size={isCollapsed ? 20 : 16} />
+                {!isCollapsed && <span>Log Out</span>}
+              </button>
+            </div>
             {(!isCollapsed || isMobile) && (
               <div className="navPoweredBy">
                 <span>Powered by</span>
@@ -737,6 +823,25 @@ const Navbar: React.FC<NavbarProps> = ({ currentUser, onLogout, onNavigateAttemp
       </div>
       {footerTarget && createPortal(<PetshieldFooter className="admin-body-footer" variant="compact" />, footerTarget)}
       {!isMobile && renderTooltip()}
+      {showLogoutConfirm && (
+        <div className="modalOverlay">
+          <div className="alertModal">
+            <div className="alertIcon">
+              <IoLogOutOutline size={55} color="#3d67ee" />
+            </div>
+            <h3 className="alertTitle">Log Out</h3>
+            <p className="alertMessage">Are you sure you want to log out?</p>
+            <div className="alertActions">
+              <button className="alertBtn cancelAlertBtn" onClick={() => setShowLogoutConfirm(false)}>
+                Cancel
+              </button>
+              <button className="alertBtn confirmAlertBtn" onClick={confirmLogoutClick}>
+                Log Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

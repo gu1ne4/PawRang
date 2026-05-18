@@ -20,6 +20,7 @@ import logoImg from '../assets/AgsikapLogo-Temp.png';
 import defaultUserImg from '../assets/userImg.jpg';
 import { availabilityService } from './availabilityService';
 import UserDetailsView from './UserDetailsView';
+import { isClinicStaffRole, isNurseRole } from '../auth/roles';
 
 const BILLING_NAVIGATION_DELAY_MS = 450;
 const DEFAULT_HISTORY_ROWS_PER_PAGE = 10;
@@ -43,14 +44,26 @@ interface ModalConfigType {
   showCancel: boolean;
 }
 
-export default function AdminHistory() {
+type AppointmentViewerRole = 'admin' | 'doctor';
+
+type AdminHistoryProps = {
+  viewerRole?: AppointmentViewerRole;
+  hideBillingActions?: boolean;
+};
+
+export default function AdminHistory({ viewerRole = 'admin', hideBillingActions = false }: AdminHistoryProps = {}) {
   const navigate = useNavigate();
   const location = useLocation();
   const isActive = location.pathname === '/History';
+  const isDoctorMode = viewerRole === 'doctor';
+  const shouldHideBillingActions = hideBillingActions || isDoctorMode;
 
   const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const isClinicStaffWorkspace = location.pathname.startsWith('/clinic-staff') || isClinicStaffRole(currentUser?.role);
+  const isNurseWorkspace = location.pathname.startsWith('/nurse') || isNurseRole(currentUser?.role);
+  const billingPath = isClinicStaffWorkspace ? '/clinic-staff/billing' : isNurseWorkspace ? '/nurse/billing' : '/billing';
 
   const [showAccountDropdown, setShowAccountDropdown] = useState(false);
   const [showAppointmentsDropdown, setShowAppointmentsDropdown] = useState(true); // Default open for this section
@@ -119,10 +132,16 @@ export default function AdminHistory() {
     loadHistory();
   }, []);
 
+  useEffect(() => {
+    if (shouldHideBillingActions && statusFilter === 'ready_for_billing') {
+      setStatusFilter('all');
+    }
+  }, [shouldHideBillingActions, statusFilter]);
+
   const loadHistory = async () => {
     setLoading(true);
     try {
-      const appointments = await availabilityService.getAppointmentHistory();
+      const appointments = await availabilityService.getAppointmentHistory(isDoctorMode ? { scope: 'all' } : {});
       setHistoryAppointments(appointments);
       if (selectedHistoryAppointment) {
         const refreshedSelection = appointments.find((appointment: any) =>
@@ -156,7 +175,7 @@ export default function AdminHistory() {
     const patientName = (app.name || app.patient_name || '').toLowerCase();
     const petName = (app.pet_name || app.petName || '').toLowerCase();
     const normalizedStatus = (app.status || '').toLowerCase();
-    const isReadyForBilling = Boolean(app.canProceedToBilling && !app.hasBillingInvoice);
+    const isReadyForBilling = !shouldHideBillingActions && Boolean(app.canProceedToBilling && !app.hasBillingInvoice);
 
     if (searchQuery && !patientName.includes(normalizedQuery) && !petName.includes(normalizedQuery)) {
       return false;
@@ -217,7 +236,7 @@ export default function AdminHistory() {
   };
 
   const getDisplayedStatusMeta = (appointment: any) => {
-    if (appointment?.canProceedToBilling && !appointment?.hasBillingInvoice) {
+    if (!shouldHideBillingActions && appointment?.canProceedToBilling && !appointment?.hasBillingInvoice) {
       return {
         label: 'Ready for Billing',
         colors: { backgroundColor: '#fff7e6', color: '#b26a00' },
@@ -242,6 +261,8 @@ export default function AdminHistory() {
     `${appointment?.recordType || 'appointment'}-${appointment?.dbId ?? appointment?.id ?? ''}`;
 
   const handleProceedToBilling = (appointment: any) => {
+    if (shouldHideBillingActions) return;
+
     if (!appointment) {
       window.alert('Error: Appointment details are unavailable.');
       return;
@@ -258,7 +279,7 @@ export default function AdminHistory() {
 
     setBillingNavigationKey(getHistoryAppointmentKey(appointment));
     window.setTimeout(() => {
-      navigate('/billing', {
+      navigate(billingPath, {
         state: {
           billingAction: {
             invoiceType,
@@ -273,7 +294,7 @@ export default function AdminHistory() {
 
   return (
     <div className="biContainer">
-      {billingNavigationKey !== null && (
+      {!shouldHideBillingActions && billingNavigationKey !== null && (
         <div className="billingNavigationOverlay" aria-live="polite" aria-busy="true">
           <div className="billingNavigationPanel">
             <span className="adminInlineButtonSpinner" aria-hidden="true" />
@@ -310,6 +331,9 @@ export default function AdminHistory() {
               onReschedule={() => {}}
               onProceedToBilling={handleProceedToBilling}
               billingActionLoading={billingNavigationKey !== null}
+              hideBillingActions={shouldHideBillingActions}
+              showMedicalRecordsAction={isDoctorMode}
+              onOpenMedicalRecords={() => navigate('/doctor/medical-records')}
               onAcceptClientPreference={() => {}}
               onDeclineClientPreference={() => {}}
               onRefresh={loadHistory}
@@ -405,7 +429,7 @@ export default function AdminHistory() {
                         style={{ width: '170px' }}
                       >
                         <option value="all" style={{color: '#a8a8a8'}}>All Status</option>
-                        <option value="ready_for_billing">Ready for Billing</option>
+                        {!shouldHideBillingActions && <option value="ready_for_billing">Ready for Billing</option>}
                         <option value="completed">Completed</option>
                         <option value="cancelled">Cancelled</option>
                         <option value="no_show">No-show</option>
@@ -492,7 +516,7 @@ export default function AdminHistory() {
                             </td>
                             <td style={{ textAlign: 'right' }}>
                               <div style={{ display: 'inline-flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                                {(appointment.hasBillingInvoice || appointment.canProceedToBilling) && (
+                                {!shouldHideBillingActions && (appointment.hasBillingInvoice || appointment.canProceedToBilling) && (
                                   <button
                                     onClick={() => handleProceedToBilling(appointment)}
                                     disabled={billingNavigationKey !== null}

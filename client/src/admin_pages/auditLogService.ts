@@ -12,6 +12,8 @@ export interface AuditLogEntry {
   summary: string;
   dateTime: string;
   status: AuditLogStatus;
+  branchId?: string | number | null;
+  branch_id?: string | number | null;
 }
 
 interface CurrentUserLike {
@@ -23,11 +25,22 @@ interface CurrentUserLike {
 type AuditLogInput = Omit<AuditLogEntry, 'id' | 'actor' | 'role' | 'dateTime'> & {
   actor?: string;
   role?: string;
+  targetType?: string;
+  targetId?: string | number | null;
 };
 
 interface AuditLogsResponse {
   logs?: unknown[];
   warning?: string;
+}
+
+interface FetchAuditLogOptions {
+  limit?: number;
+  search?: string;
+  module?: string;
+  role?: string;
+  status?: string;
+  branchId?: string | number | null;
 }
 
 const SETTINGS_AUDIT_STORAGE_KEY = 'petshieldSettingsAuditLogs';
@@ -64,6 +77,8 @@ const normalizeAuditLog = (log: any): AuditLogEntry | null => {
     return null;
   }
 
+  const branchId = log?.branchId ?? log?.branch_id ?? null;
+
   return {
     id,
     module: log.module,
@@ -73,7 +88,9 @@ const normalizeAuditLog = (log: any): AuditLogEntry | null => {
     target: log.target,
     summary: log.summary,
     dateTime: log.dateTime ?? log.created_at,
-    status
+    status,
+    branchId,
+    branch_id: branchId
   };
 };
 
@@ -115,8 +132,22 @@ export const getStoredAuditLogs = (): AuditLogEntry[] => {
   }
 };
 
-export const fetchAuditLogs = async (limit = 500): Promise<{ logs: AuditLogEntry[]; warning?: string }> => {
-  const response = await fetch(`${API_URL}/api/audit-logs?limit=${encodeURIComponent(limit)}`);
+export const fetchAuditLogs = async (
+  optionsOrLimit: FetchAuditLogOptions | number = 500
+): Promise<{ logs: AuditLogEntry[]; warning?: string }> => {
+  const options = typeof optionsOrLimit === 'number' ? { limit: optionsOrLimit } : optionsOrLimit;
+  const params = new URLSearchParams();
+
+  params.set('limit', String(options.limit ?? 500));
+  if (options.search) params.set('search', options.search);
+  if (options.module && options.module !== 'All Modules') params.set('module', options.module);
+  if (options.role && options.role !== 'All Roles') params.set('role', options.role);
+  if (options.status && options.status !== 'All Statuses') params.set('status', options.status);
+  if (options.branchId !== undefined && options.branchId !== null && options.branchId !== 'All Branches') {
+    params.set('branch_id', String(options.branchId));
+  }
+
+  const response = await fetch(`${API_URL}/api/audit-logs?${params.toString()}`);
   const payload: AuditLogsResponse = await response.json().catch(() => ({} as AuditLogsResponse));
 
   if (!response.ok) {

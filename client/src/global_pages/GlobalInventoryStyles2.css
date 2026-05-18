@@ -1383,14 +1383,95 @@ textarea.invFormInput {
   border-color: #3d67ee;
 }
 
-/* Sales Report Modal */
-.invSalesReportModal {
+.invModalOverlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.invModalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 25px;
+  border-bottom: 2px solid #f0f0f0;
   background-color: white;
-  border-radius: 20px;
-  width: 450px;
-  max-width: 90%;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-  animation: invFadeIn 0.3s ease;
+  border-radius: 20px 20px 0 0;
+}
+
+.invModalHeader h2 {
+  font-size: 18px;
+  color: #333;
+  margin: 0;
+}
+
+.invModalClose {
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: #666;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.invModalClose:hover {
+  color: #333;
+  background-color: #f0f0f0;
+}
+
+.invModalContent {
+  padding: 25px;
+}
+
+.invModalFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 15px;
+  padding: 20px 25px;
+  border-top: 2px solid #f0f0f0;
+}
+
+.invFormInput,
+.invFormSelect {
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  background-color: white;
+}
+
+.invFormInput:focus,
+.invFormSelect:focus {
+  outline: none;
+  border-color: #3d67ee;
+  box-shadow: 0 0 0 3px rgba(61, 103, 238, 0.1);
+}
+
+.invCancelBtn,
+.invSubmitBtn {
+  padding: 10px 30px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.invCancelBtn {
+  background-color: #dad8d8;
+  color: #0c0c0c;
+}
+
+.invSubmitBtn {
+  background: linear-gradient(135deg, #3db6ee, #3d67ee, #0738D9);
+  color: white;
 }
 
 /* Filter Section adjustments */

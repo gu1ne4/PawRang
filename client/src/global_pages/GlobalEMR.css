@@ -1795,6 +1795,14 @@ input:disabled, select:disabled, button:disabled {
   color: #3d67ee;
 }
 
+.emrVisitHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .emrVisitNumber {
   font-size: 11px;
   color: #999;
@@ -2882,6 +2890,16 @@ input:checked ~ .emrSwitchLabel {
   .emrLargeModal {
     width: 95%;
     max-width: 95% !important;
+  }
+
+  .emrVisitHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .emrVisitHeaderActions {
+    width: 100%;
+    justify-content: flex-start;
   }
   
   .emrVisitDetails {

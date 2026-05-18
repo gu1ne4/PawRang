@@ -3,6 +3,7 @@ import './AdminStyles.css';
 import {
   IoArrowBack,
   IoAlertCircleOutline,
+  IoAlbumsOutline,
   IoCalendarClearOutline,
   IoCheckmarkCircleOutline,
   IoChevronDownOutline,
@@ -22,6 +23,8 @@ import { apiService } from '../apiService';
 
 // 🟢 FIX: We added all our new variable names to the blueprint so TypeScript stops complaining!
 type AppointmentLike = {
+  id?: string | number;
+  dbId?: string | number;
   name?: string;
   patient_email?: string;
   patientEmail?: string;
@@ -62,6 +65,7 @@ type AppointmentLike = {
   medicalInformation?: any;
   medical_information?: any;
   recordType?: string;
+  is_walk_in?: boolean;
   linkedVisitId?: string | number | null;
   billingSourceType?: string | null;
   billingSourceId?: string | number | null;
@@ -92,12 +96,20 @@ type UserDetailsViewProps = {
   onDeclineClientPreference: (user: AppointmentLike, request: any) => void;
   onRefresh: () => void;
   refreshing: boolean;
+  actionBusyType?: string | null;
   readOnly?: boolean;
   backLabel?: string;
   billingActionLoading?: boolean;
+  hideBillingActions?: boolean;
+  showMedicalRecordsAction?: boolean;
+  onOpenMedicalRecords?: (user: AppointmentLike) => void;
+  showInventoryAction?: boolean;
+  onOpenInventory?: (user: AppointmentLike) => void;
 };
 
 const AI_BUSY_FALLBACK_MESSAGE = 'Server is busy. Please try again later.';
+
+const InlineButtonSpinner = () => <span className="adminInlineButtonSpinner" aria-hidden="true" />;
 
 const getAiFallbackMessage = (error: any, defaultMessage: string) => {
   const message = String(error?.message || '');
@@ -134,9 +146,15 @@ export default function UserDetailsView({
   onDeclineClientPreference,
   onRefresh,
   refreshing,
+  actionBusyType = null,
   readOnly = false,
   backLabel = 'Back to Appointments',
   billingActionLoading = false,
+  hideBillingActions = false,
+  showMedicalRecordsAction = false,
+  onOpenMedicalRecords,
+  showInventoryAction = false,
+  onOpenInventory,
 }: UserDetailsViewProps) {
   const [aiSummary, setAiSummary] = useState<AdminAiSummary | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -145,6 +163,13 @@ export default function UserDetailsView({
   const [copySuccess, setCopySuccess] = useState(false);
 
   if (!user) return null;
+
+  const isAnyActionBusy = Boolean(actionBusyType) || aiLoading || refreshing || billingActionLoading;
+  const isBusyAction = (type: string) => actionBusyType === type;
+  const disabledActionStyle = {
+    cursor: isAnyActionBusy ? 'not-allowed' : 'pointer',
+    opacity: isAnyActionBusy ? 0.68 : 1,
+  };
 
   const formatDate = (dateValue?: string | null) => {
     if (!dateValue) return 'Not provided';
@@ -310,12 +335,14 @@ export default function UserDetailsView({
     latestRescheduleRequest?.patient_response_type
   );
   const hasBillingInvoice = Boolean(user.hasBillingInvoice && user.billingInvoiceId);
-  const canShowBillingAction = Boolean(hasBillingInvoice || user.canProceedToBilling);
-  const billingStatusMeta = hasBillingInvoice
-    ? { label: 'Invoiced', bg: '#eef2ff', color: '#3d67ee' }
-    : user.canProceedToBilling
-      ? { label: 'Ready for Billing', bg: '#fff7e6', color: '#b26a00' }
-      : null;
+  const canShowBillingAction = !hideBillingActions && Boolean(hasBillingInvoice || user.canProceedToBilling);
+  const billingStatusMeta = !hideBillingActions
+    ? hasBillingInvoice
+      ? { label: 'Invoiced', bg: '#eef2ff', color: '#3d67ee' }
+      : user.canProceedToBilling
+        ? { label: 'Ready for Billing', bg: '#fff7e6', color: '#b26a00' }
+        : null
+    : null;
   const canReviewClientPreference =
     !readOnly &&
     latestRescheduleRequest?.status === 'needs_new_schedule' &&
@@ -487,7 +514,7 @@ export default function UserDetailsView({
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button
               onClick={handleGenerateAiSummary}
-              disabled={aiLoading}
+              disabled={isAnyActionBusy}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -497,11 +524,12 @@ export default function UserDetailsView({
                 border: '1px solid #d8dcff',
                 backgroundColor: aiLoading ? '#eef2ff' : '#f4f7ff',
                 color: '#3d67ee',
-                cursor: aiLoading ? 'not-allowed' : 'pointer',
+                cursor: isAnyActionBusy ? 'not-allowed' : 'pointer',
                 fontWeight: '600',
+                opacity: isAnyActionBusy && !aiLoading ? 0.68 : 1,
               }}
             >
-              <IoMedical size={18} />
+              {aiLoading ? <InlineButtonSpinner /> : <IoMedical size={18} />}
               <span>{aiLoading ? 'Generating Summary...' : 'Generate AI Summary'}</span>
             </button>
             <div
@@ -522,6 +550,7 @@ export default function UserDetailsView({
             <>
               <button
                 onClick={() => onAccept(user)}
+                disabled={isAnyActionBusy}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -531,15 +560,16 @@ export default function UserDetailsView({
                   border: '1px solid #c8e6c9',
                   backgroundColor: '#e8f5e9',
                   color: '#2e7d32',
-                  cursor: 'pointer',
                   fontWeight: '600',
+                  ...disabledActionStyle,
                 }}
               >
-                <IoCheckmarkCircleOutline size={18} />
-                <span>Accept Appointment</span>
+                {isBusyAction('accept') ? <InlineButtonSpinner /> : <IoCheckmarkCircleOutline size={18} />}
+                <span>{isBusyAction('accept') ? 'Accepting...' : 'Accept Appointment'}</span>
               </button>
               <button
                 onClick={() => onCancel(user)}
+                disabled={isAnyActionBusy}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -549,18 +579,18 @@ export default function UserDetailsView({
                   border: '1px solid #ffcdd2',
                   backgroundColor: '#ffebee',
                   color: '#d32f2f',
-                  cursor: 'pointer',
                   fontWeight: '600',
+                  ...disabledActionStyle,
                 }}
               >
-                <IoCloseCircleOutline size={18} />
-                <span>Decline Appointment</span>
+                {isBusyAction('cancel') ? <InlineButtonSpinner /> : <IoCloseCircleOutline size={18} />}
+                <span>{isBusyAction('cancel') ? 'Declining...' : 'Decline Appointment'}</span>
               </button>
             </>
             )}
             <button
               onClick={onRefresh}
-              disabled={refreshing}
+              disabled={isAnyActionBusy}
               title={refreshing ? 'Refreshing appointments' : 'Refresh appointment details'}
               aria-label={refreshing ? 'Refreshing appointments' : 'Refresh appointment details'}
               style={{
@@ -573,11 +603,12 @@ export default function UserDetailsView({
                 border: '1px solid #cdd8ff',
                 backgroundColor: refreshing ? '#eef2ff' : '#f4f7ff',
                 color: '#3d67ee',
-                cursor: refreshing ? 'not-allowed' : 'pointer',
+                cursor: isAnyActionBusy ? 'not-allowed' : 'pointer',
+                opacity: isAnyActionBusy && !refreshing ? 0.68 : 1,
                 flexShrink: 0,
               }}
             >
-              <IoRefreshOutline size={18} />
+              {refreshing ? <InlineButtonSpinner /> : <IoRefreshOutline size={18} />}
             </button>
           </div>
         )}
@@ -603,9 +634,9 @@ export default function UserDetailsView({
                       type="button"
                       className="adminAiToolbarBtn"
                       onClick={handleGenerateAiSummary}
-                      disabled={aiLoading}
+                      disabled={isAnyActionBusy}
                     >
-                      <IoRefreshCircleOutline size={16} />
+                      {aiLoading ? <InlineButtonSpinner /> : <IoRefreshCircleOutline size={16} />}
                       <span>{aiLoading ? 'Refreshing...' : 'Regenerate'}</span>
                     </button>
                   </>
@@ -943,6 +974,7 @@ export default function UserDetailsView({
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '16px' }}>
                   <button
                     onClick={() => onDeclineClientPreference(user, latestRescheduleRequest)}
+                    disabled={isAnyActionBusy}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -953,14 +985,15 @@ export default function UserDetailsView({
                       border: '1px solid #ffcdd2',
                       borderRadius: '8px',
                       fontWeight: '600',
-                      cursor: 'pointer',
+                      ...disabledActionStyle,
                     }}
                   >
-                    <IoCloseCircleOutline size={18} />
-                    <span>Decline Preference</span>
+                    {isBusyAction('declinePreference') ? <InlineButtonSpinner /> : <IoCloseCircleOutline size={18} />}
+                    <span>{isBusyAction('declinePreference') ? 'Declining...' : 'Decline Preference'}</span>
                   </button>
                   <button
                     onClick={() => onAcceptClientPreference(user, latestRescheduleRequest)}
+                    disabled={isAnyActionBusy}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -971,11 +1004,11 @@ export default function UserDetailsView({
                       border: '1px solid #c8e6c9',
                       borderRadius: '8px',
                       fontWeight: '600',
-                      cursor: 'pointer',
+                      ...disabledActionStyle,
                     }}
                   >
-                    <IoCheckmarkCircleOutline size={18} />
-                    <span>Accept Preferred Date</span>
+                    {isBusyAction('acceptPreference') ? <InlineButtonSpinner /> : <IoCheckmarkCircleOutline size={18} />}
+                    <span>{isBusyAction('acceptPreference') ? 'Accepting...' : 'Accept Preferred Date'}</span>
                   </button>
                 </div>
               )}
@@ -983,11 +1016,58 @@ export default function UserDetailsView({
           </div>
         )}
 
-        {(!readOnly || canShowBillingAction) && (
+        {(!readOnly || canShowBillingAction || showMedicalRecordsAction || showInventoryAction) && (
           <div style={{ display: 'flex', justifyContent: showBottomLifecycleActions ? 'space-around' : 'center', padding: '20px 0', borderTop: '1px solid #eee', gap: '20px', flexWrap: 'wrap' }}>
+            {showMedicalRecordsAction && (
+              <button
+                onClick={() => onOpenMedicalRecords?.(user)}
+                disabled={isAnyActionBusy}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 20px',
+                  backgroundColor: '#f4f7ff',
+                  color: '#3d67ee',
+                  border: '1px solid #cdd8ff',
+                  borderRadius: '8px',
+                  fontWeight: '600',
+                  cursor: isAnyActionBusy ? 'not-allowed' : 'pointer',
+                  opacity: isAnyActionBusy ? 0.68 : 1,
+                }}
+              >
+                <IoDocumentTextOutline size={18} />
+                <span>Open Medical Records</span>
+              </button>
+            )}
+
+            {showInventoryAction && (
+              <button
+                onClick={() => onOpenInventory?.(user)}
+                disabled={isAnyActionBusy}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '10px 20px',
+                  backgroundColor: '#f8fbff',
+                  color: '#315f9f',
+                  border: '1px solid #cfe0f5',
+                  borderRadius: '8px',
+                  fontWeight: '600',
+                  cursor: isAnyActionBusy ? 'not-allowed' : 'pointer',
+                  opacity: isAnyActionBusy ? 0.68 : 1,
+                }}
+              >
+                <IoAlbumsOutline size={18} />
+                <span>Check Inventory</span>
+              </button>
+            )}
+
             {!readOnly && (
               <button
                 onClick={() => onReschedule(user)}
+                disabled={isAnyActionBusy}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -998,17 +1078,18 @@ export default function UserDetailsView({
                   border: 'none',
                   borderRadius: '8px',
                   fontWeight: '600',
-                  cursor: 'pointer',
+                  ...disabledActionStyle,
                 }}
               >
-                <IoCalendarClearOutline size={18} />
-                <span>Reschedule</span>
+                {isBusyAction('reschedule') ? <InlineButtonSpinner /> : <IoCalendarClearOutline size={18} />}
+                <span>{isBusyAction('reschedule') ? 'Rescheduling...' : 'Reschedule'}</span>
               </button>
             )}
 
             {!readOnly && showBottomLifecycleActions && (
               <button
                 onClick={() => onCancel(user)}
+                disabled={isAnyActionBusy}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1020,17 +1101,18 @@ export default function UserDetailsView({
                   borderColor: '#ffcdd2',
                   borderRadius: '8px',
                   fontWeight: '600',
-                  cursor: 'pointer',
+                  ...disabledActionStyle,
                 }}
               >
-                <IoCloseCircleOutline size={18} />
-                <span>Cancel</span>
+                {isBusyAction('cancel') ? <InlineButtonSpinner /> : <IoCloseCircleOutline size={18} />}
+                <span>{isBusyAction('cancel') ? 'Cancelling...' : 'Cancel'}</span>
               </button>
             )}
 
             {!readOnly && showBottomLifecycleActions && (
               <button
                 onClick={() => onComplete(user)}
+                disabled={isAnyActionBusy}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1042,18 +1124,18 @@ export default function UserDetailsView({
                   borderColor: '#c8e6c9',
                   borderRadius: '8px',
                   fontWeight: '600',
-                  cursor: 'pointer',
+                  ...disabledActionStyle,
                 }}
               >
-                <IoCheckmarkCircleOutline size={18} />
-                <span>Complete</span>
+                {isBusyAction('complete') ? <InlineButtonSpinner /> : <IoCheckmarkCircleOutline size={18} />}
+                <span>{isBusyAction('complete') ? 'Completing...' : 'Complete'}</span>
               </button>
             )}
 
             {canShowBillingAction && (
               <button
                 onClick={() => onProceedToBilling(user)}
-                disabled={billingActionLoading}
+                disabled={isAnyActionBusy}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -1067,8 +1149,8 @@ export default function UserDetailsView({
                   borderColor: hasBillingInvoice ? '#cdd8ff' : '#ffe0a3',
                   borderRadius: '8px',
                   fontWeight: '600',
-                  cursor: billingActionLoading ? 'wait' : 'pointer',
-                  opacity: billingActionLoading ? 0.8 : 1,
+                  cursor: isAnyActionBusy ? 'not-allowed' : 'pointer',
+                  opacity: isAnyActionBusy && !billingActionLoading ? 0.68 : 1,
                 }}
               >
                 {billingActionLoading ? (

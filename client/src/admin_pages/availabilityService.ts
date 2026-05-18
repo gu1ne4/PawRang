@@ -1,6 +1,61 @@
 // Service to manage vet availability data
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 
+function getCurrentAuditUser(): any | null {
+  try {
+    const session = localStorage.getItem('userSession');
+    return session ? JSON.parse(session) : null;
+  } catch {
+    return null;
+  }
+}
+
+function withAuditActor<T extends Record<string, any>>(payload: T): T & Record<string, any> {
+  const currentUser = getCurrentAuditUser();
+  if (!currentUser) return payload;
+
+  const userId = currentUser.id || currentUser.pk;
+  const role = currentUser.role;
+  const normalizedRole = String(role || '').toLowerCase();
+  const accountType =
+    currentUser.account_type ||
+    currentUser.accountType ||
+    (normalizedRole.includes('patient') || normalizedRole.includes('owner') || normalizedRole.includes('user')
+      ? 'patient'
+      : 'employee');
+
+  return {
+    ...payload,
+    actorId: userId,
+    userId,
+    userType: accountType,
+    actorAccountType: accountType,
+    username: currentUser.username || currentUser.fullName || currentUser.fullname,
+    role,
+    currentUser,
+  };
+}
+
+function withUserIdQuery(path: string): string {
+  const currentUser = getCurrentAuditUser();
+  const userId = currentUser?.id || currentUser?.pk;
+  if (!userId) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}userId=${encodeURIComponent(String(userId))}`;
+}
+
+function withQueryParams(path: string, params: Record<string, string | number | boolean | null | undefined>): string {
+  const entries = Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '');
+  if (entries.length === 0) return path;
+  const query = entries
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join('&');
+  return `${path}${path.includes('?') ? '&' : '?'}${query}`;
+}
+
+type AppointmentReadOptions = {
+  scope?: 'all';
+};
+
 export const availabilityService = {
   // Get day availability (all 7 days)
   async getDayAvailability(): Promise<any> {
@@ -51,7 +106,7 @@ export const availabilityService = {
       const response = await fetch(`${API_URL}/api/day-availability/${dayName.toLowerCase()}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(withAuditActor(payload))
       });
       
       // If PUT fails with 404, try POST (create new)
@@ -60,7 +115,7 @@ export const availabilityService = {
         const postResponse = await fetch(`${API_URL}/api/day-availability`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(withAuditActor(payload))
         });
         
         if (!postResponse.ok) {
@@ -151,7 +206,7 @@ export const availabilityService = {
       const response = await fetch(`${API_URL}/api/time-slots/${dayName.toLowerCase()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slots: sanitizedSlots })
+        body: JSON.stringify(withAuditActor({ slots: sanitizedSlots }))
       });
       
       if (!response.ok) {
@@ -176,7 +231,9 @@ export const availabilityService = {
     try {
       console.log('Calling delete API for slot:', slotId);
       const response = await fetch(`${API_URL}/api/time-slots/${slotId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(withAuditActor({}))
       });
       
       if (!response.ok) {
@@ -293,9 +350,10 @@ export const availabilityService = {
   },
 
   // Get all appointments for the schedule table
-  async getAppointmentsForTable(): Promise<any[]> {
+  async getAppointmentsForTable(options: AppointmentReadOptions = {}): Promise<any[]> {
     try {
-      const response = await fetch(`${API_URL}/api/appointments/table`);
+      const path = withQueryParams(withUserIdQuery('/api/appointments/table'), { scope: options.scope });
+      const response = await fetch(`${API_URL}${path}`);
       if (!response.ok) throw new Error('Failed to load appointments');
       const data = await response.json();
       return data.appointments || [];
@@ -477,17 +535,20 @@ export const availabilityService = {
       const response = await fetch(`${API_URL}/api/special-dates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(withAuditActor({
           event_name: eventName,
           event_date: eventRecurrence === 'annual' ? null : eventDate,
           event_description: eventDescription,
           event_recurrence: eventRecurrence,
           event_month: eventMonth,
           event_day: eventDay
-        })
+        }))
       });
       
-      if (!response.ok) throw new Error('Failed to save special date');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to save special date');
+      }
       return await response.json();
     } catch (error) {
       console.error('Error saving special date:', error);
@@ -511,7 +572,7 @@ export const availabilityService = {
       const response = await fetch(`${API_URL}/api/special-dates/${originalEventDate}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(withAuditActor({
           event_name: eventName,
           event_date: eventRecurrence === 'annual' ? null : eventDate,
           event_description: eventDescription,
@@ -521,10 +582,13 @@ export const availabilityService = {
           original_event_recurrence: originalEventRecurrence,
           original_event_month: originalEventMonth,
           original_event_day: originalEventDay
-        })
+        }))
       });
       
-      if (!response.ok) throw new Error('Failed to update special date');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to update special date');
+      }
       return await response.json();
     } catch (error) {
       console.error('Error updating special date:', error);
@@ -539,10 +603,20 @@ export const availabilityService = {
         ? `?event_recurrence=annual&event_month=${eventMonth}&event_day=${eventDay}`
         : '';
       const response = await fetch(`${API_URL}/api/special-dates/${eventDate}${query}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(withAuditActor({
+          event_date: eventDate,
+          event_recurrence: eventRecurrence,
+          event_month: eventMonth,
+          event_day: eventDay
+        }))
       });
       
-      if (!response.ok) throw new Error('Failed to delete special date');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to delete special date');
+      }
       return await response.json();
     } catch (error) {
       console.error('Error deleting special date:', error);
@@ -591,10 +665,14 @@ export const availabilityService = {
   },
 
   // Get completed/cancelled appointments for history
-  async getAppointmentHistory(): Promise<any[]> {
+  async getAppointmentHistory(options: AppointmentReadOptions = {}): Promise<any[]> {
     try {
-      const response = await fetch(`${API_URL}/api/appointments/history`);
-      if (!response.ok) throw new Error('Failed to load appointment history');
+      const path = withQueryParams(withUserIdQuery('/api/appointments/history'), { scope: options.scope });
+      const response = await fetch(`${API_URL}${path}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to load appointment history');
+      }
       const data = await response.json();
       return data.appointments || [];
     } catch (error) {
@@ -606,7 +684,18 @@ export const availabilityService = {
   // Check if a date is a special date
   isSpecialDate(dateString: string, specialDates: any[]): boolean {
     if (!specialDates || !dateString) return false;
-    return specialDates.some(event => event.event_date === dateString);
+    const [, month, day] = dateString.split('-');
+    const annualKey = month && day ? `${month}-${day}` : '';
+
+    return specialDates.some(event => {
+      const recurrence = String(event?.event_recurrence || event?.recurrence_type || 'once').toLowerCase();
+      if (recurrence === 'annual' || recurrence === 'yearly') {
+        const eventMonth = Number(event?.event_month) || Number(String(event?.event_date || '').split('-')[1]);
+        const eventDay = Number(event?.event_day) || Number(String(event?.event_date || '').split('-')[2]);
+        return annualKey === `${String(eventMonth).padStart(2, '0')}-${String(eventDay).padStart(2, '0')}`;
+      }
+      return event.event_date === dateString;
+    });
   },
 
   // Get day name from date string

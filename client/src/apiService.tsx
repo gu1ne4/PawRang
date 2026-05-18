@@ -73,6 +73,19 @@ function withUserIdQuery(path: string, userId?: string | number | null): string 
   return `${path}${path.includes('?') ? '&' : '?'}userId=${encodeURIComponent(String(resolvedUserId))}`;
 }
 
+function withQueryParams(path: string, params: Record<string, string | number | boolean | null | undefined>): string {
+  const entries = Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '');
+  if (entries.length === 0) return path;
+  const query = entries
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join('&');
+  return `${path}${path.includes('?') ? '&' : '?'}${query}`;
+}
+
+type AppointmentReadOptions = {
+  scope?: 'all';
+};
+
 async function request<T = any>(
   path: string,
   options: RequestInit = {}
@@ -310,13 +323,17 @@ export const apiService = {
 
 // ─── Admin Schedule & Appointment Endpoints ───────────────────────────────
 
-  getAppointmentsForTable(userId?: string | number | null) {
-    return request(withUserIdQuery('/api/appointments/table', userId));
+  getAppointmentsForTable(userId?: string | number | null, options: AppointmentReadOptions = {}) {
+    return request(withQueryParams(withUserIdQuery('/api/appointments/table', userId), {
+      scope: options.scope,
+    }));
   },
 
-  getDoctors(userId?: string | number | null) {
+  getDoctors(userId?: string | number | null, options: AppointmentReadOptions = {}) {
     // In your app.py, /accounts and /api/doctors both route to get_accounts()
-    return request(withUserIdQuery('/api/doctors', userId));
+    return request(withQueryParams(withUserIdQuery('/api/doctors', userId), {
+      scope: options.scope,
+    }));
   },
 
   updateAppointmentStatus(appointmentId: string | number, status: string, recordType: string) {
@@ -375,7 +392,7 @@ export const apiService = {
   generateDoctorEmrBrief(payload: any) {
     return request('/api/ai/doctor-emr-brief', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
@@ -429,10 +446,11 @@ export const apiService = {
     age?: string;
     weight_kg?: string;
     pet_photo_url?: string;
+    color_markings?: string;
     is_vaccinated?: boolean;
     vaccination_urls?: string[];
   }) {
-    return request('/pets', { method: 'POST', body: JSON.stringify(payload) });
+    return request('/pets', { method: 'POST', body: JSON.stringify(withAuditActor(payload)) });
   },
 
   updatePet(petId: number, payload: Partial<{
@@ -445,17 +463,21 @@ export const apiService = {
     age: string;
     weight_kg: string;
     pet_photo_url: string;
+    color_markings: string;
     is_vaccinated: boolean;
     vaccination_urls: string[];
   }>) {
     return request(`/pets/${petId}`, {
       method: 'PATCH',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
   deletePet(petId: number) {
-    return request(`/pets/${petId}`, { method: 'DELETE' });
+    return request(`/pets/${petId}`, {
+      method: 'DELETE',
+      body: JSON.stringify(withAuditActor({})),
+    });
   },
 
   uploadPetPhoto(fileBase64: string, fileName: string, mimeType: string) {
@@ -644,20 +666,21 @@ export const apiService = {
   createEmrRecord(payload: any) {
     return request('/api/emr/records', {
       method: 'POST',
-      body: JSON.stringify({ ...payload, userId: payload?.userId || getStoredUserId() }),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
   updateEmrRecord(recordId: number | string, payload: any) {
     return request(`/api/emr/records/${recordId}`, {
       method: 'PUT',
-      body: JSON.stringify({ ...payload, userId: payload?.userId || getStoredUserId() }),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
   deleteEmrRecord(recordId: number | string) {
     return request(withUserIdQuery(`/api/emr/records/${recordId}`), {
       method: 'DELETE',
+      body: JSON.stringify(withAuditActor({})),
     });
   },
 
@@ -690,21 +713,21 @@ export const apiService = {
   createBillingInvoice(payload: any) {
     return request('/api/billing/invoices', {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
   recordBillingInvoicePayment(invoiceId: number | string, payload: any) {
     return request(`/api/billing/invoices/${invoiceId}/payments`, {
       method: 'POST',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
   deleteBillingInvoices(invoiceIds: Array<number | string>) {
     return request('/api/billing/invoices/bulk', {
       method: 'DELETE',
-      body: JSON.stringify({ invoiceIds, userId: getStoredUserId() }),
+      body: JSON.stringify(withAuditActor({ invoiceIds })),
     });
   },
 
@@ -714,7 +737,7 @@ export const apiService = {
   }) {
     return request(`/api/emr/lab-results/${labResultId}/owner-visibility`, {
       method: 'PUT',
-      body: JSON.stringify({ ...payload, userId: getStoredUserId() }),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
@@ -724,7 +747,7 @@ export const apiService = {
   }) {
     return request(`/api/emr/vaccinations/${vaccinationId}/owner-visibility`, {
       method: 'PUT',
-      body: JSON.stringify({ ...payload, userId: getStoredUserId() }),
+      body: JSON.stringify(withAuditActor(payload)),
     });
   },
 
@@ -806,6 +829,8 @@ export const apiService = {
     contact_number: string;
     userImage: string;
     profileImage: string;
+    accountType: string;
+    account_type: string;
   }>) {
     return request(`/profile/${userId}`, {
       method: 'PATCH',

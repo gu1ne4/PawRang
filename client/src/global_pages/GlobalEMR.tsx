@@ -10,6 +10,7 @@ import { TbReportMedical } from "react-icons/tb";
 import RichTextEditor from '../reusable_components/RichTextEditor';
 import { FaFilePdf } from "react-icons/fa6";
 import { apiService } from '../apiService';
+import { recordAuditLog } from '../auditLog';
 
 import './GlobalEMR.css';
 import './GlobalEMR2.css';
@@ -76,8 +77,9 @@ interface MedicalRecord {
 
 interface GlobalEMRProps {
   autoOpenAddMode?: boolean;
-  layoutMode?: 'admin' | 'doctor';
+  layoutMode?: 'admin' | 'doctor' | 'clinic-staff';
   doctorMode?: boolean;
+  readOnly?: boolean;
 }
 
 interface LabResult {
@@ -282,6 +284,8 @@ interface PetDetails {
   age: string;
   weight: number;
   weightUnit: 'kg' | 'lbs';
+  petSize?: string;
+  pet_size?: string;
   colorMarkings: string;
   neutered: boolean;
   deceased: boolean;
@@ -334,6 +338,7 @@ interface VisitFormErrors {
   temperature?: string;
   heartRate?: string;
   breathingRate?: string;
+  inventory?: string;
 }
 
 interface VisitFieldInputs {
@@ -359,6 +364,8 @@ interface SearchResult {
   gender: string;
   dateOfBirth: string;
   weightKg?: string;
+  petSize?: string;
+  pet_size?: string;
   colorMarkings: string;
   neutered: boolean;
   vaccinated: boolean;
@@ -436,6 +443,7 @@ type PdfExportOption = 'full' | 'specific' | 'range' | 'summary';
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 const PH_PHONE_TOTAL_DIGITS = 12;
 const DEFAULT_VETERINARIAN = 'Dr. Sarah Johnson';
+const PET_SIZE_OPTIONS = ['Small', 'Medium', 'Large'] as const;
 const PRESCRIPTION_FREQUENCY_OPTIONS = [
   'Once daily',
   'Twice daily',
@@ -1165,11 +1173,12 @@ const MOCK_RECORDS: MedicalRecord[] = [
 ];
 
 
-const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMode = 'admin', doctorMode = false }) => {
+const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMode = 'admin', doctorMode = false, readOnly = false }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const locationState = location.state as { autoOpenAddMode?: boolean } | null;
-  const isDoctorLayout = layoutMode === 'doctor';
+  const isClinicStaffMode = layoutMode === 'clinic-staff' || location.pathname.startsWith('/clinic-staff');
+  const isNurseMode = location.pathname.startsWith('/nurse');
 
   // State
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -1178,6 +1187,9 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
   const [isSavingRecord, setIsSavingRecord] = useState<boolean>(false);
   const [openingRecordId, setOpeningRecordId] = useState<number | null>(null);
   const [billingNavigationVisitId, setBillingNavigationVisitId] = useState<string | null>(null);
+  const isReadOnlyMode = readOnly || isClinicStaffMode;
+  const canUseVisitBillingActions = !doctorMode && (!isReadOnlyMode || isClinicStaffMode);
+  const canUpdateOwnerVisibility = !isReadOnlyMode || isClinicStaffMode;
 
   // Medication Modal States
   const [showMedicationModal, setShowMedicationModal] = useState<boolean>(false);
@@ -1291,6 +1303,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
   const [age, setAge] = useState<string>('');
   const [weight, setWeight] = useState<string>('');
   const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('kg');
+  const [petSize, setPetSize] = useState<string>('');
   const [colorMarkings, setColorMarkings] = useState<string>('');
   const [neutered, setNeutered] = useState<boolean>(false);
   const [deceased, setDeceased] = useState<boolean>(false);
@@ -1346,8 +1359,8 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
   const [clientCareLoading, setClientCareLoading] = useState<boolean>(false);
   const [clientCareError, setClientCareError] = useState<string>('');
   const [clientCareCopySuccess, setClientCareCopySuccess] = useState<boolean>(false);
-  const canEditPetProfileFields = editModeEnabled && !deceased;
-  const canEditDeceasedStatus = editModeEnabled;
+  const canEditPetProfileFields = !isReadOnlyMode && editModeEnabled && !deceased;
+  const canEditDeceasedStatus = !isReadOnlyMode && editModeEnabled;
   const selectedPrimaryService =
     AVAILABLE_SERVICES.find((service) => service.id === selectedPrimaryServiceId) || null;
   const doctorAiSupportMetadata = doctorAiSummary?.support_metadata;
@@ -1384,6 +1397,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
     age: string;
     weight: string;
     weightUnit: 'kg' | 'lbs';
+    petSize: string;
     colorMarkings: string;
     neutered: boolean;
     deceased: boolean;
@@ -1419,6 +1433,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
       age: '',
       weight: '',
       weightUnit: 'kg',
+      petSize: '',
       colorMarkings: '',
       neutered: false,
       deceased: false,
@@ -1450,6 +1465,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
       age,
       weight,
       weightUnit,
+      petSize,
       colorMarkings,
       neutered,
       deceased,
@@ -1482,6 +1498,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
     age === '' &&
     weight === '' &&
     weightUnit === 'kg' &&
+    petSize === '' &&
     colorMarkings === '' &&
     !neutered &&
     !deceased &&
@@ -1512,6 +1529,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
       age,
       weight,
       weightUnit,
+      petSize,
       colorMarkings,
       neutered,
       deceased,
@@ -1543,6 +1561,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
       age: record.petDetails?.age || '',
       weight: record.petDetails?.weight?.toString() || '',
       weightUnit: record.petDetails?.weightUnit || 'kg',
+      petSize: record.petDetails?.petSize || record.petDetails?.pet_size || (record as any).petSize || (record as any).pet_size || '',
       colorMarkings: record.petDetails?.colorMarkings || '',
       neutered: record.petDetails?.neutered || false,
       deceased: record.deceased || record.petDetails?.deceased || false,
@@ -1823,6 +1842,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
               age: '',
               weight: '',
               weightUnit: 'kg',
+              petSize: '',
               colorMarkings: '',
               neutered: false,
               deceased: false,
@@ -1880,6 +1900,11 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
   };
 
   const openAddVisitModal = (): void => {
+    if (isReadOnlyMode) {
+      showAlert('info', 'Read Only', 'Clinic Staff can view visit records, but adding visits is disabled.');
+      return;
+    }
+
     setAppointmentDateFilter('today');
     setVisitFormErrors({});
     setVisitType('');
@@ -2156,6 +2181,11 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
   };
 
   const handleSetLabResultOwnerVisibility = async (labResult: LabResult, visibleToOwner: boolean): Promise<void> => {
+    if (!canUpdateOwnerVisibility) {
+      showAlert('info', 'Owner Visibility Unavailable', 'Owner visibility actions are not available from this Medical Records view.');
+      return;
+    }
+
     if (!labResult.id) {
       showAlert('error', 'Share Unavailable', 'Only saved lab results can be shared to the owner portal.');
       return;
@@ -2188,6 +2218,11 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
     vaccination: VaccinationDetails | null | undefined,
     vaccineName: string
   ): Promise<void> => {
+    if (!canUpdateOwnerVisibility) {
+      showAlert('info', 'Owner Visibility Unavailable', 'Owner visibility actions are not available from this Medical Records view.');
+      return;
+    }
+
     if (!vaccination?.id) {
       showAlert('error', 'Share Unavailable', 'Only saved vaccination records can be shared to the owner portal.');
       return;
@@ -2419,7 +2454,6 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
       }).catch((error) => {
         console.warn('Medical record PDF export audit logging failed:', error);
       });
-
       
       setShowPdfOptionsModal(false);
       showAlert('success', 'Success', 'PDF opened in new tab!');
@@ -2460,6 +2494,21 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
       URL.revokeObjectURL(url);
+
+      void recordAuditLog({
+        module: 'EMR',
+        event: 'Prescription PDF Generated',
+        target: `${petName || 'Pet'} Prescription`,
+        targetType: 'medical_record_visit',
+        targetId: visit.id,
+        summary: `Prescription PDF was generated for ${petName || 'this pet'} with ${validPrescriptions.length} prescription(s).`,
+        status: 'Success',
+        metadata: {
+          medicalRecordId: editingId,
+          petId: selectedPetId,
+          prescriptionCount: validPrescriptions.length,
+        },
+      });
       
     } catch (error) {
       console.error('Prescription PDF generation error:', error);
@@ -2508,6 +2557,12 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
   };
 
   const handleEditModeToggle = (shouldEnable: boolean): void => {
+    if (isReadOnlyMode) {
+      setEditModeEnabled(false);
+      showAlert('info', 'Read Only', 'Clinic Staff can view medical records, but editing is disabled.');
+      return;
+    }
+
     if (!shouldEnable) {
       setEditModeEnabled(false);
       return;
@@ -2523,6 +2578,11 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
   };
 
   const addNewVisit = () => {
+    if (isReadOnlyMode) {
+      showAlert('info', 'Read Only', 'Clinic Staff can view visit records, but adding visits is disabled.');
+      return;
+    }
+
     const errors: VisitFormErrors = {};
     const trimmedWeight = visitFieldInputs.weight.trim();
     const trimmedLength = visitFieldInputs.length.trim();
@@ -2755,6 +2815,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
     setAge(calculateAge(pet.dateOfBirth));
     setWeight(pet.weightKg || '');
     setWeightUnit('kg');
+    setPetSize(pet.petSize || pet.pet_size || '');
     setColorMarkings(pet.colorMarkings);
     setNeutered(pet.neutered);
     setVaccinated(pet.vaccinated);
@@ -2778,6 +2839,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
     setDoctorAiSummary(null);
     setDoctorAiError('');
     setDoctorAiCollapsed(false);
+    clearVisitFilters();
     setPrescriptionRemarks('');
     setSelectedPrimaryServiceId('');
     setSelectedServices([]);
@@ -2833,6 +2895,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
       setAge(record.petDetails.age);
       setWeight(record.petDetails.weight.toString());
       setWeightUnit(record.petDetails.weightUnit);
+      setPetSize(record.petDetails.petSize || record.petDetails.pet_size || (record as any).petSize || (record as any).pet_size || '');
       setColorMarkings(record.petDetails.colorMarkings);
       setNeutered(record.petDetails.neutered);
       setVaccinated(record.petDetails.vaccinated);
@@ -2985,6 +3048,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
     setAge('');
     setWeight('');
     setWeightUnit('kg');
+    setPetSize('');
     setColorMarkings('');
     setNeutered(false);
     setDeceased(false);
@@ -3062,7 +3126,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
   };
 
   useEffect(() => {
-    const shouldOpenAddMode = autoOpenAddMode || locationState?.autoOpenAddMode;
+    const shouldOpenAddMode = !isReadOnlyMode && (autoOpenAddMode || locationState?.autoOpenAddMode);
     if (shouldOpenAddMode) {
       const timer = setTimeout(() => {
         resetForm();
@@ -3071,7 +3135,7 @@ const GlobalEMR: React.FC<GlobalEMRProps> = ({ autoOpenAddMode = false, layoutMo
       }, 200);
       return () => clearTimeout(timer);
     }
-  }, [autoOpenAddMode, locationState?.autoOpenAddMode]);
+  }, [autoOpenAddMode, isReadOnlyMode, locationState?.autoOpenAddMode]);
 
   // Filter Medical History tabs
 useEffect(() => {
@@ -3168,9 +3232,15 @@ useEffect(() => {
   };
 
   const handleCreateInvoice = (visit: VisitHistory) => {
+    if (!canUseVisitBillingActions) {
+      showAlert('info', 'Billing Unavailable', 'Billing actions are not available from this Medical Records view.');
+      return;
+    }
+
     const billingSourceType = visit.billingSourceType || 'visit';
     const billingSourceId = visit.billingSourceId || visit.id;
     const invoiceType = visit.sourceType === 'appointment' ? 'appointment' : 'walkin';
+    const billingPath = isClinicStaffMode ? '/clinic-staff/billing' : isNurseMode ? '/nurse/billing' : '/billing';
 
     if (!billingSourceId || Number.isNaN(Number(billingSourceId))) {
       showAlert('info', 'Save Record First', 'Save this medical record first so the visit can be linked to billing.');
@@ -3179,7 +3249,7 @@ useEffect(() => {
 
     setBillingNavigationVisitId(visit.id);
     window.setTimeout(() => {
-      navigate('/billing', {
+      navigate(billingPath, {
         state: {
           billingAction: {
             invoiceType,
@@ -3228,21 +3298,120 @@ useEffect(() => {
     return true;
   };
 
+  const normalizeProfileMatchValue = (value: unknown): string =>
+    String(value ?? '').trim().toLowerCase();
+
+  const normalizePatientList = (response: any): any[] => {
+    if (Array.isArray(response)) return response;
+    if (Array.isArray(response?.patients)) return response.patients;
+    if (Array.isArray(response?.users)) return response.users;
+    if (Array.isArray(response?.data)) return response.data;
+    return [];
+  };
+
+  const normalizePetProfileList = (response: any): any[] => {
+    if (Array.isArray(response)) return response;
+    if (Array.isArray(response?.pets)) return response.pets;
+    if (Array.isArray(response?.petProfiles)) return response.petProfiles;
+    if (Array.isArray(response?.pet_profiles)) return response.pet_profiles;
+    if (Array.isArray(response?.data)) return response.data;
+    return [];
+  };
+
+  const getPatientAccountId = (patient: any): string =>
+    String(
+      patient?.id ??
+      patient?.pk ??
+      patient?.user_id ??
+      patient?.userId ??
+      patient?.owner_id ??
+      patient?.ownerId ??
+      ''
+    ).trim();
+
+  const getPetProfileId = (pet: any): number | null => {
+    const parsedPetId = Number(
+      pet?.petId ??
+      pet?.pet_id ??
+      pet?.id ??
+      pet?.pk ??
+      pet?.profileId ??
+      pet?.profile_id
+    );
+    return Number.isFinite(parsedPetId) && parsedPetId > 0 ? parsedPetId : null;
+  };
+
+  const getPetProfileOwnerId = (pet: any): string =>
+    String(pet?.owner_id ?? pet?.ownerId ?? pet?.owner?.id ?? pet?.owner?.pk ?? '').trim();
+
+  const isMatchingManualPetProfile = (pet: any, finalBreed: string, ownerId?: string): boolean => {
+    const candidateOwnerId = getPetProfileOwnerId(pet);
+
+    if (ownerId && candidateOwnerId && candidateOwnerId !== ownerId) {
+      return false;
+    }
+
+    return (
+      normalizeProfileMatchValue(pet?.petName ?? pet?.pet_name ?? pet?.name) === normalizeProfileMatchValue(petName) &&
+      normalizeProfileMatchValue(pet?.species ?? pet?.pet_species ?? pet?.pet_type ?? pet?.type) === normalizeProfileMatchValue(species) &&
+      normalizeProfileMatchValue(pet?.breed ?? pet?.pet_breed) === normalizeProfileMatchValue(finalBreed) &&
+      normalizeProfileMatchValue(pet?.gender ?? pet?.pet_gender) === normalizeProfileMatchValue(gender)
+    );
+  };
+
+  const findMatchingLoadedPetProfile = (ownerEmail: string, finalBreed: string): number | null => {
+    const normalizedOwnerEmail = normalizeProfileMatchValue(ownerEmail);
+    if (!normalizedOwnerEmail) return null;
+
+    const matchingPet = allSearchResults.find((pet) =>
+      normalizeProfileMatchValue(pet.ownerEmail) === normalizedOwnerEmail &&
+      isMatchingManualPetProfile(pet, finalBreed)
+    );
+
+    return matchingPet ? getPetProfileId(matchingPet) : null;
+  };
+
+  const findMatchingOwnerPetProfile = async (
+    ownerId: string,
+    ownerEmail: string,
+    finalBreed: string,
+    requireRemoteVerification: boolean
+  ): Promise<number | null> => {
+    const loadedPetId = findMatchingLoadedPetProfile(ownerEmail, finalBreed);
+    if (loadedPetId) {
+      return loadedPetId;
+    }
+
+    try {
+      const response = await apiService.getUserPets(ownerId);
+      const ownerPets = normalizePetProfileList(response);
+      const matchingPet = ownerPets.find((pet) => isMatchingManualPetProfile(pet, finalBreed, ownerId));
+      return matchingPet ? getPetProfileId(matchingPet) : null;
+    } catch (error) {
+      if (requireRemoteVerification) {
+        console.warn('Unable to verify existing owner pet profiles:', error);
+        throw new Error('Unable to verify whether this owner already has a matching pet profile. Please try again or use Search Existing Pet.');
+      }
+
+      return null;
+    }
+  };
+
   const findPatientByEmail = async (email: string): Promise<any | null> => {
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeProfileMatchValue(email);
     if (!normalizedEmail) return null;
 
-    const patients = await apiService.getPatients();
-    return (Array.isArray(patients) ? patients : []).find((patient: any) =>
-      String(patient?.email || '').trim().toLowerCase() === normalizedEmail
+    const response = await apiService.getPatients();
+    return normalizePatientList(response).find((patient: any) =>
+      normalizeProfileMatchValue(patient?.email ?? patient?.ownerEmail ?? patient?.contact_email) === normalizedEmail
     ) || null;
   };
 
-  const getPatientAccountId = (patient: any): string => String(patient?.id || patient?.pk || '').trim();
-
-  const resolveManualOwnerAccount = async (): Promise<any> => {
+  const resolveManualOwnerAccount = async (): Promise<{ account: any; wasCreated: boolean }> => {
     const existingOwner = await findPatientByEmail(ownerEmail);
-    if (existingOwner) return existingOwner;
+    if (existingOwner) {
+      return { account: existingOwner, wasCreated: false };
+    }
 
     try {
       const response = await apiService.registerPatientAccount({
@@ -3251,12 +3420,14 @@ useEffect(() => {
         email: ownerEmail.trim(),
         status: 'active',
       });
-      return response?.account || response;
+      return { account: response?.account || response?.patient || response?.user || response, wasCreated: true };
     } catch (error: any) {
       const message = getApiErrorMessage(error, '');
       if (message.toLowerCase().includes('email') && message.toLowerCase().includes('exists')) {
         const fallbackOwner = await findPatientByEmail(ownerEmail);
-        if (fallbackOwner) return fallbackOwner;
+        if (fallbackOwner) {
+          return { account: fallbackOwner, wasCreated: false };
+        }
       }
       throw error;
     }
@@ -3274,7 +3445,8 @@ useEffect(() => {
       pet_name: petName.trim(),
       pet_type: species,
       breed: finalBreed,
-      pet_size: 'Not specified',
+      pet_size: petSize || 'Not specified',
+      color_markings: colorMarkings.trim(),
       gender,
       birthday: dateOfBirth || undefined,
       age: age || undefined,
@@ -3284,10 +3456,10 @@ useEffect(() => {
       vaccination_urls: vaccinationProof ? [vaccinationProof] : undefined,
     });
 
-    const createdPet = response?.pet || response;
-    const createdPetId = Number(createdPet?.pet_id || createdPet?.id || createdPet?.pk);
-    if (!Number.isFinite(createdPetId) || createdPetId <= 0) {
-      throw new Error('Pet profile was created, but the new pet ID was not returned.');
+    const createdPet = response?.pet || response?.existingPet || response?.existing_pet || response;
+    const createdPetId = getPetProfileId(createdPet) || getPetProfileId(response);
+    if (!createdPetId) {
+      throw new Error('Pet profile was created or matched, but the pet ID was not returned.');
     }
 
     return createdPetId;
@@ -3296,10 +3468,17 @@ useEffect(() => {
   const resolvePetIdForSave = async (finalBreed: string): Promise<number> => {
     if (selectedPetId) return selectedPetId;
 
-    const ownerAccount = await resolveManualOwnerAccount();
+    const { account: ownerAccount, wasCreated: ownerWasCreated } = await resolveManualOwnerAccount();
     const ownerId = getPatientAccountId(ownerAccount);
     if (!ownerId) {
       throw new Error('Owner account was created, but the owner ID was not returned.');
+    }
+
+    const matchingPetId = await findMatchingOwnerPetProfile(ownerId, ownerEmail, finalBreed, !ownerWasCreated);
+    if (matchingPetId) {
+      setSelectedPetId(matchingPetId);
+      setPatientId(buildPatientDisplayId(matchingPetId));
+      return matchingPetId;
     }
 
     const createdPetId = await createManualPetProfile(ownerId, finalBreed);
@@ -3310,6 +3489,10 @@ useEffect(() => {
 
   const handleSaveRecord = async (): Promise<void> => {
     if (isSavingRecord) return;
+    if (isReadOnlyMode) {
+      showAlert('info', 'Read Only', 'Clinic Staff can view medical records, but saving changes is disabled.');
+      return;
+    }
     if (!validateForm()) return;
     if (viewMode === 'edit' && !selectedPetId) {
       showAlert('error', 'Pet Profile Required', 'Please search and select an existing pet profile before saving a medical record.');
@@ -3333,6 +3516,8 @@ useEffect(() => {
             petId: resolvedPetId,
             patientId: patientId || buildPatientDisplayId(resolvedPetId),
             petName,
+            petSize: petSize || 'Not specified',
+            pet_size: petSize || 'Not specified',
             ownerName: `${ownerFirstName} ${ownerLastName}`,
             ownerFirstName,
             ownerLastName,
@@ -3352,6 +3537,8 @@ useEffect(() => {
               age,
               weight: parseFloat(weight),
               weightUnit,
+              petSize: petSize || 'Not specified',
+              pet_size: petSize || 'Not specified',
               colorMarkings,
               neutered,
               deceased,
@@ -3403,6 +3590,11 @@ useEffect(() => {
   };
 
   const handleDeleteSelected = (): void => {
+    if (isReadOnlyMode) {
+      showAlert('info', 'Read Only', 'Clinic Staff can view medical records, but deleting records is disabled.');
+      return;
+    }
+
     if (selectedRecords.size === 0) {
       showAlert('error', 'No Selection', 'Please select records to delete.');
       return;
@@ -3427,6 +3619,8 @@ useEffect(() => {
   };
 
   const toggleRecordSelection = (id: number) => {
+    if (isReadOnlyMode) return;
+
     const newSelected = new Set(selectedRecords);
     if (newSelected.has(id)) newSelected.delete(id);
     else newSelected.add(id);
@@ -3434,6 +3628,8 @@ useEffect(() => {
   };
 
   const toggleAllRecords = () => {
+    if (isReadOnlyMode) return;
+
     if (selectedRecords.size === paginatedRecords.length) {
       setSelectedRecords(new Set());
     } else {
@@ -3481,6 +3677,7 @@ useEffect(() => {
     const matchesDoctor = visitDoctorFilter === '' || visit.veterinarian === visitDoctorFilter;
     return matchesSearch && matchesDate && matchesDoctor;
   });
+  const canShowVisitBillingActions = canUseVisitBillingActions;
 
   const todayAppointmentDate = getCurrentDateInTimeZone('Asia/Manila');
   const filteredAppointmentRecords = appointmentRecords.filter((appointment) => {
@@ -3658,6 +3855,8 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
   };
 
   const buildDoctorAiPayload = () => ({
+    recordId: editingId,
+    petId: selectedPetId,
     pet: {
       name: petName,
       species,
@@ -3908,7 +4107,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
           <div className="emrSubTopContainer">
             <div className="emrSubTopLeft">
               <CiMedicalClipboard size={20} className="emrBlueIcon" />
-              <span className="emrBlueText">{isDoctorLayout ? 'Doctor Medical Records' : 'Medical Records'}</span>
+              <span className="emrBlueText">Medical Records</span>
             </div>
           </div>
           <div className="emrSubTopContainer emrNotificationContainer">
@@ -4001,7 +4200,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                 </div>
 
                 <div className="emrActionSection">
-                  {!doctorMode && selectedRecords.size > 0 && (
+                  {!doctorMode && !isReadOnlyMode && selectedRecords.size > 0 && (
                     <button className="emrDeleteBtn" onClick={handleDeleteSelected}>
                       <IoTrashOutline size={14} /> Delete ({selectedRecords.size})
                     </button>
@@ -4011,9 +4210,11 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       <IoArrowBackOutline size={14} /> Return
                     </button>
                   )}
-                  <button className="emrBlackBtn" onClick={() => { resetForm(); setViewMode('add'); setShowModeOverlay(true); }}>
-                    <IoAdd size={14} /> New Record
-                  </button>
+                  {!isReadOnlyMode && (
+                    <button className="emrBlackBtn" onClick={() => { resetForm(); setViewMode('add'); setShowModeOverlay(true); }}>
+                      <IoAdd size={14} /> New Record
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -4039,7 +4240,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                     <thead>
                       <tr>
                         <th style={{ width: '32px' }}>
-                          {!doctorMode && (
+                          {!doctorMode && !isReadOnlyMode && (
                             <input
                               type="checkbox"
                               checked={selectedRecords.size === paginatedRecords.length && paginatedRecords.length > 0}
@@ -4067,7 +4268,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                           return (
                             <tr key={recordId} className={isDeceased ? 'emrDeceasedRow' : ''}>
                               <td>
-                                {!doctorMode && (
+                                {!doctorMode && !isReadOnlyMode && (
                                   <input
                                     type="checkbox"
                                     checked={selectedRecords.has(recordId)}
@@ -4353,8 +4554,26 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                     </div>
 
                     <div className="emrFormGroup">
+                      <label>Pet Size</label>
+                      <div className="emrToggleGroupFull">
+                        {PET_SIZE_OPTIONS.map((size) => (
+                          <button
+                            key={size}
+                            type="button"
+                            className={`emrToggleBtnFull ${petSize === size ? 'emrToggleActiveFull' : ''}`}
+                            onClick={() => setPetSize(size)}
+                          >
+                            {size}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="emrFormRow">
+                    <div className="emrFormGroup emrFullWidth">
                       <label>Color/Markings</label>
-                      <input 
+                      <input
                         type="text"
                         value={colorMarkings}
                         onChange={(e) => setColorMarkings(e.target.value)}
@@ -4500,10 +4719,12 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                   <button className="emrCancelBtn" onClick={handleCancel} disabled={isSavingRecord}>
                     Cancel
                   </button>
-                  <button className="emrSubmitBtn" onClick={handleSaveRecord} disabled={isSavingRecord}>
-                    {isSavingRecord && <span className="emrBtnSpinner" aria-hidden="true"></span>}
-                    {isSavingRecord ? 'Creating Record...' : 'Create Record'}
-                  </button>
+                  {!isReadOnlyMode && (
+                    <button className="emrSubmitBtn" onClick={handleSaveRecord} disabled={isSavingRecord}>
+                      {isSavingRecord && <span className="emrBtnSpinner" aria-hidden="true"></span>}
+                      {isSavingRecord ? 'Creating Record...' : 'Create Record'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -4514,7 +4735,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                   <CiMedicalClipboard size={20} className="emrHeaderIcon" />
                   <h3>Medical Record</h3>
                 </div>
-                {activeTab === 'info' && (
+                {activeTab === 'info' && !isReadOnlyMode && (
                   <div className="emrHeaderActions">
                     <label className="emrSwitch">
                       <input
@@ -4985,8 +5206,27 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                         </div>
 
                         <div className="emrFormGroup">
+                          <label>Pet Size</label>
+                          <div className="emrToggleGroupFull">
+                            {PET_SIZE_OPTIONS.map((size) => (
+                              <button
+                                key={size}
+                                type="button"
+                                className={`emrToggleBtnFull ${petSize === size ? 'emrToggleActiveFull' : ''}`}
+                                onClick={() => { if (canEditPetProfileFields) setPetSize(size); }}
+                                disabled={!canEditPetProfileFields}
+                              >
+                                {size}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="emrFormRow">
+                        <div className="emrFormGroup emrFullWidth">
                           <label>Color/Markings</label>
-                          <input 
+                          <input
                             type="text"
                             value={colorMarkings}
                             onChange={(e) => setColorMarkings(e.target.value)}
@@ -5204,28 +5444,29 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                                     </span>
                                   )}
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                  {/* Create Invoice Button */}
-                                  <button 
-                                    className="emrCreateInvoiceBtn"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleCreateInvoice(visit);
-                                    }}
-                                    disabled={billingNavigationVisitId !== null}
-                                    title={visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
-                                  >
-                                    {isOpeningBilling ? (
-                                      <>
-                                        <span className="emrBtnSpinner" aria-hidden="true"></span>
-                                        Opening Billing...
-                                      </>
-                                    ) : (
-                                      <>
-                                        <IoReceipt size={14} /> {visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
-                                      </>
-                                    )}
-                                  </button>
+                                <div className="emrVisitHeaderActions">
+                                  {canShowVisitBillingActions && (
+                                    <button
+                                      className="emrCreateInvoiceBtn"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCreateInvoice(visit);
+                                      }}
+                                      disabled={billingNavigationVisitId !== null}
+                                      title={visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
+                                    >
+                                      {isOpeningBilling ? (
+                                        <>
+                                          <span className="emrBtnSpinner" aria-hidden="true"></span>
+                                          Opening Billing...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <IoReceipt size={14} /> {visit.hasBillingInvoice ? 'View Invoice' : 'Proceed to Billing'}
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
                                   
                                   {(visit.prescriptions && visit.prescriptions.length > 0 && 
                                     visit.prescriptions.some(p => p.medicationName && p.medicationName.trim() !== '')) && (
@@ -5387,16 +5628,20 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                         <div className="emrNoVisits">
                           <IoMedicalOutline size={48} style={{ opacity: 0.3, marginBottom: '12px' }} />
                           <p>No visits recorded yet</p>
-                          <p style={{ fontSize: '11px', marginTop: '8px', color: '#999' }}>
-                            Click the "Add New Visit" button to record a visit
-                          </p>
+                          {!isReadOnlyMode && (
+                            <p style={{ fontSize: '11px', marginTop: '8px', color: '#999' }}>
+                              Click the "Add New Visit" button to record a visit
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
                     
-                    <button className="emrFloatingBtn" onClick={openAddVisitModal}>
-                      <IoAddCircleOutline size={18} /> Add New Visit
-                    </button>
+                    {!isReadOnlyMode && (
+                      <button className="emrFloatingBtn" onClick={openAddVisitModal}>
+                        <IoAddCircleOutline size={18} /> Add New Visit
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -5468,17 +5713,19 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       <span className={`emrOwnerShareBadge ${isSharedToOwner ? 'isShared' : 'isPrivate'}`}>
                         {isSharedToOwner ? 'Visible to owner' : 'Private to clinic'}
                       </span>
-                      <button
-                        className={`emrOwnerShareBtn ${isSharedToOwner ? 'isShared' : ''}`}
-                        onClick={() => { void handleSetLabResultOwnerVisibility(lab, !isSharedToOwner); }}
-                        disabled={ownerShareActionKey === shareActionKey}
-                      >
-                        {ownerShareActionKey === shareActionKey
-                          ? 'Saving...'
-                          : isSharedToOwner
-                            ? 'Hide from Owner'
-                            : 'Share to Owner'}
-                      </button>
+                      {canUpdateOwnerVisibility && (
+                        <button
+                          className={`emrOwnerShareBtn ${isSharedToOwner ? 'isShared' : ''}`}
+                          onClick={() => { void handleSetLabResultOwnerVisibility(lab, !isSharedToOwner); }}
+                          disabled={ownerShareActionKey === shareActionKey}
+                        >
+                          {ownerShareActionKey === shareActionKey
+                            ? 'Saving...'
+                            : isSharedToOwner
+                              ? 'Hide from Owner'
+                              : 'Share to Owner'}
+                        </button>
+                      )}
                       {lab.fileData && (
                         <button 
                           className="emrViewFileBtn"
@@ -5642,17 +5889,19 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                       <span className={`emrOwnerShareBadge ${isSharedToOwner ? 'isShared' : 'isPrivate'}`}>
                         {isSharedToOwner ? 'Visible to owner' : 'Private to clinic'}
                       </span>
-                      <button
-                        className={`emrOwnerShareBtn ${isSharedToOwner ? 'isShared' : ''}`}
-                        onClick={() => { void handleSetVaccinationOwnerVisibility(vaccination, vaccination.vaccineName); }}
-                        disabled={ownerShareActionKey === shareActionKey}
-                      >
-                        {ownerShareActionKey === shareActionKey
-                          ? 'Saving...'
-                          : isSharedToOwner
-                            ? 'Hide from Owner'
-                            : 'Share to Owner'}
-                      </button>
+                      {canUpdateOwnerVisibility && (
+                        <button
+                          className={`emrOwnerShareBtn ${isSharedToOwner ? 'isShared' : ''}`}
+                          onClick={() => { void handleSetVaccinationOwnerVisibility(vaccination, vaccination.vaccineName); }}
+                          disabled={ownerShareActionKey === shareActionKey}
+                        >
+                          {ownerShareActionKey === shareActionKey
+                            ? 'Saving...'
+                            : isSharedToOwner
+                              ? 'Hide from Owner'
+                              : 'Share to Owner'}
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div className="emrHistoryCardBody">
@@ -5717,10 +5966,12 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                 <button className="emrCancelBtn" onClick={handleCancel} disabled={isSavingRecord}>
                   Cancel
                 </button>
-                <button className="emrSubmitBtn" onClick={handleSaveRecord} disabled={isSavingRecord}>
-                  {isSavingRecord && <span className="emrBtnSpinner" aria-hidden="true"></span>}
-                  {isSavingRecord ? 'Saving Changes...' : 'Save Changes'}
-                </button>
+                {!isReadOnlyMode && (
+                  <button className="emrSubmitBtn" onClick={handleSaveRecord} disabled={isSavingRecord}>
+                    {isSavingRecord && <span className="emrBtnSpinner" aria-hidden="true"></span>}
+                    {isSavingRecord ? 'Saving Changes...' : 'Save Changes'}
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -5926,7 +6177,7 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
       )}
 
       {/* Add Visit Modal with Appointment Selection */}
-      {showAddVisit && !deceased && (
+      {showAddVisit && !deceased && !isReadOnlyMode && (
         <div className="emrModalOverlay" onClick={() => setShowAddVisit(false)}>
           <div className={`emrAddVisitModalSplit ${(showPrescriptionPanel || showLabPanel || showServicesPanel) ? 'withPanel' : ''}`} onClick={e => e.stopPropagation()}>
             {/* Left Panel - Main Form */}
@@ -6316,7 +6567,6 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
                             />
                           </div>
                         </div>
-                        
                       </div>
                     )}
                   </div>
@@ -7197,5 +7447,3 @@ const filteredVaccinations = visitHistory.filter(visit => visit.vaccinationDetai
 };
 
 export default GlobalEMR;
-
-

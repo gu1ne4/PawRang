@@ -7,7 +7,6 @@ import {
 } from 'recharts';
 import './AnalyticsStyles.css';
 import Navbar from '../reusable_components/NavBar';
-import userImg from '../assets/userAvatar.jpg';
 import PetShieldLogo from '../assets/PetShieldLogo.jpg';
 import Notifications from '../reusable_components/Notifications';
 import { apiService } from '../apiService';
@@ -24,12 +23,16 @@ import {
   IoChevronDownOutline, IoStatsChart, IoCloseOutline} from 'react-icons/io5';
 
 // ==================== TYPES ====================
-interface Admin {
-  id: number;
-  name: string;
+interface AnalyticsCurrentUser {
+  id?: string | number;
+  pk?: string | number;
+  fullName?: string;
   username: string;
   role: string;
-  image?: string;
+  userImage?: string;
+  userimage?: string;
+  profileImage?: string;
+  employee_image?: string;
 }
 
 interface KpiCardProps {
@@ -255,6 +258,64 @@ const mergeAnalyticsOverview = (raw?: Partial<AnalyticsOverview> | null): Analyt
     ...(raw?.forecast || {}),
   },
 });
+
+const getAnalyticsProfileImage = (
+  profile: Record<string, any>,
+  fallback: Record<string, any> = {}
+): string =>
+  profile.profileImage ||
+  profile.employee_image ||
+  fallback.profileImage ||
+  fallback.employee_image ||
+  profile.userImage ||
+  profile.userimage ||
+  profile.user_image ||
+  fallback.userImage ||
+  fallback.userimage ||
+  fallback.user_image ||
+  '';
+
+const normalizeAnalyticsCurrentUser = (
+  profile: Record<string, any> | null | undefined,
+  fallback: Record<string, any> = {}
+): AnalyticsCurrentUser | null => {
+  if (!profile) return null;
+
+  const firstName = profile.firstName || profile.first_name || '';
+  const lastName = profile.lastName || profile.last_name || '';
+  const fullName =
+    profile.fullName ||
+    profile.fullname ||
+    profile.full_name ||
+    [firstName, lastName].filter(Boolean).join(' ');
+
+  return {
+    id: profile.id,
+    pk: profile.pk,
+    fullName,
+    username: profile.username || fullName || profile.email || 'Admin',
+    role: profile.role || 'Admin',
+    userImage: getAnalyticsProfileImage(profile, fallback),
+    userimage: getAnalyticsProfileImage(profile, fallback),
+    profileImage: getAnalyticsProfileImage(profile, fallback),
+    employee_image: profile.employee_image || fallback.employee_image,
+  };
+};
+
+const readAnalyticsSessionUser = (): AnalyticsCurrentUser | null => {
+  try {
+    const session = localStorage.getItem('userSession');
+    return session ? normalizeAnalyticsCurrentUser(JSON.parse(session)) : null;
+  } catch (error) {
+    console.error('Failed to read analytics user session', error);
+    return null;
+  }
+};
+
+const getAnalyticsUserId = (user?: AnalyticsCurrentUser | null): string => {
+  const id = user?.id ?? user?.pk;
+  return id === undefined || id === null ? '' : String(id);
+};
 
 const formatExpectedChange = (change?: number, label = 'expected next period'): string => {
   if (change === undefined || Number.isNaN(change) || change === 0) {
@@ -1023,15 +1084,7 @@ const exportAnalyticsAsExcel = async ({
   downloadBlob(blob, buildAnalyticsExportFilename(startDate, endDate, 'xlsx'));
 };
 
-// ==================== MOCK DATA ====================
-const currentUser: Admin = {
-  id: 1,
-  name: 'Dr. Margaret Hilario',
-  username: 'margaret.hilario',
-  role: 'Administrator',
-  image: userImg
-};
-
+// Legacy sample arrays are kept only as local fallback references; rendered analytics come from the backend API.
 // Sales Trend with Forecast (Actual + Predicted)
 const mockSalesTrend: SalesTrendData[] = [
   { day: 'Mon', actual: 12500, predicted: 12500, appointments: 12 },
@@ -1146,18 +1199,16 @@ const ExportButton: React.FC<{
   branches: BranchOption[];
   selectedBranch: string;
 }> = ({ buttonClassName = '', branches, selectedBranch }) => {
-  const [isOpen, setIsOpen] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState<AnalyticsExportFormat>('pdf');
   const [datePreset, setDatePreset] = useState<AnalyticsExportPreset>('this_month');
   const defaultRange = getExportPresetRange('this_month');
   const [startDate, setStartDate] = useState(defaultRange.startDate);
   const [endDate, setEndDate] = useState(defaultRange.endDate);
-  const branchId = 'all';
+  const branchId = selectedBranch || 'all';
   const [selectedSections, setSelectedSections] = useState<Record<ExportSectionKey, boolean>>(createDefaultExportSections);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState('');
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const selectAllSectionsRef = useRef<HTMLInputElement>(null);
   const selectedSectionValues = Object.values(selectedSections);
   const allSectionsSelected = selectedSectionValues.every(Boolean);
@@ -1166,7 +1217,6 @@ const ExportButton: React.FC<{
   const openExportModal = (format: AnalyticsExportFormat) => {
     setExportFormat(format);
     setExportError('');
-    setIsOpen(false);
     setIsModalOpen(true);
   };
 
@@ -1256,16 +1306,6 @@ const ExportButton: React.FC<{
   };
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
     if (selectAllSectionsRef.current) {
       selectAllSectionsRef.current.indeterminate = partiallySelected;
     }
@@ -1273,25 +1313,12 @@ const ExportButton: React.FC<{
 
   return (
     <>
-      <div className="export-dropdown-wrapper" ref={dropdownRef}>
-        <button className={`export-btn ${buttonClassName}`} onClick={() => setIsOpen(!isOpen)}>
+      <div className="export-dropdown-wrapper">
+        <button className={`export-btn ${buttonClassName}`} onClick={() => openExportModal('pdf')}>
           <IoDownloadOutline size={16} />
           <span>Export</span>
-          <IoChevronDownOutline size={12} className={isOpen ? 'rotated' : ''} />
+          <IoChevronDownOutline size={12} />
         </button>
-
-        {isOpen && (
-          <div className="export-dropdown-menu">
-            <button onClick={() => openExportModal('pdf')}>
-              <IoDocumentTextOutline size={16} />
-              <span>Export as PDF</span>
-            </button>
-            <button onClick={() => openExportModal('excel')}>
-              <IoTabletPortraitOutline size={16} />
-              <span>Export as Excel</span>
-            </button>
-          </div>
-        )}
       </div>
 
       {isModalOpen && (
@@ -2004,6 +2031,7 @@ const ForecastValidationPanel: React.FC<{ validation?: ForecastValidation }> = (
 // ==================== MAIN DASHBOARD ====================
 const AdminAnalytics: React.FC = () => {
   const navigate = useNavigate();
+  const [currentUser, setCurrentUser] = useState<AnalyticsCurrentUser | null>(() => readAnalyticsSessionUser());
   const [selectedBranch, setSelectedBranch] = useState('all');
   const [analytics, setAnalytics] = useState<AnalyticsOverview>(emptyAnalyticsOverview);
   const [loadingAnalytics, setLoadingAnalytics] = useState(true);
@@ -2014,6 +2042,61 @@ const AdminAnalytics: React.FC = () => {
     () => mergeInsights(analytics.insights, buildDerivedSalesInsights(analytics)),
     [analytics],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    const sessionUser = readAnalyticsSessionUser();
+
+    if (!sessionUser) {
+      navigate('/login');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setCurrentUser(sessionUser);
+    const userId = getAnalyticsUserId(sessionUser);
+    if (!userId) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadCurrentUserProfile = async () => {
+      try {
+        const response = await apiService.getProfile(userId);
+        if (cancelled) return;
+
+        const profilePayload = response?.user || response || {};
+        const normalizedProfile = normalizeAnalyticsCurrentUser(profilePayload, sessionUser);
+        if (!normalizedProfile) return;
+
+        const rawSession = localStorage.getItem('userSession');
+        const existingSession = rawSession ? JSON.parse(rawSession) : {};
+        localStorage.setItem('userSession', JSON.stringify({
+          ...existingSession,
+          ...profilePayload,
+          id: normalizedProfile.id,
+          pk: normalizedProfile.pk,
+          username: normalizedProfile.username,
+          fullName: normalizedProfile.fullName,
+          fullname: normalizedProfile.fullName,
+          role: normalizedProfile.role,
+          userImage: normalizedProfile.userImage,
+          userimage: normalizedProfile.userImage,
+          profileImage: normalizedProfile.userImage,
+        }));
+        setCurrentUser(normalizedProfile);
+      } catch (error) {
+        console.error('Failed to load analytics profile user', error);
+      }
+    };
+
+    loadCurrentUserProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2046,12 +2129,14 @@ const AdminAnalytics: React.FC = () => {
   }, [selectedBranch]);
 
   const handleLogout = (): void => {
+    localStorage.removeItem('userSession');
+    setCurrentUser(null);
     navigate('/login');
   };
 
   return (
-    <div className="biContainer">
-      <Navbar currentUser={currentUser} onLogout={handleLogout} />
+    <div className="biContainer" style={{ backgroundColor: '#f8fafc', minHeight: '100vh' }}>
+      <Navbar currentUser={currentUser} onLogout={handleLogout} confirmLogout />
 
       <div className="bodyContainer">
         <div className="analytics-wrapper">

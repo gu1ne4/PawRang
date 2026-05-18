@@ -614,6 +614,7 @@ const UserProfile: React.FC = () => {
         lastName: editedProfile.lastName,
         contactNumber: toStoredPhoneNumber(editedProfile.contactNumber),
         userImage: editedProfile.profileImage || undefined,
+        accountType: 'patient',
       });
 
       const responsePayload = response?.user || response || {};

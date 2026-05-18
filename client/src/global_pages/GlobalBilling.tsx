@@ -3,11 +3,19 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import Navbar from '../reusable_components/NavBar';
 import Notifications from '../reusable_components/Notifications';
 import { apiService } from '../apiService';
+import { recordAuditLog } from '../auditLog';
 import { pdf } from '@react-pdf/renderer';
 import { CiReceipt } from "react-icons/ci";
 import { FaFileInvoice } from "react-icons/fa";
-import { RiListSettingsLine } from "react-icons/ri";
 import InvoicePDF from './pdf_generation/InvoicePDF';
+import {
+  findBatchBySelectValue,
+  getBatchDisplayNumber,
+  getBatchExpirationStatus,
+  getBatchSelectValue,
+  getProductBatches,
+  type InventoryBatch,
+} from './inventoryBatchUtils';
 
 import './GlobalBillingStyles.css';
 
@@ -18,10 +26,10 @@ import {
   IoTrashOutline,
   IoCheckmarkCircleOutline,
   IoCloseCircleOutline,
-  IoCloseCircleSharp,
   IoAlertCircleOutline,
   IoEyeOutline,
   IoCloseOutline,
+  IoRefreshOutline,
   IoCreateOutline,
   IoTrashBinOutline,
   IoCalendarOutline,
@@ -44,7 +52,6 @@ import {
   IoCallOutline,
   IoMailOutline,
   IoDocumentTextOutline,
-  IoChevronBackOutline,
   IoChevronForward,
   IoFastFoodOutline,
   IoMedicalOutline,
@@ -53,22 +60,8 @@ import {
   IoRadioButtonOn,
   IoRadioButtonOff,
   IoCashOutline,
-  IoListOutline,
-  IoReceiptOutline} from 'react-icons/io5';
-
-type BillingSortOption = 'newest' | 'oldest' | 'invoiceAZ' | 'customerAZ' | 'totalHigh' | 'totalLow' | 'statusAZ';
-
-const BILLING_SORT_OPTIONS: Array<{ value: BillingSortOption; label: string }> = [
-  { value: 'newest', label: 'Newest First' },
-  { value: 'oldest', label: 'Oldest First' },
-  { value: 'invoiceAZ', label: 'Invoice A-Z' },
-  { value: 'customerAZ', label: 'Customer A-Z' },
-  { value: 'totalHigh', label: 'Total High-Low' },
-  { value: 'totalLow', label: 'Total Low-High' },
-  { value: 'statusAZ', label: 'Status A-Z' },
-];
-
-const ROWS_PER_PAGE_OPTIONS = [8, 12, 16, 24];
+  IoListOutline} from 'react-icons/io5';
+import { IoDownloadOutline } from 'react-icons/io5';
 
 interface Invoice {
   id: string;
@@ -88,14 +81,19 @@ interface Invoice {
   discountType?: string;
   discountValue?: number;
   discountIsPercentage?: boolean;
+  installmentMonths?: number | null;
+  installmentInterestRate?: number;
+  installmentInterestAmount?: number;
+  installmentMonthlyDue?: number;
   total: number;
   amountPaid?: number;
   remainingBalance?: number;
-  paymentMethod: 'cash' | 'card' | 'gcash' | 'bank' | 'installment';
+  paymentMethod: 'cash' | 'gcash' | 'installment';
   paymentStatus: 'paid' | 'pending' | 'partial';
   status: 'completed' | 'cancelled' | 'refunded';
   sourceRecordType?: 'appointment' | 'walkin' | 'visit' | null;
   sourceRecordId?: string | number | null;
+  branchId?: string | number | null;
   notes?: string;
   paymentHistory?: InvoicePayment[];
 }
@@ -103,7 +101,8 @@ interface Invoice {
 interface InvoicePayment {
   id: string;
   amount: number;
-  paymentMethod: 'cash' | 'card' | 'gcash' | 'bank';
+  paymentMethod: 'cash' | 'gcash';
+  paymentReference?: string;
   date: string;
   time: string;
   handledBy?: string;
@@ -138,6 +137,12 @@ interface BillingSourceService {
 interface ProductItem {
   id: string;
   inventoryItemId?: string | number;
+  inventoryBatchId?: string | number;
+  inventory_batch_id?: string | number;
+  batchNumber?: string;
+  batch_number?: string;
+  batchSelectValue?: string;
+  availableBatches?: InventoryBatch[];
   name: string;
   sku: string;
   description: string;
@@ -234,6 +239,11 @@ interface CurrentUser {
   userImage?: string;
 }
 
+interface BranchOption {
+  id: string;
+  name: string;
+}
+
 interface ModalConfig {
   type: 'info' | 'success' | 'error' | 'confirm';
   title: string;
@@ -245,6 +255,11 @@ interface ModalConfig {
 interface Product {
   id: string;
   inventoryItemId?: string | number;
+  activeBatches?: any[];
+  active_batches?: any[];
+  batches?: any[];
+  inventoryBatches?: any[];
+  inventory_batches?: any[];
   name: string;
   sku: string;
   category: string;
@@ -269,17 +284,184 @@ interface TempSelectedServiceEntry {
   locked?: boolean;
 }
 
+interface TempSelectedProductEntry {
+  product: Product;
+  quantity: number;
+  batchSelectValue?: string;
+}
+
 type ViewMode = 'list' | 'create' | 'details';
 type InvoiceType = 'appointment' | 'walkin';
 type InvoiceTypeSelection = InvoiceType | '';
-type PaymentMethod = 'cash' | 'card' | 'gcash' | 'bank' | 'installment';
-type PaymentEntryMethod = 'cash' | 'card' | 'gcash' | 'bank';
+type PaymentMethod = 'cash' | 'gcash' | 'installment';
+type PaymentEntryMethod = 'cash' | 'gcash';
+type InstallmentPaymentMode = 'monthly' | 'advance';
+type BillingSalesReportPreset = 'thisWeek' | 'thisMonth' | 'last7Days' | 'last30Days' | 'custom';
+type BillingSalesReportFormat = 'pdf' | 'excel';
+type BillingSalesReportSectionKey = 'summary' | 'itemized' | 'payments';
 type PaymentStatus = 'paid' | 'pending' | 'partial';
 type DiscountType = 'none' | 'senior' | 'pwd' | 'promo' | 'custom';
 type CustomDiscountType = 'percentage' | 'fixed';
+type InstallmentMonths = 3 | 6 | 9;
+type InstallmentTermSelection = InstallmentMonths | '';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 const TAX_RATE = 0.12;
+const BILLING_MONEY_FORMAT_OPTIONS: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+};
+const INSTALLMENT_OPTIONS: Array<{ months: InstallmentMonths; interestRate: number; downPaymentRate: number }> = [
+  { months: 3, interestRate: 0, downPaymentRate: 0.20 },
+  { months: 6, interestRate: 0.06, downPaymentRate: 0.30 },
+  { months: 9, interestRate: 0.09, downPaymentRate: 0.40 },
+];
+const ALL_BRANCHES_OPTION = 'All Branches';
+const SALES_REPORT_PRESETS: Array<{ key: BillingSalesReportPreset; label: string }> = [
+  { key: 'thisWeek', label: 'This Week' },
+  { key: 'thisMonth', label: 'This Month' },
+  { key: 'last7Days', label: 'Last 7 Days' },
+  { key: 'last30Days', label: 'Last 30 Days' },
+  { key: 'custom', label: 'Custom Range' }
+];
+const SALES_REPORT_SECTIONS: Array<{ key: BillingSalesReportSectionKey; label: string }> = [
+  { key: 'summary', label: 'Sales Summary' },
+  { key: 'itemized', label: 'Itemized Sales' },
+  { key: 'payments', label: 'Payment Breakdown' }
+];
+const DEFAULT_SALES_REPORT_SECTIONS: Record<BillingSalesReportSectionKey, boolean> = {
+  summary: true,
+  itemized: true,
+  payments: true
+};
+const LOW_BATCH_STOCK_THRESHOLD = 5;
+
+const toDateInputValue = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getSalesReportPresetRange = (preset: BillingSalesReportPreset): { startDate: string; endDate: string } => {
+  const today = new Date();
+  const start = new Date(today);
+  const end = new Date(today);
+
+  switch (preset) {
+    case 'thisWeek':
+      start.setDate(today.getDate() - today.getDay());
+      break;
+    case 'thisMonth':
+      start.setDate(1);
+      break;
+    case 'last7Days':
+      start.setDate(today.getDate() - 6);
+      break;
+    case 'last30Days':
+      start.setDate(today.getDate() - 29);
+      break;
+    case 'custom':
+    default:
+      return { startDate: toDateInputValue(start), endDate: toDateInputValue(end) };
+  }
+
+  return { startDate: toDateInputValue(start), endDate: toDateInputValue(end) };
+};
+
+const formatSalesReportDateRange = (startDate: string, endDate: string): string => {
+  const format = (value: string) => {
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return value || 'N/A';
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+  return `${format(startDate)} - ${format(endDate)}`;
+};
+
+const getInstallmentInterestRate = (months: number | null | ''): number =>
+  INSTALLMENT_OPTIONS.find(option => option.months === months)?.interestRate ?? INSTALLMENT_OPTIONS[0].interestRate;
+
+const getInstallmentDownPaymentRate = (months: number | null | ''): number =>
+  INSTALLMENT_OPTIONS.find(option => option.months === months)?.downPaymentRate ?? INSTALLMENT_OPTIONS[0].downPaymentRate;
+
+const roundInstallmentDownPayment = (amount: number, totalAmount: number): number => {
+  const safeTotal = Math.max(Number(totalAmount) || 0, 0);
+  if (safeTotal <= 0) {
+    return 0;
+  }
+  return Math.min(Math.ceil(Math.max(Number(amount) || 0, 0)), safeTotal);
+};
+
+const roundBillingCurrency = (value: number): number => {
+  const numericValue = Number.isFinite(value) ? value : 0;
+  return Math.round(numericValue * 100) / 100;
+};
+
+const getInvoiceInstallmentDownPaymentAmount = (invoice: Invoice | null): number => {
+  if (!invoice || invoice.paymentMethod !== 'installment') return 0;
+
+  const recordedDownPayment = invoice.paymentHistory?.find(payment =>
+    String(payment.notes || '').toLowerCase().includes('downpayment')
+  );
+
+  if (recordedDownPayment && Number.isFinite(recordedDownPayment.amount) && recordedDownPayment.amount > 0) {
+    return roundBillingCurrency(recordedDownPayment.amount);
+  }
+
+  const downPaymentRate = getInstallmentDownPaymentRate(invoice.installmentMonths || '');
+  return roundBillingCurrency(roundInstallmentDownPayment(invoice.total * downPaymentRate, invoice.total));
+};
+
+const getInvoiceInstallmentMonthlyDue = (invoice: Invoice | null): number => {
+  if (!invoice || invoice.paymentMethod !== 'installment') return 0;
+
+  const months = Number(invoice.installmentMonths || 0);
+  if (months <= 0) return 0;
+
+  const downPaymentAmount = getInvoiceInstallmentDownPaymentAmount(invoice);
+  const contractMonthlyDue = roundBillingCurrency(Math.max((invoice.total || 0) - downPaymentAmount, 0) / months);
+
+  return contractMonthlyDue > 0
+    ? contractMonthlyDue
+    : roundBillingCurrency(invoice.installmentMonthlyDue || 0);
+};
+
+const getInvoiceRemainingInstallmentTerms = (invoice: Invoice | null): number => {
+  if (!invoice || invoice.paymentMethod !== 'installment') return 0;
+
+  const remainingBalance = Math.max(invoice.remainingBalance || 0, 0);
+  const monthlyDue = getInvoiceInstallmentMonthlyDue(invoice);
+  const months = Number(invoice.installmentMonths || 0);
+
+  if (remainingBalance <= 0 || monthlyDue <= 0 || months <= 0) return 0;
+
+  return Math.min(months, Math.max(1, Math.ceil((remainingBalance - 0.005) / monthlyDue)));
+};
+
+const getInvoicePaidInstallmentTerms = (invoice: Invoice | null): number => {
+  if (!invoice || invoice.paymentMethod !== 'installment') return 0;
+
+  const months = Number(invoice.installmentMonths || 0);
+  if (months <= 0) return 0;
+
+  return Math.max(0, Math.min(months, months - getInvoiceRemainingInstallmentTerms(invoice)));
+};
+
+const getInstallmentPaymentAmountForTerms = (invoice: Invoice | null, termCount: number): number => {
+  if (!invoice || invoice.paymentMethod !== 'installment') return 0;
+
+  const remainingBalance = Math.max(invoice.remainingBalance || 0, 0);
+  const monthlyDue = getInvoiceInstallmentMonthlyDue(invoice);
+  const safeTermCount = Math.max(1, Math.floor(Number(termCount) || 1));
+
+  return roundBillingCurrency(Math.min(monthlyDue * safeTermCount, remainingBalance));
+};
+
+const isRepeatableBillingService = (service: Pick<Service, 'category' | 'name'>): boolean => {
+  const category = String(service.category || '').trim().toLowerCase();
+  const name = String(service.name || '').trim().toLowerCase();
+  return category === 'boarding' || category === 'confinement' || name === 'pet boarding' || name === 'confinement';
+};
 
 const formatPaymentStatusLabel = (status: PaymentStatus | string): string => {
   switch (String(status || '').toLowerCase()) {
@@ -301,6 +483,33 @@ const formatPaymentMethodLabel = (value: string): string =>
     .map(part => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
 
+const requiresPaymentReference = (method: PaymentEntryMethod | PaymentMethod): method is PaymentEntryMethod =>
+  method === 'gcash';
+
+const getPaymentReferenceLabel = (method: PaymentEntryMethod | PaymentMethod): string => {
+  switch (method) {
+    case 'gcash':
+      return 'GCash Reference Number';
+    default:
+      return 'Payment Reference';
+  }
+};
+
+const getPaymentReferenceHint = (method: PaymentEntryMethod | PaymentMethod): string => {
+  switch (method) {
+    case 'gcash':
+      return 'Enter numbers only from the GCash receipt/reference.';
+    default:
+      return '';
+  }
+};
+
+const normalizeGcashReferenceInput = (value: string): string =>
+  value.replace(/\D/g, '');
+
+const isValidGcashReference = (value: string): boolean =>
+  /^\d+$/.test(value.trim());
+
 const normalizeProductCategory = (category?: string): ProductItem['category'] => {
   const normalized = String(category || '').trim().toLowerCase();
   if (normalized === 'food' || normalized === 'medicine' || normalized === 'accessory' || normalized === 'supplement') {
@@ -315,6 +524,9 @@ interface BillingFormErrors {
   customerName?: string;
   petName?: string;
   lineItems?: string;
+  installmentTerm?: string;
+  paymentReference?: string;
+  initialPaymentReference?: string;
 }
 
 // Discount rates
@@ -699,7 +911,7 @@ const MOCK_INVOICES: Invoice[] = [
     discount: 100,
     discountType: 'promo',
     total: 1748,
-    paymentMethod: 'card',
+    paymentMethod: 'gcash',
     paymentStatus: 'paid',
     status: 'completed',
     notes: 'Sick pet'
@@ -743,12 +955,14 @@ const GlobalBilling: React.FC = () => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [branches, setBranches] = useState<BranchOption[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [catalogLoading, setCatalogLoading] = useState<boolean>(false);
   const [sourceRecordsLoading, setSourceRecordsLoading] = useState<boolean>(false);
   const [catalogLoaded, setCatalogLoaded] = useState<boolean>(false);
   const [sourceRecordsLoaded, setSourceRecordsLoaded] = useState<boolean>(false);
   const [savingInvoice, setSavingInvoice] = useState<boolean>(false);
+  const [billingHandoffBusy, setBillingHandoffBusy] = useState<boolean>(false);
   
   // UI State
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
@@ -759,11 +973,22 @@ const GlobalBilling: React.FC = () => {
   const [dateFilter, setDateFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<string>('');
-  const [sortOption, setSortOption] = useState<BillingSortOption>('newest');
-  const [showSettingsDropdown, setShowSettingsDropdown] = useState<boolean>(false);
   const [searchHovered, setSearchHovered] = useState<boolean>(false);
   const [filterHovered, setFilterHovered] = useState<boolean>(false);
   const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
+  const [showSalesReportModal, setShowSalesReportModal] = useState<boolean>(false);
+  const initialSalesReportRange = getSalesReportPresetRange('thisMonth');
+  const [salesReportFormat, setSalesReportFormat] = useState<BillingSalesReportFormat>('excel');
+  const [salesReportPreset, setSalesReportPreset] = useState<BillingSalesReportPreset>('thisMonth');
+  const [salesReportStartDate, setSalesReportStartDate] = useState<string>(initialSalesReportRange.startDate);
+  const [salesReportEndDate, setSalesReportEndDate] = useState<string>(initialSalesReportRange.endDate);
+  const [salesReportBranch, setSalesReportBranch] = useState<string>(ALL_BRANCHES_OPTION);
+  const [salesReportInvoiceType, setSalesReportInvoiceType] = useState<string>('all');
+  const [salesReportPaymentMethod, setSalesReportPaymentMethod] = useState<string>('all');
+  const [salesReportStatus, setSalesReportStatus] = useState<string>('all');
+  const [salesReportSections, setSalesReportSections] = useState<Record<BillingSalesReportSectionKey, boolean>>(DEFAULT_SALES_REPORT_SECTIONS);
+  const [salesReportError, setSalesReportError] = useState<string>('');
+  const [generatingSalesReport, setGeneratingSalesReport] = useState<boolean>(false);
   
   // Modal States
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
@@ -780,8 +1005,7 @@ const GlobalBilling: React.FC = () => {
   
   // Pagination
   const [page, setPage] = useState<number>(0);
-  const [rowsPerPage, setRowsPerPage] = useState<number>(8);
-  const itemsPerPage = rowsPerPage;
+  const itemsPerPage = 8;
   
   // Create Invoice State
   const [invoiceType, setInvoiceType] = useState<InvoiceTypeSelection>('');
@@ -802,7 +1026,7 @@ const GlobalBilling: React.FC = () => {
   const [productSearchQuery, setProductSearchQuery] = useState<string>('');
   const [selectedProducts, setSelectedProducts] = useState<ProductItem[]>([]);
   const [productCategoryFilter, setProductCategoryFilter] = useState<string>('all');
-  const [tempSelectedProducts, setTempSelectedProducts] = useState<Map<string, { product: Product; quantity: number }>>(new Map());
+  const [tempSelectedProducts, setTempSelectedProducts] = useState<Map<string, TempSelectedProductEntry>>(new Map());
   
   // Discount State
   const [discountType, setDiscountType] = useState<DiscountType>('none');
@@ -816,17 +1040,23 @@ const GlobalBilling: React.FC = () => {
   const [customerPhone, setCustomerPhone] = useState<string>('');
   const [petName, setPetName] = useState<string>('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
-  const [initialPaymentAmount, setInitialPaymentAmount] = useState<number>(0);
+  const [paymentReference, setPaymentReference] = useState<string>('');
+  const [installmentMonths, setInstallmentMonths] = useState<InstallmentTermSelection>('');
   const [initialPaymentMethod, setInitialPaymentMethod] = useState<PaymentEntryMethod>('cash');
+  const [initialPaymentReference, setInitialPaymentReference] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
 
   // Record Payment State
   const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
   const [paymentAmountInput, setPaymentAmountInput] = useState<number>(0);
+  const [installmentPaymentMode, setInstallmentPaymentMode] = useState<InstallmentPaymentMode>('monthly');
+  const [installmentAdvanceMonths, setInstallmentAdvanceMonths] = useState<number>(1);
   const [paymentEntryMethod, setPaymentEntryMethod] = useState<PaymentEntryMethod>('cash');
+  const [paymentEntryReference, setPaymentEntryReference] = useState<string>('');
   const [paymentEntryNotes, setPaymentEntryNotes] = useState<string>('');
   const [savingPayment, setSavingPayment] = useState<boolean>(false);
   const [paymentAmountError, setPaymentAmountError] = useState<string>('');
+  const [paymentEntryReferenceError, setPaymentEntryReferenceError] = useState<string>('');
   
   // Alert Modal State
   const [modalVisible, setModalVisible] = useState<boolean>(false);
@@ -863,13 +1093,27 @@ const GlobalBilling: React.FC = () => {
   };
   
   const discountAmount = getDiscountAmount();
-  const total = subtotal + tax - discountAmount;
+  const baseTotal = subtotal + tax - discountAmount;
+  const selectedInstallmentMonths = typeof installmentMonths === 'number' ? installmentMonths : null;
+  const hasSelectedInstallmentTerm = paymentMethod === 'installment' && selectedInstallmentMonths !== null;
+  const installmentInterestRate = hasSelectedInstallmentTerm ? getInstallmentInterestRate(selectedInstallmentMonths) : 0;
+  const installmentDownPaymentRate = hasSelectedInstallmentTerm ? getInstallmentDownPaymentRate(selectedInstallmentMonths) : 0;
+  const installmentInterestAmount = hasSelectedInstallmentTerm
+    ? Math.round(baseTotal * installmentInterestRate * 100) / 100
+    : 0;
+  const total = baseTotal + installmentInterestAmount;
+  const automaticDownPaymentAmount = hasSelectedInstallmentTerm
+    ? roundInstallmentDownPayment(total * installmentDownPaymentRate, total)
+    : 0;
   const serviceCategories = Array.from(new Set(services.map(service => service.category))).sort();
   const clampedInitialPaymentAmount = paymentMethod === 'installment'
-    ? Math.min(Math.max(initialPaymentAmount || 0, 0), Math.max(total, 0))
+    ? automaticDownPaymentAmount
     : total;
   const amountPaidPreview = paymentMethod === 'installment' ? clampedInitialPaymentAmount : total;
   const remainingBalancePreview = Math.max(total - amountPaidPreview, 0);
+  const monthlyInstallmentPreview = hasSelectedInstallmentTerm
+    ? Math.round((remainingBalancePreview / (selectedInstallmentMonths || 1)) * 100) / 100
+    : 0;
   const derivedPaymentStatus: PaymentStatus =
     remainingBalancePreview <= 0
       ? 'paid'
@@ -877,9 +1121,16 @@ const GlobalBilling: React.FC = () => {
         ? 'partial'
         : 'pending';
   const paymentRemainingBalance = Math.max(selectedInvoice?.remainingBalance || 0, 0);
+  const installmentPaymentMonthlyDue = getInvoiceInstallmentMonthlyDue(selectedInvoice);
+  const installmentRemainingTerms = getInvoiceRemainingInstallmentTerms(selectedInvoice);
+  const installmentPaidTerms = getInvoicePaidInstallmentTerms(selectedInvoice);
+  const installmentPaymentTermCount = installmentPaymentMode === 'advance'
+    ? Math.min(Math.max(installmentAdvanceMonths, 1), Math.max(installmentRemainingTerms, 1))
+    : 1;
+  const calculatedInstallmentPaymentAmount = getInstallmentPaymentAmountForTerms(selectedInvoice, installmentPaymentTermCount);
   const isPaymentAmountInvalid = paymentRemainingBalance <= 0
-    || paymentAmountInput <= 0
-    || paymentAmountInput > paymentRemainingBalance;
+    || calculatedInstallmentPaymentAmount <= 0
+    || calculatedInstallmentPaymentAmount > paymentRemainingBalance;
   const isSourceRecordLocked = sourceContextLocked && Boolean(selectedAppointment || selectedWalkin);
   const selectedSourceSummary = invoiceType === 'appointment'
     ? (selectedAppointment
@@ -895,6 +1146,100 @@ const GlobalBilling: React.FC = () => {
     : invoiceType === 'walkin'
       ? (selectedWalkin?.prescriptionProductSuggestions || [])
       : [];
+  const hasBatchValue = (value: unknown): boolean =>
+    value !== undefined && value !== null && String(value).trim() !== '';
+  const getProductLineId = (product: Pick<ProductItem, 'id' | 'inventoryItemId'>): string =>
+    String(product.inventoryItemId || product.id);
+  const getProductLineAvailableBatches = (product: ProductItem): InventoryBatch[] => {
+    if (Array.isArray(product.availableBatches) && product.availableBatches.length > 0) {
+      return product.availableBatches;
+    }
+
+    const productId = getProductLineId(product);
+    const catalogMatch = products.find(catalogProduct =>
+      String(catalogProduct.id) === productId ||
+      String(catalogProduct.inventoryItemId || '') === productId
+    );
+
+    return catalogMatch ? getProductBatches(catalogMatch) : [];
+  };
+  const getProductLineBatchSelectValue = (product: ProductItem, batches = getProductLineAvailableBatches(product)): string => {
+    if (product.batchSelectValue) return product.batchSelectValue;
+    if (hasBatchValue(product.inventoryBatchId)) return `id:${product.inventoryBatchId}`;
+    if (hasBatchValue(product.inventory_batch_id)) return `id:${product.inventory_batch_id}`;
+    const batchNumber = product.batchNumber || product.batch_number;
+    if (batchNumber) {
+      const matchingBatch = batches.find(batch => batch.batchNumber === batchNumber);
+      return matchingBatch ? getBatchSelectValue(matchingBatch) : `number:${batchNumber}`;
+    }
+    return '';
+  };
+  const getProductLineSelectedBatch = (product: ProductItem): InventoryBatch | undefined => {
+    const batches = getProductLineAvailableBatches(product);
+    return findBatchBySelectValue(batches, getProductLineBatchSelectValue(product, batches));
+  };
+  const getProductLineBatchNumber = (product: ProductItem): string => {
+    const selectedBatch = getProductLineSelectedBatch(product);
+    return (
+      product.batchNumber ||
+      product.batch_number ||
+      (selectedBatch ? getBatchDisplayNumber(selectedBatch) : '')
+    );
+  };
+  const getBatchOptionLabel = (batch: InventoryBatch): string => {
+    const status = getBatchExpirationStatus(batch);
+    const expirationLabel = batch.expirationNA || !batch.expirationDate ? 'No expiration' : `Exp ${batch.expirationDate}`;
+    return [
+      getBatchDisplayNumber(batch),
+      `${batch.quantityOnHand} available`,
+      expirationLabel,
+      status === expirationLabel ? '' : status,
+    ].filter(Boolean).join(' - ');
+  };
+  const getBatchWarningText = (batch?: InventoryBatch): string => {
+    if (!batch) return '';
+
+    const warnings: string[] = [];
+    const status = getBatchExpirationStatus(batch).toLowerCase();
+    if (status === 'expired') {
+      warnings.push('Selected batch is expired.');
+    } else if (status === 'expiring soon') {
+      warnings.push('Selected batch is near expiry.');
+    }
+    if (batch.quantityOnHand <= LOW_BATCH_STOCK_THRESHOLD) {
+      warnings.push(`Low batch stock: ${batch.quantityOnHand} left.`);
+    }
+
+    return warnings.join(' ');
+  };
+  const getProductBatchPayload = (product: ProductItem): Record<string, string | number> => {
+    const selectedBatch = getProductLineSelectedBatch(product);
+    const inventoryBatchId = product.inventoryBatchId ?? product.inventory_batch_id ?? selectedBatch?.id;
+    const batchNumber = product.batchNumber || product.batch_number || selectedBatch?.batchNumber;
+    const payload: Record<string, string | number> = {};
+
+    if (hasBatchValue(inventoryBatchId)) {
+      payload.inventoryBatchId = inventoryBatchId as string | number;
+      payload.inventory_batch_id = inventoryBatchId as string | number;
+    }
+    if (batchNumber) {
+      payload.batchNumber = batchNumber;
+      payload.batch_number = batchNumber;
+    }
+
+    return payload;
+  };
+
+  useEffect(() => {
+    if (!showPaymentModal || !selectedInvoice || selectedInvoice.paymentMethod !== 'installment') return;
+
+    setPaymentAmountInput(calculatedInstallmentPaymentAmount);
+    setPaymentAmountError('');
+  }, [
+    showPaymentModal,
+    selectedInvoice,
+    calculatedInstallmentPaymentAmount
+  ]);
 
   const filteredServices = services.filter(service => {
     const matchesSearch = serviceSearchQuery === '' || 
@@ -938,29 +1283,9 @@ const GlobalBilling: React.FC = () => {
     const matchesType = typeFilter === '' || inv.invoiceType === typeFilter;
     return matchesSearch && matchesDate && matchesStatus && matchesType;
   });
-
-  const sortedInvoices = [...filteredInvoices].sort((a, b) => {
-    switch (sortOption) {
-      case 'oldest':
-        return new Date(`${a.date} ${a.time}`).getTime() - new Date(`${b.date} ${b.time}`).getTime();
-      case 'invoiceAZ':
-        return a.invoiceNumber.localeCompare(b.invoiceNumber);
-      case 'customerAZ':
-        return a.customerName.localeCompare(b.customerName);
-      case 'totalHigh':
-        return b.total - a.total;
-      case 'totalLow':
-        return a.total - b.total;
-      case 'statusAZ':
-        return a.paymentStatus.localeCompare(b.paymentStatus);
-      case 'newest':
-      default:
-        return new Date(`${b.date} ${b.time}`).getTime() - new Date(`${a.date} ${a.time}`).getTime();
-    }
-  });
   
-  const paginatedInvoices = sortedInvoices.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
-  const totalPages = Math.max(1, Math.ceil(sortedInvoices.length / itemsPerPage));
+  const paginatedInvoices = filteredInvoices.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
+  const totalPages = Math.max(1, Math.ceil(filteredInvoices.length / itemsPerPage));
   
   const loadCurrentUser = async (): Promise<void> => {
     try {
@@ -971,6 +1296,25 @@ const GlobalBilling: React.FC = () => {
       }
     } catch (error) {
       console.log('Error loading user session', error);
+    }
+  };
+
+  const loadBranches = async (): Promise<void> => {
+    try {
+      const response = await apiService.getBranches();
+      const rawBranches = Array.isArray(response?.branches) ? response.branches : [];
+      const nextBranches = rawBranches
+        .map((branch: any): BranchOption | null => {
+          const id = branch?.id ?? branch?.branch_id ?? branch?.branchId;
+          const name = branch?.name ?? branch?.branch_name ?? branch?.branchName;
+          if (id === undefined || id === null || !name) return null;
+          return { id: String(id), name: String(name) };
+        })
+        .filter((branch: BranchOption | null): branch is BranchOption => Boolean(branch));
+      setBranches(nextBranches);
+    } catch (error) {
+      console.error('Failed to load branches for billing sales report', error);
+      setBranches([]);
     }
   };
 
@@ -1341,7 +1685,10 @@ const GlobalBilling: React.FC = () => {
     const newTemp = new Map(tempSelectedServices);
     if (newTemp.has(service.id)) {
       const existing = newTemp.get(service.id)!;
-      newTemp.set(service.id, { service, quantity: existing.quantity + 1 });
+      if (!isRepeatableBillingService(service)) {
+        return;
+      }
+      newTemp.set(service.id, { ...existing, service, quantity: existing.quantity + 1 });
     } else {
       newTemp.set(service.id, { service, quantity: 1 });
     }
@@ -1361,7 +1708,8 @@ const GlobalBilling: React.FC = () => {
     const newTemp = new Map(tempSelectedServices);
     const existing = newTemp.get(serviceId);
     if (existing) {
-      newTemp.set(serviceId, { ...existing, quantity });
+      const nextQuantity = isRepeatableBillingService(existing.service) ? quantity : 1;
+      newTemp.set(serviceId, { ...existing, quantity: nextQuantity });
       setTempSelectedServices(newTemp);
     }
   };
@@ -1413,12 +1761,17 @@ const GlobalBilling: React.FC = () => {
       return;
     }
 
-    const tempMap = new Map();
+    const tempMap = new Map<string, TempSelectedProductEntry>();
     selectedProducts.forEach(product => {
       const selectedProductId = String(product.inventoryItemId || product.id);
       const foundProduct = products.find(p => String(p.id) === selectedProductId);
       if (foundProduct) {
-        tempMap.set(foundProduct.id, { product: foundProduct, quantity: product.quantity });
+        const batches = getProductBatches(foundProduct);
+        tempMap.set(foundProduct.id, {
+          product: foundProduct,
+          quantity: product.quantity,
+          batchSelectValue: getProductLineBatchSelectValue(product, batches),
+        });
       }
     });
     setTempSelectedProducts(tempMap);
@@ -1444,11 +1797,37 @@ const GlobalBilling: React.FC = () => {
     const existing = newTemp.get(productId);
     if (existing) {
       const product = existing.product;
-      const maxQuantity = product.stock;
+      const selectedBatch = findBatchBySelectValue(getProductBatches(product), existing.batchSelectValue);
+      const maxQuantity = selectedBatch ? selectedBatch.quantityOnHand : product.stock;
+      if (maxQuantity <= 0) {
+        showAlert('error', 'Batch Unavailable', 'The selected batch has no available stock.');
+        return;
+      }
       const newQuantity = Math.min(Math.max(1, quantity), maxQuantity);
       newTemp.set(productId, { ...existing, quantity: newQuantity });
       setTempSelectedProducts(newTemp);
     }
+  };
+
+  const updateTempProductBatch = (productId: string, batchSelectValue: string) => {
+    const newTemp = new Map(tempSelectedProducts);
+    const existing = newTemp.get(productId);
+    if (!existing) return;
+
+    const selectedBatch = findBatchBySelectValue(getProductBatches(existing.product), batchSelectValue);
+    if (selectedBatch && selectedBatch.quantityOnHand <= 0) {
+      showAlert('error', 'Batch Unavailable', 'The selected batch has no available stock.');
+      return;
+    }
+
+    const maxQuantity = selectedBatch ? selectedBatch.quantityOnHand : existing.product.stock;
+    const quantity = maxQuantity > 0 ? Math.min(existing.quantity, maxQuantity) : existing.quantity;
+    newTemp.set(productId, {
+      ...existing,
+      quantity,
+      batchSelectValue,
+    });
+    setTempSelectedProducts(newTemp);
   };
   
   const removeTempProduct = (productId: string) => {
@@ -1459,16 +1838,35 @@ const GlobalBilling: React.FC = () => {
   
   const confirmProducts = () => {
     const newProducts: ProductItem[] = [];
-    tempSelectedProducts.forEach(({ product, quantity }) => {
+    for (const { product, quantity, batchSelectValue } of tempSelectedProducts.values()) {
+      const batches = getProductBatches(product);
+      const selectedBatch = findBatchBySelectValue(batches, batchSelectValue);
+      if (selectedBatch && quantity > selectedBatch.quantityOnHand) {
+        showAlert(
+          'error',
+          'Batch Stock Limit',
+          `${product.name} quantity cannot exceed selected batch stock (${selectedBatch.quantityOnHand}).`
+        );
+        return;
+      }
+
       const existingProduct = selectedProducts.find(existing =>
         String(existing.inventoryItemId || existing.id) === String(product.id) ||
         existing.name.toLowerCase() === product.name.toLowerCase()
       );
       const unitPrice = existingProduct?.unitPrice ?? product.price;
+      const batchNumber = selectedBatch?.batchNumber || undefined;
+      const inventoryBatchId = selectedBatch?.id;
 
       newProducts.push({
         id: String(existingProduct?.inventoryItemId || existingProduct?.id || product.id),
         inventoryItemId: existingProduct?.inventoryItemId || existingProduct?.id || product.id,
+        inventoryBatchId,
+        inventory_batch_id: inventoryBatchId,
+        batchNumber,
+        batch_number: batchNumber,
+        batchSelectValue: selectedBatch ? getBatchSelectValue(selectedBatch) : '',
+        availableBatches: batches,
         name: product.name,
         sku: product.sku,
         description: existingProduct?.description ?? product.description,
@@ -1478,7 +1876,7 @@ const GlobalBilling: React.FC = () => {
         category: normalizeProductCategory(product.category),
         stock: product.stock
       });
-    });
+    }
     setSelectedProducts(newProducts);
     if (newProducts.length > 0) {
       clearFormErrors('lineItems');
@@ -1514,8 +1912,22 @@ const GlobalBilling: React.FC = () => {
 
   const updateProductQuantity = (id: string, quantity: number) => {
     if (quantity < 1) return;
+    const targetProduct = selectedProducts.find(p => getProductLineId(p) === id);
+    if (!targetProduct) return;
+
+    const selectedBatch = getProductLineSelectedBatch(targetProduct);
+    const maxQuantity = selectedBatch ? selectedBatch.quantityOnHand : (targetProduct.stock ?? 0);
+    if (selectedBatch && maxQuantity <= 0) {
+      showAlert('error', 'Batch Unavailable', 'The selected batch has no available stock.');
+      return;
+    }
+
+    const nextQuantity = maxQuantity && maxQuantity > 0
+      ? Math.min(quantity, maxQuantity)
+      : quantity;
+
     setSelectedProducts(prev => prev.map(p => 
-      String(p.inventoryItemId || p.id) === id ? { ...p, quantity, total: p.unitPrice * quantity } : p
+      getProductLineId(p) === id ? { ...p, quantity: nextQuantity, total: p.unitPrice * nextQuantity } : p
     ));
   };
   
@@ -1528,6 +1940,40 @@ const GlobalBilling: React.FC = () => {
     setSelectedProducts(prev => prev.map(p => 
       String(p.inventoryItemId || p.id) === id ? { ...p, unitPrice: newPrice, total: p.quantity * newPrice } : p
     ));
+  };
+
+  const updateSelectedProductBatch = (id: string, batchSelectValue: string) => {
+    const targetProduct = selectedProducts.find(p => getProductLineId(p) === id);
+    if (!targetProduct) return;
+
+    const batches = getProductLineAvailableBatches(targetProduct);
+    const selectedBatch = findBatchBySelectValue(batches, batchSelectValue);
+    if (selectedBatch && selectedBatch.quantityOnHand <= 0) {
+      showAlert('error', 'Batch Unavailable', 'The selected batch has no available stock.');
+      return;
+    }
+
+    const inventoryBatchId = selectedBatch?.id;
+    const batchNumber = selectedBatch?.batchNumber || undefined;
+    const maxQuantity = selectedBatch ? selectedBatch.quantityOnHand : (targetProduct.stock ?? 0);
+    const nextQuantity = maxQuantity && maxQuantity > 0
+      ? Math.min(targetProduct.quantity, maxQuantity)
+      : targetProduct.quantity;
+
+    setSelectedProducts(prev => prev.map(product => (
+      getProductLineId(product) === id
+        ? {
+            ...product,
+            inventoryBatchId,
+            inventory_batch_id: inventoryBatchId,
+            batchNumber,
+            batch_number: batchNumber,
+            batchSelectValue,
+            quantity: nextQuantity,
+            total: product.unitPrice * nextQuantity,
+          }
+        : product
+    )));
   };
 
   const isPrescriptionSuggestionSelected = (suggestion: PrescriptionProductSuggestion): boolean => {
@@ -1545,11 +1991,17 @@ const GlobalBilling: React.FC = () => {
           return prev;
         }
 
+        const catalogProduct = products.find(product =>
+          String(product.id) === suggestionId ||
+          String(product.inventoryItemId || '') === suggestionId
+        );
+
         return [
           ...prev,
           {
             id: suggestionId,
             inventoryItemId: suggestion.inventoryItemId || suggestion.id,
+            availableBatches: catalogProduct ? getProductBatches(catalogProduct) : [],
             name: suggestion.name,
             sku: suggestion.sku,
             description: suggestion.description,
@@ -1596,8 +2048,10 @@ const GlobalBilling: React.FC = () => {
     setCustomDiscountType('percentage');
     setShowCustomDiscountInput(false);
     setPaymentMethod('cash');
-    setInitialPaymentAmount(0);
+    setPaymentReference('');
+    setInstallmentMonths('');
     setInitialPaymentMethod('cash');
+    setInitialPaymentReference('');
     setNotes('');
     clearFormErrors();
   };
@@ -1636,6 +2090,8 @@ const GlobalBilling: React.FC = () => {
       : invoiceType === 'walkin'
         ? selectedWalkin
         : null;
+    const trimmedPaymentReference = paymentReference.trim();
+    const trimmedInitialPaymentReference = initialPaymentReference.trim();
 
     if (!invoiceType) {
       nextErrors.invoiceType = 'Select the invoice type.';
@@ -1655,6 +2111,43 @@ const GlobalBilling: React.FC = () => {
 
     if (selectedServices.length === 0 && selectedProducts.length === 0) {
       nextErrors.lineItems = 'Add at least one service or product.';
+    }
+
+    if (paymentMethod === 'installment' && !selectedInstallmentMonths) {
+      nextErrors.installmentTerm = 'Select an installment term.';
+    }
+
+    if (paymentMethod !== 'installment' && requiresPaymentReference(paymentMethod) && !trimmedPaymentReference) {
+      nextErrors.paymentReference = `${getPaymentReferenceLabel(paymentMethod)} is required.`;
+    }
+    if (paymentMethod !== 'installment' && requiresPaymentReference(paymentMethod) && trimmedPaymentReference && !isValidGcashReference(trimmedPaymentReference)) {
+      nextErrors.paymentReference = `${getPaymentReferenceLabel(paymentMethod)} must contain numbers only.`;
+    }
+
+    if (
+      paymentMethod === 'installment'
+      && clampedInitialPaymentAmount > 0
+      && requiresPaymentReference(initialPaymentMethod)
+      && !trimmedInitialPaymentReference
+    ) {
+      nextErrors.initialPaymentReference = `${getPaymentReferenceLabel(initialPaymentMethod)} is required for the downpayment.`;
+    }
+    if (
+      paymentMethod === 'installment'
+      && clampedInitialPaymentAmount > 0
+      && requiresPaymentReference(initialPaymentMethod)
+      && trimmedInitialPaymentReference
+      && !isValidGcashReference(trimmedInitialPaymentReference)
+    ) {
+      nextErrors.initialPaymentReference = `${getPaymentReferenceLabel(initialPaymentMethod)} must contain numbers only.`;
+    }
+
+    for (const product of selectedProducts) {
+      const selectedBatch = getProductLineSelectedBatch(product);
+      if (selectedBatch && product.quantity > selectedBatch.quantityOnHand) {
+        nextErrors.lineItems = `${product.name} quantity cannot exceed selected batch stock (${selectedBatch.quantityOnHand}).`;
+        break;
+      }
     }
 
     if (Object.keys(nextErrors).length > 0) {
@@ -1716,14 +2209,20 @@ const GlobalBilling: React.FC = () => {
           quantity: product.quantity,
           unitPrice: product.unitPrice,
           category: product.category,
+          ...getProductBatchPayload(product),
         })),
         discountType,
         discountValue: discountType === 'custom' ? customDiscountValue : undefined,
         discountIsPercentage: discountType === 'custom' ? (customDiscountType === 'percentage') : undefined,
         paymentMethod,
         paymentStatus: derivedPaymentStatus,
+        paymentReference: paymentMethod !== 'installment' ? trimmedPaymentReference || undefined : undefined,
+        installmentMonths: paymentMethod === 'installment' ? selectedInstallmentMonths : undefined,
+        installmentInterestRate: paymentMethod === 'installment' ? installmentInterestRate : undefined,
+        installmentInterestAmount: paymentMethod === 'installment' ? installmentInterestAmount : undefined,
         initialPaymentAmount: paymentMethod === 'installment' ? clampedInitialPaymentAmount : undefined,
         initialPaymentMethod: paymentMethod === 'installment' ? initialPaymentMethod : undefined,
+        initialPaymentReference: paymentMethod === 'installment' ? trimmedInitialPaymentReference || undefined : undefined,
         notes,
       });
 
@@ -1776,8 +2275,7 @@ const GlobalBilling: React.FC = () => {
 
   const clampPaymentAmountToRemaining = (value: number, remainingBalance: number) => {
     const numericValue = Number.isFinite(value) ? value : 0;
-    const clampedValue = Math.min(Math.max(numericValue, 0), Math.max(remainingBalance, 0));
-    return Math.round(clampedValue * 100) / 100;
+    return roundBillingCurrency(Math.min(Math.max(numericValue, 0), Math.max(remainingBalance, 0)));
   };
 
   const handlePaymentAmountChange = (rawValue: string) => {
@@ -1809,11 +2307,14 @@ const GlobalBilling: React.FC = () => {
   };
 
   const openRecordPaymentModal = (invoice: Invoice) => {
-    const remainingBalance = Math.max(invoice.remainingBalance || 0, 0);
     setSelectedInvoice(invoice);
-    setPaymentAmountInput(remainingBalance);
+    setInstallmentPaymentMode('monthly');
+    setInstallmentAdvanceMonths(1);
+    setPaymentAmountInput(getInstallmentPaymentAmountForTerms(invoice, 1));
     setPaymentAmountError('');
     setPaymentEntryMethod('cash');
+    setPaymentEntryReference('');
+    setPaymentEntryReferenceError('');
     setPaymentEntryNotes('');
     setShowPaymentModal(true);
   };
@@ -1822,17 +2323,30 @@ const GlobalBilling: React.FC = () => {
     if (!selectedInvoice) return;
 
     const remainingBalance = Math.max(selectedInvoice.remainingBalance || 0, 0);
-    const safeAmount = Math.min(Math.max(paymentAmountInput || 0, 0), remainingBalance);
+    const safeAmount = getInstallmentPaymentAmountForTerms(selectedInvoice, installmentPaymentTermCount);
 
     if (safeAmount <= 0) {
       setPaymentAmountError('Payment amount must be greater than ₱0.');
-      showAlert('error', 'Invalid Amount', 'Please enter a valid payment amount.');
+      showAlert('error', 'Invalid Installment Payment', 'No installment amount is due for the selected term.');
       return;
     }
 
-    if (paymentAmountInput > remainingBalance) {
-      setPaymentAmountInput(remainingBalance);
-      setPaymentAmountError(`Maximum payment is ₱${remainingBalance.toLocaleString()}.`);
+    if (safeAmount > remainingBalance) {
+      setPaymentAmountError(`Maximum payment is ₱${remainingBalance.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}.`);
+      return;
+    }
+
+    const trimmedPaymentEntryReference = paymentEntryReference.trim();
+    if (requiresPaymentReference(paymentEntryMethod) && !trimmedPaymentEntryReference) {
+      const message = `${getPaymentReferenceLabel(paymentEntryMethod)} is required.`;
+      setPaymentEntryReferenceError(message);
+      showAlert('error', 'Payment Reference Required', message);
+      return;
+    }
+    if (requiresPaymentReference(paymentEntryMethod) && !isValidGcashReference(trimmedPaymentEntryReference)) {
+      const message = `${getPaymentReferenceLabel(paymentEntryMethod)} must contain numbers only.`;
+      setPaymentEntryReferenceError(message);
+      showAlert('error', 'Invalid Payment Reference', message);
       return;
     }
 
@@ -1841,8 +2355,14 @@ const GlobalBilling: React.FC = () => {
       const response = await apiService.recordBillingInvoicePayment(selectedInvoice.id, {
         amount: safeAmount,
         paymentMethod: paymentEntryMethod,
+        paymentReference: trimmedPaymentEntryReference || undefined,
         handledByUserId: currentUser?.id || currentUser?.pk || undefined,
-        notes: paymentEntryNotes,
+        notes: [
+          installmentPaymentMode === 'advance'
+            ? `Advance installment payment (${installmentPaymentTermCount} months)`
+            : 'Monthly installment payment',
+          paymentEntryNotes.trim()
+        ].filter(Boolean).join(' - '),
       });
 
       const updatedInvoice = response?.invoice;
@@ -1884,6 +2404,11 @@ const GlobalBilling: React.FC = () => {
           subtotal={invoice.subtotal}
           tax={invoice.tax}
           discount={invoice.discount}
+          installmentMonths={invoice.installmentMonths}
+          installmentInterestRate={invoice.installmentInterestRate}
+          installmentInterestAmount={invoice.installmentInterestAmount}
+          installmentMonthlyDue={getInvoiceInstallmentMonthlyDue(invoice)}
+          installmentDownPayment={getInvoiceInstallmentDownPaymentAmount(invoice)}
           total={invoice.total}
           amountPaid={invoice.amountPaid}
           remainingBalance={invoice.remainingBalance}
@@ -1900,6 +2425,22 @@ const GlobalBilling: React.FC = () => {
       setTimeout(() => {
         URL.revokeObjectURL(url);
       }, 100);
+
+      void recordAuditLog({
+        module: 'Billing',
+        event: 'Invoice PDF Generated',
+        target: invoice.invoiceNumber,
+        targetType: 'billing_invoice',
+        targetId: invoice.id,
+        branchId: invoice.branchId,
+        summary: `Invoice PDF was generated for ${invoice.invoiceNumber}.`,
+        status: 'Success',
+        metadata: {
+          invoiceNumber: invoice.invoiceNumber,
+          totalAmount: invoice.total,
+          paymentStatus: invoice.paymentStatus,
+        },
+      });
 
       return;
     } catch (error) {
@@ -1958,15 +2499,15 @@ const GlobalBilling: React.FC = () => {
               <tr><th>Item</th><th>Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr>
             </thead>
             <tbody>
-              ${invoice.items.map(item => `<tr><td><strong>${item.name}</strong><br/><span style="font-size:10px;color:#999;">${item.category}</span></td><td>${item.quantity}</td><td>₱${item.unitPrice.toLocaleString()}</td><td>₱${item.total.toLocaleString()}</td></tr>`).join('')}
-              ${invoice.products.map(product => `<tr><td><strong>${product.name}</strong><br/><span style="font-size:10px;color:#999;">${product.sku}</span></td><td>${product.quantity}</td><td>₱${product.unitPrice.toLocaleString()}</td><td>₱${product.total.toLocaleString()}</td></tr>`).join('')}
+              ${invoice.items.map(item => `<tr><td><strong>${item.name}</strong><br/><span style="font-size:10px;color:#999;">${item.category}</span></td><td>${item.quantity}</td><td>₱${item.unitPrice.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</td><td>₱${item.total.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</td></tr>`).join('')}
+              ${invoice.products.map(product => `<tr><td><strong>${product.name}</strong><br/><span style="font-size:10px;color:#999;">${product.sku}</span></td><td>${product.quantity}</td><td>₱${product.unitPrice.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</td><td>₱${product.total.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</td></tr>`).join('')}
             </tbody>
           </table>
           <div class="totals">
-            <div>Subtotal: ₱${invoice.subtotal.toLocaleString()}</div>
-            <div>Tax (12%): ₱${invoice.tax.toLocaleString()}</div>
-            <div>Discount: - ₱${invoice.discount.toLocaleString()}</div>
-            <div class="grand-total">Total: ₱${invoice.total.toLocaleString()}</div>
+            <div>Subtotal: ₱${invoice.subtotal.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</div>
+            <div>Tax (12%): ₱${invoice.tax.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</div>
+            <div>Discount: - ₱${invoice.discount.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</div>
+            <div class="grand-total">Total: ₱${invoice.total.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</div>
           </div>
           <div class="footer">
             <p>Payment Method: ${formatPaymentMethodLabel(invoice.paymentMethod)} | Status: ${formatPaymentStatusLabel(invoice.paymentStatus)}</p>
@@ -2024,13 +2565,368 @@ const GlobalBilling: React.FC = () => {
     setPage(0);
   };
 
-  const handleRowsPerPageChange = (value: number): void => {
-    setRowsPerPage(value);
-    setPage(0);
+  const getSalesReportBranchName = (branchId?: string | number | null): string => {
+    if (branchId === undefined || branchId === null || branchId === '') return 'Unassigned';
+    return branches.find(branch => branch.id === String(branchId))?.name || `Branch ${branchId}`;
+  };
+
+  const getSalesReportBranchLabel = (branchValue: string): string => {
+    if (branchValue === ALL_BRANCHES_OPTION) return ALL_BRANCHES_OPTION;
+    return branches.find(branch => branch.id === String(branchValue))?.name || `Branch ${branchValue}`;
+  };
+
+  const formatReportCurrency = (value: number): string =>
+    `PHP ${roundBillingCurrency(value).toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}`;
+
+  const handleSalesReportPresetChange = (preset: BillingSalesReportPreset) => {
+    setSalesReportPreset(preset);
+    if (preset === 'custom') return;
+    const range = getSalesReportPresetRange(preset);
+    setSalesReportStartDate(range.startDate);
+    setSalesReportEndDate(range.endDate);
+  };
+
+  const handleSalesReportDateChange = (field: 'start' | 'end', value: string) => {
+    setSalesReportPreset('custom');
+    if (field === 'start') {
+      setSalesReportStartDate(value);
+    } else {
+      setSalesReportEndDate(value);
+    }
+  };
+
+  const toggleSalesReportSection = (sectionKey: BillingSalesReportSectionKey) => {
+    setSalesReportSections(prev => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey]
+    }));
+  };
+
+  const toggleAllSalesReportSections = () => {
+    const allSelected = Object.values(salesReportSections).every(Boolean);
+    setSalesReportSections({
+      summary: !allSelected,
+      itemized: !allSelected,
+      payments: !allSelected
+    });
+  };
+
+  const buildBillingSalesReportInvoices = () => {
+    const start = new Date(`${salesReportStartDate}T00:00:00`);
+    const end = new Date(`${salesReportEndDate}T23:59:59`);
+
+    return invoices
+      .filter(invoice => invoice.status !== 'cancelled' && invoice.status !== 'refunded')
+      .filter(invoice => {
+        const invoiceDate = new Date(`${invoice.date}T12:00:00`);
+        if (Number.isNaN(invoiceDate.getTime())) return false;
+        return invoiceDate >= start && invoiceDate <= end;
+      })
+      .filter(invoice => salesReportBranch === ALL_BRANCHES_OPTION || String(invoice.branchId || '') === salesReportBranch)
+      .filter(invoice => salesReportInvoiceType === 'all' || invoice.invoiceType === salesReportInvoiceType)
+      .filter(invoice => salesReportPaymentMethod === 'all' || invoice.paymentMethod === salesReportPaymentMethod)
+      .filter(invoice => salesReportStatus === 'all' || invoice.paymentStatus === salesReportStatus);
+  };
+
+  const buildBillingSalesReportRows = (reportInvoices: Invoice[]) => {
+    return reportInvoices.flatMap(invoice => {
+      const baseRow = {
+        invoiceNumber: invoice.invoiceNumber,
+        date: invoice.date,
+        branch: getSalesReportBranchName(invoice.branchId),
+        invoiceType: formatPaymentMethodLabel(invoice.invoiceType),
+        customerName: invoice.customerName,
+        petName: invoice.petName,
+        invoiceTotal: invoice.total || 0,
+        amountPaid: invoice.amountPaid || 0,
+        remainingBalance: invoice.remainingBalance || 0,
+        paymentStatus: formatPaymentStatusLabel(invoice.paymentStatus),
+        paymentMethod: formatPaymentMethodLabel(invoice.paymentMethod),
+      };
+
+      const serviceRows = (invoice.items || []).map(item => ({
+        ...baseRow,
+        itemType: 'Service',
+        itemName: item.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        lineTotal: item.total,
+      }));
+      const productRows = (invoice.products || []).map(product => ({
+        ...baseRow,
+        itemType: 'Product',
+        itemName: product.name,
+        quantity: product.quantity,
+        unitPrice: product.unitPrice,
+        lineTotal: product.total,
+      }));
+
+      return serviceRows.length || productRows.length
+        ? [...serviceRows, ...productRows]
+        : [{
+            ...baseRow,
+            itemType: 'Invoice',
+            itemName: 'Invoice total',
+            quantity: 1,
+            unitPrice: invoice.total || 0,
+            lineTotal: invoice.total || 0,
+          }];
+    });
+  };
+
+  const handleGenerateBillingSalesReport = async () => {
+    setSalesReportError('');
+
+    if (!salesReportStartDate || !salesReportEndDate) {
+      setSalesReportError('Select a valid start and end date.');
+      return;
+    }
+    if (new Date(`${salesReportStartDate}T00:00:00`) > new Date(`${salesReportEndDate}T00:00:00`)) {
+      setSalesReportError('Start date cannot be later than end date.');
+      return;
+    }
+    if (!Object.values(salesReportSections).some(Boolean)) {
+      setSalesReportError('Select at least one report section.');
+      return;
+    }
+
+    const reportInvoices = buildBillingSalesReportInvoices();
+    const rows = buildBillingSalesReportRows(reportInvoices);
+    if (reportInvoices.length === 0 || rows.length === 0) {
+      setSalesReportError('There are no billing invoices to export with the selected filters.');
+      return;
+    }
+
+    setGeneratingSalesReport(true);
+    try {
+      const rangeLabel = formatSalesReportDateRange(salesReportStartDate, salesReportEndDate);
+      const branchLabel = getSalesReportBranchLabel(salesReportBranch);
+      const selectedSectionLabels = SALES_REPORT_SECTIONS
+        .filter(section => salesReportSections[section.key])
+        .map(section => section.label);
+
+      if (salesReportFormat === 'excel') {
+        const { exportBillingSalesReportExcel } = await import('./pdf_generation/BillingSalesReportExcel');
+        await exportBillingSalesReportExcel(rows, {
+          startDate: salesReportStartDate,
+          endDate: salesReportEndDate,
+          rangeLabel,
+          branchLabel,
+          invoiceTypeLabel: salesReportInvoiceType === 'all' ? 'All Invoice Types' : formatPaymentMethodLabel(salesReportInvoiceType),
+          paymentMethodLabel: salesReportPaymentMethod === 'all' ? 'All Methods' : formatPaymentMethodLabel(salesReportPaymentMethod),
+          paymentStatusLabel: salesReportStatus === 'all' ? 'All Statuses' : formatPaymentStatusLabel(salesReportStatus),
+          sections: salesReportSections,
+          sectionLabels: selectedSectionLabels,
+          exportedBy: currentUser?.fullName || currentUser?.username || 'Staff',
+        });
+        void recordAuditLog({
+          module: 'Billing',
+          event: 'Sales Report Exported',
+          target: 'Billing Sales Report',
+          targetType: 'billing_sales_report',
+          summary: `Exported billing sales Excel report for ${rangeLabel} with ${reportInvoices.length} invoice(s).`,
+          status: 'Success',
+          branchId: salesReportBranch === ALL_BRANCHES_OPTION ? null : salesReportBranch,
+          metadata: {
+            export_type: 'billing_sales_excel',
+            start_date: salesReportStartDate,
+            end_date: salesReportEndDate,
+            branch: salesReportBranch,
+            invoice_type: salesReportInvoiceType,
+            payment_method: salesReportPaymentMethod,
+            status_filter: salesReportStatus,
+            invoice_count: reportInvoices.length,
+            row_count: rows.length,
+          },
+        });
+        setShowSalesReportModal(false);
+        return;
+      }
+
+      const { jsPDF } = await import('jspdf');
+      const autoTableModule = await import('jspdf-autotable');
+      const autoTable = ((autoTableModule as any).default || (autoTableModule as any).autoTable) as (doc: any, options: any) => void;
+      if (!autoTable) throw new Error('PDF export library is unavailable.');
+
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const generatedAt = new Date().toLocaleString();
+      const exportedBy = currentUser?.fullName || currentUser?.username || 'Staff';
+      const totalGrossSales = reportInvoices.reduce((sum, invoice) => sum + (invoice.total || 0), 0);
+      const totalCollected = reportInvoices.reduce((sum, invoice) => sum + (invoice.amountPaid || 0), 0);
+      const totalReceivables = reportInvoices.reduce((sum, invoice) => sum + (invoice.remainingBalance || 0), 0);
+      const totalServiceSales = rows.filter(row => row.itemType === 'Service').reduce((sum, row) => sum + row.lineTotal, 0);
+      const totalProductSales = rows.filter(row => row.itemType === 'Product').reduce((sum, row) => sum + row.lineTotal, 0);
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text('PetShield Billing Sales Report', 40, 44);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.text(`Generated: ${generatedAt}`, 40, 64);
+      doc.text(`Exported By: ${exportedBy}`, 220, 64);
+      doc.text(`Range: ${rangeLabel}`, 420, 64);
+
+      let currentY = 88;
+      autoTable(doc, {
+        startY: currentY,
+        head: [['Filters Applied', '', '', '']],
+        body: [
+          ['Date Range', rangeLabel, 'Branch', branchLabel],
+          ['Invoice Type', salesReportInvoiceType === 'all' ? 'All Invoice Types' : formatPaymentMethodLabel(salesReportInvoiceType), 'Payment Method', salesReportPaymentMethod === 'all' ? 'All Methods' : formatPaymentMethodLabel(salesReportPaymentMethod)],
+          ['Payment Status', salesReportStatus === 'all' ? 'All Statuses' : formatPaymentStatusLabel(salesReportStatus), 'Rows Matched', String(rows.length)],
+          ['Sections', selectedSectionLabels.join(', '), 'Invoice Count', String(reportInvoices.length)]
+        ],
+        theme: 'grid',
+        margin: { left: 40, right: 40 },
+        styles: { fontSize: 8, cellPadding: 5, overflow: 'linebreak' },
+        headStyles: { fillColor: [30, 41, 59], textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 84, fontStyle: 'bold' },
+          1: { cellWidth: 265 },
+          2: { cellWidth: 94, fontStyle: 'bold' },
+          3: { cellWidth: 317 }
+        }
+      });
+      currentY = ((doc as any).lastAutoTable?.finalY || currentY + 90) + 22;
+
+      if (salesReportSections.summary) {
+        autoTable(doc, {
+          startY: currentY,
+          head: [['Metric', 'Value']],
+          body: [
+            ['Gross Invoice Sales', formatReportCurrency(totalGrossSales)],
+            ['Collected Payments', formatReportCurrency(totalCollected)],
+            ['Remaining Receivables', formatReportCurrency(totalReceivables)],
+            ['Service Sales', formatReportCurrency(totalServiceSales)],
+            ['Product Sales', formatReportCurrency(totalProductSales)],
+            ['Invoices', String(reportInvoices.length)],
+            ['Paid / Partial / Pending', `${reportInvoices.filter(invoice => invoice.paymentStatus === 'paid').length} / ${reportInvoices.filter(invoice => invoice.paymentStatus === 'partial').length} / ${reportInvoices.filter(invoice => invoice.paymentStatus === 'pending').length}`]
+          ],
+          theme: 'grid',
+          margin: { left: 40, right: 40 },
+          styles: { fontSize: 8, cellPadding: 5 },
+          headStyles: { fillColor: [61, 103, 238], textColor: 255, fontStyle: 'bold' },
+        });
+        currentY = ((doc as any).lastAutoTable?.finalY || currentY + 100) + 18;
+      }
+
+      if (salesReportSections.payments) {
+        const paymentBreakdown = ['cash', 'gcash', 'installment'].map(method => {
+          const matched = reportInvoices.filter(invoice => invoice.paymentMethod === method);
+          return [
+            formatPaymentMethodLabel(method),
+            String(matched.length),
+            formatReportCurrency(matched.reduce((sum, invoice) => sum + (invoice.amountPaid || 0), 0)),
+            formatReportCurrency(matched.reduce((sum, invoice) => sum + (invoice.remainingBalance || 0), 0))
+          ];
+        });
+
+        if (currentY > pageHeight - 140) {
+          doc.addPage();
+          currentY = 48;
+        }
+        autoTable(doc, {
+          startY: currentY,
+          head: [['Payment Method', 'Invoices', 'Collected', 'Receivables']],
+          body: paymentBreakdown,
+          theme: 'grid',
+          margin: { left: 40, right: 40 },
+          styles: { fontSize: 8, cellPadding: 5 },
+          headStyles: { fillColor: [61, 103, 238], textColor: 255, fontStyle: 'bold' },
+        });
+        currentY = ((doc as any).lastAutoTable?.finalY || currentY + 90) + 18;
+      }
+
+      if (salesReportSections.itemized) {
+        if (currentY > pageHeight - 150) {
+          doc.addPage();
+          currentY = 48;
+        }
+        autoTable(doc, {
+          startY: currentY,
+          head: [['Invoice #', 'Date', 'Branch', 'Customer', 'Pet', 'Type', 'Item', 'Qty', 'Line Total', 'Paid', 'Balance', 'Status', 'Method']],
+          body: rows.map(row => [
+            row.invoiceNumber,
+            row.date,
+            row.branch,
+            row.customerName,
+            row.petName,
+            row.itemType,
+            row.itemName,
+            String(row.quantity),
+            formatReportCurrency(row.lineTotal),
+            formatReportCurrency(row.amountPaid),
+            formatReportCurrency(row.remainingBalance),
+            row.paymentStatus,
+            row.paymentMethod
+          ]),
+          theme: 'grid',
+          margin: { left: 40, right: 40 },
+          styles: { fontSize: 7, cellPadding: 3.5, overflow: 'linebreak', valign: 'top' },
+          headStyles: { fillColor: [61, 103, 238], textColor: 255, fontStyle: 'bold' },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+          columnStyles: {
+            0: { cellWidth: 60 },
+            1: { cellWidth: 52 },
+            2: { cellWidth: 72 },
+            3: { cellWidth: 74 },
+            4: { cellWidth: 58 },
+            5: { cellWidth: 44 },
+            6: { cellWidth: 118 },
+            7: { cellWidth: 28 },
+            8: { cellWidth: 62 },
+            9: { cellWidth: 58 },
+            10: { cellWidth: 58 },
+            11: { cellWidth: 54 },
+            12: { cellWidth: 56 }
+          }
+        });
+      }
+
+      const pageCount = (doc as any).internal.getNumberOfPages();
+      for (let reportPage = 1; reportPage <= pageCount; reportPage += 1) {
+        doc.setPage(reportPage);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.text('Billing sales report generated from invoices', 40, pageHeight - 24);
+        doc.text(`Page ${reportPage} of ${pageCount}`, pageWidth - 95, pageHeight - 24);
+      }
+
+      doc.save(`PetShield_Billing_Sales_Report_${salesReportStartDate}_to_${salesReportEndDate}.pdf`);
+      void recordAuditLog({
+        module: 'Billing',
+        event: 'Sales Report Exported',
+        target: 'Billing Sales Report',
+        targetType: 'billing_sales_report',
+        summary: `Exported billing sales PDF report for ${rangeLabel} with ${reportInvoices.length} invoice(s).`,
+        status: 'Success',
+        branchId: salesReportBranch === ALL_BRANCHES_OPTION ? null : salesReportBranch,
+        metadata: {
+          export_type: 'billing_sales_pdf',
+          start_date: salesReportStartDate,
+          end_date: salesReportEndDate,
+          branch: salesReportBranch,
+          invoice_type: salesReportInvoiceType,
+          payment_method: salesReportPaymentMethod,
+          status_filter: salesReportStatus,
+          invoice_count: reportInvoices.length,
+          row_count: rows.length,
+        },
+      });
+      setShowSalesReportModal(false);
+    } catch (error) {
+      console.error('Generate billing sales report error:', error);
+      setSalesReportError(error instanceof Error ? error.message : 'Unable to generate the sales report.');
+    } finally {
+      setGeneratingSalesReport(false);
+    }
   };
   
   useEffect(() => {
     loadCurrentUser();
+    loadBranches();
     loadBillingData();
   }, []);
 
@@ -2038,10 +2934,12 @@ const GlobalBilling: React.FC = () => {
     const billingAction = (location.state as BillingNavigationState | null)?.billingAction;
     if (!billingAction) {
       processedBillingActionRef.current = '';
+      setBillingHandoffBusy(false);
       return;
     }
 
     if (loading) {
+      setBillingHandoffBusy(true);
       return;
     }
 
@@ -2053,8 +2951,11 @@ const GlobalBilling: React.FC = () => {
     ].join(':');
 
     if (processedBillingActionRef.current === actionKey) {
+      setBillingHandoffBusy(false);
       return;
     }
+
+    setBillingHandoffBusy(true);
 
     const matchedInvoice =
       (billingAction.billingInvoiceId
@@ -2067,6 +2968,7 @@ const GlobalBilling: React.FC = () => {
       setSelectedInvoice(matchedInvoice);
       setShowDrawer(true);
       setShowCreateModal(false);
+      setBillingHandoffBusy(false);
       navigate(location.pathname, { replace: true, state: null });
       return;
     }
@@ -2092,8 +2994,10 @@ const GlobalBilling: React.FC = () => {
 
       if (matchedAppointment) {
         selectAppointmentRecord(matchedAppointment, { silent: true, lockSourceContext: true });
+        setBillingHandoffBusy(false);
       } else {
         setShowCreateModal(false);
+        setBillingHandoffBusy(false);
         showAlert('error', 'Billing Source Not Found', 'The appointment could not be loaded for billing.');
       }
     } else {
@@ -2105,8 +3009,10 @@ const GlobalBilling: React.FC = () => {
 
       if (matchedWalkin) {
         selectWalkinRecord(matchedWalkin, { silent: true, lockSourceContext: true });
+        setBillingHandoffBusy(false);
       } else {
         setShowCreateModal(false);
+        setBillingHandoffBusy(false);
         showAlert('error', 'Billing Source Not Found', 'The visit record could not be loaded for billing.');
       }
     }
@@ -2132,7 +3038,7 @@ const GlobalBilling: React.FC = () => {
         if (isPercentage) {
           return `Custom (${value}%)`;
         } else {
-          return `Custom (₱${value?.toLocaleString()})`;
+          return `Custom (₱${value?.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)})`;
         }
       default: return 'None';
     }
@@ -2142,35 +3048,26 @@ const GlobalBilling: React.FC = () => {
     <div className="billingContainer">
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
       
-      <div className="billingBodyContainer bodyContainer">
-        <div className="billingTopContainer">
-          <div className="billingSubTopContainer">
-            <div className="billingHeroIcon">
-              <IoReceiptOutline size={28} />
-            </div>
-            <div className="billingHeroCopy">
-              <span>Finance Desk</span>
-              <h1>Billing & Invoices</h1>
-              <p>Create invoices, collect payments, and review clinic billing history.</p>
+      <div className="billingBodyContainer" aria-busy={billingHandoffBusy}>
+        {billingHandoffBusy && (
+          <div className="billingHandoffOverlay" role="status" aria-live="polite">
+            <div className="billingHandoffPanel">
+              <div className="billingSpinner"></div>
+              <span>Preparing invoice...</span>
             </div>
           </div>
-          <div className="billingHeaderActions">
-            <div className="billingSearchRow">
-              <div className="billingToolbarStaticIcon">
-                <IoSearchSharp size={18} className="billingIconDefault" />
-              </div>
-              <input
-                type="text"
-                placeholder="Search by Invoice #, Customer, or Pet..."
-                value={searchQuery}
-                onChange={(e) => {setSearchQuery(e.target.value); setPage(0);}}
-                className="billingSearchInput billingHeaderSearchInput"
-              />
+        )}
+
+        <div className="billingTopContainer">
+          <div className="billingSubTopContainer">
+            <div className="billingSubTopLeft">
+              <CiReceipt size={20} className="billingBlueIcon" />
+              <span className="billingBlueText">Billing & Invoices</span>
             </div>
-            <div className="billingHeaderDivider" aria-hidden="true" />
+          </div>
           <div className="billingSubTopContainer billingNotificationContainer">
             <Notifications 
-              buttonClassName="billingIconButton billingNotificationButton"
+              buttonClassName="billingIconButton"
               iconClassName="billingBlueIcon"
               onViewAll={() => console.log('View all notifications')}
               onNotificationClick={(notification) => {
@@ -2178,97 +3075,91 @@ const GlobalBilling: React.FC = () => {
               }}
             />
           </div>
-          </div>
         </div>
         
         <div className="billingTableContainer">
           <div className="billingTableToolbar">
             <div className="billingSearchFilterSection">
-              <div className="billingFilterRow">
-                <div className="billingToolbarStaticIcon">
-                  <IoFilterSharp size={18} className="billingIconDefault" />
-                </div>
-                <div className="billingFilterSection">
-                    <input
-                      type="date"
-                      value={dateFilter}
-                      onChange={(e) => {setDateFilter(e.target.value); setPage(0);}}
-                      className="billingFilterInput"
-                    />
-                    <select 
-                      value={statusFilter} 
-                      onChange={(e) => {setStatusFilter(e.target.value); setPage(0);}}
-                      className="billingFilterSelect"
-                    >
-                      <option value="">All Status</option>
-                      <option value="paid">Paid</option>
-                      <option value="pending">Pending</option>
-                      <option value="partial">Partial Paid</option>
-                    </select>
-                    <select 
-                      value={typeFilter} 
-                      onChange={(e) => {setTypeFilter(e.target.value); setPage(0);}}
-                      className="billingFilterSelect"
-                    >
-                      <option value="">All Types</option>
-                      <option value="appointment">Appointment</option>
-                      <option value="walkin">Walk-in Visit</option>
-                    </select>
-                    <button className="billingClearFilterBtn" onClick={clearFilters}>
-                      <IoCloseCircleSharp size={14} /> Clear Filters
-                    </button>
-                    <div className="billingFilterDivider" aria-hidden="true" />
-                    <div className="accountSettingsDropdownContainer">
-                      <div className="toolbarItem">
-                        <button
-                          className="iconButton accountSortIconButton"
-                          onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
-                          aria-label="Billing table settings"
-                        >
-                          <RiListSettingsLine size={19} className={showSettingsDropdown ? "iconActive" : "iconDefault"} />
-                        </button>
-                      </div>
-                      {showSettingsDropdown && (
-                        <div className="accountSettingsDropdown">
-                          <div className="accountSettingsSection">
-                            <label>Sort By</label>
-                            <select
-                              value={sortOption}
-                              onChange={(e) => { setSortOption(e.target.value as BillingSortOption); setPage(0); }}
-                              className="accountSettingsSelect"
-                            >
-                              {BILLING_SORT_OPTIONS.map(option => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="accountSettingsDivider" />
-                          <div className="accountSettingsSection">
-                            <label>Rows Per Page</label>
-                            <select
-                              value={rowsPerPage}
-                              onChange={(e) => handleRowsPerPageChange(parseInt(e.target.value, 10))}
-                              className="accountSettingsSelect"
-                            >
-                              {ROWS_PER_PAGE_OPTIONS.map(option => (
-                                <option key={option} value={option}>{option} per page</option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+              <div className="billingToolbarItem">
+                <button 
+                  className="billingIconButton"
+                  onMouseEnter={() => setSearchHovered(true)}
+                  onMouseLeave={() => setSearchHovered(false)}
+                  onClick={() => setSearchVisible(!searchVisible)}
+                  disabled={billingHandoffBusy}
+                >
+                  <IoSearchSharp size={20} className={searchVisible ? "billingIconActive" : "billingIconDefault"} />
+                </button>
+                {searchHovered && <div className="billingTooltip">Search</div>}
               </div>
+              
+              {searchVisible && (
+                <input
+                  type="text"
+                  placeholder="Search by Invoice #, Customer, or Pet..."
+                  value={searchQuery}
+                  onChange={(e) => {setSearchQuery(e.target.value); setPage(0);}}
+                  className="billingSearchInput"
+                />
+              )}
+              
+              <div className="billingToolbarItem">
+                <button 
+                  className="billingIconButton"
+                  onMouseEnter={() => setFilterHovered(true)}
+                  onMouseLeave={() => setFilterHovered(false)}
+                  onClick={() => setFilterVisible(!filterVisible)}
+                  disabled={billingHandoffBusy}
+                >
+                  <IoFilterSharp size={20} className={filterVisible ? "billingIconActive" : "billingIconDefault"} />
+                </button>
+                {filterHovered && <div className="billingTooltip">Filter</div>}
+              </div>
+              
+              {filterVisible && (
+                <div className="billingFilterSection">
+                  <input
+                    type="date"
+                    value={dateFilter}
+                    onChange={(e) => {setDateFilter(e.target.value); setPage(0);}}
+                    className="billingFilterInput"
+                  />
+                  <select 
+                    value={statusFilter} 
+                    onChange={(e) => {setStatusFilter(e.target.value); setPage(0);}}
+                    className="billingFilterSelect"
+                  >
+                    <option value="">All Status</option>
+                    <option value="paid">Paid</option>
+                    <option value="pending">Pending</option>
+                    <option value="partial">Partial Paid</option>
+                  </select>
+                  <select 
+                    value={typeFilter} 
+                    onChange={(e) => {setTypeFilter(e.target.value); setPage(0);}}
+                    className="billingFilterSelect"
+                  >
+                    <option value="">All Types</option>
+                    <option value="appointment">Appointment</option>
+                    <option value="walkin">Walk-in Visit</option>
+                  </select>
+                  <button className="billingClearFilterBtn" onClick={clearFilters} disabled={billingHandoffBusy}>
+                    <IoRefreshOutline size={14} /> Clear
+                  </button>
+                </div>
+              )}
             </div>
             
             <div className="billingActionSection">
               {selectedInvoices.size > 0 && (
-                <button className="billingDeleteBtn" onClick={handleDeleteSelected}>
+                <button className="billingDeleteBtn" onClick={handleDeleteSelected} disabled={billingHandoffBusy}>
                   <IoTrashOutline size={14} /> Delete ({selectedInvoices.size})
                 </button>
               )}
-              <button className="billingBlackBtn" onClick={openCreateInvoiceModal}>
+              <button className="billingBlackBtn billingSalesReportBtn" onClick={() => setShowSalesReportModal(true)} disabled={billingHandoffBusy}>
+                <IoDownloadOutline size={14} /> Sales Report
+              </button>
+              <button className="billingBlackBtn" onClick={openCreateInvoiceModal} disabled={billingHandoffBusy}>
                 <IoAdd size={14} /> New Invoice
               </button>
             </div>
@@ -2289,6 +3180,7 @@ const GlobalBilling: React.FC = () => {
                         checked={selectedInvoices.size === paginatedInvoices.length && paginatedInvoices.length > 0}
                         onChange={toggleAllInvoices}
                         className="billingCheckbox"
+                        disabled={billingHandoffBusy}
                       />
                     </th>
                     <th>Invoice #</th>
@@ -2311,6 +3203,7 @@ const GlobalBilling: React.FC = () => {
                             checked={selectedInvoices.has(invoice.id)}
                             onChange={() => toggleInvoiceSelection(invoice.id)}
                             className="billingCheckbox"
+                            disabled={billingHandoffBusy}
                           />
                         </td>
                         <td className="billingInvoiceNumber">{invoice.invoiceNumber}</td>
@@ -2322,7 +3215,7 @@ const GlobalBilling: React.FC = () => {
                         </td>
                         <td>{invoice.customerName}</td>
                         <td>{invoice.petName}</td>
-                        <td className="billingAmount">₱{invoice.total.toLocaleString()}</td>
+                        <td className="billingAmount">₱{invoice.total.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</td>
                         <td>
                           <span className={`billingStatusBadge ${getStatusBadgeClass(invoice.paymentStatus)}`}>
                             {formatPaymentStatusLabel(invoice.paymentStatus)}
@@ -2330,10 +3223,10 @@ const GlobalBilling: React.FC = () => {
                         </td>
                         <td>
                           <div className="billingActionButtons">
-                            <button className="billingActionBtn" onClick={() => handleViewInvoice(invoice)} title="View Invoice">
+                            <button className="billingActionBtn" onClick={() => handleViewInvoice(invoice)} title="View Invoice" disabled={billingHandoffBusy}>
                               <IoEyeOutline size={14} />
                             </button>
-                            <button className="billingActionBtn" onClick={() => handlePrintInvoice(invoice)} title="Print Invoice">
+                            <button className="billingActionBtn" onClick={() => handlePrintInvoice(invoice)} title="Print Invoice" disabled={billingHandoffBusy}>
                               <IoPrintOutline size={14} />
                             </button>
                           </div>
@@ -2353,20 +3246,18 @@ const GlobalBilling: React.FC = () => {
               <div className="billingPagination">
                 <button 
                   onClick={() => setPage(Math.max(0, page - 1))}
-                  disabled={page === 0}
-                  className="billingPaginationBtn billingPaginationPrevBtn"
+                  disabled={billingHandoffBusy || page === 0}
+                  className="billingPaginationBtn"
                 >
-                  <IoChevronBackOutline size={15} />
-                  <span>Previous</span>
+                  Previous
                 </button>
-                <span className="billingPaginationInfo">Page {page + 1} of {totalPages}</span>
+                <span className="billingPaginationInfo">{page + 1} of {totalPages}</span>
                 <button 
                   onClick={() => setPage(Math.min(totalPages - 1, page + 1))}
-                  disabled={page >= totalPages - 1}
-                  className="billingPaginationBtn billingPaginationNextBtn"
+                  disabled={billingHandoffBusy || page >= totalPages - 1}
+                  className="billingPaginationBtn"
                 >
-                  <span>Next</span>
-                  <IoChevronForward size={15} />
+                  Next
                 </button>
               </div>
             </div>
@@ -2374,6 +3265,201 @@ const GlobalBilling: React.FC = () => {
         </div>
       </div>
       
+      {showSalesReportModal && (
+        <div className="billingModalOverlay" onClick={() => !generatingSalesReport && setShowSalesReportModal(false)}>
+          <div className="billingSalesReportModal" onClick={e => e.stopPropagation()}>
+            <div className="billingSalesReportHeader">
+              <div>
+                <h2>Export Sales Report</h2>
+                <span>{formatSalesReportDateRange(salesReportStartDate, salesReportEndDate)}</span>
+              </div>
+              <button
+                type="button"
+                className="billingSalesReportClose"
+                onClick={() => setShowSalesReportModal(false)}
+                disabled={generatingSalesReport}
+                aria-label="Close sales report modal"
+              >
+                <IoCloseOutline size={22} />
+              </button>
+            </div>
+
+            <div className="billingSalesReportBody">
+              <div className="billingSalesReportFieldGroup">
+                <label>File Type</label>
+                <div className="billingSalesReportFormatToggle">
+                  <button
+                    type="button"
+                    className={salesReportFormat === 'pdf' ? 'active' : ''}
+                    onClick={() => setSalesReportFormat('pdf')}
+                    disabled={generatingSalesReport}
+                  >
+                    <IoDocumentTextOutline size={16} />
+                    PDF Report
+                  </button>
+                  <button
+                    type="button"
+                    className={salesReportFormat === 'excel' ? 'active' : ''}
+                    onClick={() => setSalesReportFormat('excel')}
+                    disabled={generatingSalesReport}
+                  >
+                    <IoListOutline size={16} />
+                    Excel Workbook
+                  </button>
+                </div>
+              </div>
+
+              <div className="billingSalesReportFieldGroup">
+                <label>Date Range</label>
+                <div className="billingSalesReportPresetGrid">
+                  {SALES_REPORT_PRESETS.map((preset) => (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      className={salesReportPreset === preset.key ? 'active' : ''}
+                      onClick={() => handleSalesReportPresetChange(preset.key)}
+                      disabled={generatingSalesReport}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="billingSalesReportDateGrid">
+                <div className="billingSalesReportFieldGroup">
+                  <label>Start Date</label>
+                  <input
+                    type="date"
+                    value={salesReportStartDate}
+                    onChange={(event) => handleSalesReportDateChange('start', event.target.value)}
+                    disabled={generatingSalesReport}
+                  />
+                </div>
+                <div className="billingSalesReportFieldGroup">
+                  <label>End Date</label>
+                  <input
+                    type="date"
+                    value={salesReportEndDate}
+                    onChange={(event) => handleSalesReportDateChange('end', event.target.value)}
+                    disabled={generatingSalesReport}
+                  />
+                </div>
+              </div>
+
+              <div className="billingSalesReportFieldGroup">
+                <label>Branch</label>
+                <select
+                  value={salesReportBranch}
+                  onChange={(event) => setSalesReportBranch(event.target.value)}
+                  disabled={generatingSalesReport}
+                >
+                  <option value={ALL_BRANCHES_OPTION}>{ALL_BRANCHES_OPTION}</option>
+                  {branches.map((branch) => (
+                    <option key={branch.id} value={branch.id}>{branch.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="billingSalesReportFilterGrid">
+                <div className="billingSalesReportFieldGroup">
+                  <label>Invoice Type</label>
+                  <select
+                    value={salesReportInvoiceType}
+                    onChange={(event) => setSalesReportInvoiceType(event.target.value)}
+                    disabled={generatingSalesReport}
+                  >
+                    <option value="all">All Invoice Types</option>
+                    <option value="appointment">Appointment</option>
+                    <option value="walkin">Walk-in</option>
+                  </select>
+                </div>
+                <div className="billingSalesReportFieldGroup">
+                  <label>Payment Method</label>
+                  <select
+                    value={salesReportPaymentMethod}
+                    onChange={(event) => setSalesReportPaymentMethod(event.target.value)}
+                    disabled={generatingSalesReport}
+                  >
+                    <option value="all">All Methods</option>
+                    <option value="cash">Cash</option>
+                    <option value="gcash">GCash</option>
+                    <option value="installment">Installment</option>
+                  </select>
+                </div>
+                <div className="billingSalesReportFieldGroup">
+                  <label>Payment Status</label>
+                  <select
+                    value={salesReportStatus}
+                    onChange={(event) => setSalesReportStatus(event.target.value)}
+                    disabled={generatingSalesReport}
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="paid">Paid</option>
+                    <option value="partial">Partial Paid</option>
+                    <option value="pending">Pending</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="billingSalesReportFieldGroup">
+                <div className="billingSalesReportSectionsHeader">
+                  <label>Report Sections</label>
+                  <label className="billingSalesReportSelectAll">
+                    <input
+                      type="checkbox"
+                      checked={Object.values(salesReportSections).every(Boolean)}
+                      onChange={toggleAllSalesReportSections}
+                      disabled={generatingSalesReport}
+                    />
+                    <span>Select All</span>
+                  </label>
+                </div>
+                <div className="billingSalesReportSectionGrid">
+                  {SALES_REPORT_SECTIONS.map((section) => (
+                    <label key={section.key} className="billingSalesReportSectionOption">
+                      <input
+                        type="checkbox"
+                        checked={salesReportSections[section.key]}
+                        onChange={() => toggleSalesReportSection(section.key)}
+                        disabled={generatingSalesReport}
+                      />
+                      <span>{section.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {salesReportError && (
+                <div className="billingSalesReportError">
+                  <IoAlertCircleOutline size={14} />
+                  <span>{salesReportError}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="billingSalesReportFooter">
+              <button
+                type="button"
+                className="billingSalesReportSecondary"
+                onClick={() => setShowSalesReportModal(false)}
+                disabled={generatingSalesReport}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="billingSalesReportPrimary"
+                onClick={handleGenerateBillingSalesReport}
+                disabled={generatingSalesReport}
+              >
+                <IoDownloadOutline size={16} />
+                {generatingSalesReport ? 'Preparing Report...' : salesReportFormat === 'excel' ? 'Generate Excel' : 'Generate PDF'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Create Invoice Modal */}
       {showCreateModal && (
         <div className="billingModalOverlay" onClick={() => setShowCreateModal(false)}>
@@ -2538,7 +3624,7 @@ const GlobalBilling: React.FC = () => {
                               step="0.01"
                             />
                           </td>
-                          <td className="billingItemTotal">₱{service.total.toLocaleString()}</td>
+                          <td className="billingItemTotal">₱{service.total.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</td>
                           <td>
                             <button className="billingRemoveItemBtn" onClick={() => removeService(service.id)}>
                               <IoTrashBinOutline size={16} />
@@ -2606,7 +3692,7 @@ const GlobalBilling: React.FC = () => {
                               </div>
                               <div className="billingInventorySuggestionMeta">
                                 <span>Stock: {suggestion.stock}</span>
-                                <span>Price: ₱{suggestion.price.toLocaleString()}</span>
+                                <span>Price: ₱{suggestion.price.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
                               </div>
                             </div>
                           </label>
@@ -2627,39 +3713,77 @@ const GlobalBilling: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedProducts.map(product => (
+                      {selectedProducts.map(product => {
+                        const batches = getProductLineAvailableBatches(product);
+                        const selectedBatchValue = getProductLineBatchSelectValue(product, batches);
+                        const selectedBatch = findBatchBySelectValue(batches, selectedBatchValue);
+                        const batchWarning = getBatchWarningText(selectedBatch);
+                        const productLineId = getProductLineId(product);
+
+                        return (
                         <tr key={product.id}>
                           <td>
                             <strong>{product.name}</strong>
                             <div className="billingServiceCategory">{product.sku}</div>
+                            {batches.length > 0 && (
+                              <div className="billingBatchSelectorBlock">
+                                <label className="billingBatchLabel">Batch</label>
+                                <select
+                                  value={selectedBatchValue}
+                                  onChange={(e) => updateSelectedProductBatch(productLineId, e.target.value)}
+                                  className="billingBatchSelect"
+                                >
+                                  <option value="">Use backend fallback batch</option>
+                                  {batches.map(batch => (
+                                    <option
+                                      key={getBatchSelectValue(batch)}
+                                      value={getBatchSelectValue(batch)}
+                                      disabled={batch.quantityOnHand <= 0}
+                                    >
+                                      {getBatchOptionLabel(batch)}
+                                    </option>
+                                  ))}
+                                </select>
+                                {selectedBatch ? (
+                                  <div className="billingBatchMeta">
+                                    Available: {selectedBatch.quantityOnHand} | {getBatchExpirationStatus(selectedBatch)}
+                                  </div>
+                                ) : (
+                                  <div className="billingBatchMeta">No batch selected. Backend fallback deduction is allowed.</div>
+                                )}
+                                {batchWarning && <div className="billingBatchWarning">{batchWarning}</div>}
+                              </div>
+                            )}
                           </td>
                           <td>
                             <input
                               type="number"
                               value={product.quantity}
-                              onChange={(e) => updateProductQuantity(product.id, parseInt(e.target.value) || 1)}
+                              onChange={(e) => updateProductQuantity(productLineId, parseInt(e.target.value) || 1)}
                               className="billingQtyInput"
                               min="1"
+                              max={selectedBatch ? selectedBatch.quantityOnHand : product.stock}
                             />
                           </td>
                           <td>
                             <input
                               type="number"
                               value={product.unitPrice}
-                              onChange={(e) => updateProductPrice(product.id, parseFloat(e.target.value) || 0)}
+                              onChange={(e) => updateProductPrice(productLineId, parseFloat(e.target.value) || 0)}
                               className="billingPriceInput"
                               min="0"
                               step="0.01"
                             />
                           </td>
-                          <td className="billingItemTotal">₱{product.total.toLocaleString()}</td>
+                          <td className="billingItemTotal">₱{product.total.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</td>
                           <td>
-                            <button className="billingRemoveItemBtn" onClick={() => removeProduct(product.id)}>
+                            <button className="billingRemoveItemBtn" onClick={() => removeProduct(productLineId)}>
                               <IoTrashBinOutline size={16} />
                             </button>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                       {selectedProducts.length === 0 && (
                         <tr>
                           <td colSpan={5} className="billingNoItems">
@@ -2714,8 +3838,8 @@ const GlobalBilling: React.FC = () => {
                           </div>
                           <div className="billingDiscountHint">
                             {customDiscountType === 'percentage' 
-                              ? `Will discount ${customDiscountValue}% of subtotal (₱${(subtotal * customDiscountValue / 100).toLocaleString()})` 
-                              : `Will discount ₱${customDiscountValue.toLocaleString()} from subtotal`}
+                              ? `Will discount ${customDiscountValue}% of subtotal (₱${(subtotal * customDiscountValue / 100).toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)})` 
+                              : `Will discount ₱${customDiscountValue.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)} from subtotal`}
                           </div>
                         </div>
                       )}
@@ -2726,17 +3850,18 @@ const GlobalBilling: React.FC = () => {
                         onChange={(e) => {
                           const nextMethod = e.target.value as PaymentMethod;
                           setPaymentMethod(nextMethod);
-                          if (nextMethod !== 'installment') {
-                            setInitialPaymentAmount(0);
-                            setInitialPaymentMethod('cash');
+                          clearFormErrors('paymentReference', 'initialPaymentReference', 'installmentTerm');
+                          if (!requiresPaymentReference(nextMethod)) {
+                            setPaymentReference('');
                           }
+                          setInstallmentMonths('');
+                          setInitialPaymentMethod('cash');
+                          setInitialPaymentReference('');
                         }}
                         className="billingFormSelect"
                       >
                         <option value="cash">Cash</option>
-                        <option value="card">Card</option>
                         <option value="gcash">GCash</option>
-                        <option value="bank">Bank Transfer</option>
                         <option value="installment">Installment</option>
                       </select>
                       {paymentMethod === 'installment' && (
@@ -2745,38 +3870,121 @@ const GlobalBilling: React.FC = () => {
                         </div>
                       )}
                     </div>
+                    {paymentMethod !== 'installment' && requiresPaymentReference(paymentMethod) && (
+                      <div className="billingFormGroup billingFullWidth">
+                        <label>{getPaymentReferenceLabel(paymentMethod)} <span className="billingRequired">*</span></label>
+                        <input
+                          type="text"
+                          value={paymentReference}
+                          onChange={(e) => {
+                            setPaymentReference(normalizeGcashReferenceInput(e.target.value));
+                            clearFormErrors('paymentReference');
+                          }}
+                          className={`billingFormInput ${formErrors.paymentReference ? 'billingFieldError' : ''}`}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={30}
+                          placeholder="Example: 123456789012"
+                        />
+                        {formErrors.paymentReference ? (
+                          <div className="billingErrorText">{formErrors.paymentReference}</div>
+                        ) : (
+                          <div className="billingDiscountHint">{getPaymentReferenceHint(paymentMethod)}</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 {paymentMethod === 'installment' && (
                   <div className="billingFormRow">
                     <div className="billingFormGroup">
-                      <label>Initial Payment</label>
+                      <label>Installment Term</label>
+                      <select
+                        value={installmentMonths}
+                        onChange={(e) => {
+                          const nextTerm = e.target.value ? Number(e.target.value) as InstallmentMonths : '';
+                          setInstallmentMonths(nextTerm);
+                          setInitialPaymentMethod('cash');
+                          setInitialPaymentReference('');
+                          clearFormErrors('installmentTerm', 'initialPaymentReference');
+                        }}
+                        className={`billingFormSelect ${formErrors.installmentTerm ? 'billingFieldError' : ''}`}
+                      >
+                        <option value="">Select term first</option>
+                        {INSTALLMENT_OPTIONS.map(option => (
+                          <option key={option.months} value={option.months}>
+                            {option.months} months ({(option.interestRate * 100).toFixed(0)}% interest, {(option.downPaymentRate * 100).toFixed(0)}% down)
+                          </option>
+                        ))}
+                      </select>
+                      {formErrors.installmentTerm ? (
+                        <div className="billingErrorText">{formErrors.installmentTerm}</div>
+                      ) : (
+                        <div className="billingDiscountHint">
+                          Pick a term first. Interest is added before the downpayment is applied.
+                        </div>
+                      )}
+                    </div>
+                    {hasSelectedInstallmentTerm && (
+                      <>
+                    <div className="billingFormGroup">
+                      <label>Required Downpayment</label>
                       <input
                         type="number"
-                        value={initialPaymentAmount}
-                        onChange={(e) => setInitialPaymentAmount(parseFloat(e.target.value) || 0)}
+                        value={automaticDownPaymentAmount}
+                        readOnly
                         className="billingFormInput"
                         min="0"
                         max={Math.max(total, 0)}
-                        step="0.01"
-                        placeholder="Enter initial payment amount"
+                        step="1"
+                        placeholder="Automatic downpayment"
                       />
                       <div className="billingDiscountHint">
-                        Leave this as `0` if no payment is collected yet.
+                        {(installmentDownPaymentRate * 100).toFixed(0)}% of the installment total, rounded up to the nearest peso. Monthly due is calculated after this downpayment.
                       </div>
                     </div>
                     <div className="billingFormGroup">
-                      <label>Initial Payment Method</label>
+                      <label>Downpayment Method</label>
                       <select
                         value={initialPaymentMethod}
-                        onChange={(e) => setInitialPaymentMethod(e.target.value as PaymentEntryMethod)}
+                        onChange={(e) => {
+                          const nextMethod = e.target.value as PaymentEntryMethod;
+                          setInitialPaymentMethod(nextMethod);
+                          clearFormErrors('initialPaymentReference');
+                          if (!requiresPaymentReference(nextMethod)) {
+                            setInitialPaymentReference('');
+                          }
+                        }}
                         className="billingFormSelect"
                       >
                         <option value="cash">Cash</option>
-                        <option value="card">Card</option>
                         <option value="gcash">GCash</option>
-                        <option value="bank">Bank Transfer</option>
                       </select>
                     </div>
+                    {clampedInitialPaymentAmount > 0 && requiresPaymentReference(initialPaymentMethod) && (
+                      <div className="billingFormGroup billingFullWidth">
+                        <label>{getPaymentReferenceLabel(initialPaymentMethod)} <span className="billingRequired">*</span></label>
+                        <input
+                          type="text"
+                          value={initialPaymentReference}
+                          onChange={(e) => {
+                            setInitialPaymentReference(normalizeGcashReferenceInput(e.target.value));
+                            clearFormErrors('initialPaymentReference');
+                          }}
+                          className={`billingFormInput ${formErrors.initialPaymentReference ? 'billingFieldError' : ''}`}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          maxLength={30}
+                          placeholder="Enter GCash reference number"
+                        />
+                        {formErrors.initialPaymentReference ? (
+                          <div className="billingErrorText">{formErrors.initialPaymentReference}</div>
+                        ) : (
+                          <div className="billingDiscountHint">{getPaymentReferenceHint(initialPaymentMethod)}</div>
+                        )}
+                      </div>
+                    )}
+                      </>
+                    )}
                   </div>
                 )}
                 <div className="billingFormRow">
@@ -2797,32 +4005,61 @@ const GlobalBilling: React.FC = () => {
               <div className="billingTotals">
                 <div className="billingTotalsRow">
                   <span>Subtotal:</span>
-                  <span>₱{subtotal.toLocaleString()}</span>
+                  <span>₱{subtotal.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
                 </div>
                 <div className="billingTotalsRow">
                   <span>Tax (12%):</span>
-                  <span>₱{tax.toLocaleString()}</span>
+                  <span>₱{tax.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
                 </div>
                 {discountAmount > 0 && (
                   <div className="billingTotalsRow billingDiscount">
                     <span>Discount ({getDiscountTypeLabel(discountType, customDiscountValue, customDiscountType === 'percentage')}):</span>
-                    <span>- ₱{discountAmount.toLocaleString()}</span>
+                    <span>- ₱{discountAmount.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
                   </div>
                 )}
-                <div className="billingTotalsRow billingTotalGrand">
-                  <span>Total:</span>
-                  <span>₱{total.toLocaleString()}</span>
-                </div>
-                {(paymentMethod === 'installment' || amountPaidPreview > 0) && (
+                {hasSelectedInstallmentTerm ? (
+                  <>
+                    <div className="billingTotalsRow">
+                      <span>Base Total:</span>
+                      <span>₱{baseTotal.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
+                    </div>
+                    <div className="billingTotalsRow">
+                      <span>Installment Interest ({selectedInstallmentMonths} months / {(installmentInterestRate * 100).toFixed(0)}%):</span>
+                      <span>₱{installmentInterestAmount.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
+                    </div>
+                  </>
+                ) : paymentMethod === 'installment' ? (
                   <div className="billingTotalsRow">
-                    <span>Amount Paid:</span>
-                    <span>₱{amountPaidPreview.toLocaleString()}</span>
+                    <span>Installment Term:</span>
+                    <span>Select a term to calculate payment plan</span>
+                  </div>
+                ) : null}
+                <div className="billingTotalsRow billingTotalGrand">
+                  <span>{paymentMethod === 'installment' ? 'Installment Total:' : 'Total:'}</span>
+                  <span>₱{total.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
+                </div>
+                {(hasSelectedInstallmentTerm || amountPaidPreview > 0) && (
+                  <div className="billingTotalsRow">
+                    <span>{paymentMethod === 'installment' ? 'Downpayment:' : 'Amount Paid:'}</span>
+                    <span>₱{amountPaidPreview.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
                   </div>
                 )}
-                {paymentMethod === 'installment' && (
+                {hasSelectedInstallmentTerm && (
                   <div className="billingTotalsRow">
                     <span>Remaining Balance:</span>
-                    <span>₱{remainingBalancePreview.toLocaleString()}</span>
+                    <span>₱{remainingBalancePreview.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
+                  </div>
+                )}
+                {hasSelectedInstallmentTerm && (
+                  <div className="billingTotalsRow">
+                    <span>Monthly Due After Downpayment:</span>
+                    <span>₱{monthlyInstallmentPreview.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)} / month</span>
+                  </div>
+                )}
+                {hasSelectedInstallmentTerm && (
+                  <div className="billingTotalsRow">
+                    <span>Payment Plan:</span>
+                    <span>₱{amountPaidPreview.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)} downpayment + ₱{monthlyInstallmentPreview.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)} / month</span>
                   </div>
                 )}
               </div>
@@ -2832,7 +4069,7 @@ const GlobalBilling: React.FC = () => {
                   Cancel
                 </button>
                 <button className="billingSubmitBtn" onClick={handleCreateInvoice} disabled={savingInvoice}>
-                  {savingInvoice ? 'Creating Invoice...' : 'Create Invoice'}
+                  {savingInvoice ? 'Processing Payment...' : 'Proceed Payment'}
                 </button>
               </div>
             </div>
@@ -2887,13 +4124,41 @@ const GlobalBilling: React.FC = () => {
                   <label>Payment Method</label>
                   <span>{formatPaymentMethodLabel(selectedInvoice.paymentMethod)}</span>
                 </div>
+                {selectedInvoice.paymentMethod === 'installment' && (
+                  <>
+                    <div className="billingDrawerInfoItem">
+                      <label>Installment Term</label>
+                      <span>{selectedInvoice.installmentMonths || 0} months</span>
+                    </div>
+                    <div className="billingDrawerInfoItem">
+                      <label>Interest</label>
+                      <span>
+                        {(((selectedInvoice.installmentInterestRate || 0) * 100).toFixed(0))}% / ₱{(selectedInvoice.installmentInterestAmount || 0).toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}
+                      </span>
+                    </div>
+                    <div className="billingDrawerInfoItem">
+                      <label>Monthly Due</label>
+                      <span>₱{getInvoiceInstallmentMonthlyDue(selectedInvoice).toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
+                    </div>
+                    <div className="billingDrawerInfoItem">
+                      <label>Installment Progress</label>
+                      <span>{getInvoicePaidInstallmentTerms(selectedInvoice)} / {selectedInvoice.installmentMonths || 0} paid</span>
+                    </div>
+                    <div className="billingDrawerInfoItem">
+                      <label>Payment Plan</label>
+                      <span>
+                        ₱{getInvoiceInstallmentDownPaymentAmount(selectedInvoice).toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)} downpayment + ₱{getInvoiceInstallmentMonthlyDue(selectedInvoice).toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)} / month
+                      </span>
+                    </div>
+                  </>
+                )}
                 <div className="billingDrawerInfoItem">
                   <label>Amount Paid</label>
-                  <span>₱{(selectedInvoice.amountPaid || 0).toLocaleString()}</span>
+                  <span>₱{(selectedInvoice.amountPaid || 0).toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
                 </div>
                 <div className="billingDrawerInfoItem">
                   <label>Remaining Balance</label>
-                  <span>₱{(selectedInvoice.remainingBalance || 0).toLocaleString()}</span>
+                  <span>₱{(selectedInvoice.remainingBalance || 0).toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
                 </div>
               </div>
               
@@ -2917,8 +4182,8 @@ const GlobalBilling: React.FC = () => {
                             <div className="billingDrawerCategory">{item.category}</div>
                           </td>
                           <td>{item.quantity}</td>
-                          <td>₱{item.unitPrice.toLocaleString()}</td>
-                          <td>₱{item.total.toLocaleString()}</td>
+                          <td>₱{item.unitPrice.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</td>
+                          <td>₱{item.total.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</td>
                         </tr>
                       ))}
                       {selectedInvoice.products.map(product => (
@@ -2928,10 +4193,13 @@ const GlobalBilling: React.FC = () => {
                             {product.sku && (
                               <div className="billingDrawerCategory">{product.sku}</div>
                             )}
+                            {getProductLineBatchNumber(product) && (
+                              <div className="billingDrawerBatch">Batch: {getProductLineBatchNumber(product)}</div>
+                            )}
                           </td>
                           <td>{product.quantity}</td>
-                          <td>₱{product.unitPrice.toLocaleString()}</td>
-                          <td>₱{product.total.toLocaleString()}</td>
+                          <td>₱{product.unitPrice.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</td>
+                          <td>₱{product.total.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -2942,29 +4210,29 @@ const GlobalBilling: React.FC = () => {
               <div className="billingDrawerTotals">
                 <div className="billingDrawerTotalsRow">
                   <span>Subtotal:</span>
-                  <span>₱{selectedInvoice.subtotal.toLocaleString()}</span>
+                  <span>₱{selectedInvoice.subtotal.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
                 </div>
                 <div className="billingDrawerTotalsRow">
                   <span>Tax (12%):</span>
-                  <span>₱{selectedInvoice.tax.toLocaleString()}</span>
+                  <span>₱{selectedInvoice.tax.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
                 </div>
                 {selectedInvoice.discount > 0 && (
                   <div className="billingDrawerTotalsRow">
                     <span>Discount ({getDiscountTypeLabel(selectedInvoice.discountType, selectedInvoice.discountValue, selectedInvoice.discountIsPercentage)}):</span>
-                    <span>- ₱{selectedInvoice.discount.toLocaleString()}</span>
+                    <span>- ₱{selectedInvoice.discount.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
                   </div>
                 )}
                 <div className="billingDrawerTotalsRow billingDrawerTotalGrand">
                   <span>Total:</span>
-                  <span>₱{selectedInvoice.total.toLocaleString()}</span>
+                  <span>₱{selectedInvoice.total.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
                 </div>
                 <div className="billingDrawerTotalsRow">
                   <span>Amount Paid:</span>
-                  <span>₱{(selectedInvoice.amountPaid || 0).toLocaleString()}</span>
+                  <span>₱{(selectedInvoice.amountPaid || 0).toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
                 </div>
                 <div className="billingDrawerTotalsRow">
                   <span>Remaining Balance:</span>
-                  <span>₱{(selectedInvoice.remainingBalance || 0).toLocaleString()}</span>
+                  <span>₱{(selectedInvoice.remainingBalance || 0).toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
                 </div>
               </div>
 
@@ -2986,6 +4254,7 @@ const GlobalBilling: React.FC = () => {
                           <th>Time</th>
                           <th>Handled By</th>
                           <th>Method</th>
+                          <th>Reference</th>
                           <th>Amount</th>
                           <th>Notes</th>
                         </tr>
@@ -2997,7 +4266,8 @@ const GlobalBilling: React.FC = () => {
                             <td>{payment.time}</td>
                             <td>{payment.handledBy || 'Not recorded'}</td>
                             <td>{formatPaymentMethodLabel(payment.paymentMethod)}</td>
-                            <td>₱{payment.amount.toLocaleString()}</td>
+                            <td>{payment.paymentReference || 'N/A'}</td>
+                            <td>₱{payment.amount.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</td>
                             <td>{payment.notes || '—'}</td>
                           </tr>
                         ))}
@@ -3044,32 +4314,86 @@ const GlobalBilling: React.FC = () => {
               <button className="billingModalClose" onClick={() => setShowPaymentModal(false)}>×</button>
             </div>
             <div className="billingPaymentModalContent">
-              <div className="billingFormGroup">
-                <label>Remaining Balance</label>
-                <div className="billingReadonlyField">
-                  ₱{(selectedInvoice.remainingBalance || 0).toLocaleString()}
+              <div className="billingInstallmentPlanBox">
+                <div className="billingInstallmentPlanHeader">
+                  <span>Installment Plan</span>
+                  <strong>{selectedInvoice.installmentMonths || 0} months</strong>
+                </div>
+                <div className="billingInstallmentPlanGrid">
+                  <div>
+                    <label>Monthly Due</label>
+                    <span>₱{installmentPaymentMonthlyDue.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
+                  </div>
+                  <div>
+                    <label>Paid Terms</label>
+                    <span>{installmentPaidTerms} / {selectedInvoice.installmentMonths || 0}</span>
+                  </div>
+                  <div>
+                    <label>Remaining Terms</label>
+                    <span>{installmentRemainingTerms}</span>
+                  </div>
+                  <div>
+                    <label>Remaining Balance</label>
+                    <span>₱{paymentRemainingBalance.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
+                  </div>
                 </div>
               </div>
               <div className="billingFormGroup">
-                <label>Payment Amount</label>
-                <input
-                  type="number"
-                  value={paymentAmountInput}
-                  onChange={(e) => handlePaymentAmountChange(e.target.value)}
-                  onBlur={() => setPaymentAmountInput(
-                    clampPaymentAmountToRemaining(paymentAmountInput, paymentRemainingBalance)
-                  )}
-                  className={`billingFormInput ${paymentAmountError ? 'billingFieldError' : ''}`}
-                  min="0.01"
-                  max={paymentRemainingBalance}
-                  step="0.01"
-                  inputMode="decimal"
-                />
+                <label>Payment Type</label>
+                <select
+                  value={installmentPaymentMode}
+                  onChange={(e) => {
+                    const nextMode = e.target.value as InstallmentPaymentMode;
+                    setInstallmentPaymentMode(nextMode);
+                    setInstallmentAdvanceMonths(nextMode === 'advance'
+                      ? Math.min(Math.max(installmentAdvanceMonths, 2), Math.max(installmentRemainingTerms, 1))
+                      : 1
+                    );
+                  }}
+                  className="billingFormSelect"
+                >
+                  <option value="monthly">Pay monthly due</option>
+                  <option value="advance" disabled={installmentRemainingTerms <= 1}>Pay in advance</option>
+                </select>
+                <div className="billingHelperText">
+                  Amount is calculated from the invoice installment plan.
+                </div>
+              </div>
+
+              {installmentPaymentMode === 'advance' && (
+                <div className="billingFormGroup">
+                  <label>Advance Terms</label>
+                  <select
+                    value={installmentPaymentTermCount}
+                    onChange={(e) => setInstallmentAdvanceMonths(Number(e.target.value))}
+                    className="billingFormSelect"
+                  >
+                    {Array.from({ length: Math.max(installmentRemainingTerms - 1, 1) }, (_, index) => index + 2)
+                      .filter(monthCount => monthCount <= installmentRemainingTerms)
+                      .map(monthCount => (
+                        <option key={monthCount} value={monthCount}>
+                          {monthCount} months
+                        </option>
+                      ))}
+                  </select>
+                  <div className="billingHelperText">
+                    The final payment is capped at the remaining balance.
+                  </div>
+                </div>
+              )}
+
+              <div className="billingFormGroup">
+                <label>Amount to Pay</label>
+                <div className={`billingReadonlyField billingPaymentAmountPreview ${paymentAmountError ? 'billingFieldError' : ''}`}>
+                  ₱{calculatedInstallmentPaymentAmount.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}
+                </div>
                 {paymentAmountError ? (
                   <div className="billingErrorText">{paymentAmountError}</div>
                 ) : (
                   <div className="billingHelperText">
-                    Maximum allowed: ₱{paymentRemainingBalance.toLocaleString()}
+                    {installmentPaymentMode === 'advance'
+                      ? `${installmentPaymentTermCount} monthly dues selected.`
+                      : 'One monthly due selected.'}
                   </div>
                 )}
               </div>
@@ -3077,15 +4401,43 @@ const GlobalBilling: React.FC = () => {
                 <label>Payment Method</label>
                 <select
                   value={paymentEntryMethod}
-                  onChange={(e) => setPaymentEntryMethod(e.target.value as PaymentEntryMethod)}
+                  onChange={(e) => {
+                    const nextMethod = e.target.value as PaymentEntryMethod;
+                    setPaymentEntryMethod(nextMethod);
+                    setPaymentEntryReferenceError('');
+                    if (!requiresPaymentReference(nextMethod)) {
+                      setPaymentEntryReference('');
+                    }
+                  }}
                   className="billingFormSelect"
                 >
                   <option value="cash">Cash</option>
-                  <option value="card">Card</option>
                   <option value="gcash">GCash</option>
-                  <option value="bank">Bank Transfer</option>
                 </select>
               </div>
+              {requiresPaymentReference(paymentEntryMethod) && (
+                <div className="billingFormGroup">
+                  <label>{getPaymentReferenceLabel(paymentEntryMethod)} <span className="billingRequired">*</span></label>
+                  <input
+                    type="text"
+                    value={paymentEntryReference}
+                    onChange={(e) => {
+                      setPaymentEntryReference(normalizeGcashReferenceInput(e.target.value));
+                      setPaymentEntryReferenceError('');
+                    }}
+                    className={`billingFormInput ${paymentEntryReferenceError ? 'billingFieldError' : ''}`}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={30}
+                    placeholder="Enter GCash reference number"
+                  />
+                  {paymentEntryReferenceError ? (
+                    <div className="billingErrorText">{paymentEntryReferenceError}</div>
+                  ) : (
+                    <div className="billingHelperText">{getPaymentReferenceHint(paymentEntryMethod)}</div>
+                  )}
+                </div>
+              )}
               <div className="billingFormGroup">
                 <label>Notes</label>
                 <textarea
@@ -3272,8 +4624,10 @@ const GlobalBilling: React.FC = () => {
                   {filteredServices.length > 0 ? (
                     filteredServices.map(service => {
                       const isSelected = tempSelectedServices.has(service.id);
+                      const isRepeatable = isRepeatableBillingService(service);
+                      const isAddDisabled = isSelected && !isRepeatable;
                       return (
-                        <div key={service.id} className={`billingServiceCard ${isSelected ? 'selected' : ''}`}>
+                        <div key={service.id} className={`billingServiceCard ${isSelected ? 'selected' : ''} ${isAddDisabled ? 'single-added' : ''}`}>
                           <div className="billingServiceCardInfo">
                             <div className="billingServiceCardHeader">
                               {getCategoryIcon(service.category)}
@@ -3281,13 +4635,16 @@ const GlobalBilling: React.FC = () => {
                             </div>
                             <div className="billingServiceCardName">{service.name}</div>
                             <div className="billingServiceCardDesc">{service.description}</div>
-                            <div className="billingServiceCardPrice">₱{service.price.toLocaleString()}</div>
+                            <div className="billingServiceCardPrice">₱{service.price.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</div>
                           </div>
                           <button 
                             className="billingServiceCardAddBtn"
                             onClick={() => addTempService(service)}
+                            disabled={isAddDisabled}
+                            title={isAddDisabled ? 'This service is already added to the invoice.' : undefined}
                           >
-                            <IoAdd size={16} /> Add
+                            {isAddDisabled ? <IoCheckmarkCircleOutline size={16} /> : <IoAdd size={16} />}
+                            {isAddDisabled ? 'Added' : 'Add'}
                           </button>
                         </div>
                       );
@@ -3325,13 +4682,15 @@ const GlobalBilling: React.FC = () => {
                             <button 
                               className="billingQtyBtnSmall"
                               onClick={() => updateTempServiceQuantity(id, quantity + 1)}
+                              disabled={!isRepeatableBillingService(service)}
+                              title={!isRepeatableBillingService(service) ? 'Only Boarding and Confinement can have multiple quantities.' : undefined}
                             >
                               <IoAdd size={10} />
                             </button>
                           </div>
                         </div>
                         <div className="billingSummaryItemRight">
-                          <span className="billingSummaryItemPrice">₱{(service.price * quantity).toLocaleString()}</span>
+                          <span className="billingSummaryItemPrice">₱{(service.price * quantity).toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
                           <button className="billingRemoveSelectedBtn" onClick={() => removeTempService(id)}>
                             <IoTrashBinOutline size={14} />
                           </button>
@@ -3421,6 +4780,8 @@ const GlobalBilling: React.FC = () => {
                     filteredProducts.map(product => {
                       const isSelected = tempSelectedProducts.has(product.id);
                       const isOutOfStock = product.stock === 0;
+                      const batches = getProductBatches(product);
+                      const batchStock = batches.reduce((sum, batch) => sum + batch.quantityOnHand, 0);
                       return (
                         <div key={product.id} className={`billingServiceCard ${isSelected ? 'selected' : ''} ${isOutOfStock ? 'out-of-stock' : ''}`}>
                           <div className="billingServiceCardInfo">
@@ -3430,8 +4791,13 @@ const GlobalBilling: React.FC = () => {
                             </div>
                             <div className="billingServiceCardName">{product.name}</div>
                             <div className="billingServiceCardDesc">{product.description}</div>
-                            <div className="billingServiceCardPrice">₱{product.price.toLocaleString()}</div>
+                            <div className="billingServiceCardPrice">₱{product.price.toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</div>
                             <div className="billingProductCardStock">Stock: {product.stock} left</div>
+                            {batches.length > 0 && (
+                              <div className="billingProductCardBatch">
+                                {batches.length} batch{batches.length === 1 ? '' : 'es'} | Batch stock: {batchStock}
+                              </div>
+                            )}
                           </div>
                           <button 
                             className="billingServiceCardAddBtn"
@@ -3461,7 +4827,13 @@ const GlobalBilling: React.FC = () => {
                 
                 <div className="billingSummaryItems">
                   {tempSelectedProducts.size > 0 ? (
-                    Array.from(tempSelectedProducts.entries()).map(([id, { product, quantity }]) => (
+                    Array.from(tempSelectedProducts.entries()).map(([id, { product, quantity, batchSelectValue }]) => {
+                      const batches = getProductBatches(product);
+                      const selectedBatch = findBatchBySelectValue(batches, batchSelectValue);
+                      const batchWarning = getBatchWarningText(selectedBatch);
+                      const maxQuantity = selectedBatch ? selectedBatch.quantityOnHand : product.stock;
+
+                      return (
                       <div key={id} className="billingSummaryItem">
                         <div className="billingSummaryItemInfo">
                           <div className="billingSummaryItemNameWithIcon">
@@ -3480,20 +4852,50 @@ const GlobalBilling: React.FC = () => {
                             <button 
                               className="billingQtyBtnSmall"
                               onClick={() => updateTempProductQuantity(id, quantity + 1)}
-                              disabled={quantity >= product.stock}
+                              disabled={maxQuantity <= 0 || quantity >= maxQuantity}
                             >
                               <IoAdd size={10} />
                             </button>
                           </div>
+                          {batches.length > 0 && (
+                            <div className="billingBatchSelectorBlock">
+                              <label className="billingBatchLabel">Batch</label>
+                              <select
+                                value={batchSelectValue || ''}
+                                onChange={(e) => updateTempProductBatch(id, e.target.value)}
+                                className="billingBatchSelect"
+                              >
+                                <option value="">Use backend fallback batch</option>
+                                {batches.map(batch => (
+                                  <option
+                                    key={getBatchSelectValue(batch)}
+                                    value={getBatchSelectValue(batch)}
+                                    disabled={batch.quantityOnHand <= 0}
+                                  >
+                                    {getBatchOptionLabel(batch)}
+                                  </option>
+                                ))}
+                              </select>
+                              {selectedBatch ? (
+                                <div className="billingBatchMeta">
+                                  Available: {selectedBatch.quantityOnHand} | {getBatchExpirationStatus(selectedBatch)}
+                                </div>
+                              ) : (
+                                <div className="billingBatchMeta">Leave blank to let backend choose a batch.</div>
+                              )}
+                              {batchWarning && <div className="billingBatchWarning">{batchWarning}</div>}
+                            </div>
+                          )}
                         </div>
                         <div className="billingSummaryItemRight">
-                          <span className="billingSummaryItemPrice">₱{(product.price * quantity).toLocaleString()}</span>
+                          <span className="billingSummaryItemPrice">₱{(product.price * quantity).toLocaleString(undefined, BILLING_MONEY_FORMAT_OPTIONS)}</span>
                           <button className="billingRemoveSelectedBtn" onClick={() => removeTempProduct(id)}>
                             <IoTrashBinOutline size={14} />
                           </button>
                         </div>
                       </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <div className="billingSummaryEmpty">
                       <p>No products selected</p>
@@ -3521,9 +4923,9 @@ const GlobalBilling: React.FC = () => {
         <div className="billingModalOverlay">
           <div className="billingAlertModal">
             <div className="billingAlertIcon">
-              {modalConfig.type === 'success' && <IoCheckmarkCircleOutline size={45} color="#166534" />}
-              {modalConfig.type === 'error' && <IoCloseCircleOutline size={45} color="#991b1b" />}
-              {modalConfig.type !== 'success' && modalConfig.type !== 'error' && <IoAlertCircleOutline size={45} color="#0a1156" />}
+              {modalConfig.type === 'success' && <IoCheckmarkCircleOutline size={45} color="#2e9e0c" />}
+              {modalConfig.type === 'error' && <IoCloseCircleOutline size={45} color="#d93025" />}
+              {modalConfig.type !== 'success' && modalConfig.type !== 'error' && <IoAlertCircleOutline size={45} color="#3d67ee" />}
             </div>
             <h4 className="billingAlertTitle">{modalConfig.title}</h4>
             <div className="billingAlertMessage">
@@ -3554,3 +4956,4 @@ const GlobalBilling: React.FC = () => {
 
 export default GlobalBilling;
                         
+

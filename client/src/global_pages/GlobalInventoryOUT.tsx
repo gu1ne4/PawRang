@@ -6,6 +6,14 @@ import ImportButton from '../reusable_components/ImportBtn';
 import ExportButton  from '../reusable_components/ExportBtn';
 import { downloadInventoryTemplate } from './pdf_generation/InventoryExcel';
 import { parsePetShieldInventoryTemplate } from './inventoryImport';
+import {
+  findBatchBySelectValue,
+  getBatchDisplayNumber,
+  getBatchExpirationStatus,
+  getBatchSelectValue,
+  getProductBatches,
+  type InventoryBatch,
+} from './inventoryBatchUtils';
 import './GlobalInventoryStyles2.css';
 import { 
   IoArrowBackOutline,
@@ -48,6 +56,11 @@ interface Product {
   expirationNA?: boolean;
   dateAdded?: string;
   criticalStockLevel?: number;
+  batches?: any[];
+  activeBatches?: any[];
+  active_batches?: any[];
+  inventoryBatches?: any[];
+  inventory_batches?: any[];
 }
 
 
@@ -71,6 +84,11 @@ interface BulkItem {
   quantity: number;
   unitPrice: number;
   availableStock: number;
+  batches: InventoryBatch[];
+  batchSelectorValue?: string;
+  inventoryBatchId?: string | number;
+  batchNumber?: string;
+  selectedBatchStock?: number;
 }
 
 type SortOption = 'stockLowToHigh' | 'stockHighToLow' | 'expirationEarliest' | 'expirationLatest' | 'alphabeticalAZ' | 'alphabeticalZA';
@@ -589,7 +607,12 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
         unit: product?.unit || 'Piece',
         quantity: currentQty,
         unitPrice: product?.sellingPrice || 0,
-        availableStock: product?.stockCount || 0
+        availableStock: product?.stockCount || 0,
+        batches: getProductBatches(product),
+        batchSelectorValue: '',
+        inventoryBatchId: undefined,
+        batchNumber: '',
+        selectedBatchStock: undefined
       };
     });
 
@@ -604,6 +627,36 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
       const newSelected = new Set(prev);
       newSelected.delete(productId);
       return newSelected;
+    });
+  };
+
+  const getEffectiveAvailableStock = (item: BulkItem): number =>
+    item.inventoryBatchId || item.batchNumber ? Number(item.selectedBatchStock ?? 0) : item.availableStock;
+
+  const handleStockOutBatchSelectionChange = (index: number, value: string) => {
+    setCartItems(prev => {
+      const next = [...prev];
+      const item = { ...next[index] };
+      item.batchSelectorValue = value;
+
+      if (!value) {
+        item.inventoryBatchId = undefined;
+        item.batchNumber = '';
+        item.selectedBatchStock = undefined;
+      } else {
+        const batch = findBatchBySelectValue(item.batches, value);
+        item.inventoryBatchId = batch?.id;
+        item.batchNumber = batch?.batchNumber || '';
+        item.selectedBatchStock = batch?.quantityOnHand ?? 0;
+        item.quantity = Math.min(item.quantity, item.selectedBatchStock || 0);
+        setQuantityMods(prevMods => ({
+          ...prevMods,
+          [item.productId]: item.quantity,
+        }));
+      }
+
+      next[index] = item;
+      return next;
     });
   };
 
@@ -689,22 +742,23 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
     const newItems = [...cartItems];
     const item = newItems[index];
     const newQuantity = item.quantity + amount;
-    if (newQuantity <= item.availableStock && newQuantity >= 0) {
+    const availableStock = getEffectiveAvailableStock(item);
+    if (newQuantity <= availableStock && newQuantity >= 0) {
       item.quantity = newQuantity;
       setCartItems(newItems);
       setQuantityMods(prev => ({
         ...prev,
         [item.productId]: newQuantity,
       }));
-    } else if (newQuantity > item.availableStock) {
-      showAlert('error', 'Insufficient Stock', `Only ${item.availableStock} units available.`);
+    } else if (newQuantity > availableStock) {
+      showAlert('error', 'Insufficient Stock', `Only ${availableStock} units available${item.batchNumber ? ` in batch ${item.batchNumber}` : ''}.`);
     }
   };
 
   // Handle quantity change in modal
   const handleModalQuantityChange = (index: number, value: number) => {
     const newItems = [...cartItems];
-    const newQty = Math.min(Math.max(0, value), newItems[index].availableStock);
+    const newQty = Math.min(Math.max(0, value), getEffectiveAvailableStock(newItems[index]));
     newItems[index].quantity = newQty;
     setCartItems(newItems);
     setQuantityMods(prev => ({
@@ -790,6 +844,12 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
           `${item.productName}: Only ${product?.stockCount || 0} units available. Cannot remove ${item.quantity} units.`);
         return;
       }
+      const selectedBatchStock = getEffectiveAvailableStock(item);
+      if ((item.inventoryBatchId || item.batchNumber) && item.quantity > selectedBatchStock) {
+        showAlert('error', 'Insufficient Batch Stock',
+          `${item.productName}: Batch ${item.batchNumber || item.inventoryBatchId} only has ${selectedBatchStock} units available.`);
+        return;
+      }
     }
     
     try {
@@ -811,6 +871,8 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
             productId: item.productId,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
+            ...(item.inventoryBatchId ? { inventory_batch_id: item.inventoryBatchId } : {}),
+            ...(item.batchNumber ? { batch_number: item.batchNumber, batchNumber: item.batchNumber } : {}),
           })),
         }),
       });
@@ -1100,6 +1162,8 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                     <option value="Food">Food</option>
                     <option value="Accessories">Accessories</option>
                     <option value="Medication">Medication</option>
+                    <option value="Vaccine">Vaccine</option>
+                    <option value="Supplies">Supplies</option>
                   </select>
 
                   <select 
@@ -1352,10 +1416,12 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
             <table className="invBulkItemsTableInner">
               <thead>
                 <tr>
+                  <th style={{ width: '40px' }}></th>
                   <th>Product Code</th>
                   <th>Product Name</th>
                   <th>Unit Price</th>
                   <th>Available Stock</th>
+                  <th>Batch</th>
                   <th>Quantity to Remove</th>
                   <th>Subtotal</th>
                 </tr>
@@ -1364,10 +1430,12 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                 {filteredCartItems.map((item, index) => {
                   const originalIndex = cartItems.findIndex(i => i.productId === item.productId);
                   const hasMissingQuantity = item.quantity <= 0;
-                  const isOutOfStock = item.availableStock === 0;
+                  const availableStock = getEffectiveAvailableStock(item);
+                  const isOutOfStock = availableStock === 0;
+                  const hasBatchShortage = (item.inventoryBatchId || item.batchNumber) && item.quantity > availableStock;
 
                   return (
-                    <tr key={index} className={hasMissingQuantity && !isOutOfStock ? 'invMissingRow' : ''}>
+                    <tr key={index} className={(hasMissingQuantity || hasBatchShortage) && !isOutOfStock ? 'invMissingRow' : ''}>
                       <td className="invRemoveCell">
                         <button
                           className="invRemoveRowBtn"
@@ -1380,8 +1448,30 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                       <td>{item.productCode}</td>
                       <td>{item.productName} {isOutOfStock && <span className="invOutOfStockTag">Out of Stock</span>}</td>
                       <td>{item.unitPrice.toLocaleString()}</td>
-                      <td className={item.availableStock <= 10 ? 'invCriticalStockCell' : ''}>
-                        {item.availableStock}
+                      <td className={availableStock <= 10 ? 'invCriticalStockCell' : ''}>
+                        {availableStock}
+                      </td>
+                      <td style={{ minWidth: '240px' }}>
+                        <select
+                          className="invFormSelect"
+                          value={item.batchSelectorValue || ''}
+                          onChange={(e) => handleStockOutBatchSelectionChange(originalIndex, e.target.value)}
+                        >
+                          <option value="">Backend fallback batch</option>
+                          {item.batches.map((batch) => (
+                            <option key={getBatchSelectValue(batch)} value={getBatchSelectValue(batch)}>
+                              {getBatchDisplayNumber(batch)} - {batch.quantityOnHand} available - {getBatchExpirationStatus(batch)}
+                            </option>
+                          ))}
+                        </select>
+                        <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>
+                          Leave blank to let the backend choose the deduction batch.
+                        </div>
+                        {(item.inventoryBatchId || item.batchNumber) && (
+                          <div style={{ fontSize: '11px', color: hasBatchShortage ? '#dc2626' : '#16a34a', fontWeight: 700, marginTop: '4px' }}>
+                            Batch available: {availableStock}
+                          </div>
+                        )}
                       </td>
                       <td>
                         <div className="invModalQuantityControls">
@@ -1391,7 +1481,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                             value={item.quantity || ''}
                             onChange={(e) => handleModalQuantityChange(originalIndex, parseInt(e.target.value) || 0)}
                             min="0"
-                            max={item.availableStock}
+                            max={availableStock}
                             placeholder="0"
                             disabled={isOutOfStock}
                           />
@@ -1417,7 +1507,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                 })}
                 {filteredCartItems.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="invNoSearchResults">
+                    <td colSpan={8} className="invNoSearchResults">
                       No items in cart.
                     </td>
                   </tr>
@@ -1425,7 +1515,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={6} className="invBulkTotalLabel">Total:</td>
+                  <td colSpan={7} className="invBulkTotalLabel">Total:</td>
                   <td className="invBulkTotalValue">
                     {cartTotal.toLocaleString()}
                   </td>
@@ -1582,6 +1672,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                   <th>Product Name</th>
                   <th>Unit Price</th>
                   <th>Available Stock</th>
+                  <th>Batch</th>
                   <th>Quantity to Remove</th>
                   <th>Subtotal</th>
                 </tr>
@@ -1590,16 +1681,18 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                 {filteredTransactionItems
                   .map((item, index) => {
                     const hasMissingQuantity = item.quantity <= 0;
-                    const isOutOfStock = item.availableStock === 0;
+                    const availableStock = getEffectiveAvailableStock(item);
+                    const isOutOfStock = availableStock === 0;
                     
                     return (
                       <tr key={index} className={hasMissingQuantity && !isOutOfStock ? 'invMissingRow' : ''}>
                         <td>{item.productCode}</td>
                         <td>{item.productName} {isOutOfStock && <span className="invOutOfStockTag">Out of Stock</span>}</td>
                         <td>{item.unitPrice.toLocaleString()}</td>
-                        <td className={item.availableStock <= 10 ? 'invCriticalStockCell' : ''}>
-                          {item.availableStock}
+                        <td className={availableStock <= 10 ? 'invCriticalStockCell' : ''}>
+                          {availableStock}
                         </td>
+                        <td>{item.batchNumber || 'Backend fallback'}</td>
                         <td>{item.quantity}</td>
                         <td>{(item.quantity * item.unitPrice).toLocaleString()}</td>
                       </tr>
@@ -1607,7 +1700,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
                   })}
                 {filteredTransactionItems.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="invNoSearchResults">
+                    <td colSpan={7} className="invNoSearchResults">
                       No products found matching "{modalSearchQuery}"
                     </td>
                   </tr>
@@ -1615,7 +1708,7 @@ const [modalSearchQuery, setModalSearchQuery] = useState<string>('');
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={5} className="invBulkTotalLabel">Total:</td>
+                  <td colSpan={6} className="invBulkTotalLabel">Total:</td>
                   <td className="invBulkTotalValue">
                     ₱{transactionItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0).toLocaleString()}
                   </td>
