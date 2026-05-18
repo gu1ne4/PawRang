@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
@@ -25,6 +25,13 @@ import {
   IoShieldCheckmarkOutline, IoMailOutline, IoCallOutline,
 } from 'react-icons/io5';
 import ClientNavBar from '../reusable_components/ClientNavBar';
+import PayrexMockPayment from '../reusable_components/PayrexMockPayment';
+import {
+  formatCurrency,
+  generatePayrexMockReference,
+  parsePriceLabel,
+  PAYREX_MOCK_PAYMENT_METHOD,
+} from '../utils/payrexMockUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -143,7 +150,7 @@ interface AlertConfig {
   confirmText: string;
 }
 
-type BookingConfirmStage = 'terms' | 'submitting' | 'submitted';
+type BookingConfirmStage = 'terms' | 'payment' | 'submitting' | 'submitted';
 
 interface BookingDraft {
   step: number;
@@ -255,7 +262,7 @@ const isMobileViewport = () =>
   typeof window !== 'undefined' && window.innerWidth <= 768;
 const BOOKING_DRAFT_KEY = 'userAppointmentBookingDraft';
 const DEFAULT_SUBMITTED_BOOKING_MESSAGE =
-  'Your appointment is under review. You will receive an email once it is confirmed.';
+  'Your appointment is confirmed. A confirmation email has been sent with your visit details.';
 
 const addDays = (date: Date, days: number) => {
   const nextDate = new Date(date);
@@ -407,6 +414,7 @@ const UserAppointmentBook: React.FC = () => {
   const [confirmModalStage,   setConfirmModalStage]   = useState<BookingConfirmStage>('terms');
   const [submittedBookingMessage, setSubmittedBookingMessage] = useState(DEFAULT_SUBMITTED_BOOKING_MESSAGE);
   const [isChecked,           setIsChecked]           = useState(false);
+  const [bookingPaymentReference, setBookingPaymentReference] = useState(generatePayrexMockReference);
   const restoredDraftRef = useRef(false);
   const handledReturnedPetRef = useRef<number | null>(null);
 
@@ -724,11 +732,34 @@ const UserAppointmentBook: React.FC = () => {
     return missingFields;
   };
 
+  const bookingPaymentAmount = useMemo(() => {
+    if (!selectedService) return 0;
+
+    const selectedOptions = selectedService.id === 1 ? selectedGroomingOptions : selectedLabOptions;
+    if (selectedService.hasOptions && selectedOptions.length) {
+      return selectedOptions.reduce((sum, option) => sum + parsePriceLabel(option.price), 0);
+    }
+
+    if (selectedService.id === 4 && boardingDays) {
+      const nightlyRate = parsePriceLabel(selectedService.basePrice);
+      return nightlyRate * Number(boardingDays);
+    }
+
+    return parsePriceLabel(selectedService.basePrice);
+  }, [boardingDays, selectedGroomingOptions, selectedLabOptions, selectedService]);
+
   const openConfirmModal = () => {
     setIsChecked(false);
     setConfirmModalStage('terms');
     setSubmittedBookingMessage(DEFAULT_SUBMITTED_BOOKING_MESSAGE);
+    setBookingPaymentReference(generatePayrexMockReference());
     setConfirmModalVisible(true);
+  };
+
+  const proceedToBookingPayment = () => {
+    if (!isChecked) return;
+    setBookingPaymentReference(generatePayrexMockReference());
+    setConfirmModalStage('payment');
   };
 
   const closeConfirmModal = () => {
@@ -737,6 +768,7 @@ const UserAppointmentBook: React.FC = () => {
     setConfirmModalStage('terms');
     setSubmittedBookingMessage(DEFAULT_SUBMITTED_BOOKING_MESSAGE);
     setIsChecked(false);
+    setBookingPaymentReference(generatePayrexMockReference());
   };
 
   const handleLogout = () => {
@@ -1087,7 +1119,11 @@ const UserAppointmentBook: React.FC = () => {
       ].filter(Boolean);
       
       // appointments POST — cast ids to Number
-      const apptRes = await apiClient.post<{ appointment_id: number; emailSent?: boolean }>(
+      const apptRes = await apiClient.post<{
+        appointment_id: number;
+        emailSent?: boolean;
+        status?: string;
+      }>(
         `${API_URL}/appointments`,
         {
           owner_id:         currentUser.id,
@@ -1097,6 +1133,8 @@ const UserAppointmentBook: React.FC = () => {
           appointment_time: toDbTime(selectedTime),
           branch_id:        Number(selectedBranch.branch_id), // ← fix bigint error
           patient_reason:   patientReasonParts.join('\n'),
+          payment_method:   PAYREX_MOCK_PAYMENT_METHOD,
+          payment_reference: bookingPaymentReference,
         },
         { headers: { Authorization: `Bearer ${getToken()}` } },
       );
@@ -1147,10 +1185,15 @@ const UserAppointmentBook: React.FC = () => {
         );
       }
 
+      const isConfirmed = apptRes.data.status === 'confirmed';
       setSubmittedBookingMessage(
-        bookingEmailSent
-          ? 'Your appointment is under review. A booking confirmation email has been sent, and we will email you again once it is confirmed.'
-          : 'Your appointment is under review. The request was submitted successfully, but the booking confirmation email could not be sent right now.',
+        isConfirmed
+          ? bookingEmailSent
+            ? 'Your appointment is confirmed. A confirmation email has been sent with your visit details.'
+            : 'Your appointment is confirmed. The booking was saved successfully, but the confirmation email could not be sent right now.'
+          : bookingEmailSent
+            ? 'Your appointment is under review. A booking confirmation email has been sent, and we will email you again once it is confirmed.'
+            : 'Your appointment is under review. The request was submitted successfully, but the booking confirmation email could not be sent right now.',
       );
       setConfirmModalStage('submitted');
       setIsChecked(false);
@@ -1280,23 +1323,48 @@ const UserAppointmentBook: React.FC = () => {
 
             {confirmModalStage === 'terms' && (
               <>
-                <div className="confirmation-icon"><IoHourglassOutline size={28} color="#3d67ee" /></div>
-                <h2 className="confirmation-title">Appointment Under Review</h2>
+                <div className="confirmation-icon"><IoReceiptOutline size={28} color="#3d67ee" /></div>
+                <h2 className="confirmation-title">Complete Booking Payment</h2>
                 <p className="confirmation-text">
-                  Your appointment will be reviewed by our team. We will send a booking confirmation email after submission, and another update once it is confirmed.
+                  Your appointment will be confirmed after PayRex mock payment. Estimated amount:{' '}
+                  <strong>{formatCurrency(bookingPaymentAmount)}</strong>.
                 </p>
                 <div className="checkbox-container">
                   <label className="checkbox-label">
                     <input type="checkbox" checked={isChecked} onChange={e => setIsChecked(e.target.checked)} className="checkbox-input" />
-                    <span className="checkbox-text">I understand</span>
+                    <span className="checkbox-text">I understand that payment is required to confirm this booking</span>
                   </label>
                 </div>
                 <button
                   className={`confirmation-btn ${!isChecked ? 'disabled' : ''}`}
-                  onClick={handleConfirmBooking}
+                  onClick={proceedToBookingPayment}
                   disabled={!isChecked}
                 >
-                  Confirm Booking
+                  Proceed to Payment
+                </button>
+              </>
+            )}
+
+            {confirmModalStage === 'payment' && (
+              <>
+                <div className="confirmation-icon"><IoReceiptOutline size={28} color="#3d67ee" /></div>
+                <h2 className="confirmation-title">PayRex Mock Payment</h2>
+                <p className="confirmation-text">
+                  Complete the mock QR payment below to confirm your appointment.
+                </p>
+                <PayrexMockPayment
+                  amount={bookingPaymentAmount}
+                  onReferenceChange={setBookingPaymentReference}
+                />
+                <button className="confirmation-btn" onClick={handleConfirmBooking}>
+                  I Have Completed Payment
+                </button>
+                <button
+                  type="button"
+                  className="confirmation-btn confirmation-btn-secondary"
+                  onClick={() => setConfirmModalStage('terms')}
+                >
+                  Back
                 </button>
               </>
             )}
@@ -1317,7 +1385,7 @@ const UserAppointmentBook: React.FC = () => {
             {confirmModalStage === 'submitted' && (
               <>
                 <div className="confirmation-icon"><IoCheckmark size={30} color="#2e9e0c" /></div>
-                <h2 className="confirmation-title">Appointment Submitted!</h2>
+                <h2 className="confirmation-title">Appointment Confirmed!</h2>
                 <p className="confirmation-text">
                   {submittedBookingMessage}
                 </p>

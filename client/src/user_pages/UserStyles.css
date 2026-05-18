@@ -3228,6 +3228,17 @@
     cursor: not-allowed;
 }
 
+.confirmation-btn-secondary {
+    margin-top: 10px;
+    background-color: #ffffff;
+    color: #3d67ee;
+    border: 1px solid #c8d6ff;
+}
+
+.confirmation-btn-secondary:hover {
+    background-color: #f4f7ff;
+}
+
 /* Responsive Design */
 @media (max-width: 1200px) {
     .medical-questionnaire {
