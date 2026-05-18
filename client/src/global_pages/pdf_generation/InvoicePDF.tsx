@@ -261,7 +261,7 @@ interface InvoiceLineItem {
 interface InvoicePayment {
   id: string;
   amount: number;
-  paymentMethod: 'cash' | 'gcash';
+  paymentMethod: 'cash' | 'gcash' | 'payrex_mock';
   paymentReference?: string;
   date: string;
   time: string;
@@ -291,7 +291,7 @@ interface InvoicePDFData {
   total: number;
   amountPaid?: number;
   remainingBalance?: number;
-  paymentMethod: 'cash' | 'gcash' | 'installment';
+  paymentMethod: 'cash' | 'gcash' | 'payrex_mock' | 'installment';
   paymentStatus: 'paid' | 'pending' | 'partial';
   notes?: string;
   paymentHistory?: InvoicePayment[];
@@ -301,7 +301,9 @@ const formatCurrency = (value: number): string =>
   `PHP ${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const formatPaymentMethod = (value: string): string =>
-  value
+  value === 'payrex_mock'
+    ? 'PayRex Mock QR'
+    : value
     .split('_')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');

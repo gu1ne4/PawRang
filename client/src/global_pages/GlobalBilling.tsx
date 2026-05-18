@@ -88,7 +88,7 @@ interface Invoice {
   total: number;
   amountPaid?: number;
   remainingBalance?: number;
-  paymentMethod: 'cash' | 'gcash' | 'installment';
+  paymentMethod: 'cash' | 'gcash' | 'payrex_mock' | 'installment';
   paymentStatus: 'paid' | 'pending' | 'partial';
   status: 'completed' | 'cancelled' | 'refunded';
   sourceRecordType?: 'appointment' | 'walkin' | 'visit' | null;
@@ -101,8 +101,18 @@ interface Invoice {
 interface InvoicePayment {
   id: string;
   amount: number;
-  paymentMethod: 'cash' | 'gcash';
+  paymentMethod: 'cash' | 'gcash' | 'payrex_mock';
   paymentReference?: string;
+  provider?: string;
+  qrPayload?: string;
+  payrexMock?: {
+    provider: string;
+    providerLabel: string;
+    referenceNumber: string;
+    qrPayload: string;
+    currency: string;
+    amount: number;
+  };
   date: string;
   time: string;
   handledBy?: string;
@@ -293,8 +303,8 @@ interface TempSelectedProductEntry {
 type ViewMode = 'list' | 'create' | 'details';
 type InvoiceType = 'appointment' | 'walkin';
 type InvoiceTypeSelection = InvoiceType | '';
-type PaymentMethod = 'cash' | 'gcash' | 'installment';
-type PaymentEntryMethod = 'cash' | 'gcash';
+type PaymentMethod = 'cash' | 'gcash' | 'payrex_mock' | 'installment';
+type PaymentEntryMethod = 'cash' | 'gcash' | 'payrex_mock';
 type InstallmentPaymentMode = 'monthly' | 'advance';
 type BillingSalesReportPreset = 'thisWeek' | 'thisMonth' | 'last7Days' | 'last30Days' | 'custom';
 type BillingSalesReportFormat = 'pdf' | 'excel';
@@ -335,6 +345,74 @@ const DEFAULT_SALES_REPORT_SECTIONS: Record<BillingSalesReportSectionKey, boolea
   payments: true
 };
 const LOW_BATCH_STOCK_THRESHOLD = 5;
+const PAYREX_MOCK_PAYMENT_METHOD = 'payrex_mock';
+
+const isPayrexMockPaymentMethod = (method?: string): boolean =>
+  String(method || '').trim().toLowerCase() === PAYREX_MOCK_PAYMENT_METHOD;
+
+const generatePayrexMockReference = (): string => {
+  const now = new Date();
+  const dateCode = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const randomCode = Math.random().toString(16).slice(2, 10).toUpperCase().padEnd(8, '0');
+  return `PRX-${dateCode}-${randomCode}`;
+};
+
+const buildPayrexMockQrPayload = (reference: string, amount: number, invoiceNumber?: string): string =>
+  JSON.stringify({
+    provider: 'payrex_mock',
+    mode: 'qrph_mock',
+    currency: 'PHP',
+    referenceNumber: reference,
+    amount: roundBillingCurrency(amount),
+    invoiceNumber: invoiceNumber || undefined,
+  });
+
+const hashPayrexMockPayload = (value: string): number => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash);
+};
+
+const buildPayrexMockQrCells = (payload: string, size = 17): boolean[] => {
+  const seed = hashPayrexMockPayload(payload || 'payrex-mock');
+  return Array.from({ length: size * size }, (_, index) => {
+    const row = Math.floor(index / size);
+    const col = index % size;
+    const inTopLeft = row < 5 && col < 5;
+    const inTopRight = row < 5 && col >= size - 5;
+    const inBottomLeft = row >= size - 5 && col < 5;
+    if (inTopLeft || inTopRight || inBottomLeft) {
+      const localRow = row < 5 ? row : row - (size - 5);
+      const localCol = col < 5 ? col : col - (size - 5);
+      return localRow === 0 || localRow === 4 || localCol === 0 || localCol === 4 || (localRow === 2 && localCol === 2);
+    }
+    return ((seed + index * 31 + row * 17 + col * 13) % 7) < 3;
+  });
+};
+
+const PayrexMockQrPreview = ({
+  reference,
+  amount,
+  invoiceNumber,
+  compact = false,
+}: {
+  reference: string;
+  amount: number;
+  invoiceNumber?: string;
+  compact?: boolean;
+}) => {
+  const qrPayload = buildPayrexMockQrPayload(reference, amount, invoiceNumber);
+  const cells = buildPayrexMockQrCells(qrPayload);
+  return (
+    <div className={`billingPayrexQr ${compact ? 'billingPayrexQrCompact' : ''}`} aria-label="PayRex mock QR preview">
+      {cells.map((filled, index) => (
+        <span key={`${reference}-${index}`} className={filled ? 'filled' : ''} />
+      ))}
+    </div>
+  );
+};
 
 const toDateInputValue = (date: Date): string => {
   const year = date.getFullYear();
@@ -476,12 +554,14 @@ const formatPaymentStatusLabel = (status: PaymentStatus | string): string => {
   }
 };
 
-const formatPaymentMethodLabel = (value: string): string =>
-  String(value || '')
+const formatPaymentMethodLabel = (value: string): string => {
+  if (isPayrexMockPaymentMethod(value)) return 'PayRex Mock QR';
+  return String(value || '')
     .split('_')
     .filter(Boolean)
     .map(part => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+};
 
 const requiresPaymentReference = (method: PaymentEntryMethod | PaymentMethod): method is PaymentEntryMethod =>
   method === 'gcash';
@@ -490,6 +570,8 @@ const getPaymentReferenceLabel = (method: PaymentEntryMethod | PaymentMethod): s
   switch (method) {
     case 'gcash':
       return 'GCash Reference Number';
+    case 'payrex_mock':
+      return 'PayRex Mock Reference';
     default:
       return 'Payment Reference';
   }
@@ -499,6 +581,8 @@ const getPaymentReferenceHint = (method: PaymentEntryMethod | PaymentMethod): st
   switch (method) {
     case 'gcash':
       return 'Enter numbers only from the GCash receipt/reference.';
+    case 'payrex_mock':
+      return 'Generated locally for mock QR billing. No real PayRex charge is made.';
     default:
       return '';
   }
@@ -509,6 +593,9 @@ const normalizeGcashReferenceInput = (value: string): string =>
 
 const isValidGcashReference = (value: string): boolean =>
   /^\d+$/.test(value.trim());
+
+const getInvoicePayrexMockPayment = (invoice: Invoice | null): InvoicePayment | null =>
+  invoice?.paymentHistory?.find(payment => isPayrexMockPaymentMethod(payment.paymentMethod)) || null;
 
 const normalizeProductCategory = (category?: string): ProductItem['category'] => {
   const normalized = String(category || '').trim().toLowerCase();
@@ -1131,6 +1218,26 @@ const GlobalBilling: React.FC = () => {
   const isPaymentAmountInvalid = paymentRemainingBalance <= 0
     || calculatedInstallmentPaymentAmount <= 0
     || calculatedInstallmentPaymentAmount > paymentRemainingBalance;
+  const selectedInvoicePayrexPayment = getInvoicePayrexMockPayment(selectedInvoice);
+
+  useEffect(() => {
+    if (paymentMethod === PAYREX_MOCK_PAYMENT_METHOD && !paymentReference) {
+      setPaymentReference(generatePayrexMockReference());
+    }
+  }, [paymentMethod, paymentReference]);
+
+  useEffect(() => {
+    if (initialPaymentMethod === PAYREX_MOCK_PAYMENT_METHOD && clampedInitialPaymentAmount > 0 && !initialPaymentReference) {
+      setInitialPaymentReference(generatePayrexMockReference());
+    }
+  }, [initialPaymentMethod, clampedInitialPaymentAmount, initialPaymentReference]);
+
+  useEffect(() => {
+    if (paymentEntryMethod === PAYREX_MOCK_PAYMENT_METHOD && showPaymentModal && calculatedInstallmentPaymentAmount > 0 && !paymentEntryReference) {
+      setPaymentEntryReference(generatePayrexMockReference());
+    }
+  }, [paymentEntryMethod, showPaymentModal, calculatedInstallmentPaymentAmount, paymentEntryReference]);
+
   const isSourceRecordLocked = sourceContextLocked && Boolean(selectedAppointment || selectedWalkin);
   const selectedSourceSummary = invoiceType === 'appointment'
     ? (selectedAppointment
@@ -2090,8 +2197,12 @@ const GlobalBilling: React.FC = () => {
       : invoiceType === 'walkin'
         ? selectedWalkin
         : null;
-    const trimmedPaymentReference = paymentReference.trim();
-    const trimmedInitialPaymentReference = initialPaymentReference.trim();
+    const effectivePaymentReference = paymentMethod === PAYREX_MOCK_PAYMENT_METHOD
+      ? (paymentReference.trim() || generatePayrexMockReference())
+      : paymentReference.trim();
+    const effectiveInitialPaymentReference = initialPaymentMethod === PAYREX_MOCK_PAYMENT_METHOD
+      ? (initialPaymentReference.trim() || generatePayrexMockReference())
+      : initialPaymentReference.trim();
 
     if (!invoiceType) {
       nextErrors.invoiceType = 'Select the invoice type.';
@@ -2117,10 +2228,10 @@ const GlobalBilling: React.FC = () => {
       nextErrors.installmentTerm = 'Select an installment term.';
     }
 
-    if (paymentMethod !== 'installment' && requiresPaymentReference(paymentMethod) && !trimmedPaymentReference) {
+    if (paymentMethod !== 'installment' && requiresPaymentReference(paymentMethod) && !effectivePaymentReference) {
       nextErrors.paymentReference = `${getPaymentReferenceLabel(paymentMethod)} is required.`;
     }
-    if (paymentMethod !== 'installment' && requiresPaymentReference(paymentMethod) && trimmedPaymentReference && !isValidGcashReference(trimmedPaymentReference)) {
+    if (paymentMethod !== 'installment' && requiresPaymentReference(paymentMethod) && effectivePaymentReference && !isValidGcashReference(effectivePaymentReference)) {
       nextErrors.paymentReference = `${getPaymentReferenceLabel(paymentMethod)} must contain numbers only.`;
     }
 
@@ -2128,7 +2239,7 @@ const GlobalBilling: React.FC = () => {
       paymentMethod === 'installment'
       && clampedInitialPaymentAmount > 0
       && requiresPaymentReference(initialPaymentMethod)
-      && !trimmedInitialPaymentReference
+      && !effectiveInitialPaymentReference
     ) {
       nextErrors.initialPaymentReference = `${getPaymentReferenceLabel(initialPaymentMethod)} is required for the downpayment.`;
     }
@@ -2136,8 +2247,8 @@ const GlobalBilling: React.FC = () => {
       paymentMethod === 'installment'
       && clampedInitialPaymentAmount > 0
       && requiresPaymentReference(initialPaymentMethod)
-      && trimmedInitialPaymentReference
-      && !isValidGcashReference(trimmedInitialPaymentReference)
+      && effectiveInitialPaymentReference
+      && !isValidGcashReference(effectiveInitialPaymentReference)
     ) {
       nextErrors.initialPaymentReference = `${getPaymentReferenceLabel(initialPaymentMethod)} must contain numbers only.`;
     }
@@ -2169,6 +2280,12 @@ const GlobalBilling: React.FC = () => {
 
     setSavingInvoice(true);
     try {
+      if (paymentMethod === PAYREX_MOCK_PAYMENT_METHOD) {
+        setPaymentReference(effectivePaymentReference);
+      }
+      if (initialPaymentMethod === PAYREX_MOCK_PAYMENT_METHOD) {
+        setInitialPaymentReference(effectiveInitialPaymentReference);
+      }
       const selectedInvoiceType = invoiceType as InvoiceType;
       const sourceRecordType = selectedSource?.sourceRecordType;
       const sourceRecordId = selectedSource?.sourceRecordId;
@@ -2216,13 +2333,13 @@ const GlobalBilling: React.FC = () => {
         discountIsPercentage: discountType === 'custom' ? (customDiscountType === 'percentage') : undefined,
         paymentMethod,
         paymentStatus: derivedPaymentStatus,
-        paymentReference: paymentMethod !== 'installment' ? trimmedPaymentReference || undefined : undefined,
+        paymentReference: paymentMethod !== 'installment' ? effectivePaymentReference || undefined : undefined,
         installmentMonths: paymentMethod === 'installment' ? selectedInstallmentMonths : undefined,
         installmentInterestRate: paymentMethod === 'installment' ? installmentInterestRate : undefined,
         installmentInterestAmount: paymentMethod === 'installment' ? installmentInterestAmount : undefined,
         initialPaymentAmount: paymentMethod === 'installment' ? clampedInitialPaymentAmount : undefined,
         initialPaymentMethod: paymentMethod === 'installment' ? initialPaymentMethod : undefined,
-        initialPaymentReference: paymentMethod === 'installment' ? trimmedInitialPaymentReference || undefined : undefined,
+        initialPaymentReference: paymentMethod === 'installment' ? effectiveInitialPaymentReference || undefined : undefined,
         notes,
       });
 
@@ -2336,14 +2453,16 @@ const GlobalBilling: React.FC = () => {
       return;
     }
 
-    const trimmedPaymentEntryReference = paymentEntryReference.trim();
-    if (requiresPaymentReference(paymentEntryMethod) && !trimmedPaymentEntryReference) {
+    const effectivePaymentEntryReference = paymentEntryMethod === PAYREX_MOCK_PAYMENT_METHOD
+      ? (paymentEntryReference.trim() || generatePayrexMockReference())
+      : paymentEntryReference.trim();
+    if (requiresPaymentReference(paymentEntryMethod) && !effectivePaymentEntryReference) {
       const message = `${getPaymentReferenceLabel(paymentEntryMethod)} is required.`;
       setPaymentEntryReferenceError(message);
       showAlert('error', 'Payment Reference Required', message);
       return;
     }
-    if (requiresPaymentReference(paymentEntryMethod) && !isValidGcashReference(trimmedPaymentEntryReference)) {
+    if (requiresPaymentReference(paymentEntryMethod) && !isValidGcashReference(effectivePaymentEntryReference)) {
       const message = `${getPaymentReferenceLabel(paymentEntryMethod)} must contain numbers only.`;
       setPaymentEntryReferenceError(message);
       showAlert('error', 'Invalid Payment Reference', message);
@@ -2352,10 +2471,13 @@ const GlobalBilling: React.FC = () => {
 
     setSavingPayment(true);
     try {
+      if (paymentEntryMethod === PAYREX_MOCK_PAYMENT_METHOD) {
+        setPaymentEntryReference(effectivePaymentEntryReference);
+      }
       const response = await apiService.recordBillingInvoicePayment(selectedInvoice.id, {
         amount: safeAmount,
         paymentMethod: paymentEntryMethod,
-        paymentReference: trimmedPaymentEntryReference || undefined,
+        paymentReference: effectivePaymentEntryReference || undefined,
         handledByUserId: currentUser?.id || currentUser?.pk || undefined,
         notes: [
           installmentPaymentMode === 'advance'
@@ -2813,7 +2935,7 @@ const GlobalBilling: React.FC = () => {
       }
 
       if (salesReportSections.payments) {
-        const paymentBreakdown = ['cash', 'gcash', 'installment'].map(method => {
+        const paymentBreakdown = ['cash', 'gcash', 'payrex_mock', 'installment'].map(method => {
           const matched = reportInvoices.filter(invoice => invoice.paymentMethod === method);
           return [
             formatPaymentMethodLabel(method),
@@ -3384,6 +3506,7 @@ const GlobalBilling: React.FC = () => {
                     <option value="all">All Methods</option>
                     <option value="cash">Cash</option>
                     <option value="gcash">GCash</option>
+                    <option value="payrex_mock">PayRex Mock QR</option>
                     <option value="installment">Installment</option>
                   </select>
                 </div>
@@ -3851,7 +3974,9 @@ const GlobalBilling: React.FC = () => {
                           const nextMethod = e.target.value as PaymentMethod;
                           setPaymentMethod(nextMethod);
                           clearFormErrors('paymentReference', 'initialPaymentReference', 'installmentTerm');
-                          if (!requiresPaymentReference(nextMethod)) {
+                          if (nextMethod === PAYREX_MOCK_PAYMENT_METHOD) {
+                            setPaymentReference(generatePayrexMockReference());
+                          } else if (!requiresPaymentReference(nextMethod)) {
                             setPaymentReference('');
                           }
                           setInstallmentMonths('');
@@ -3862,6 +3987,7 @@ const GlobalBilling: React.FC = () => {
                       >
                         <option value="cash">Cash</option>
                         <option value="gcash">GCash</option>
+                        <option value="payrex_mock">PayRex Mock QR</option>
                         <option value="installment">Installment</option>
                       </select>
                       {paymentMethod === 'installment' && (
@@ -3869,7 +3995,32 @@ const GlobalBilling: React.FC = () => {
                           Installment invoices start as pending until the full balance is settled.
                         </div>
                       )}
+                      {paymentMethod === PAYREX_MOCK_PAYMENT_METHOD && (
+                        <div className="billingDiscountHint">
+                          Mock QR mode generates a local reference only. No real PayRex payment is charged.
+                        </div>
+                      )}
                     </div>
+                    {paymentMethod === PAYREX_MOCK_PAYMENT_METHOD && (
+                      <div className="billingFormGroup billingFullWidth">
+                        <label>PayRex Mock QR</label>
+                        <div className="billingPayrexMockPanel">
+                          <PayrexMockQrPreview reference={paymentReference || generatePayrexMockReference()} amount={total} />
+                          <div className="billingPayrexMockDetails">
+                            <span>Reference Number</span>
+                            <strong>{paymentReference || 'Generating...'}</strong>
+                            <p>{getPaymentReferenceHint(PAYREX_MOCK_PAYMENT_METHOD)}</p>
+                            <button
+                              type="button"
+                              className="billingPayrexRegenerateBtn"
+                              onClick={() => setPaymentReference(generatePayrexMockReference())}
+                            >
+                              <IoRefreshOutline size={14} /> Regenerate
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {paymentMethod !== 'installment' && requiresPaymentReference(paymentMethod) && (
                       <div className="billingFormGroup billingFullWidth">
                         <label>{getPaymentReferenceLabel(paymentMethod)} <span className="billingRequired">*</span></label>
@@ -3950,7 +4101,9 @@ const GlobalBilling: React.FC = () => {
                           const nextMethod = e.target.value as PaymentEntryMethod;
                           setInitialPaymentMethod(nextMethod);
                           clearFormErrors('initialPaymentReference');
-                          if (!requiresPaymentReference(nextMethod)) {
+                          if (nextMethod === PAYREX_MOCK_PAYMENT_METHOD) {
+                            setInitialPaymentReference(generatePayrexMockReference());
+                          } else if (!requiresPaymentReference(nextMethod)) {
                             setInitialPaymentReference('');
                           }
                         }}
@@ -3958,8 +4111,29 @@ const GlobalBilling: React.FC = () => {
                       >
                         <option value="cash">Cash</option>
                         <option value="gcash">GCash</option>
+                        <option value="payrex_mock">PayRex Mock QR</option>
                       </select>
                     </div>
+                    {clampedInitialPaymentAmount > 0 && initialPaymentMethod === PAYREX_MOCK_PAYMENT_METHOD && (
+                      <div className="billingFormGroup billingFullWidth">
+                        <label>PayRex Mock Downpayment QR</label>
+                        <div className="billingPayrexMockPanel">
+                          <PayrexMockQrPreview reference={initialPaymentReference || generatePayrexMockReference()} amount={clampedInitialPaymentAmount} />
+                          <div className="billingPayrexMockDetails">
+                            <span>Reference Number</span>
+                            <strong>{initialPaymentReference || 'Generating...'}</strong>
+                            <p>{getPaymentReferenceHint(PAYREX_MOCK_PAYMENT_METHOD)}</p>
+                            <button
+                              type="button"
+                              className="billingPayrexRegenerateBtn"
+                              onClick={() => setInitialPaymentReference(generatePayrexMockReference())}
+                            >
+                              <IoRefreshOutline size={14} /> Regenerate
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {clampedInitialPaymentAmount > 0 && requiresPaymentReference(initialPaymentMethod) && (
                       <div className="billingFormGroup billingFullWidth">
                         <label>{getPaymentReferenceLabel(initialPaymentMethod)} <span className="billingRequired">*</span></label>
@@ -4124,6 +4298,23 @@ const GlobalBilling: React.FC = () => {
                   <label>Payment Method</label>
                   <span>{formatPaymentMethodLabel(selectedInvoice.paymentMethod)}</span>
                 </div>
+                {selectedInvoicePayrexPayment && (
+                  <div className="billingDrawerInfoItem billingDrawerPayrexItem">
+                    <label>PayRex Mock QR</label>
+                    <div className="billingDrawerPayrexPreview">
+                      <PayrexMockQrPreview
+                        reference={selectedInvoicePayrexPayment.paymentReference || selectedInvoicePayrexPayment.payrexMock?.referenceNumber || ''}
+                        amount={selectedInvoicePayrexPayment.amount || selectedInvoice.total}
+                        invoiceNumber={selectedInvoice.invoiceNumber}
+                        compact
+                      />
+                      <div>
+                        <span className="billingPayrexDrawerLabel">Reference</span>
+                        <strong>{selectedInvoicePayrexPayment.paymentReference || selectedInvoicePayrexPayment.payrexMock?.referenceNumber || 'N/A'}</strong>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {selectedInvoice.paymentMethod === 'installment' && (
                   <>
                     <div className="billingDrawerInfoItem">
@@ -4405,7 +4596,9 @@ const GlobalBilling: React.FC = () => {
                     const nextMethod = e.target.value as PaymentEntryMethod;
                     setPaymentEntryMethod(nextMethod);
                     setPaymentEntryReferenceError('');
-                    if (!requiresPaymentReference(nextMethod)) {
+                    if (nextMethod === PAYREX_MOCK_PAYMENT_METHOD) {
+                      setPaymentEntryReference(generatePayrexMockReference());
+                    } else if (!requiresPaymentReference(nextMethod)) {
                       setPaymentEntryReference('');
                     }
                   }}
@@ -4413,8 +4606,29 @@ const GlobalBilling: React.FC = () => {
                 >
                   <option value="cash">Cash</option>
                   <option value="gcash">GCash</option>
+                  <option value="payrex_mock">PayRex Mock QR</option>
                 </select>
               </div>
+              {paymentEntryMethod === PAYREX_MOCK_PAYMENT_METHOD && (
+                <div className="billingFormGroup">
+                  <label>PayRex Mock QR</label>
+                  <div className="billingPayrexMockPanel billingPayrexMockPanelCompact">
+                    <PayrexMockQrPreview reference={paymentEntryReference || generatePayrexMockReference()} amount={calculatedInstallmentPaymentAmount} compact />
+                    <div className="billingPayrexMockDetails">
+                      <span>Reference Number</span>
+                      <strong>{paymentEntryReference || 'Generating...'}</strong>
+                      <p>{getPaymentReferenceHint(PAYREX_MOCK_PAYMENT_METHOD)}</p>
+                      <button
+                        type="button"
+                        className="billingPayrexRegenerateBtn"
+                        onClick={() => setPaymentEntryReference(generatePayrexMockReference())}
+                      >
+                        <IoRefreshOutline size={14} /> Regenerate
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {requiresPaymentReference(paymentEntryMethod) && (
                 <div className="billingFormGroup">
                   <label>{getPaymentReferenceLabel(paymentEntryMethod)} <span className="billingRequired">*</span></label>

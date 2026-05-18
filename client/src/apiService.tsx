@@ -2,7 +2,9 @@
 // All HTTP calls to the Flask backend live here.
 // Every page imports from this file instead of calling fetch inline.
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
+import API_URL from "./API";
+
+const BASE_URL = API_URL;
 
 const getRequestCache = new Map<string, { expiresAt: number; data: any }>();
 const inFlightGetRequests = new Map<string, Promise<any>>();
