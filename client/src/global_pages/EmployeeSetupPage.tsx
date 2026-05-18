@@ -15,8 +15,11 @@ interface MedicalServiceOption {
 
 interface DoctorSetupOptions {
   weekdays?: Array<{ key?: string; label?: string } | string>;
+  availableDays?: Array<{ key?: string; label?: string } | string>;
+  available_days?: Array<{ key?: string; label?: string } | string>;
   medicalServices?: MedicalServiceOption[];
   medical_services?: MedicalServiceOption[];
+  services?: MedicalServiceOption[];
   slotMinutes?: number;
   slot_minutes?: number;
 }
@@ -101,8 +104,8 @@ export default function EmployeeSetupPage() {
     }
   };
 
-  const medicalServices = doctorSetup?.medicalServices ?? doctorSetup?.medical_services ?? [];
-  const weekdayOptions = doctorSetup?.weekdays ?? [];
+  const medicalServices = doctorSetup?.medicalServices ?? doctorSetup?.medical_services ?? doctorSetup?.services ?? [];
+  const weekdayOptions = doctorSetup?.weekdays ?? doctorSetup?.availableDays ?? doctorSetup?.available_days ?? [];
   const hasDoctorSetup = Boolean(doctorSetup);
 
   const getServiceId = (service: MedicalServiceOption) => service.id ?? service.service_id ?? '';
@@ -384,12 +387,12 @@ export default function EmployeeSetupPage() {
 
               {hasDoctorSetup && (
                 <div className="inputContainer" style={{ gap: 12 }}>
-                  <p className="inputLabel">Doctor Appointment Setup</p>
+                  <p className="inputLabel">Veterinarian Appointment Setup</p>
 
                   <div style={{ display: 'grid', gap: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#3730a3', fontWeight: 700 }}>
                       <Stethoscope size={18} />
-                      <span>Services this doctor can handle</span>
+                      <span>Services this veterinarian can handle</span>
                     </div>
                     <div style={{ display: 'grid', gap: 8, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
                       {medicalServices.map(service => {
