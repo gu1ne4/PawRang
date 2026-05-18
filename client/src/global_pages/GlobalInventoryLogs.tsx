@@ -677,16 +677,21 @@ const GlobalInventoryLogs: React.FC<GlobalInventoryLogsProps> = ({ readOnly = fa
     <div className="invContainer">
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
       
-      <div className="invBodyContainer">
-        <div className="invTopContainer">
-          <div className="invSubTopContainer" style={{paddingLeft: '30px'}}>
-            <div className="invSubTopLeft">
-              <IoDocumentTextOutline size={23} className="invBlueIcon" />
-              <span className="invBlueText">Inventory Logs</span>
+      <div className="bodyContainer invBodyContainer">
+        <header className="invCatalogHero">
+          <div className="invCatalogHeroBrand">
+            <div className="invCatalogHeroIcon">
+              <IoDocumentTextOutline size={28} />
             </div>
-            
-            <div className="invBranchSelector">
-              <span className="invBranchLabel">Branch:</span>
+            <div>
+              <span className="invCatalogKicker">Petshield Inventory</span>
+              <h1>Movement Logs</h1>
+              <p>Review product movement history, references, batches, sources, and notes by branch.</p>
+            </div>
+          </div>
+
+          <div className="invCatalogHeroActions">
+            <label className="invBranchSelector" aria-label="Branch filter">
               <select 
                 value={selectedBranch}
                 onChange={(e) => setSelectedBranch(e.target.value)}
@@ -696,7 +701,7 @@ const GlobalInventoryLogs: React.FC<GlobalInventoryLogsProps> = ({ readOnly = fa
                 <option value="Taguig">Taguig</option>
                 <option value="Las Pinas">Las Piñas</option>
               </select>
-            </div>
+            </label>
 
             {!readOnly && (
               <ImportButton
@@ -712,16 +717,17 @@ const GlobalInventoryLogs: React.FC<GlobalInventoryLogsProps> = ({ readOnly = fa
                 type="inventory"
                 buttonClassName="invExportBtn"
               />
-          </div>
-          <div className="invSubTopContainer invNotificationContainer" style={{padding: 13}}>
+            <div className="invNotificationContainer">
             <Notifications 
               buttonClassName="invIconButton"
               iconClassName="invBlueIcon"
+              closeOnScroll
               onViewAll={() => {}}
               onNotificationClick={() => {}}
             />
+            </div>
           </div>
-        </div>
+        </header>
 
         {/* Main Content */}
         <div className="invTableContainerOUT">
@@ -1084,7 +1090,7 @@ const GlobalInventoryLogs: React.FC<GlobalInventoryLogsProps> = ({ readOnly = fa
             <div className="invAlertIcon">
               {modalConfig.type === 'success' && <IoCheckmarkCircleOutline size={55} color="#2e9e0c" />}
               {modalConfig.type === 'error' && <IoCloseCircleOutline size={55} color="#d93025" />}
-              {modalConfig.type !== 'success' && modalConfig.type !== 'error' && <IoAlertCircleOutline size={55} color="#3d67ee" />}
+              {modalConfig.type !== 'success' && modalConfig.type !== 'error' && <IoAlertCircleOutline size={55} color="#0a1156" />}
             </div>
             
             <h3 className="invAlertTitle">{modalConfig.title}</h3>

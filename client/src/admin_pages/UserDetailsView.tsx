@@ -13,6 +13,7 @@ import {
   IoDocumentTextOutline,
   IoHelpCircleOutline,
   IoMedical,
+  IoPaw,
   IoRefreshCircleOutline,
   IoReceipt,
   IoSparklesOutline,
@@ -480,38 +481,23 @@ export default function UserDetailsView({
   };
 
   return (
-    <div
-      style={{
-        backgroundColor: 'white',
-        padding: '30px',
-        borderRadius: '20px',
-        flex: 1,
-        overflowY: 'auto',
-        boxShadow: '0 0 18px rgba(0,0,0,0.05)',
-      }}
-    >
+    <div className="appointmentDetailsPanel">
       <button
         onClick={onBack}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          marginBottom: '20px',
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          padding: 0,
-        }}
+        className="appointmentDetailsBackBtn"
       >
-        <IoArrowBack size={20} color="#3d67ee" />
-        <span style={{ color: '#3d67ee', marginLeft: '8px', fontSize: '16px', fontWeight: '500' }}>
-          {backLabel}
-        </span>
+        <IoArrowBack size={18} />
+        <span>{backLabel}</span>
       </button>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', gap: '12px', flexWrap: 'wrap' }}>
-        <h2 style={{ fontSize: '25px', fontWeight: '700', margin: 0 }}>Patient Details</h2>
+      <div className="appointmentDetailsHeader">
+        <div>
+          <span className="appointmentPanelKicker">Appointment Dossier</span>
+          <h2>{userDetails.fullName}</h2>
+          <p>{userDetails.petName} - {user.service || 'Appointment'}</p>
+        </div>
         {!readOnly && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div className="appointmentDetailsHeaderActions">
             <button
               onClick={handleGenerateAiSummary}
               disabled={isAnyActionBusy}
@@ -532,20 +518,7 @@ export default function UserDetailsView({
               {aiLoading ? <InlineButtonSpinner /> : <IoMedical size={18} />}
               <span>{aiLoading ? 'Generating Summary...' : 'Generate AI Summary'}</span>
             </button>
-            <div
-              style={{
-                fontSize: '12px',
-                color: '#6c7894',
-                backgroundColor: '#f6f8ff',
-                border: '1px solid #dde5ff',
-                borderRadius: '999px',
-                padding: '8px 12px',
-              }}
-            >
-              {aiSymptomSignalCount > 0
-                ? `AI will include booking symptom intake (${reportedSymptoms.length} symptom${reportedSymptoms.length === 1 ? '' : 's'} on record).`
-                : 'AI will use the available booking and medical details.'}
-            </div>
+
             {canAcceptAppointment && (
             <>
               <button
@@ -614,7 +587,34 @@ export default function UserDetailsView({
         )}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+      <div className="appointmentDetailsHero">
+        <div className="appointmentDetailsHeroIcon">
+          <IoPaw size={28} />
+        </div>
+        <div className="appointmentDetailsHeroCopy">
+          <span>{status ? status.replace(/_/g, ' ') : 'scheduled'}</span>
+          <h3>{user.service || 'Appointment'}</h3>
+          <p>{user.date_time || 'Schedule not set'}</p>
+        </div>
+        <div className="appointmentDetailsHeroMeta">
+          <div>
+            <span>Doctor</span>
+            <strong className={assignedDoctor === 'Not Assigned' ? 'appointmentWarnText' : ''}>{assignedDoctor}</strong>
+          </div>
+          <div className="appointmentDetailsHeroMetaBranch">
+            <span>Branch</span>
+            <strong>{assignedBranch}</strong>
+          </div>
+          {billingStatusMeta && (
+            <div>
+              <span>Billing</span>
+              <strong>{billingStatusMeta.label}</strong>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="appointmentDetailsContent">
         {(aiSummary || aiError) && (
           <div className="adminAiPanelWrap">
             <div className="adminAiPanelHeadingRow">
@@ -757,50 +757,50 @@ export default function UserDetailsView({
           </div>
         )}
 
-        <div>
-          <h3 style={{ fontSize: '18px', color: '#3d67ee', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px', marginBottom: '15px' }}>
-            Patient Information
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-            <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Full Name</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.fullName}</div></div>
-            <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Email</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.email}</div></div>
-            <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Phone</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.phone}</div></div>
-            <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Reason for Visit</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.reasonForVisit}</div></div>
-            <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Reschedule Reason</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.rescheduleReason || 'Not provided'}</div></div>
+        <div className="appointmentDetailCard">
+          <div className="appointmentDetailCardHeader">
+            <h3>Patient Information</h3>
+          </div>
+          <div className="appointmentDetailGrid">
+            <div><span>Full Name</span><strong>{userDetails.fullName}</strong></div>
+            <div><span>Email</span><strong>{userDetails.email}</strong></div>
+            <div><span>Phone</span><strong>{userDetails.phone}</strong></div>
+            <div className="appointmentDetailGridWide"><span>Reason for Visit</span><strong>{userDetails.reasonForVisit}</strong></div>
+            <div className="appointmentDetailGridWide"><span>Reschedule Reason</span><strong>{userDetails.rescheduleReason || 'Not provided'}</strong></div>
           </div>
         </div>
 
-        <div>
-          <h3 style={{ fontSize: '18px', color: '#3d67ee', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px', marginBottom: '15px' }}>
-            Pet Information
-          </h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-            <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Pet Name</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.petName}</div></div>
-            <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Type</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.petType}</div></div>
-            <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Breed</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.petBreed}</div></div>
-            <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Gender</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{userDetails.gender}</div></div>
+        <div className="appointmentDetailCard">
+          <div className="appointmentDetailCardHeader">
+            <h3>Pet Information</h3>
+          </div>
+          <div className="appointmentDetailGrid">
+            <div><span>Pet Name</span><strong>{userDetails.petName}</strong></div>
+            <div><span>Type</span><strong>{userDetails.petType}</strong></div>
+            <div><span>Breed</span><strong>{userDetails.petBreed}</strong></div>
+            <div><span>Gender</span><strong>{userDetails.gender}</strong></div>
           </div>
         </div>
 
-        <div>
-          <h3 style={{ fontSize: '18px', color: '#3d67ee', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px', marginBottom: '15px' }}>
-            Medical Information
-          </h3>
-          <div style={{ backgroundColor: '#f9f9f9', padding: '20px', borderRadius: '12px', border: '1px solid #eee' }}>
+        <div className="appointmentDetailCard appointmentDetailCardWide">
+          <div className="appointmentDetailCardHeader">
+            <h3>Medical Information</h3>
+          </div>
+          <div className="appointmentDetailSubpanel">
             {medicalInformation ? (
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '18px' }}>
-                  <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Medication in Past 72 Hours</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatBooleanAnswer(medicalInformation?.on_medication)}</div></div>
-                  <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Flea/Tick Prevention</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatBooleanAnswer(medicalInformation?.flea_tick_prevention)}</div></div>
-                  <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Up-to-Date Vaccinations</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatBooleanAnswer(medicalInformation?.is_vaccinated)}</div></div>
-                  <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Pet is Pregnant</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatBooleanAnswer(medicalInformation?.is_pregnant)}</div></div>
-                  <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Has Allergies</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatBooleanAnswer(medicalInformation?.has_allergies)}</div></div>
-                  <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Has Skin Condition</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatBooleanAnswer(medicalInformation?.has_skin_condition)}</div></div>
+                  <div><div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '4px' }}>Medication in Past 72 Hours</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatBooleanAnswer(medicalInformation?.on_medication)}</div></div>
+                  <div><div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '4px' }}>Flea/Tick Prevention</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatBooleanAnswer(medicalInformation?.flea_tick_prevention)}</div></div>
+                  <div><div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '4px' }}>Up-to-Date Vaccinations</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatBooleanAnswer(medicalInformation?.is_vaccinated)}</div></div>
+                  <div><div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '4px' }}>Pet is Pregnant</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatBooleanAnswer(medicalInformation?.is_pregnant)}</div></div>
+                  <div><div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '4px' }}>Has Allergies</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatBooleanAnswer(medicalInformation?.has_allergies)}</div></div>
+                  <div><div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '4px' }}>Has Skin Condition</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatBooleanAnswer(medicalInformation?.has_skin_condition)}</div></div>
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                  <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Medication Details</div><div style={{ fontSize: '14px', fontWeight: '500', whiteSpace: 'pre-wrap' }}>{medicalInformation?.medication_details || 'Not provided'}</div></div>
-                  <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Additional Notes</div><div style={{ fontSize: '14px', fontWeight: '500', whiteSpace: 'pre-wrap' }}>{medicalInformation?.additional_notes || 'Not provided'}</div></div>
+                  <div><div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '4px' }}>Medication Details</div><div style={{ fontSize: '14px', fontWeight: '500', whiteSpace: 'pre-wrap' }}>{medicalInformation?.medication_details || 'Not provided'}</div></div>
+                  <div><div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '4px' }}>Additional Notes</div><div style={{ fontSize: '14px', fontWeight: '500', whiteSpace: 'pre-wrap' }}>{medicalInformation?.additional_notes || 'Not provided'}</div></div>
                 </div>
 
                 <div style={{ marginTop: '20px', paddingTop: '18px', borderTop: '1px solid #e6ebfb' }}>
@@ -814,7 +814,7 @@ export default function UserDetailsView({
                   </div>
 
                   <div style={{ marginBottom: '16px' }}>
-                    <div style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>Reported Symptoms</div>
+                    <div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '8px' }}>Reported Symptoms</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                       {reportedSymptoms.length > 0 ? reportedSymptoms.map(symptom => (
                         <span
@@ -831,39 +831,39 @@ export default function UserDetailsView({
                           {symptom}
                         </span>
                       )) : (
-                        <span style={{ fontSize: '14px', color: '#666' }}>No symptoms selected during booking.</span>
+                        <span style={{ fontSize: '14px', color: '#8b96aa' }}>No symptoms selected during booking.</span>
                       )}
                     </div>
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '16px' }}>
-                    <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Symptom Duration</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatTextAnswer(medicalInformation?.symptom_duration)}</div></div>
-                    <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Condition Getting Worse</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatTextAnswer(medicalInformation?.worsening_status)}</div></div>
-                    <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Eating Status</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatTextAnswer(medicalInformation?.eating_status)}</div></div>
-                    <div><div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Drinking Status</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatTextAnswer(medicalInformation?.drinking_status)}</div></div>
+                    <div><div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '4px' }}>Symptom Duration</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatTextAnswer(medicalInformation?.symptom_duration)}</div></div>
+                    <div><div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '4px' }}>Condition Getting Worse</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatTextAnswer(medicalInformation?.worsening_status)}</div></div>
+                    <div><div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '4px' }}>Eating Status</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatTextAnswer(medicalInformation?.eating_status)}</div></div>
+                    <div><div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '4px' }}>Drinking Status</div><div style={{ fontSize: '14px', fontWeight: '500' }}>{formatTextAnswer(medicalInformation?.drinking_status)}</div></div>
                   </div>
 
                   <div>
                     <div>
-                      <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Owner Symptom Notes</div>
+                      <div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '4px' }}>Owner Symptom Notes</div>
                       <div style={{ fontSize: '14px', fontWeight: '500', whiteSpace: 'pre-wrap' }}>{formatTextAnswer(medicalInformation?.owner_symptom_notes)}</div>
                     </div>
                   </div>
                 </div>
               </>
             ) : (
-              <div style={{ fontSize: '14px', color: '#666' }}>
+              <div style={{ fontSize: '14px', color: '#8b96aa' }}>
                 No medical information recorded for this appointment yet.
               </div>
             )}
           </div>
         </div>
 
-        <div>
-          <h3 style={{ fontSize: '18px', color: '#3d67ee', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px', marginBottom: '15px' }}>
-            Appointment Details
-          </h3>
-          <div style={{ backgroundColor: '#f9f9f9', padding: '20px', borderRadius: '12px', border: '1px solid #eee' }}>
+        <div className="appointmentDetailCard appointmentDetailCardWide">
+          <div className="appointmentDetailCardHeader">
+            <h3>Appointment Details</h3>
+          </div>
+          <div className="appointmentDetailSubpanel appointmentDetailsScheduleCard">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
               <span style={{ fontSize: '16px', fontWeight: '600' }}>{user.service || 'Appointment'}</span>
               <span style={{ color: '#3d67ee', fontWeight: '600' }}>{user.date_time || 'Schedule not set'}</span>
@@ -871,16 +871,16 @@ export default function UserDetailsView({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div>
-                  <span style={{ fontSize: '14px', color: '#666' }}>Reserved Doctor: </span>
+                  <span style={{ fontSize: '14px', color: '#8b96aa' }}>Reserved Doctor: </span>
                   <strong style={{ color: assignedDoctor === 'Not Assigned' ? '#f57c00' : '#333' }}>{assignedDoctor}</strong>
                 </div>
                 <div>
-                  <span style={{ fontSize: '14px', color: '#666' }}>Branch: </span>
+                  <span style={{ fontSize: '14px', color: '#8b96aa' }}>Branch: </span>
                   <strong style={{ color: assignedBranch === 'Not specified' ? '#888' : '#333' }}>{assignedBranch}</strong>
                 </div>
                 {billingStatusMeta && (
                   <div>
-                    <span style={{ fontSize: '14px', color: '#666', marginRight: '8px' }}>Billing:</span>
+                    <span style={{ fontSize: '14px', color: '#8b96aa', marginRight: '8px' }}>Billing:</span>
                     <span
                       style={{
                         display: 'inline-flex',
@@ -925,11 +925,13 @@ export default function UserDetailsView({
         </div>
 
         {latestRescheduleRequest && (
-          <div>
+          <div className="appointmentDetailCard appointmentDetailCardWide">
+            <div className="appointmentDetailCardHeader">
             <h3 style={{ fontSize: '18px', color: '#3d67ee', borderBottom: '1px solid #f0f0f0', paddingBottom: '10px', marginBottom: '15px' }}>
               Reschedule Details
             </h3>
-            <div style={{ backgroundColor: '#f9f9f9', padding: '20px', borderRadius: '12px', border: '1px solid #eee' }}>
+            </div>
+            <div className="appointmentDetailSubpanel" style={{ backgroundColor: '#f9f9f9', padding: '20px', borderRadius: '12px', border: '1px solid #eee' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', gap: '12px', flexWrap: 'wrap' }}>
                 <div>
                   <div style={{ fontSize: '16px', fontWeight: '600', color: '#333', marginBottom: '6px' }}>Latest Reschedule Request</div>
@@ -947,7 +949,7 @@ export default function UserDetailsView({
                     {requestStatusMeta.label}
                   </div>
                 </div>
-                <div style={{ fontSize: '12px', color: '#666' }}>
+                <div style={{ fontSize: '12px', color: '#8b96aa' }}>
                   Created: <strong style={{ color: '#333' }}>{formatTimestamp(latestRescheduleRequest?.created_at)}</strong>
                 </div>
               </div>
@@ -955,7 +957,7 @@ export default function UserDetailsView({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: isDirectPatientRescheduleRequest ? '0' : '18px' }}>
                 {rescheduleDetailItems.map((item) => (
                   <div key={item.label}>
-                    <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>{item.label}</div>
+                    <div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '4px' }}>{item.label}</div>
                     <div style={{ fontSize: '14px', fontWeight: '500', whiteSpace: 'pre-wrap' }}>{item.value}</div>
                   </div>
                 ))}
@@ -963,7 +965,7 @@ export default function UserDetailsView({
 
               {!isDirectPatientRescheduleRequest && (
                 <div style={{ marginBottom: canReviewClientPreference ? '18px' : '0' }}>
-                  <div style={{ fontSize: '12px', color: '#666', marginBottom: '4px' }}>Patient Note</div>
+                  <div style={{ fontSize: '12px', color: '#8b96aa', marginBottom: '4px' }}>Patient Note</div>
                   <div style={{ fontSize: '14px', fontWeight: '500', color: '#333', whiteSpace: 'pre-wrap' }}>
                     {patientNoteDisplay}
                   </div>
@@ -1172,3 +1174,4 @@ export default function UserDetailsView({
     </div>
   );
 }
+

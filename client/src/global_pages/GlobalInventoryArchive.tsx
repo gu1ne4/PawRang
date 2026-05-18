@@ -324,16 +324,21 @@ const GlobalInventoryArchive: React.FC = () => {
     <div className="invContainer">
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
       
-      <div className="invBodyContainer">
-        <div className="invTopContainer">
-          <div className="invSubTopContainer" style={{paddingLeft: '30px'}}>
-            <div className="invSubTopLeft">
-              <IoIosArchive size={23} className="invBlueIcon" />
-              <span className="invBlueText">Inventory Archive</span>
+      <div className="bodyContainer invBodyContainer">
+        <header className="invCatalogHero">
+          <div className="invCatalogHeroBrand">
+            <div className="invCatalogHeroIcon">
+              <IoIosArchive size={28} />
             </div>
-            
-            <div className="invBranchSelector2">
-              <span className="invBranchLabel">Branch:</span>
+            <div>
+              <span className="invCatalogKicker">Petshield Inventory</span>
+              <h1>Archived Items</h1>
+              <p>Review archived products and restore branch inventory items when needed.</p>
+            </div>
+          </div>
+
+          <div className="invCatalogHeroActions">
+            <label className="invBranchSelector invBranchSelector2" aria-label="Branch filter">
               <select 
                 value={selectedBranch}
                 onChange={(e) => setSelectedBranch(e.target.value)}
@@ -343,17 +348,18 @@ const GlobalInventoryArchive: React.FC = () => {
                 <option value="Taguig">Taguig</option>
                 <option value="Las Pinas">Las Piñas</option>
               </select>
-            </div>
-          </div>
-          <div className="invSubTopContainer invNotificationContainer" style={{padding: 13}}>
+            </label>
+            <div className="invNotificationContainer">
             <Notifications 
               buttonClassName="invIconButton"
               iconClassName="invBlueIcon"
+              closeOnScroll
               onViewAll={() => {}}
               onNotificationClick={() => {}}
             />
+            </div>
           </div>
-        </div>
+        </header>
 
         {/* Main Content */}
         <div className="invTableContainerOUT">
@@ -563,7 +569,7 @@ const GlobalInventoryArchive: React.FC = () => {
             <div className="invAlertIcon">
               {modalConfig.type === 'success' && <IoCheckmarkCircleOutline size={55} color="#2e9e0c" />}
               {modalConfig.type === 'error' && <IoCloseCircleOutline size={55} color="#d93025" />}
-              {modalConfig.type !== 'success' && modalConfig.type !== 'error' && <IoAlertCircleOutline size={55} color="#3d67ee" />}
+              {modalConfig.type !== 'success' && modalConfig.type !== 'error' && <IoAlertCircleOutline size={55} color="#0a1156" />}
             </div>
             
             <h3 className="invAlertTitle">{modalConfig.title}</h3>

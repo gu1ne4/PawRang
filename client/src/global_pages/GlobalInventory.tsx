@@ -1369,16 +1369,21 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
     <div className="invContainer">
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
       
-      <div className="invBodyContainer">
-        <div className="invTopContainer">
-          <div className="invSubTopContainer" style={{paddingLeft: '30px'}}>
-            <div className="invSubTopLeft">
-              <CiBoxes  size={23} className="invBlueIcon" />
-              <span className="invBlueText">{isDoctorLayout ? 'Doctor Inventory / Read Only' : 'Item Catalog'}</span>
+      <div className="bodyContainer invBodyContainer">
+        <header className="invCatalogHero">
+          <div className="invCatalogHeroBrand">
+            <div className="invCatalogHeroIcon">
+              <CiBoxes size={28} />
             </div>
-            
-            <div className="invBranchSelector">
-              <span className="invBranchLabel">Branch:</span>
+            <div>
+              <span className="invCatalogKicker">Petshield Inventory</span>
+              <h1>{isDoctorLayout ? 'Doctor Inventory' : 'Item Catalog'}</h1>
+              <p>{isDoctorLayout ? 'Browse branch product availability in read-only mode.' : 'Manage branch products, stock status, pricing, imports, and exports.'}</p>
+            </div>
+          </div>
+
+          <div className="invCatalogHeroActions">
+            <label className="invBranchSelector" aria-label="Branch filter">
               <select 
                 value={selectedBranch}
                 onChange={(e) => setSelectedBranch(e.target.value)}
@@ -1388,7 +1393,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                 <option value="Taguig">Taguig</option>
                 <option value="Las Pinas">Las Piñas</option>
               </select>
-            </div>
+            </label>
 
               {!readOnly && (
                 <>
@@ -1405,11 +1410,11 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                   />
                 </>
               )}
-          </div>
-          <div className="invSubTopContainer invNotificationContainer" style={{padding: 13}}>
+            <div className="invNotificationContainer">
             <Notifications 
               buttonClassName="invIconButton"
               iconClassName="invBlueIcon"
+              closeOnScroll
               onViewAll={() => {
                 console.log('View all notifications');
               }}
@@ -1419,8 +1424,9 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                 }
               }}
             />
+            </div>
           </div>
-        </div>
+        </header>
 
         {/* Analytics Cards */}
         <div className="invAnalyticsContainer">
@@ -1704,7 +1710,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
                                   <button
                                     type="button"
                                     onClick={() => toggleBatchDetails(productId)}
-                                    style={{ border: 'none', background: 'transparent', color: '#3d67ee', cursor: 'pointer', padding: 0, textAlign: 'left', fontSize: '11px', fontWeight: 700 }}
+                                    style={{ border: 'none', background: 'transparent', color: '#60a5fa', cursor: 'pointer', padding: 0, textAlign: 'left', fontSize: '11px', fontWeight: 700 }}
                                   >
                                     {batchDetailsExpanded ? 'Hide batches' : 'View batches'}
                                   </button>
@@ -2284,7 +2290,7 @@ const GlobalInventory: React.FC<GlobalInventoryProps> = ({ layoutMode = 'admin',
             <div className="invAlertIcon">
               {modalConfig.type === 'success' && <IoCheckmarkCircleOutline size={55} color="#2e9e0c" />}
               {modalConfig.type === 'error' && <IoCloseCircleOutline size={55} color="#d93025" />}
-              {modalConfig.type !== 'success' && modalConfig.type !== 'error' && <IoAlertCircleOutline size={55} color="#3d67ee" />}
+              {modalConfig.type !== 'success' && modalConfig.type !== 'error' && <IoAlertCircleOutline size={55} color="#0a1156" />}
             </div>
             
             <h3 className="invAlertTitle">{modalConfig.title}</h3>

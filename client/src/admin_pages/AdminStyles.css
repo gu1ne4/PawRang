@@ -1141,6 +1141,1604 @@ html, body {
   }
 }
 
+/* Final Booked Appointments layout overrides */
+.appointmentScheduleBody {
+  height: 100vh !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.appointmentScheduleWorkspace {
+  min-height: calc(100vh - 145px) !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.appointmentBookedPanel {
+  min-height: calc(100vh - 154px) !important;
+  height: auto !important;
+  overflow: hidden !important;
+}
+
+.appointmentTableScroll {
+  flex: 1 1 auto !important;
+  min-height: 500px !important;
+  max-height: none !important;
+  overflow: auto !important;
+}
+
+.appointmentClearFiltersBtn {
+  margin-left: 0 !important;
+}
+
+.appointmentBookedPanel .appointmentPaginationBar.accountPagination {
+  display: grid !important;
+  grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr) !important;
+  justify-content: initial !important;
+  align-items: center !important;
+  margin: 14px 0 0 !important;
+}
+
+/* Final Availability Settings layout correction */
+.availabilitySettingsBodyContainer {
+  height: 100vh !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.availabilitySettingsWorkspace {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: stretch !important;
+  gap: 20px !important;
+  width: 100% !important;
+  min-height: calc(100vh - 154px) !important;
+  height: auto !important;
+  margin-top: 24px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.availabilitySettingsSidebar {
+  flex: 0 0 360px !important;
+  width: 360px !important;
+  max-width: 360px !important;
+  min-width: 300px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 20px !important;
+  min-height: 0 !important;
+}
+
+.availabilitySettingsPanel,
+.availabilitySettingsMainPanel {
+  border: 1px solid rgba(8, 24, 160, 0.12) !important;
+  border-radius: 22px !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.06), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(249, 251, 255, 0.9)) !important;
+  box-shadow:
+    0 18px 42px rgba(10, 17, 86, 0.075),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+.availabilitySettingsPanel {
+  padding: 20px !important;
+}
+
+.availabilitySettingsSpecialDatesPanel {
+  flex: 1 1 auto !important;
+  min-height: 300px !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.availabilitySettingsMainPanel {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  padding: 30px !important;
+  overflow-y: auto !important;
+}
+
+@media (max-width: 1100px) {
+  .availabilitySettingsWorkspace {
+    flex-direction: column !important;
+  }
+
+  .availabilitySettingsSidebar {
+    width: 100% !important;
+    max-width: none !important;
+    flex: 0 0 auto !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .availabilitySettingsSidebar {
+    display: flex !important;
+  }
+
+  .availabilitySettingsMainPanel {
+    padding: 20px !important;
+  }
+}
+
+/* Availability Settings final page polish */
+.availabilitySettingsBodyContainer {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100vh !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.availabilitySettingsTopContainer {
+  order: 0 !important;
+  flex: 0 0 auto !important;
+  position: relative !important;
+  top: auto !important;
+  z-index: 5 !important;
+  margin: 0 0 16px !important;
+}
+
+.availabilitySettingsWorkspace {
+  order: 1 !important;
+  flex: 1 0 auto !important;
+  min-height: calc(100vh - 172px) !important;
+  margin: 0 !important;
+}
+
+.availabilitySettingsBodyContainer > .admin-body-footer.user-page-footer,
+.availabilitySettingsBodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+  order: 99 !important;
+  flex: 0 0 auto !important;
+  margin-top: 48px !important;
+}
+
+.availabilitySettingsPanel,
+.availabilitySettingsMainPanel {
+  border-color: rgba(8, 24, 160, 0.14) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.92)) !important;
+}
+
+.availabilitySettingsPanel h3,
+.availabilitySettingsMainPanel h2,
+.availabilitySettingsMainPanel h3 {
+  color: #0a1156 !important;
+}
+
+.availabilitySettingsWorkspace .dataTable {
+  border: 1px solid rgba(8, 24, 160, 0.1) !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  background: rgba(255, 255, 255, 0.86) !important;
+}
+
+.availabilitySettingsWorkspace .dataTable thead th,
+.availabilitySettingsWorkspace .dataTable th {
+  border-bottom: 1px solid rgba(61, 182, 238, 0.24) !important;
+  background:
+    linear-gradient(135deg, rgba(8, 24, 160, 0.1), rgba(61, 182, 238, 0.12)) !important;
+  color: #0a1156 !important;
+  font-size: 0.72rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+}
+
+.availabilitySettingsWorkspace .dataTable td {
+  border-bottom: 1px solid rgba(8, 24, 160, 0.08) !important;
+  color: #34405a !important;
+}
+
+.availabilitySettingsWorkspace .dataTable tbody tr:hover {
+  background: rgba(61, 182, 238, 0.08) !important;
+}
+
+.availabilitySettingsWorkspace .switch .slider {
+  border: 1px solid rgba(250, 43, 36, 0.22) !important;
+  background:
+    linear-gradient(135deg, rgba(250, 43, 36, 0.12), rgba(255, 255, 255, 0.72)) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55) !important;
+}
+
+.availabilitySettingsWorkspace .switch .slider:before {
+  background: #ffffff !important;
+  box-shadow: 0 4px 10px rgba(10, 17, 86, 0.18) !important;
+}
+
+.availabilitySettingsWorkspace .switch input:checked + .slider {
+  border-color: rgba(61, 182, 238, 0.44) !important;
+  background:
+    linear-gradient(135deg, #3db6ee 0%, #0818a0 100%) !important;
+}
+
+.availabilitySettingsWorkspace .switch input:checked + .slider:before {
+  background: #ffffff !important;
+}
+
+.availabilitySettingsWorkspace .switch input:disabled + .slider {
+  cursor: not-allowed !important;
+  opacity: 0.58 !important;
+}
+
+.availabilitySettingsWorkspace .gradientBtn,
+.availabilitySettingsWorkspace .submitBtn,
+.availabilitySettingsWorkspace .availabilityPrimaryBtn {
+  border: 0 !important;
+  border-radius: 10px !important;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(135deg, #fa2b24 0%, #b91d28 42%, #0818a0 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 14px 28px rgba(8, 24, 160, 0.2) !important;
+}
+
+.availabilitySettingsWorkspace .availabilitySecondaryBtn,
+.availabilitySettingsWorkspace .availabilityGhostBtn,
+.availabilitySettingsWorkspace .availabilityInlineActionBtn {
+  border: 1px solid rgba(8, 24, 160, 0.14) !important;
+  border-radius: 10px !important;
+  background: #ffffff !important;
+  color: #0818a0 !important;
+  box-shadow: 0 8px 18px rgba(10, 17, 86, 0.06) !important;
+}
+
+.availabilitySettingsWorkspace .availabilitySecondaryBtn {
+  background:
+    linear-gradient(135deg, rgba(61, 182, 238, 0.12), rgba(255, 255, 255, 0.92)) !important;
+}
+
+.availabilitySettingsWorkspace .availabilityGhostBtn {
+  color: #4a5872 !important;
+}
+
+.availabilitySettingsWorkspace .availabilityInlineActionBtn {
+  min-height: 34px !important;
+  padding: 7px 12px !important;
+  border-radius: 999px !important;
+}
+
+.availabilitySettingsWorkspace button[disabled] {
+  color: #8b96aa !important;
+  background: #eef3ff !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* Availability Settings final page polish */
+.availabilitySettingsBodyContainer {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100vh !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.availabilitySettingsTopContainer {
+  order: 0 !important;
+  flex: 0 0 auto !important;
+  position: relative !important;
+  top: auto !important;
+  z-index: 5 !important;
+  margin: 0 0 16px !important;
+}
+
+.availabilitySettingsWorkspace {
+  order: 1 !important;
+  display: flex !important;
+  flex: 1 0 auto !important;
+  flex-direction: row !important;
+  align-items: stretch !important;
+  gap: 20px !important;
+  width: 100% !important;
+  min-height: calc(100vh - 172px) !important;
+  margin: 0 !important;
+}
+
+.availabilitySettingsBodyContainer > .admin-body-footer.user-page-footer,
+.availabilitySettingsBodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+  order: 99 !important;
+  flex: 0 0 auto !important;
+  margin-top: 48px !important;
+}
+
+.availabilitySettingsPanel,
+.availabilitySettingsMainPanel {
+  border-color: rgba(8, 24, 160, 0.14) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.92)) !important;
+}
+
+.availabilitySettingsPanel h3,
+.availabilitySettingsMainPanel h2,
+.availabilitySettingsMainPanel h3 {
+  color: #0a1156 !important;
+}
+
+.availabilitySettingsPanel p,
+.availabilitySettingsMainPanel p,
+.availabilitySettingsMainPanel div[style*="color: #888"],
+.availabilitySettingsMainPanel div[style*="color: '#888'"] {
+  color: #4a5872 !important;
+}
+
+.availabilitySettingsWorkspace .dataTable {
+  border: 1px solid rgba(8, 24, 160, 0.1) !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+  background: rgba(255, 255, 255, 0.86) !important;
+}
+
+.availabilitySettingsWorkspace .dataTable thead th,
+.availabilitySettingsWorkspace .dataTable th {
+  border-bottom: 1px solid rgba(61, 182, 238, 0.24) !important;
+  background:
+    linear-gradient(135deg, rgba(8, 24, 160, 0.1), rgba(61, 182, 238, 0.12)) !important;
+  color: #0a1156 !important;
+  font-size: 0.72rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+}
+
+.availabilitySettingsWorkspace .dataTable td {
+  border-bottom: 1px solid rgba(8, 24, 160, 0.08) !important;
+  color: #34405a !important;
+}
+
+.availabilitySettingsWorkspace .dataTable tbody tr:hover {
+  background: rgba(61, 182, 238, 0.08) !important;
+}
+
+.availabilitySettingsWorkspace .switch {
+  width: 50px !important;
+  height: 24px !important;
+}
+
+.availabilitySettingsWorkspace .switch .slider {
+  border: 1px solid rgba(250, 43, 36, 0.22) !important;
+  background:
+    linear-gradient(135deg, rgba(250, 43, 36, 0.12), rgba(255, 255, 255, 0.72)) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55) !important;
+}
+
+.availabilitySettingsWorkspace .switch .slider:before {
+  background: #ffffff !important;
+  box-shadow: 0 4px 10px rgba(10, 17, 86, 0.18) !important;
+}
+
+.availabilitySettingsWorkspace .switch input:checked + .slider {
+  border-color: rgba(61, 182, 238, 0.44) !important;
+  background:
+    linear-gradient(135deg, #3db6ee 0%, #0818a0 100%) !important;
+}
+
+.availabilitySettingsWorkspace .switch input:checked + .slider:before {
+  background: #ffffff !important;
+}
+
+.availabilitySettingsWorkspace .switch input:disabled + .slider {
+  cursor: not-allowed !important;
+  opacity: 0.58 !important;
+}
+
+.availabilitySettingsWorkspace .gradientBtn,
+.availabilitySettingsWorkspace .submitBtn,
+.availabilitySettingsWorkspace .availabilityPrimaryBtn,
+.availabilitySettingsMainPanel button[style*="backgroundColor: '#3d67ee'"],
+.availabilitySettingsMainPanel button[style*="backgroundColor: '#9aaef7'"] {
+  border: 0 !important;
+  border-radius: 10px !important;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(135deg, #fa2b24 0%, #b91d28 42%, #0818a0 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 14px 28px rgba(8, 24, 160, 0.2) !important;
+}
+
+.availabilitySettingsWorkspace .gradientBtn:hover,
+.availabilitySettingsWorkspace .submitBtn:hover,
+.availabilitySettingsWorkspace .availabilityPrimaryBtn:hover,
+.availabilitySettingsMainPanel button[style*="backgroundColor: '#3d67ee'"]:hover {
+  filter: brightness(1.04) !important;
+  transform: translateY(-1px);
+}
+
+.availabilitySettingsWorkspace .availabilitySecondaryBtn,
+.availabilitySettingsWorkspace .availabilityGhostBtn,
+.availabilitySettingsWorkspace .availabilityInlineActionBtn {
+  border: 1px solid rgba(8, 24, 160, 0.14) !important;
+  border-radius: 10px !important;
+  background: #ffffff !important;
+  color: #0818a0 !important;
+  box-shadow: 0 8px 18px rgba(10, 17, 86, 0.06) !important;
+}
+
+.availabilitySettingsWorkspace .availabilitySecondaryBtn {
+  background:
+    linear-gradient(135deg, rgba(61, 182, 238, 0.12), rgba(255, 255, 255, 0.92)) !important;
+}
+
+.availabilitySettingsWorkspace .availabilityGhostBtn {
+  color: #4a5872 !important;
+}
+
+.availabilitySettingsWorkspace .availabilityInlineActionBtn {
+  min-height: 34px !important;
+  padding: 7px 12px !important;
+  border-radius: 999px !important;
+}
+
+.availabilitySettingsWorkspace .availabilitySecondaryBtn:hover,
+.availabilitySettingsWorkspace .availabilityGhostBtn:hover,
+.availabilitySettingsWorkspace .availabilityInlineActionBtn:hover {
+  border-color: rgba(8, 24, 160, 0.32) !important;
+  background: #f7fbff !important;
+  color: #0818a0 !important;
+}
+
+.availabilitySettingsMainPanel button[style*="background: 'none'"],
+.availabilitySettingsMainPanel button[style*="backgroundColor: '#fff'"],
+.availabilitySettingsMainPanel button[style*="backgroundColor: '#f5f5f5'"],
+.availabilitySettingsMainPanel button[style*="backgroundColor: '#f5f7fb'"],
+.availabilitySettingsMainPanel button[style*="backgroundColor: '#eef4ff'"] {
+  border: 1px solid rgba(8, 24, 160, 0.14) !important;
+  border-radius: 10px !important;
+  background: #ffffff !important;
+  color: #0818a0 !important;
+  box-shadow: 0 8px 18px rgba(10, 17, 86, 0.06) !important;
+}
+
+.availabilitySettingsMainPanel button[disabled] {
+  color: #8b96aa !important;
+  background: #eef3ff !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.availabilitySettingsPanel .submitBtn {
+  width: 100% !important;
+}
+
+@media (max-width: 1100px) {
+  .availabilitySettingsWorkspace {
+    flex-direction: column !important;
+  }
+}
+
+/* Final Availability Settings layout correction */
+.availabilitySettingsBodyContainer {
+  height: 100vh !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.availabilitySettingsWorkspace {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: stretch !important;
+  gap: 20px !important;
+  width: 100% !important;
+  min-height: calc(100vh - 154px) !important;
+  height: auto !important;
+  margin-top: 24px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.availabilitySettingsSidebar {
+  flex: 0 0 360px !important;
+  width: 360px !important;
+  max-width: 360px !important;
+  min-width: 300px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 20px !important;
+  min-height: 0 !important;
+}
+
+.availabilitySettingsPanel,
+.availabilitySettingsMainPanel {
+  border: 1px solid rgba(8, 24, 160, 0.12) !important;
+  border-radius: 22px !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.06), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(249, 251, 255, 0.9)) !important;
+  box-shadow:
+    0 18px 42px rgba(10, 17, 86, 0.075),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+.availabilitySettingsPanel {
+  padding: 20px !important;
+}
+
+.availabilitySettingsSpecialDatesPanel {
+  flex: 1 1 auto !important;
+  min-height: 300px !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.availabilitySettingsMainPanel {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  padding: 30px !important;
+  overflow-y: auto !important;
+}
+
+@media (max-width: 1100px) {
+  .availabilitySettingsWorkspace {
+    flex-direction: column !important;
+  }
+
+  .availabilitySettingsSidebar {
+    width: 100% !important;
+    max-width: none !important;
+    flex: 0 0 auto !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .availabilitySettingsSidebar {
+    display: flex !important;
+  }
+
+  .availabilitySettingsMainPanel {
+    padding: 20px !important;
+  }
+}
+
+/* Final Booked Appointments layout overrides */
+.appointmentScheduleBody {
+  height: 100vh !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.appointmentScheduleWorkspace {
+  min-height: calc(100vh - 145px) !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.appointmentBookedPanel {
+  min-height: calc(100vh - 154px) !important;
+  height: auto !important;
+  overflow: hidden !important;
+}
+
+.appointmentTableScroll {
+  flex: 1 1 auto !important;
+  min-height: 500px !important;
+  max-height: none !important;
+  overflow: auto !important;
+}
+
+.appointmentClearFiltersBtn {
+  margin-left: 0 !important;
+}
+
+.appointmentBookedPanel .appointmentPaginationBar.accountPagination {
+  display: grid !important;
+  grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr) !important;
+  justify-content: initial !important;
+  align-items: center !important;
+  margin: 14px 0 0 !important;
+}
+
+/* Final Booked Appointments layout overrides */
+.appointmentScheduleBody {
+  height: 100vh !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.appointmentScheduleWorkspace {
+  min-height: calc(100vh - 145px) !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.appointmentBookedPanel {
+  min-height: calc(100vh - 154px) !important;
+  height: auto !important;
+  overflow: hidden !important;
+}
+
+.appointmentTableScroll {
+  flex: 1 1 auto !important;
+  min-height: 500px !important;
+  max-height: none !important;
+  overflow: auto !important;
+}
+
+.appointmentClearFiltersBtn {
+  margin-left: 0 !important;
+}
+
+.appointmentBookedPanel .appointmentPaginationBar.accountPagination {
+  display: grid !important;
+  grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr) !important;
+  justify-content: initial !important;
+  align-items: center !important;
+  margin: 14px 0 0 !important;
+}
+
+/* Booked Appointments sizing and modal polish */
+.appointmentScheduleBody {
+  height: 100vh !important;
+  min-height: 0;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.appointmentScheduleWorkspace {
+  flex: 1 0 auto !important;
+  min-height: calc(100vh - 145px);
+  height: auto !important;
+  overflow: visible;
+}
+
+.appointmentScheduleMain,
+.appointmentBookedPanel,
+.appointmentBookedContent {
+  min-height: 0;
+}
+
+.appointmentBookedPanel {
+  min-height: calc(100vh - 154px);
+  height: auto;
+  overflow: hidden;
+}
+
+.appointmentToolbar {
+  align-items: flex-end;
+}
+
+.appointmentClearFiltersBtn {
+  margin-left: 0 !important;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(250, 43, 36, 0.22) !important;
+  border-radius: 999px !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 12px 24px rgba(4, 8, 42, 0.12);
+}
+
+.appointmentTableScroll {
+  flex: 1 1 auto;
+  min-height: 500px;
+  max-height: none !important;
+  overflow: auto;
+}
+
+.appointmentBookedPanel .appointmentPaginationBar.accountPagination {
+  flex: 0 0 auto;
+  display: grid !important;
+  grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr);
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin: 14px 0 0;
+  padding-top: 13px;
+  border-top: 1px solid rgba(8, 24, 160, 0.08);
+}
+
+.appointmentBookedPanel .appointmentPaginationInfo {
+  justify-self: center;
+  min-height: 32px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #4a5872;
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-align: center;
+}
+
+.appointmentBookedPanel .appointmentPageBtn {
+  min-width: 112px;
+  min-height: 34px;
+  border-radius: 999px;
+  border-color: rgba(8, 24, 160, 0.2);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.12), transparent 38%),
+    #ffffff;
+  color: #0a1156;
+  box-shadow: 0 8px 18px rgba(10, 17, 86, 0.06);
+}
+
+.appointmentBookedPanel .appointmentPageBtn:hover:not(:disabled) {
+  border-color: rgba(8, 24, 160, 0.36);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.18), transparent 38%),
+    #eef5ff;
+  color: #0818a0;
+}
+
+.appointmentBookedPanel .appointmentPageBtn:disabled {
+  border-color: rgba(157, 171, 195, 0.22);
+  color: #9aa6ba;
+  background: rgba(255, 255, 255, 0.56);
+  opacity: 1;
+}
+
+.appointmentCreateModal {
+  width: min(96vw, 920px) !important;
+  max-width: 920px !important;
+  max-height: min(92vh, 880px) !important;
+  padding: 0 !important;
+  overflow: hidden;
+  border-radius: 24px !important;
+}
+
+.appointmentCreateModalHeader {
+  margin: 0 !important;
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.1);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.12), transparent 40%),
+    rgba(255, 255, 255, 0.62);
+}
+
+.appointmentCreateModalHeader span {
+  color: #4a5872;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.appointmentCreateModalHeader h2 {
+  color: #0a1156 !important;
+  font-size: 1.28rem !important;
+}
+
+.appointmentCreateModalHeader p {
+  margin: 4px 0 0;
+  color: #4a5872;
+  font-size: 0.78rem;
+}
+
+.appointmentCreateModalClose {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(8, 24, 160, 0.12) !important;
+  border-radius: 999px;
+  background: #ffffff !important;
+  display: grid;
+  place-items: center;
+}
+
+.appointmentCreateQuickActions {
+  margin: 16px 20px 12px !important;
+}
+
+.appointmentCreateSearchBtn,
+.appointmentCreateSubmitBtn {
+  border-radius: 999px !important;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%) !important;
+}
+
+.appointmentCreateSecondaryBtn,
+.appointmentCreateCancelBtn {
+  border: 1px solid rgba(8, 24, 160, 0.14) !important;
+  border-radius: 999px !important;
+  background: #ffffff !important;
+  color: #0a1156 !important;
+}
+
+.appointmentCreateModalBody {
+  margin: 0 20px;
+  padding: 4px 4px 4px 0 !important;
+  gap: 14px !important;
+  scrollbar-color: rgba(8, 24, 160, 0.34) transparent;
+}
+
+.appointmentCreateModalBody > div {
+  padding: 16px;
+  border: 1px solid #e7edff;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10px 24px rgba(10, 17, 86, 0.04);
+}
+
+.appointmentCreateModalBody > div > div:first-child {
+  border-bottom-color: rgba(8, 24, 160, 0.12) !important;
+}
+
+.appointmentCreateModalBody h3 {
+  color: #0a1156 !important;
+  font-size: 0.96rem !important;
+  font-weight: 800 !important;
+}
+
+.appointmentCreateModalBody .formInput,
+.appointmentCreateSearchOverlay input {
+  border-color: rgba(8, 24, 160, 0.14) !important;
+  border-radius: 12px !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  color: #0a1156 !important;
+}
+
+.appointmentCreateModalFooter {
+  margin-top: 0 !important;
+  padding: 16px 20px 18px !important;
+  border-top-color: rgba(8, 24, 160, 0.1) !important;
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.appointmentCreateFooterActions {
+  gap: 12px !important;
+}
+
+.appointmentCreateValidation {
+  border-color: rgba(250, 43, 36, 0.24) !important;
+  background: rgba(250, 43, 36, 0.08) !important;
+  color: #b91d28 !important;
+}
+
+.appointmentCreateSearchOverlay {
+  border-radius: 24px !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.08), transparent 34%),
+    #ffffff !important;
+}
+
+@media (max-width: 900px) {
+  .appointmentScheduleWorkspace,
+  .appointmentBookedPanel {
+    min-height: auto;
+  }
+
+  .appointmentTableScroll {
+    min-height: 420px;
+  }
+
+  .appointmentBookedPanel .appointmentPaginationBar.accountPagination {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .appointmentBookedPanel .appointmentPaginationInfo {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    width: 100%;
+  }
+
+  .appointmentBookedPanel .paginationPrevBtn {
+    grid-column: 1;
+    grid-row: 2;
+    width: 100%;
+  }
+
+  .appointmentBookedPanel .paginationNextBtn {
+    grid-column: 2;
+    grid-row: 2;
+    width: 100%;
+  }
+
+  .appointmentCreateFooterActions,
+  .appointmentCreateQuickActions {
+    flex-direction: column;
+  }
+}
+
+/* Appointment page order guard: Account Overview gives its header order: 1. */
+.appointmentScheduleBody {
+  display: flex;
+  flex-direction: column;
+}
+
+.appointmentScheduleTop {
+  order: 1;
+  flex: 0 0 auto;
+}
+
+.appointmentScheduleWorkspace {
+  order: 2;
+}
+
+/* Booked Appointments refresh */
+.appointmentScheduleBody {
+  background:
+    radial-gradient(circle at 14% 8%, rgba(250, 43, 36, 0.1), transparent 28%),
+    radial-gradient(circle at 84% 0%, rgba(8, 24, 160, 0.16), transparent 32%),
+    linear-gradient(180deg, #f8faff 0%, #f3f6ff 42%, #eef3ff 100%) !important;
+}
+
+.appointmentScheduleTop {
+  position: relative;
+  z-index: 40;
+}
+
+.appointmentScheduleHeroIcon {
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(61, 182, 238, 0.35), transparent 36%, rgba(255, 15, 15, 0.62)),
+    linear-gradient(135deg, #0b1732 0%, #071126 64%, #040815 100%);
+}
+
+.appointmentHeaderActions {
+  align-self: center;
+}
+
+.appointmentHeaderSearchInput:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.appointmentScheduleWorkspace {
+  flex: 1;
+  min-height: 0;
+  flex-direction: row !important;
+  gap: 20px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.appointmentScheduleSidebar {
+  flex: 1 1 310px;
+  min-width: 300px;
+  max-width: 350px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.appointmentScheduleMain {
+  flex: 3 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.appointmentCalendarPanel,
+.appointmentDoctorsPanel,
+.appointmentBookedPanel,
+.appointmentDetailsPanel {
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.06), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(249, 251, 255, 0.88));
+  box-shadow:
+    0 18px 42px rgba(10, 17, 86, 0.075),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.appointmentCalendarPanel {
+  padding: 20px;
+}
+
+.appointmentDoctorsPanel {
+  flex: 1;
+  min-height: 0;
+  max-height: 400px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+}
+
+.appointmentDoctorsPanel h3 {
+  margin: 0 0 10px;
+  color: #0a1156;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.appointmentBookedPanel {
+  flex: 1;
+  min-height: 0;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.appointmentBookedHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.1);
+}
+
+.appointmentPanelKicker {
+  display: block;
+  margin-bottom: 4px;
+  color: #4a5872;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.appointmentBookedHeader h2,
+.appointmentDetailsHeader h2 {
+  margin: 0;
+  color: #0a1156;
+  font-size: clamp(1.22rem, 1.8vw, 1.55rem);
+  font-weight: 800;
+}
+
+.appointmentBookedHeader p,
+.appointmentDetailsHeader p {
+  margin: 4px 0 0;
+  color: #4a5872;
+  font-size: 0.8rem;
+}
+
+.appointmentCreateBtn {
+  min-height: 36px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(61, 182, 238, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%) !important;
+}
+
+.appointmentBookedContent {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.appointmentToolbar {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 16px 0 14px;
+}
+
+.appointmentFilterIcon,
+.appointmentSettingsBtn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 8px 18px rgba(10, 17, 86, 0.04);
+}
+
+.appointmentFilterGroup {
+  display: grid;
+  gap: 5px;
+}
+
+.appointmentFilterGroup label,
+.appointmentSettingsSection label {
+  color: #4a5872;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.appointmentFilterSelect,
+.appointmentSettingsSelect {
+  width: 160px !important;
+  height: 36px !important;
+  border: 1px solid rgba(8, 24, 160, 0.14) !important;
+  border-radius: 999px !important;
+  background: #ffffff !important;
+  color: #0a1156 !important;
+}
+
+.appointmentFilterSelectWide {
+  width: 205px !important;
+}
+
+.appointmentSettingsDropdownContainer {
+  position: relative;
+}
+
+.appointmentSettingsBtn {
+  cursor: pointer;
+}
+
+.appointmentSettingsBtn:hover {
+  border-color: rgba(8, 24, 160, 0.3);
+  background: #f7fbff;
+}
+
+.appointmentSettingsDropdown {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  z-index: 80;
+  width: 235px;
+  padding: 14px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 22px 50px rgba(4, 8, 42, 0.16);
+}
+
+.appointmentSettingsSection {
+  display: grid;
+  gap: 8px;
+}
+
+.appointmentSettingsSelect {
+  width: 100% !important;
+}
+
+.appointmentSettingsDivider {
+  height: 1px;
+  margin: 12px 0;
+  background: rgba(8, 24, 160, 0.1);
+}
+
+.appointmentClearFiltersBtn {
+  height: 36px;
+  margin-left: auto;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0a1156;
+  border-color: rgba(8, 24, 160, 0.14);
+}
+
+.appointmentTableScroll {
+  border-color: rgba(8, 24, 160, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.appointmentTableScroll .dataTable th {
+  background: #f7fbff;
+  color: #0a1156;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+}
+
+.appointmentTableScroll .dataTable td {
+  color: #34405a;
+}
+
+.appointmentPaginationBar {
+  justify-content: space-between;
+  border-top-color: rgba(8, 24, 160, 0.08);
+}
+
+.appointmentPageBtn {
+  min-width: 92px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.appointmentPageNumber {
+  border-radius: 999px;
+}
+
+/* Appointment details redesign */
+.appointmentDetailsPanel {
+  flex: 1;
+  min-height: 0;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.appointmentDetailsBackBtn {
+  min-height: 34px;
+  margin-bottom: 14px;
+  padding: 0 12px;
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0818a0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.82rem;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.appointmentDetailsHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.1);
+}
+
+.appointmentDetailsHeaderActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+}
+
+.appointmentDetailsHeaderActions button {
+  border-radius: 999px !important;
+}
+
+.appointmentDetailsHero {
+  display: grid;
+  grid-template-columns: auto minmax(0, 0.9fr) minmax(390px, 1.25fr);
+  gap: 16px;
+  align-items: center;
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.12), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(248, 251, 255, 0.9));
+}
+
+.appointmentDetailsHeroIcon {
+  width: 58px;
+  height: 58px;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(61, 182, 238, 0.35), transparent 36%, rgba(255, 15, 15, 0.62)),
+    linear-gradient(135deg, #0b1732 0%, #071126 64%, #040815 100%);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+}
+
+.appointmentDetailsHeroCopy span {
+  color: #4a5872;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.appointmentDetailsHeroCopy h3 {
+  margin: 4px 0;
+  color: #0a1156;
+  font-size: 1.05rem;
+}
+
+.appointmentDetailsHeroCopy p {
+  margin: 0;
+  color: #4a5872;
+  font-size: 0.82rem;
+}
+
+.appointmentDetailsHeroMeta {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.8fr) minmax(190px, 1.55fr) minmax(110px, 0.8fr);
+  gap: 10px;
+}
+
+.appointmentDetailsHeroMeta > div,
+.appointmentDetailGrid > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e7edff;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.appointmentDetailsHeroMeta span,
+.appointmentDetailGrid span {
+  color: #8b96aa;
+  font-size: 0.65rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.appointmentDetailsHeroMeta strong,
+.appointmentDetailGrid strong {
+  min-width: 0;
+  color: #0a1156;
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
+}
+
+.appointmentWarnText {
+  color: #b26a00 !important;
+}
+
+.appointmentDetailsContent {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.appointmentDetailsContent > .adminAiPanelWrap,
+.appointmentDetailCardWide,
+.appointmentDetailsContent > div:last-child {
+  grid-column: 1 / -1;
+}
+
+.appointmentDetailCard {
+  padding: 16px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10px 24px rgba(10, 17, 86, 0.05);
+}
+
+.appointmentDetailCardHeader {
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.1);
+}
+
+.appointmentDetailCardHeader h3 {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  color: #0a1156 !important;
+  font-size: 0.98rem !important;
+  font-weight: 800 !important;
+}
+
+.appointmentDetailGrid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+
+.appointmentDetailGridWide {
+  grid-column: 1 / -1;
+}
+
+.appointmentDetailSubpanel {
+  padding: 14px !important;
+  border: 1px solid #e7edff !important;
+  border-radius: 16px !important;
+  background: rgba(248, 251, 255, 0.74) !important;
+}
+
+.appointmentDetailsScheduleCard {
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.08), transparent 32%),
+    rgba(248, 251, 255, 0.78) !important;
+}
+
+/* Availability Settings and History shared admin shell */
+.availabilitySettingsBodyContainer,
+.historyBodyContainer {
+  gap: 0;
+}
+
+.availabilitySettingsTopContainer,
+.historyTopContainer {
+  margin-bottom: 0;
+}
+
+.availabilitySettingsHeaderActions,
+.historyHeaderActions {
+  min-height: 40px;
+}
+
+.availabilitySettingsWorkspace {
+  flex-direction: row;
+  gap: 20px;
+  margin-top: 24px;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 0;
+}
+
+.availabilitySettingsSidebar {
+  flex: 1 1 310px;
+  min-width: 300px;
+  max-width: 390px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0;
+}
+
+.availabilitySettingsPanel,
+.availabilitySettingsMainPanel {
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.06), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(249, 251, 255, 0.9));
+  box-shadow:
+    0 18px 42px rgba(10, 17, 86, 0.075),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.availabilitySettingsPanel {
+  padding: 20px;
+}
+
+.availabilitySettingsSpecialDatesPanel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.availabilitySettingsMainPanel {
+  flex: 2 1 0;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 30px;
+}
+
+.availabilitySettingsWorkspace .dataTable th,
+.historyTableContainer .dataTable th {
+  background: #f7fbff;
+  color: #0a1156;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+}
+
+.availabilitySettingsWorkspace .dataTable td,
+.historyTableContainer .dataTable td {
+  color: #34405a;
+}
+
+.historyTableContainer {
+  margin-top: 24px;
+}
+
+.historyToolbar {
+  align-items: flex-start;
+}
+
+.historyFilterRow {
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.historyFilterSection {
+  min-width: 0;
+  margin-left: 0;
+  align-items: center;
+}
+
+.historyFilterSection .filterSelect {
+  width: 150px;
+}
+
+.historyFilterSection .historyRowsSelect {
+  width: 130px;
+}
+
+.historyPagination {
+  justify-content: space-between;
+  border-top: 1px solid rgba(8, 24, 160, 0.08);
+}
+
+@media (max-width: 1100px) {
+  .appointmentScheduleWorkspace {
+    flex-direction: column !important;
+  }
+
+  .appointmentScheduleSidebar {
+    max-width: none;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .availabilitySettingsWorkspace {
+    flex-direction: column;
+  }
+
+  .availabilitySettingsSidebar {
+    max-width: none;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .appointmentHeaderActions,
+  .appointmentHeaderSearchRow,
+  .appointmentHeaderSearchInput,
+  .appointmentBookedHeader,
+  .appointmentDetailsHeader {
+    width: 100%;
+  }
+
+  .appointmentBookedHeader,
+  .appointmentDetailsHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .appointmentScheduleSidebar,
+  .appointmentDetailsHero,
+  .appointmentDetailsContent,
+  .appointmentDetailGrid,
+  .appointmentDetailsHeroMeta {
+    grid-template-columns: 1fr !important;
+  }
+
+  .appointmentFilterGroup,
+  .appointmentFilterSelect,
+  .appointmentSettingsDropdownContainer,
+  .appointmentClearFiltersBtn {
+    width: 100% !important;
+  }
+
+  .appointmentSettingsDropdown {
+    right: auto;
+    left: 0;
+    width: min(260px, calc(100vw - 52px));
+  }
+
+  .availabilitySettingsSidebar,
+  .historyFilterSection {
+    grid-template-columns: 1fr !important;
+  }
+
+  .availabilitySettingsSidebar {
+    display: flex;
+  }
+
+  .historyToolbar,
+  .historyPagination,
+  .historyFilterSection,
+  .historyHeaderActions,
+  .historyHeaderSearchRow,
+  .historyHeaderSearchInput {
+    width: 100%;
+  }
+
+  .historyFilterSection .filterSelect,
+  .historyFilterSection .clearFilterBtn {
+    width: 100%;
+  }
+
+  .historyPagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .accountPaginationButtons {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+}
+
 /* Keep Account Overview content and footer in document order. */
 .accountOverviewTopContainer {
   order: 1;
@@ -8532,3 +10130,182 @@ input:checked + .slider:before {
   }
 }
 
+/* Final Booked Appointments layout overrides */
+.appointmentScheduleBody {
+  height: 100vh !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.appointmentScheduleWorkspace {
+  min-height: calc(100vh - 145px) !important;
+  height: auto !important;
+  overflow: visible !important;
+}
+
+.appointmentBookedPanel {
+  min-height: calc(100vh - 154px) !important;
+  height: auto !important;
+  overflow: hidden !important;
+}
+
+.appointmentTableScroll {
+  flex: 1 1 auto !important;
+  min-height: 500px !important;
+  max-height: none !important;
+  overflow: auto !important;
+}
+
+.appointmentClearFiltersBtn {
+  margin-left: 0 !important;
+}
+
+.appointmentBookedPanel .appointmentPaginationBar.accountPagination {
+  display: grid !important;
+  grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr) !important;
+  justify-content: initial !important;
+  align-items: center !important;
+  margin: 14px 0 0 !important;
+}
+
+/* Final Availability Settings layout correction */
+.availabilitySettingsBodyContainer {
+  height: 100vh !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+.availabilitySettingsWorkspace {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: stretch !important;
+  gap: 20px !important;
+  width: 100% !important;
+  min-height: calc(100vh - 154px) !important;
+  height: auto !important;
+  margin-top: 24px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.availabilitySettingsSidebar {
+  flex: 0 0 360px !important;
+  width: 360px !important;
+  max-width: 360px !important;
+  min-width: 300px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 20px !important;
+  min-height: 0 !important;
+}
+
+.availabilitySettingsPanel,
+.availabilitySettingsMainPanel {
+  border: 1px solid rgba(8, 24, 160, 0.12) !important;
+  border-radius: 22px !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.06), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(249, 251, 255, 0.9)) !important;
+  box-shadow:
+    0 18px 42px rgba(10, 17, 86, 0.075),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+
+.availabilitySettingsPanel {
+  padding: 20px !important;
+}
+
+.availabilitySettingsSpecialDatesPanel {
+  flex: 1 1 auto !important;
+  min-height: 300px !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.availabilitySettingsMainPanel {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  padding: 30px !important;
+  overflow-y: auto !important;
+}
+
+@media (max-width: 1100px) {
+  .availabilitySettingsWorkspace {
+    flex-direction: column !important;
+  }
+
+  .availabilitySettingsSidebar {
+    width: 100% !important;
+    max-width: none !important;
+    flex: 0 0 auto !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .availabilitySettingsSidebar {
+    display: flex !important;
+  }
+
+  .availabilitySettingsMainPanel {
+    padding: 20px !important;
+  }
+}
+
+
+/* Availability Settings cascade guard */
+.availabilitySettingsBodyContainer {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.availabilitySettingsTopContainer {
+  order: 0 !important;
+  flex: 0 0 auto !important;
+  margin: 0 0 16px !important;
+  z-index: 5 !important;
+}
+
+.availabilitySettingsWorkspace {
+  order: 1 !important;
+  margin-top: 0 !important;
+}
+
+.availabilitySettingsBodyContainer > .admin-body-footer.user-page-footer,
+.availabilitySettingsBodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+  order: 99 !important;
+  margin-top: 48px !important;
+}
+
+.availabilitySettingsPanel,
+.availabilitySettingsMainPanel {
+  border-color: rgba(8, 24, 160, 0.14) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(61, 182, 238, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.92)) !important;
+}
+
+.availabilitySettingsWorkspace .dataTable th {
+  background:
+    linear-gradient(135deg, rgba(8, 24, 160, 0.1), rgba(61, 182, 238, 0.12)) !important;
+  color: #0a1156 !important;
+}
+
+.availabilitySettingsWorkspace .switch input:checked + .slider {
+  background: linear-gradient(135deg, #3db6ee 0%, #0818a0 100%) !important;
+}
+
+.availabilitySettingsWorkspace .gradientBtn,
+.availabilitySettingsWorkspace .submitBtn,
+.availabilitySettingsWorkspace .availabilityPrimaryBtn {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(135deg, #fa2b24 0%, #b91d28 42%, #0818a0 100%) !important;
+  color: #ffffff !important;
+}

@@ -6,7 +6,7 @@ import {
   IoHomeOutline, IoPeopleOutline, IoChevronDownOutline, IoChevronUpOutline,
   IoPersonOutline, IoMedkitOutline, IoCalendarClearOutline, IoCalendarOutline,
   IoTodayOutline, IoTimeOutline, IoDocumentTextOutline, IoSettingsOutline,
-  IoLogOutOutline, IoNotifications, IoCheckmarkCircleOutline, IoCloseCircleOutline,
+  IoLogOutOutline, IoCheckmarkCircleOutline, IoCloseCircleOutline,
   IoAlertCircleOutline, IoChevronUp, IoChevronDown, IoTrashOutline, IoClose, IoCreateOutline,
   IoCopyOutline, IoArrowBackOutline,
   IoChevronBack, IoChevronForward // 🟢 Restored Custom Calendar Icons
@@ -15,6 +15,7 @@ import {
 // Import your merged CSS file
 import './AdminStyles.css';
 import Navbar from '../reusable_components/NavBar';
+import Notifications from '../reusable_components/Notifications';
 
 // Using standard imports for Vite images
 import logoImg from '../assets/AgsikapLogo-Temp.png';
@@ -1068,27 +1069,44 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
 
       {/* BODY CONTENT */}
-      <div className="bodyContainer">
-        <div className="topContainer">
-          <div className="subTopContainer">
-            <IoDocumentTextOutline size={20} color="#3d67ee" style={{ marginTop: '2px' }} />
-            <span className="blueText" style={{ marginLeft: '10px' }}>Appointments / Availability Settings</span>
+      <div className="bodyContainer accountOverviewBodyContainer availabilitySettingsBodyContainer">
+        <div className="topContainer accountOverviewTopContainer availabilitySettingsTopContainer">
+          <div className="subTopContainer accountOverviewSubTopContainer">
+            <div className="accountOverviewHeroIcon availabilitySettingsHeroIcon">
+              <IoDocumentTextOutline size={25} />
+            </div>
+            <div className="accountOverviewHeroCopy">
+              <span>Appointments</span>
+              <h1>{isBulkTimeSlotPage ? 'Bulk Time Slot Settings' : 'Availability Settings'}</h1>
+              <p>{isViewOnly ? 'View working days, special dates, and appointment slots.' : 'Manage working days, special dates, and appointment slots.'}</p>
+            </div>
           </div>
-          <div className="subTopContainer" style={{ justifyContent: 'center', flex: 0.5, marginLeft: '12px' }}>
-            <button style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
-              <IoNotifications size={21} color="#3d67ee" style={{ marginTop: '3px' }} />
-            </button>
+          <div className="accountOverviewHeaderActions availabilitySettingsHeaderActions">
+            <div className="subTopContainer notificationContainer accountOverviewNotificationContainer">
+              <Notifications
+                buttonClassName="invIconButton"
+                iconClassName="invBlueIcon"
+                onViewAll={() => {
+                  console.log('View all notifications');
+                }}
+                onNotificationClick={(notification) => {
+                  if (notification.link) {
+                    navigate(notification.link);
+                  }
+                }}
+              />
+            </div>
           </div>
         </div>
 
         {/* SETTINGS CONTAINER */}
-        <div style={{ display: 'flex', flexDirection: 'row', gap: '20px', marginTop: '30px', height: '85%' }}>
+        <div className="availabilitySettingsWorkspace">
           
           {/* LEFT SIDE (Calendar & Events) */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '20px', minWidth: '300px' }}>
+          <div className="availabilitySettingsSidebar">
             
             {/* 🟢 RESTORED: Custom Calendar replaces standard date input */}
-            <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '20px', boxShadow: '0 0 18px rgba(0,0,0,0.05)' }}>
+            <div className="availabilitySettingsPanel">
                 <h3 style={{ fontSize: '16px', fontWeight: '700', marginBottom: '15px', color: '#333' }}>Check Booked Dates</h3>
                 <CustomCalendar 
                     selectedDate={selectedCalendarDate} 
@@ -1104,7 +1122,7 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
             </div>
 
             {/* Special Dates Section */}
-            <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '20px', flex: 1, boxShadow: '0 0 18px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column' }}>
+            <div className="availabilitySettingsPanel availabilitySettingsSpecialDatesPanel">
               <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '15px' }}>Special Dates</h3>
               
               <div style={{ overflowY: 'auto', flex: 1, marginBottom: '15px' }}>
@@ -1181,7 +1199,7 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
           </div>
 
           {/* RIGHT SIDE (Availability Toggles / Bulk Time Slots) */}
-          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', flex: 2, overflowY: 'auto', boxShadow: '0 0 18px rgba(0,0,0,0.05)' }}>
+          <div className="availabilitySettingsMainPanel">
             {isBulkTimeSlotPage ? (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
@@ -1192,6 +1210,7 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
                   <button
                     type="button"
                     onClick={goBackToAvailabilitySettings}
+                    className="availabilitySecondaryBtn"
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -1217,6 +1236,7 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
                       <button
                         type="button"
                         onClick={selectAllWorkingDays}
+                        className="availabilitySecondaryBtn"
                         style={{ padding: '9px 13px', backgroundColor: '#eef4ff', border: '1px solid #cfe0ff', borderRadius: '8px', color: '#315de8', fontWeight: 700, cursor: 'pointer' }}
                       >
                         All Working Days
@@ -1224,6 +1244,7 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
                       <button
                         type="button"
                         onClick={clearBulkSelectedDays}
+                        className="availabilityGhostBtn"
                         style={{ padding: '9px 13px', backgroundColor: '#fff', border: '1px solid #e1e5ee', borderRadius: '8px', color: '#64748b', fontWeight: 700, cursor: 'pointer' }}
                       >
                         Clear
@@ -1340,6 +1361,7 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
                       <button
                         type="button"
                         onClick={addBreakTime}
+                        className="availabilitySecondaryBtn"
                         style={{
                           width: '100%',
                           marginTop: '10px',
@@ -1397,10 +1419,11 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px', marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #eee' }}>
-                  <button onClick={goBackToAvailabilitySettings} style={{ padding: '10px 25px', backgroundColor: '#f5f5f5', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#d32f2f', fontWeight: '600' }}>Cancel</button>
+                  <button onClick={goBackToAvailabilitySettings} className="availabilityGhostBtn" style={{ padding: '10px 25px', backgroundColor: '#f5f5f5', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#d32f2f', fontWeight: '600' }}>Cancel</button>
                   <button
                     onClick={saveBulkTimeSlotsToDatabase}
                     disabled={savingBulkTimeSlots}
+                    className="availabilityPrimaryBtn"
                     style={{
                       padding: '10px 25px',
                       backgroundColor: savingBulkTimeSlots ? '#9aaef7' : '#3d67ee',
@@ -1434,6 +1457,7 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
                       <button
                         type="button"
                         onClick={openBulkTimeSlotPage}
+                        className="availabilityPrimaryBtn"
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
@@ -1475,6 +1499,7 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
                           <button
                             onClick={() => dayAvailability[day] && openTimeSlotModalForDay(day)}
                             disabled={!dayAvailability[day]}
+                            className="availabilityInlineActionBtn"
                             style={{
                               display: 'flex', alignItems: 'center', background: 'none', border: 'none',
                               cursor: dayAvailability[day] ? 'pointer' : 'not-allowed',
@@ -1590,6 +1615,7 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
                         <button
                           type="button"
                           onClick={addBreakTime}
+                          className="availabilitySecondaryBtn"
                           style={{
                             width: '100%',
                             marginTop: '10px',

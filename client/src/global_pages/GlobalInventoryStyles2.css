@@ -1926,3 +1926,617 @@ textarea.invFormInput {
   color: #666;
   text-align: center;
 }
+
+/* ========================================= */
+/* INVENTORY SUBPAGES ADMIN UI REFRESH */
+/* Movement Logs, Inventory In/Out, Archive */
+/* ========================================= */
+
+.invContainer {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(250, 43, 36, 0.08), transparent 28%),
+    radial-gradient(circle at 86% 0%, rgba(8, 24, 160, 0.12), transparent 30%),
+    linear-gradient(180deg, #f8faff 0%, #f3f6ff 48%, #eef3ff 100%);
+}
+
+.invBodyContainer.bodyContainer {
+  min-width: 0;
+  height: 100vh;
+  min-height: 0;
+  padding: 28px 28px 0 16px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: transparent;
+  color: #0a1156;
+  scrollbar-gutter: stable;
+  scrollbar-color: rgba(8, 24, 160, 0.34) transparent;
+}
+
+.invBodyContainer.bodyContainer::-webkit-scrollbar {
+  width: 12px;
+}
+
+.invBodyContainer.bodyContainer::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.invBodyContainer.bodyContainer::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(8, 24, 160, 0.34);
+  background-clip: padding-box;
+}
+
+.invBodyContainer.bodyContainer::-webkit-scrollbar-thumb:hover {
+  background: rgba(8, 24, 160, 0.52);
+  background-clip: padding-box;
+}
+
+.invCatalogHero {
+  position: relative;
+  z-index: 20;
+  min-height: 96px;
+  margin-bottom: 14px;
+  padding: 0 2px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: #0a1156;
+}
+
+.invCatalogHeroBrand {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.invCatalogHeroIcon {
+  width: 65px;
+  height: 65px;
+  flex: 0 0 65px;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(96, 165, 250, 0.34), transparent 36%, rgba(250, 43, 36, 0.7)),
+    linear-gradient(135deg, #0b1732 0%, #071126 64%, #040815 100%);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 16px 34px rgba(4, 8, 42, 0.18);
+}
+
+.invCatalogKicker {
+  display: block;
+  margin-bottom: 5px;
+  color: #4a5872;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.invCatalogHero h1 {
+  margin: 0;
+  font-size: clamp(1.3rem, 1.8vw, 1.75rem);
+  font-weight: 700;
+  line-height: 1.08;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.6), transparent 90%),
+    linear-gradient(135deg, #0b1732 0%, #071126 58%, #040815 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.invCatalogHero p {
+  max-width: 560px;
+  margin: 5px 0 0;
+  color: #4a5872;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.invCatalogHeroActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.invCatalogHero .invBranchSelector,
+.invCatalogHero .invBranchSelector2 {
+  margin-left: 0;
+  padding-right: 0;
+  border-right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.invCatalogHero .invBranchSelect,
+.invCatalogHero .invImportBtn,
+.invCatalogHero .invExportBtn {
+  min-height: 34px;
+  height: 34px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.invCatalogHero .invBranchSelect {
+  min-width: 158px;
+  padding: 0 36px 0 14px;
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  background: #ffffff;
+  color: #0a1156;
+  box-shadow: none;
+}
+
+.invCatalogHero .invBranchSelect:hover,
+.invCatalogHero .invBranchSelect:focus {
+  outline: none;
+  border-color: rgba(8, 24, 160, 0.34);
+  background: #f7fbff;
+  box-shadow: 0 10px 24px rgba(10, 17, 86, 0.1);
+}
+
+.invCatalogHero .invImportBtn,
+.invCatalogHero .invExportBtn,
+.invRecordTransactionBtn,
+.invBulkBtn,
+.invSubmitBtn,
+.invConfirmAlertBtn,
+.invSettingsApplyBtn,
+.invClearFilterBtn {
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(96, 165, 250, 0.18), transparent 42%),
+    linear-gradient(135deg, #0b1732 0%, #071126 100%);
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(4, 8, 42, 0.14);
+}
+
+.invCatalogHero .invImportBtn:hover,
+.invCatalogHero .invExportBtn:hover,
+.invRecordTransactionBtn:hover:not(:disabled),
+.invBulkBtn:hover,
+.invSubmitBtn:hover,
+.invConfirmAlertBtn:hover,
+.invClearFilterBtn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+  box-shadow: 0 14px 28px rgba(5, 12, 38, 0.18), 0 0 0 3px rgba(96, 165, 250, 0.12);
+}
+
+.invCatalogHero .invNotificationContainer {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  margin-left: 0;
+  padding: 0;
+  flex: 0 0 38px;
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  border-radius: 999px;
+  background: #ffffff;
+  display: grid;
+  place-items: center;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.invCatalogHero .invNotificationContainer:hover {
+  border-color: rgba(8, 24, 160, 0.32);
+  background: #f7fbff;
+  box-shadow: 0 10px 24px rgba(10, 17, 86, 0.1);
+}
+
+.invCatalogHero .invIconButton {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  color: #0a1156;
+}
+
+.invBlueIcon,
+.invIconDefault,
+.invCatalogHero .invIconButton svg,
+.invNotePreviewBtn,
+.invRefCell,
+.invRefNumber {
+  color: #0a1156 !important;
+}
+
+.invIconActive {
+  color: #fa2b24 !important;
+}
+
+.invTableContainerOUT {
+  height: auto;
+  min-height: 570px;
+  padding: 18px;
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.07), transparent 34%),
+    radial-gradient(circle at 0% 100%, rgba(250, 43, 36, 0.055), transparent 36%),
+    linear-gradient(180deg, #ffffff 0%, #f9fbff 100%);
+  box-shadow:
+    0 18px 42px rgba(10, 17, 86, 0.075),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+}
+
+.invTableWrapper,
+.invBulkItemsTable,
+.invProductSelectorList,
+.invProductSelectorItems,
+.invNotePreviewContent,
+.invModalContent {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(8, 24, 160, 0.28) transparent;
+}
+
+.invTableWrapper {
+  min-height: 390px;
+  overflow: auto;
+}
+
+.invDataTable th,
+.invBulkItemsTableInner th,
+.invProductSelectorHeader {
+  background:
+    linear-gradient(135deg, rgba(8, 24, 160, 0.08), rgba(96, 165, 250, 0.09));
+  color: #0a1156;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.1);
+}
+
+.invDataTable td,
+.invBulkItemsTableInner td {
+  color: #34405a;
+  border-bottom: 1px solid rgba(8, 24, 160, 0.08);
+}
+
+.invDataTable tbody tr:hover {
+  background: rgba(8, 24, 160, 0.035);
+}
+
+.invExpiredRow,
+.invExpiredRow:hover {
+  opacity: 1;
+  background:
+    linear-gradient(90deg, rgba(250, 43, 36, 0.14) 0%, rgba(250, 43, 36, 0.07) 34%, rgba(255, 255, 255, 0.82) 100%) !important;
+}
+
+.invExpiredRow td {
+  background: transparent !important;
+}
+
+.invExpiringRow {
+  background:
+    linear-gradient(90deg, rgba(245, 124, 0, 0.12) 0%, rgba(245, 124, 0, 0.05) 38%, rgba(255, 255, 255, 0.84) 100%) !important;
+}
+
+.invZeroStockRow {
+  background:
+    linear-gradient(90deg, rgba(100, 116, 139, 0.12) 0%, rgba(100, 116, 139, 0.04) 44%, rgba(255, 255, 255, 0.84) 100%) !important;
+}
+
+.invFilterSelect,
+.invSearchInput,
+.invDateInput,
+.invSettingsSelect,
+.invSortSelect,
+.invRowsPerPageSelect,
+.invQtyInput,
+.invBulkQtyInput,
+.invFormInput,
+.invFormSelect,
+.invInputWithCounter,
+.invTextareaWithCounter,
+.invModalSearchInput {
+  border-color: rgba(8, 24, 160, 0.14);
+  border-radius: 12px;
+  background: #ffffff;
+  color: #0a1156;
+}
+
+.invFilterSelect:focus,
+.invSearchInput:focus,
+.invDateInput:focus,
+.invSettingsSelect:focus,
+.invSortSelect:focus,
+.invRowsPerPageSelect:focus,
+.invQtyInput:focus,
+.invBulkQtyInput:focus,
+.invFormInput:focus,
+.invFormSelect:focus,
+.invInputWithCounter:focus,
+.invTextareaWithCounter:focus,
+.invModalSearchInput:focus {
+  border-color: rgba(8, 24, 160, 0.44);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.16);
+}
+
+.invArchiveBtn,
+.invReturnBtn,
+.invCancelBtn,
+.invCancelAlertBtn,
+.invRowsPerPageBtn,
+.invSortBtn,
+.invRestoreBtn {
+  border: 1px solid rgba(8, 24, 160, 0.14);
+  background: #ffffff;
+  color: #0a1156;
+  box-shadow: none;
+}
+
+.invArchiveBtn:hover,
+.invReturnBtn:hover,
+.invCancelBtn:hover,
+.invCancelAlertBtn:hover,
+.invRowsPerPageBtn:hover,
+.invSortBtn:hover,
+.invRestoreBtn:hover {
+  background: #f7fbff;
+  color: #0a1156;
+  box-shadow: 0 10px 24px rgba(10, 17, 86, 0.1);
+}
+
+.invDeleteBtn,
+.invErrorBtn,
+.invRemoveRowBtn:hover {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(135deg, #fa2b24 0%, #b91d28 44%, #0818a0 100%);
+  color: #ffffff;
+}
+
+.invQtyBtn,
+.invQtyAddBtn {
+  border-color: rgba(96, 165, 250, 0.3);
+  background: rgba(96, 165, 250, 0.16);
+  color: #0a1156;
+}
+
+.invQtyBtn:hover:not(:disabled),
+.invQtyAddBtn:hover {
+  background: rgba(96, 165, 250, 0.24);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.12);
+}
+
+.invCheckbox {
+  accent-color: #0818a0;
+  border-color: rgba(8, 24, 160, 0.24);
+}
+
+.invCheckbox:hover {
+  border-color: #0818a0;
+}
+
+.invCheckbox:checked,
+.invCheckboxSelected {
+  background-color: #0818a0 !important;
+  border-color: #0818a0 !important;
+}
+
+.invSettingsDropdown,
+.invSortDropdown,
+.invExportDropdown,
+.invRowsPerPageDropdown {
+  border: 1px solid rgba(8, 24, 160, 0.12);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 22px 48px rgba(5, 12, 38, 0.16);
+}
+
+.invSettingsSection label,
+.invProductSelectorItemCode,
+.invReasonCell,
+.invSupplierCell,
+.invDateRangeFilter span,
+.invArchiveCount,
+.invExpirationDate {
+  color: #4a5872;
+}
+
+.invSettingsDivider {
+  background: rgba(8, 24, 160, 0.1);
+}
+
+.invProductName,
+.invProductSelectorItemName,
+.invNotePreviewContent p,
+.invBulkItemsSection label,
+.invModalHeader h2,
+.invAlertTitle,
+.invFormGroup label {
+  color: #0a1156;
+}
+
+.invModalOverlay {
+  background:
+    radial-gradient(circle at 22% 18%, rgba(250, 43, 36, 0.24), transparent 34%),
+    radial-gradient(circle at 78% 0%, rgba(8, 24, 160, 0.3), transparent 36%),
+    rgba(5, 8, 22, 0.64);
+  backdrop-filter: blur(6px);
+}
+
+.invImportModal,
+.invFormModal,
+.invAlertModal,
+.invBulkModal,
+.invProductSelectorModal,
+.invNotePreviewModal {
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.94)),
+    radial-gradient(circle at 0% 0%, rgba(250, 43, 36, 0.14), transparent 38%),
+    radial-gradient(circle at 100% 0%, rgba(8, 24, 160, 0.16), transparent 36%);
+  box-shadow: 0 32px 80px rgba(4, 8, 42, 0.34);
+}
+
+.invModalHeader,
+.invModalFooter {
+  border-color: rgba(8, 24, 160, 0.1);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.invImportNote,
+.invProductSelectorInfo,
+.invTemplateNote,
+.invArchiveCount {
+  border: 1px solid rgba(8, 24, 160, 0.1);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(250, 43, 36, 0.1), transparent 36%),
+    rgba(8, 24, 160, 0.045);
+  color: #34405a;
+}
+
+.invFileUploadArea {
+  border-color: rgba(8, 24, 160, 0.18);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.invFileUploadArea:hover {
+  border-color: rgba(8, 24, 160, 0.38);
+}
+
+.invFileUploadLabel svg,
+.invTemplateLink,
+.invModalClose,
+.invFormClose,
+.invSidebarClose {
+  color: #0a1156;
+}
+
+.invTemplateLink:hover,
+.invModalClose:hover,
+.invClearSearchBtn:hover {
+  color: #fa2b24;
+}
+
+.invTypeIn {
+  background: rgba(34, 197, 94, 0.14);
+  color: #166534;
+}
+
+.invTypeOut,
+.invOutOfStockTag {
+  background: rgba(250, 43, 36, 0.13);
+  color: #991b1b;
+}
+
+.invInRow {
+  background: linear-gradient(90deg, rgba(34, 197, 94, 0.07), rgba(255, 255, 255, 0.8));
+}
+
+.invOutRow {
+  background: linear-gradient(90deg, rgba(250, 43, 36, 0.07), rgba(255, 255, 255, 0.8));
+}
+
+.invRowLegend {
+  display: none !important;
+}
+
+.invBodyContainer.bodyContainer > .admin-body-footer.user-page-footer,
+.invBodyContainer.bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+  margin: 42px -28px 0 -16px;
+}
+
+@media (max-width: 1200px) {
+  .invCatalogHero {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .invCatalogHeroActions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 900px) {
+  .invBodyContainer.bodyContainer {
+    padding: 78px 14px 0;
+  }
+
+  .invCatalogHeroIcon {
+    width: 58px;
+    height: 58px;
+    flex-basis: 58px;
+  }
+
+  .invCatalogHeroActions,
+  .invCatalogHero .invBranchSelector,
+  .invCatalogHero .invBranchSelector2,
+  .invCatalogHero .invBranchSelect,
+  .invCatalogHero .invImportBtn,
+  .invCatalogHero .invExportBtn,
+  .invExportDropdownContainer {
+    width: 100%;
+  }
+
+  .invCatalogHero .invNotificationContainer {
+    width: 38px;
+  }
+
+  .invTableToolbar,
+  .invSearchFilterSection,
+  .invActionSection,
+  .invFilterSection {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .invSearchInput,
+  .invFilterSelect,
+  .invDateInput {
+    width: 100%;
+  }
+
+  .invBodyContainer.bodyContainer > .admin-body-footer.user-page-footer,
+  .invBodyContainer.bodyContainer > .admin-body-footer.user-page-footer.petshield-footer--compact {
+    margin: 34px -14px 0;
+  }
+}
+
+/* Header control alignment and Inventory Out action spacing. */
+.invCatalogHero .invBranchSelector,
+.invCatalogHero .invBranchSelector2 {
+  padding-right: 14px;
+  margin-right: 2px;
+  border-right: 1px solid rgba(8, 24, 160, 0.16);
+}
+
+.invCatalogHero .invImportBtn,
+.invCatalogHero .invExportBtn {
+  width: 122px;
+  justify-content: center;
+}
+
+.invActionSection {
+  gap: 10px;
+}
+
+.invActionSection .invRecordTransactionBtn,
+.invRecordTransactionBtn {
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+@media (max-width: 900px) {
+  .invCatalogHero .invBranchSelector,
+  .invCatalogHero .invBranchSelector2 {
+    padding-right: 0;
+    margin-right: 0;
+    padding-bottom: 10px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(8, 24, 160, 0.12);
+  }
+
+  .invCatalogHero .invImportBtn,
+  .invCatalogHero .invExportBtn {
+    width: 100%;
+  }
+}
