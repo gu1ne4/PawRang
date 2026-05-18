@@ -279,6 +279,30 @@ const formatToAMPM = (timeStr: string) => {
     return `${h.toString().padStart(2, '0')}:${minutes} ${ampm}`;
 };
 
+const timeToMinutes = (timeStr: string) => {
+    const normalized = formatTo24Hour(timeStr);
+    const [hours, minutes] = normalized.split(':').map(Number);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) return NaN;
+    return hours * 60 + minutes;
+};
+
+const minutesToDbTime = (totalMinutes: number) => {
+    const hours = Math.floor(totalMinutes / 60) % 24;
+    const minutes = totalMinutes % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+};
+
+const formatToTimeInput = (timeStr: string) => {
+    const normalized = formatTo24Hour(timeStr);
+    return normalized ? normalized.slice(0, 5) : '';
+};
+
+const createBreakTimeRow = (startTime = '', endTime = '') => ({
+    id: `break-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    startTime,
+    endTime
+});
+
 const getSpecialEventName = (event: any) => event?.event_name || event?.name || 'Special Event';
 const getSpecialEventDate = (event: any) => event?.event_date || event?.date || '';
 const getSpecialEventDescription = (event: any) => event?.event_description || event?.description || '';
@@ -355,7 +379,8 @@ export default function AdminAvailSettings() {
   const [currentEditingDay, setCurrentEditingDay] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
-  const [slotCapacity, setSlotCapacity] = useState('');
+  const [slotIntervalMinutes, setSlotIntervalMinutes] = useState('30');
+  const [breakTimes, setBreakTimes] = useState<any[]>([]);
 
   const [dayAvailability, setDayAvailability] = useState<any>({
     sunday: false, monday: false, tuesday: false, wednesday: false, thursday: false, friday: false, saturday: false
@@ -476,8 +501,7 @@ export default function AdminAvailSettings() {
         slotsByDay[day] = slots.map((slot: any) => ({
           id: slot.id,
           startTime: slot.start_time,
-          endTime: slot.end_time,
-          capacity: slot.online_capacity ?? slot.slot_capacity ?? slot.capacity ?? ''
+          endTime: slot.end_time
         }));
       }
       setTimeSlotsByDay(slotsByDay);
@@ -523,23 +547,67 @@ export default function AdminAvailSettings() {
     }
   };
 
+  const addBreakTime = () => {
+    setBreakTimes((prev) => [...prev, createBreakTimeRow()]);
+  };
+
+  const updateBreakTime = (breakId: string, field: 'startTime' | 'endTime', value: string) => {
+    setBreakTimes((prev) => prev.map((breakItem) => (
+      breakItem.id === breakId ? { ...breakItem, [field]: value } : breakItem
+    )));
+  };
+
+  const removeBreakTime = (breakId: string) => {
+    setBreakTimes((prev) => prev.filter((breakItem) => breakItem.id !== breakId));
+  };
+
+  const buildSlotGeneratorSettingsPayload = () => ({
+    opening_time: formatTo24Hour(startTime),
+    closing_time: formatTo24Hour(endTime),
+    interval_minutes: Number(slotIntervalMinutes) || 30,
+    break_times: breakTimes
+      .filter((breakItem) => breakItem.startTime && breakItem.endTime)
+      .map((breakItem) => ({
+        start_time: formatTo24Hour(breakItem.startTime),
+        end_time: formatTo24Hour(breakItem.endTime)
+      }))
+  });
+
   const openTimeSlotModalForDay = async (dayName: string) => {
     const dayKey = dayName.toLowerCase();
     setCurrentEditingDay(dayKey);
     setModalVisible(true);
     setStartTime(DEFAULT_START_TIME);
     setEndTime(DEFAULT_END_TIME);
+    setSlotIntervalMinutes('30');
+    setBreakTimes([]);
     setLoadingTimeSlots(true);
     
     try {
-      const existingSlots = await availabilityService.getTimeSlotsForDay(dayKey);
+      const [existingSlots, generatorSettings] = await Promise.all([
+        availabilityService.getTimeSlotsForDay(dayKey),
+        availabilityService.getTimeSlotGeneratorSettings(dayKey)
+      ]);
       const formattedSlots = existingSlots.map((slot: any) => ({
         id: slot.id,
         startTime: slot.start_time,
-        endTime: slot.end_time,
-        capacity: slot.online_capacity ?? slot.slot_capacity ?? slot.capacity ?? ''
+        endTime: slot.end_time
       }));
       setTimeSlotsByDay((prev: any) => ({ ...prev, [dayKey]: formattedSlots }));
+      if (generatorSettings) {
+        setStartTime(formatToAMPM(generatorSettings.opening_time || generatorSettings.openingTime || DEFAULT_START_TIME));
+        setEndTime(formatToAMPM(generatorSettings.closing_time || generatorSettings.closingTime || DEFAULT_END_TIME));
+        setSlotIntervalMinutes(String(generatorSettings.interval_minutes || generatorSettings.intervalMinutes || 30));
+        const savedBreaks = generatorSettings.break_times || generatorSettings.breakTimes || [];
+        setBreakTimes(
+          Array.isArray(savedBreaks)
+            ? savedBreaks.map((item: any) => createBreakTimeRow(
+                formatToTimeInput(item.start_time || item.startTime || item.start),
+                formatToTimeInput(item.end_time || item.endTime || item.end)
+              ))
+            : []
+        );
+      }
     } catch (error) {
       console.error('Error loading slots:', error);
     } finally {
@@ -547,70 +615,92 @@ export default function AdminAvailSettings() {
     }
   };
 
-  const addSlot = () => {
+  const generateSlots = async () => {
     if (!currentEditingDay || !startTime.trim() || !endTime.trim()) {
-      window.alert('Please select both a start time and an end time.');
+      window.alert('Please select both opening and closing time.');
       return;
     }
-    
-    const convertToMinutes = (timeStr: string) => {
-      const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
-      if (match) {
-        let hours = parseInt(match[1]);
-        const minutes = parseInt(match[2]);
-        const ampm = match[3].toUpperCase();
-        if (ampm === 'PM' && hours < 12) hours += 12;
-        if (ampm === 'AM' && hours === 12) hours = 0;
-        return hours * 60 + minutes;
+
+    const startMinutes = timeToMinutes(startTime);
+    const endMinutes = timeToMinutes(endTime);
+    const intervalMinutes = Number(slotIntervalMinutes);
+
+    if (Number.isNaN(startMinutes) || Number.isNaN(endMinutes) || startMinutes >= endMinutes) {
+      window.alert('Invalid Time: Opening time must be before closing time.');
+      return;
+    }
+
+    if (!Number.isInteger(intervalMinutes) || intervalMinutes < 5 || intervalMinutes > 240) {
+      window.alert('Invalid Interval: Enter a whole number between 5 and 240 minutes.');
+      return;
+    }
+
+    const normalizedBreaks = breakTimes
+      .map((breakItem) => ({
+        ...breakItem,
+        startMinutes: timeToMinutes(breakItem.startTime),
+        endMinutes: timeToMinutes(breakItem.endTime)
+      }))
+      .filter((breakItem) => Boolean(breakItem.startTime || breakItem.endTime));
+
+    for (const breakItem of normalizedBreaks) {
+      if (!breakItem.startTime || !breakItem.endTime) {
+        window.alert('Please set both break start and break end, or remove the incomplete break row.');
+        return;
       }
-      return 0;
-    };
-
-    const startMinutes = convertToMinutes(startTime);
-    const endMinutes = convertToMinutes(endTime);
-
-    if (startMinutes >= endMinutes) {
-        window.alert('Invalid Time: Start time must be before end time.');
+      if (
+        Number.isNaN(breakItem.startMinutes) ||
+        Number.isNaN(breakItem.endMinutes) ||
+        breakItem.startMinutes >= breakItem.endMinutes
+      ) {
+        window.alert('Invalid Break Time: Break start must be before break end.');
         return;
+      }
     }
-    
-    const normalizedCapacity = slotCapacity.trim();
-    if (normalizedCapacity && (!/^\d+$/.test(normalizedCapacity) || Number(normalizedCapacity) < 1)) {
-      window.alert('Invalid Capacity: Capacity must be blank for auto capacity or a whole number of at least 1.');
+    normalizedBreaks.sort((a, b) => a.startMinutes - b.startMinutes);
+
+    const generatedSlots: any[] = [];
+    let cursor = startMinutes;
+    let safetyCounter = 0;
+
+    while (cursor + intervalMinutes <= endMinutes && safetyCounter < 200) {
+      const next = cursor + intervalMinutes;
+      const overlappingBreak = normalizedBreaks.find((breakItem) => (
+        cursor < breakItem.endMinutes && next > breakItem.startMinutes
+      ));
+
+      if (overlappingBreak) {
+        cursor = Math.max(next, overlappingBreak.endMinutes);
+      } else {
+        generatedSlots.push({
+          id: `temp-${currentEditingDay}-${cursor}-${next}`,
+          startTime: minutesToDbTime(cursor),
+          endTime: minutesToDbTime(next)
+        });
+        cursor = next;
+      }
+      safetyCounter += 1;
+    }
+
+    if (generatedSlots.length === 0) {
+      window.alert('No slots were generated. Check the opening/closing time, interval, and break times.');
       return;
     }
 
-    const currentSlots = timeSlotsByDay[currentEditingDay] || [];
-    const hasOverlap = currentSlots.some((slot: any) => {
-      const slotStart = convertToMinutes(slot.startTime);
-      const slotEnd = convertToMinutes(slot.endTime);
-      return (startMinutes < slotEnd && endMinutes > slotStart);
-    });
+    setTimeSlotsByDay((prev: any) => ({
+      ...prev,
+      [currentEditingDay]: generatedSlots
+    }));
 
-    if (hasOverlap) {
-        window.alert('Overlap Error: This slot overlaps with an existing time slot.');
-        return;
+    try {
+      await availabilityService.saveTimeSlotGeneratorSettings(
+        currentEditingDay,
+        buildSlotGeneratorSettingsPayload()
+      );
+    } catch (error) {
+      console.error('Failed to save generated slot settings:', error);
+      window.alert('Slots were generated, but the generator settings could not be saved. Please try Save Changes before closing.');
     }
-    
-    const newSlot = {
-      id: `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-      startTime: startTime,
-      endTime: endTime,
-      capacity: normalizedCapacity
-    };
-    
-    setTimeSlotsByDay((prev: any) => {
-      const currentSlots = prev[currentEditingDay] || [];
-      const slotExists = currentSlots.some((slot: any) => slot.startTime === startTime && slot.endTime === endTime);
-      if (slotExists) return prev;
-      
-      const updatedSlots = [...currentSlots, newSlot].sort((a, b) => convertToMinutes(a.startTime) - convertToMinutes(b.startTime));
-      return { ...prev, [currentEditingDay]: updatedSlots };
-    });
-    
-    setStartTime(DEFAULT_START_TIME);
-    setEndTime(DEFAULT_END_TIME);
-    setSlotCapacity('');
   };
 
   const addEvent = async () => {
@@ -762,16 +852,6 @@ export default function AdminAvailSettings() {
     setDeleteConfirmationVisible(true);
   };
 
-  const updateSlotCapacity = (slotId: any, value: string) => {
-    const cleaned = value.replace(/[^\d]/g, '');
-    setTimeSlotsByDay((prev: any) => ({
-      ...prev,
-      [currentEditingDay]: (prev[currentEditingDay] || []).map((slot: any) =>
-        slot.id === slotId ? { ...slot, capacity: cleaned } : slot
-      )
-    }));
-  };
-
   const confirmDeleteSlot = async () => {
     if (!slotToDelete) return;
     const slotId = slotToDelete.id;
@@ -802,16 +882,13 @@ export default function AdminAvailSettings() {
     
     try {
       const currentSlots = timeSlotsByDay[currentEditingDay] || [];
+      const generatorSettings = buildSlotGeneratorSettingsPayload();
       const slotsToSave = currentSlots.map((slot: any) => {
         // Send snake_case and 24-hour time formatting to avoid Supabase 400 Errors
         const payload: any = {
           start_time: formatTo24Hour(slot.startTime),
           end_time: formatTo24Hour(slot.endTime)
         };
-        const capacityValue = String(slot.capacity ?? '').trim();
-        if (capacityValue) {
-          payload.online_capacity = Number(capacityValue);
-        }
         
         // Prevent 'temp-' generated IDs from crashing the database
         if (slot.id && !String(slot.id).startsWith('temp-')) {
@@ -821,18 +898,20 @@ export default function AdminAvailSettings() {
         return payload;
       });
       
+      await availabilityService.saveTimeSlotGeneratorSettings(currentEditingDay, generatorSettings);
       await availabilityService.saveTimeSlots(currentEditingDay, slotsToSave);
       
       setModalVisible(false);
       setStartTime(DEFAULT_START_TIME);
       setEndTime(DEFAULT_END_TIME);
+      setSlotIntervalMinutes('30');
+      setBreakTimes([]);
       
       const updatedSlots = await availabilityService.getTimeSlotsForDay(currentEditingDay);
       const formattedSlots = updatedSlots.map((slot: any) => ({
         id: slot.id, 
         startTime: slot.start_time,
-        endTime: slot.end_time,
-        capacity: slot.online_capacity ?? slot.slot_capacity ?? slot.capacity ?? ''
+        endTime: slot.end_time
       }));
       
       setTimeSlotsByDay((prev: any) => ({ ...prev, [currentEditingDay]: formattedSlots }));
@@ -848,8 +927,7 @@ export default function AdminAvailSettings() {
           const formattedSlots = existingSlots.map((slot: any) => ({
             id: slot.id,
             startTime: slot.start_time,
-            endTime: slot.end_time,
-            capacity: slot.online_capacity ?? slot.slot_capacity ?? slot.capacity ?? ''
+            endTime: slot.end_time
           }));
           setTimeSlotsByDay((prev: any) => ({ ...prev, [currentEditingDay]: formattedSlots }));
         })
@@ -860,7 +938,8 @@ export default function AdminAvailSettings() {
     setModalVisible(false);
     setStartTime(DEFAULT_START_TIME);
     setEndTime(DEFAULT_END_TIME);
-    setSlotCapacity('');
+    setSlotIntervalMinutes('30');
+    setBreakTimes([]);
   };
 
   const DAYS_OF_WEEK = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
@@ -1042,28 +1121,97 @@ export default function AdminAvailSettings() {
                   
                   {/* Left Section: Time Inputs */}
                   <div style={{ flex: 1, overflowY: 'auto', paddingRight: '10px' }}>
-                    <TimeSelector label="Start Time" value={startTime} onChange={setStartTime} />
-                    <TimeSelector label="End Time" value={endTime} onChange={setEndTime} />
+                    <TimeSelector label="Opening Time" value={startTime} onChange={setStartTime} />
+                    <TimeSelector label="Closing Time" value={endTime} onChange={setEndTime} />
                     <div className="formGroup">
                       <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '8px', color: '#333' }}>
-                        Online Capacity
+                        Slot Interval
                       </label>
                       <input
                         type="number"
-                        min="1"
-                        step="1"
-                        placeholder="Auto"
-                        value={slotCapacity}
-                        onChange={(event) => setSlotCapacity(event.target.value.replace(/[^\d]/g, ''))}
+                        min="5"
+                        max="240"
+                        step="5"
+                        placeholder="30"
+                        value={slotIntervalMinutes}
+                        onChange={(event) => setSlotIntervalMinutes(event.target.value.replace(/[^\d]/g, ''))}
                         className="formInput"
                       />
                       <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#64748b' }}>
-                        Blank uses available doctor capacity.
+                        Minutes per generated appointment slot.
                       </p>
                     </div>
-                    
-                    <button onClick={addSlot} className="gradientBtn submitBtn" style={{ width: '100%', margin: 0, marginTop: '10px' }}>
-                      + Add Slot
+
+                    <div className="formGroup">
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '8px', color: '#333' }}>
+                        Break Times
+                      </label>
+                      {breakTimes.length === 0 ? (
+                        <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '10px' }}>
+                          No break time configured.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {breakTimes.map((breakItem) => (
+                            <div
+                              key={breakItem.id}
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: '1fr 1fr auto',
+                                gap: '8px',
+                                alignItems: 'center'
+                              }}
+                            >
+                              <input
+                                type="time"
+                                value={breakItem.startTime}
+                                onChange={(event) => updateBreakTime(breakItem.id, 'startTime', event.target.value)}
+                                className="formInput"
+                                aria-label="Break start time"
+                              />
+                              <input
+                                type="time"
+                                value={breakItem.endTime}
+                                onChange={(event) => updateBreakTime(breakItem.id, 'endTime', event.target.value)}
+                                className="formInput"
+                                aria-label="Break end time"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeBreakTime(breakItem.id)}
+                                title="Remove break time"
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px' }}
+                              >
+                                <IoTrashOutline size={18} color="#d32f2f" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#64748b' }}>
+                        Optional. Generated slots that overlap these ranges are skipped.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={addBreakTime}
+                        style={{
+                          width: '100%',
+                          marginTop: '10px',
+                          padding: '10px 12px',
+                          border: '1px solid #d9e1f2',
+                          borderRadius: '8px',
+                          backgroundColor: '#fff',
+                          color: '#3d67ee',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        + Add Another Break Time
+                      </button>
+                    </div>
+
+                    <button onClick={generateSlots} className="gradientBtn submitBtn" style={{ width: '100%', margin: 0, marginTop: '10px' }}>
+                      Generate Slots
                     </button>
                   </div>
 
@@ -1075,35 +1223,17 @@ export default function AdminAvailSettings() {
                           <tr>
                             <th style={{ textAlign: 'left' }}>Start</th>
                             <th style={{ textAlign: 'left' }}>End</th>
-                            <th style={{ textAlign: 'left' }}>Capacity</th>
                             <th style={{ textAlign: 'right' }}>Action</th>
                           </tr>
                         </thead>
                         <tbody>
                           {timeSlotsByDay[currentEditingDay]?.length === 0 ? (
-                            <tr><td colSpan={4} style={{ textAlign: 'center', padding: '30px', color: '#999', fontStyle: 'italic' }}>No time slots configured</td></tr>
+                            <tr><td colSpan={3} style={{ textAlign: 'center', padding: '30px', color: '#999', fontStyle: 'italic' }}>No time slots configured</td></tr>
                           ) : (
                             timeSlotsByDay[currentEditingDay]?.map((item: any) => (
                               <tr key={item.id}>
                                 <td>{formatToAMPM(item.startTime)}</td>
                                 <td>{formatToAMPM(item.endTime)}</td>
-                                <td>
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    step="1"
-                                    placeholder="Auto"
-                                    value={item.capacity ?? ''}
-                                    onChange={(event) => updateSlotCapacity(item.id, event.target.value)}
-                                    style={{
-                                      width: '84px',
-                                      padding: '6px 8px',
-                                      border: '1px solid #d8dee9',
-                                      borderRadius: '6px',
-                                      fontSize: '13px'
-                                    }}
-                                  />
-                                </td>
                                 <td style={{ textAlign: 'right' }}>
                                   <button onClick={() => deleteSlot(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
                                     <IoTrashOutline size={20} color="#d32f2f" />

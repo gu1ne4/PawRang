@@ -110,6 +110,39 @@ export const availabilityService = {
     }
   },
 
+  async getTimeSlotGeneratorSettings(dayName: string): Promise<any> {
+    try {
+      const response = await fetch(`${API_URL}/api/time-slot-generator-settings/${dayName.toLowerCase()}`);
+      if (!response.ok) throw new Error('Failed to load time slot generator settings');
+      const data = await response.json();
+      return data.settings || null;
+    } catch (error) {
+      console.error('Error loading time slot generator settings:', error);
+      return null;
+    }
+  },
+
+  async saveTimeSlotGeneratorSettings(dayName: string, settings: any): Promise<any> {
+    try {
+      const response = await fetch(`${API_URL}/api/time-slot-generator-settings/${dayName.toLowerCase()}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save time slot generator settings');
+      }
+
+      const data = await response.json();
+      return data.settings || null;
+    } catch (error) {
+      console.error('Error saving time slot generator settings:', error);
+      throw error;
+    }
+  },
+
   // Save time slots for a day
   async saveTimeSlots(dayName: string, slots: any[]): Promise<any[]> {
     try {
