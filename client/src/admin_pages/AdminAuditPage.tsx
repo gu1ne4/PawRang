@@ -7,6 +7,8 @@ import {
   IoArrowUpCircleOutline,
   IoCalendarOutline,
   IoCheckmarkCircleOutline,
+  IoChevronBackOutline,
+  IoChevronForwardOutline,
   IoCloseCircleOutline,
   IoCloseCircleSharp,
   IoCloseOutline,
@@ -20,6 +22,7 @@ import {
   IoSettingsOutline,
   IoShieldCheckmarkOutline
 } from 'react-icons/io5';
+import { RiListSettingsLine } from 'react-icons/ri';
 
 import './AdminStyles.css';
 import './AnalyticsStyles.css';
@@ -69,9 +72,20 @@ const STATUS_OPTIONS = ['All Statuses', 'Success', 'Warning', 'Failed'];
 const ALL_BRANCHES_OPTION = 'All Branches';
 const SYSTEM_WIDE_BRANCH_OPTION = 'System-wide';
 const RECORDS_BILLING_MODULE_GROUP = 'Records & Billing';
+type AuditSortOption = 'newest' | 'oldest' | 'moduleAZ' | 'actorAZ' | 'statusAZ';
 
 type AuditReportPreset = 'thisWeek' | 'thisMonth' | 'last7Days' | 'last30Days' | 'custom';
 type AuditReportSectionKey = 'summary' | 'details';
+
+const AUDIT_SORT_OPTIONS: Array<{ value: AuditSortOption; label: string }> = [
+  { value: 'newest', label: 'Newest First' },
+  { value: 'oldest', label: 'Oldest First' },
+  { value: 'moduleAZ', label: 'Module A-Z' },
+  { value: 'actorAZ', label: 'Actor A-Z' },
+  { value: 'statusAZ', label: 'Status A-Z' }
+];
+
+const AUDIT_ROWS_PER_PAGE_OPTIONS = [8, 12, 16, 24];
 
 const AUDIT_REPORT_PRESETS: Array<{ key: AuditReportPreset; label: string }> = [
   { key: 'thisWeek', label: 'This Week' },
@@ -166,21 +180,31 @@ const countBy = <T,>(items: T[], getKey: (item: T) => string) => (
   }, {})).sort((first, second) => second[1] - first[1])
 );
 
+const getModuleIcon = (module: string, size = 18) => {
+  if (module === 'All Modules') return <IoFlashOutline size={size} />;
+  if (module === 'Authentication') return <IoShieldCheckmarkOutline size={size} />;
+  if (module === 'Appointments' || module === 'Availability Settings') return <IoCalendarOutline size={size} />;
+  if (module === 'Settings') return <IoSettingsOutline size={size} />;
+  if (module === 'Inventory') return <IoAlbumsOutline size={size} />;
+  if (module === 'EMR' || module === 'Billing') return <IoDocumentTextOutline size={size} />;
+  return <IoPeopleOutline size={size} />;
+};
+
 export default function AdminAuditPage() {
   const navigate = useNavigate();
 
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [searchVisible, setSearchVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
+  const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchHovered, setSearchHovered] = useState(false);
   const [filterHovered, setFilterHovered] = useState(false);
   const [page, setPage] = useState(0);
-  const [moduleFilter, setModuleFilter] = useState('All Modules');
   const [roleFilter, setRoleFilter] = useState('All Roles');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
-  const [selectedModule, setSelectedModule] = useState('All Modules');
+  const [selectedModules, setSelectedModules] = useState<string[]>([]);
+  const [sortOption, setSortOption] = useState<AuditSortOption>('newest');
+  const [rowsPerPage, setRowsPerPage] = useState(8);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [branches, setBranches] = useState<BranchOption[]>([]);
   const [auditLoading, setAuditLoading] = useState(true);
@@ -210,7 +234,7 @@ export default function AdminAuditPage() {
     showCancel: false
   });
 
-  const itemsPerPage = 7;
+  const itemsPerPage = rowsPerPage;
   const canExportAuditReport = isAdminRole(currentUser?.role);
   const allAuditReportSectionsSelected = AUDIT_REPORT_SECTIONS.every(section => auditReportSections[section.key]);
 
@@ -360,21 +384,36 @@ export default function AdminAuditPage() {
         log.summary.toLowerCase().includes(searchLower) ||
         branchName.toLowerCase().includes(searchLower);
 
-      const activeModuleFilter = selectedModule !== 'All Modules' ? selectedModule : moduleFilter;
-      const matchesModule = auditModuleMatchesFilter(log.module, activeModuleFilter);
+      const matchesModule = selectedModules.length === 0 ? true : selectedModules.includes(log.module);
       const matchesRole = roleFilter === 'All Roles' ? true : log.role === roleFilter;
       const matchesStatus = statusFilter === 'All Statuses' ? true : log.status === statusFilter;
       return matchesSearch && matchesModule && matchesRole && matchesStatus;
     });
-  }, [getLogBranchName, moduleFilter, orderedAuditLogs, roleFilter, searchQuery, selectedModule, statusFilter]);
+  }, [getLogBranchName, orderedAuditLogs, roleFilter, searchQuery, selectedModules, statusFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredLogs.length / itemsPerPage));
-  const paginatedLogs = filteredLogs.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
-  const paginationWindowStart = Math.max(0, Math.min(page - 1, totalPages - 3));
-  const paginationNumbers = Array.from(
-    { length: Math.min(3, totalPages) },
-    (_, index) => paginationWindowStart + index
-  );
+  const sortedLogs = useMemo(() => {
+    return [...filteredLogs].sort((firstLog, secondLog) => {
+      const firstDate = new Date(firstLog.dateTime).getTime();
+      const secondDate = new Date(secondLog.dateTime).getTime();
+
+      switch (sortOption) {
+        case 'oldest':
+          return firstDate - secondDate;
+        case 'moduleAZ':
+          return firstLog.module.localeCompare(secondLog.module);
+        case 'actorAZ':
+          return firstLog.actor.localeCompare(secondLog.actor);
+        case 'statusAZ':
+          return firstLog.status.localeCompare(secondLog.status);
+        case 'newest':
+        default:
+          return secondDate - firstDate;
+      }
+    });
+  }, [filteredLogs, sortOption]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedLogs.length / itemsPerPage));
+  const paginatedLogs = sortedLogs.slice(page * itemsPerPage, (page + 1) * itemsPerPage);
 
   const summaryStats = useMemo(() => {
     const total = orderedAuditLogs.length;
@@ -385,50 +424,49 @@ export default function AdminAuditPage() {
     return { total, success, warning, failed };
   }, [orderedAuditLogs]);
 
-  const moduleCards = useMemo(() => {
-    return [
-      {
-        title: 'Authentication',
-        count: orderedAuditLogs.filter((log) => log.module === 'Authentication').length,
-        detail: 'Logins, logouts, and credential flows',
-        icon: <IoShieldCheckmarkOutline size={22} />
-      },
-      {
-        title: 'Appointments',
-        count: orderedAuditLogs.filter((log) => log.module === 'Appointments').length,
-        detail: 'Scheduling, completion, and rescheduling',
-        icon: <IoCalendarOutline size={22} />
-      },
-      {
-        title: 'Settings',
-        count: orderedAuditLogs.filter((log) => log.module === 'Settings').length,
-        detail: 'Account profile, password, and email security changes',
-        icon: <IoSettingsOutline size={22} />
-      },
-      {
-        title: 'Inventory',
-        count: orderedAuditLogs.filter((log) => log.module === 'Inventory').length,
-        detail: 'Stock movements and archive actions',
-        icon: <IoAlbumsOutline size={22} />
-      },
-      {
-        title: RECORDS_BILLING_MODULE_GROUP,
-        count: orderedAuditLogs.filter((log) => log.module === 'EMR' || log.module === 'Billing').length,
-        detail: 'Medical records, invoices, and sensitive edits',
-        icon: <IoDocumentTextOutline size={22} />
-      }
-    ];
+  const moduleOptionCards = useMemo(() => {
+    return MODULE_OPTIONS.map((module) => ({
+      title: module,
+      count: module === 'All Modules'
+        ? orderedAuditLogs.length
+        : orderedAuditLogs.filter((log) => log.module === module).length
+    }));
   }, [orderedAuditLogs]);
+
+  const selectedModuleSummary = useMemo(() => {
+    if (selectedModules.length === 0) return 'All Modules';
+    if (selectedModules.length === 1) return selectedModules[0];
+    return `${selectedModules.length} modules selected`;
+  }, [selectedModules]);
 
   useEffect(() => {
     setPage(0);
-  }, [filteredLogs.length]);
+  }, [sortedLogs.length, rowsPerPage]);
+
+  const handleRowsPerPageChange = (value: number) => {
+    setRowsPerPage(value);
+    setPage(0);
+  };
+
+  const handleModuleFilterToggle = (module: string) => {
+    setPage(0);
+
+    if (module === 'All Modules') {
+      setSelectedModules([]);
+      return;
+    }
+
+    setSelectedModules((currentModules) => (
+      currentModules.includes(module)
+        ? currentModules.filter((currentModule) => currentModule !== module)
+        : [...currentModules, module]
+    ));
+  };
 
   const clearFilters = () => {
-    setModuleFilter('All Modules');
     setRoleFilter('All Roles');
     setStatusFilter('All Statuses');
-    setSelectedModule('All Modules');
+    setSelectedModules([]);
     setSearchQuery('');
     setPage(0);
   };
@@ -460,11 +498,12 @@ export default function AdminAuditPage() {
 
   const openAuditExportModal = () => {
     const range = getAuditPresetRange('thisMonth');
+    const selectedReportModule = selectedModules.length === 1 ? selectedModules[0] : 'All Modules';
     setAuditReportPreset('thisMonth');
     setAuditReportStartDate(range.startDate);
     setAuditReportEndDate(range.endDate);
     setAuditReportBranch(ALL_BRANCHES_OPTION);
-    setAuditReportModule(selectedModule !== 'All Modules' ? selectedModule : moduleFilter);
+    setAuditReportModule(selectedReportModule);
     setAuditReportRole(roleFilter);
     setAuditReportStatus(statusFilter);
     setAuditReportSections({ summary: true, details: true });
@@ -684,34 +723,62 @@ export default function AdminAuditPage() {
     }
   };
 
+  const getAuditRowClassName = (status: AuditLogEntry['status']) => {
+    if (status === 'Warning') return 'auditRowWarning';
+    if (status === 'Failed') return 'auditRowFailed';
+    return '';
+  };
+
   return (
     <div className="biContainer">
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} />
 
-      <div className="bodyContainer">
+      <div className="bodyContainer auditBodyContainer">
         <div className="topContainer auditTopContainer">
           <div className="subTopContainer auditSubTopContainer">
-            <IoDocumentTextOutline size={20} color="#3d67ee" style={{ marginTop: '2px' }} />
-            <span className="blueText">Audit Logs</span>
+            <div className="auditHeroIcon">
+              <IoDocumentTextOutline size={25} />
+            </div>
+            <div className="auditHeroCopy">
+              <span>Clinic Oversight</span>
+              <h1>Audit Logs</h1>
+              <p>Track authentication, appointment, settings, inventory, record, and billing activity.</p>
+            </div>
           </div>
-          <div className="subTopContainer notificationContainer auditNotificationContainer">
-            {canExportAuditReport && (
-              <button
-                type="button"
-                className="export-btn auditExportPdfBtn"
-                onClick={openAuditExportModal}
-                disabled={exportingAuditReport}
-              >
-                <IoDownloadOutline size={16} />
-                <span>Export</span>
-                <IoChevronDownOutline size={12} />
-              </button>
-            )}
-            <Notifications
-              buttonClassName="iconButton"
-              iconClassName="blueIcon"
-              onViewAll={() => showAlert('info', 'Notifications', 'Notifications preview is not wired on this screen yet.')}
-            />
+          <div className="accountOverviewHeaderActions auditHeaderActions">
+            <div className="accountSearchRow accountHeaderSearchRow">
+              <div className="toolbarItem accountToolbarStaticIcon">
+                <IoSearchSharp size={18} className="iconDefault" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search audit logs..."
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(0); }}
+                className="searchInput accountHeaderSearchInput auditHeaderSearchInput"
+                maxLength={80}
+              />
+            </div>
+            <div className="accountHeaderDivider" aria-hidden="true" />
+            <div className="subTopContainer notificationContainer auditNotificationContainer">
+              {canExportAuditReport && (
+                <button
+                  type="button"
+                  className="export-btn auditExportPdfBtn"
+                  onClick={openAuditExportModal}
+                  disabled={exportingAuditReport}
+                >
+                  <IoDownloadOutline size={16} />
+                  <span>Export</span>
+                  <IoChevronDownOutline size={12} />
+                </button>
+              )}
+              <Notifications
+                buttonClassName="iconButton"
+                iconClassName="blueIcon"
+                onViewAll={() => showAlert('info', 'Notifications', 'Notifications preview is not wired on this screen yet.')}
+              />
+            </div>
           </div>
         </div>
 
@@ -760,96 +827,122 @@ export default function AdminAuditPage() {
                   </div>
                 </div>
 
-                <div className="auditMiniCardStack">
-                  {moduleCards.map((card) => (
-                    <button
-                      key={card.title}
-                      type="button"
-                      className={`auditMiniCard ${selectedModule === card.title ? 'auditMiniCardActive' : ''}`}
-                      onClick={() => setSelectedModule((current) => current === card.title ? 'All Modules' : card.title)}
-                    >
-                      <div className="auditMiniCardHeader">
-                        <div className="auditMiniCardIcon">{card.icon}</div>
-                        <span>{card.count} events</span>
-                      </div>
-                      <strong>{card.title}</strong>
-                      <p>{card.detail}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
+                <div className="auditModuleOptionsPanel">
+                  <div className="auditModuleOptionsHeader">
+                    <div>
+                      <span className="auditModuleOptionsEyebrow">Module Options</span>
+                      <h3>Filter activity by system area</h3>
+                    </div>
+                    <span>{selectedModuleSummary}</span>
+                  </div>
 
-              <div className="auditChipRow">
-                {MODULE_OPTIONS.map((module) => (
-                  <button
-                    key={module}
-                    type="button"
-                    className={`auditChip ${selectedModule === module ? 'auditChipActive' : ''}`}
-                    onClick={() => setSelectedModule(module)}
-                  >
-                    {module}
-                  </button>
-                ))}
+                  <div className="auditModuleOptionGrid">
+                    {moduleOptionCards.map((module) => (
+                      <button
+                        key={module.title}
+                        type="button"
+                        className={`auditModuleOption ${
+                          (module.title === 'All Modules' && selectedModules.length === 0) || selectedModules.includes(module.title)
+                            ? 'auditModuleOptionActive'
+                            : ''
+                        }`}
+                        onClick={() => handleModuleFilterToggle(module.title)}
+                        aria-pressed={(module.title === 'All Modules' && selectedModules.length === 0) || selectedModules.includes(module.title)}
+                      >
+                        <span className="auditModuleOptionIcon">{getModuleIcon(module.title, 17)}</span>
+                        <span className="auditModuleOptionText">{module.title}</span>
+                        <span className="auditModuleOptionCount">{module.count}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="tableToolbar">
                 <div className="searchFilterSection">
-                  <div className="toolbarItem" onMouseEnter={() => setSearchHovered(true)} onMouseLeave={() => setSearchHovered(false)}>
-                    <button className="iconButton" onClick={() => setSearchVisible(!searchVisible)}>
-                      <IoSearchSharp size={25} color={searchVisible ? '#afccf8' : '#3d67ee'} />
-                    </button>
-                    {searchHovered && <div className="tooltip">Search</div>}
-                  </div>
-
-                  {searchVisible && (
-                    <input
-                      type="text"
-                      placeholder="Search actor, module, event, or target..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="searchInput auditSearchInput"
-                      maxLength={80}
-                    />
-                  )}
-
-                  <div className="toolbarItem" onMouseEnter={() => setFilterHovered(true)} onMouseLeave={() => setFilterHovered(false)}>
-                    <button className="iconButton" onClick={() => setFilterVisible(!filterVisible)}>
-                      <IoFilterSharp size={25} color={filterVisible ? '#afccf8' : '#3d67ee'} />
-                    </button>
-                    {filterHovered && <div className="tooltip">Filter</div>}
-                  </div>
-
-                  {filterVisible && (
-                    <div className="filterSection auditFilterSection">
-                      <select value={moduleFilter} className="filterSelect wide" onChange={(e) => setModuleFilter(e.target.value)}>
-                        {MODULE_OPTIONS.map((option) => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
-                      </select>
-
-                      <select value={roleFilter} className="filterSelect wide" onChange={(e) => setRoleFilter(e.target.value)}>
-                        {ROLE_OPTIONS.map((option) => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
-                      </select>
-
-                      <select value={statusFilter} className="filterSelect wide" onChange={(e) => setStatusFilter(e.target.value)}>
-                        {STATUS_OPTIONS.map((option) => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
-                      </select>
-
-                      <button onClick={clearFilters} className="clearFilterBtn">
-                        <IoCloseCircleSharp size={15} color="#ffffff" style={{ marginTop: '1px' }} />
-                        <span>Clear Filters</span>
+                  <div className="accountFilterRow">
+                    <div className="toolbarItem" onMouseEnter={() => setFilterHovered(true)} onMouseLeave={() => setFilterHovered(false)}>
+                      <button className="iconButton" onClick={() => setFilterVisible(!filterVisible)}>
+                        <IoFilterSharp size={18} className={filterVisible ? 'iconActive' : 'iconDefault'} />
                       </button>
+                      {filterHovered && <div className="tooltip">Filter</div>}
                     </div>
-                  )}
+
+                    {filterVisible && (
+                      <div className="filterSection auditFilterSection">
+                        <select value={roleFilter} className="filterSelect wide" onChange={(e) => { setRoleFilter(e.target.value); setPage(0); }}>
+                          {ROLE_OPTIONS.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
+
+                        <select value={statusFilter} className="filterSelect wide" onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
+                          {STATUS_OPTIONS.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
+
+                        <button onClick={clearFilters} className="clearFilterBtn">
+                          <IoCloseCircleSharp size={15} color="#ffffff" style={{ marginTop: '1px' }} />
+                          <span>Clear Filters</span>
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="accountFilterDivider" aria-hidden="true" />
+
+                    <div className="accountSettingsDropdownContainer auditSettingsDropdownContainer">
+                      <div className="toolbarItem">
+                        <button
+                          className="iconButton accountSortIconButton auditSortIconButton"
+                          onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
+                          aria-label="Audit table settings"
+                        >
+                          <RiListSettingsLine size={19} className={showSettingsDropdown ? 'iconActive' : 'iconDefault'} />
+                        </button>
+                      </div>
+                      {showSettingsDropdown && (
+                        <div className="accountSettingsDropdown auditSettingsDropdown">
+                          <div className="accountSettingsSection">
+                            <label>Sort By</label>
+                            <select
+                              value={sortOption}
+                              onChange={(e) => { setSortOption(e.target.value as AuditSortOption); setPage(0); }}
+                              className="accountSettingsSelect"
+                            >
+                              {AUDIT_SORT_OPTIONS.map(option => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="accountSettingsDivider" />
+                          <div className="accountSettingsSection">
+                            <label>Rows Per Page</label>
+                            <select
+                              value={rowsPerPage}
+                              onChange={(e) => handleRowsPerPageChange(parseInt(e.target.value, 10))}
+                              className="accountSettingsSelect"
+                            >
+                              {AUDIT_ROWS_PER_PAGE_OPTIONS.map(option => (
+                                <option key={option} value={option}>{option} per page</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="actionSection auditActionMeta">
-                  <span>{auditStatusMessage || `${filteredLogs.length} visible log entries`}</span>
+                  <span>{auditStatusMessage || `${sortedLogs.length} visible log entries`}</span>
                 </div>
+              </div>
+
+              <div className="auditLegendRow">
+                <div className="auditLegendItem"><IoArrowUpCircleOutline size={16} color="#1F7A3F" /><span>Success: completed actions</span></div>
+                <div className="auditLegendItem"><IoAlertCircleOutline size={16} color="#a86200" /><span>Warning: sensitive or reviewable actions</span></div>
+                <div className="auditLegendItem"><IoArrowDownCircleOutline size={16} color="#b42318" /><span>Failed: rejected or incomplete actions</span></div>
               </div>
 
               <div className="tableWrapper">
@@ -878,17 +971,11 @@ export default function AdminAuditPage() {
                         });
 
                         return (
-                          <tr key={log.id}>
+                          <tr key={log.id} className={getAuditRowClassName(log.status)}>
                             <td>
                               <div className="auditModuleCell">
                                 <div className="auditModuleIcon">
-                                  {log.module === 'Authentication' && <IoShieldCheckmarkOutline size={18} color="#3d67ee" />}
-                                  {log.module === 'Appointments' && <IoCalendarOutline size={18} color="#3d67ee" />}
-                                  {log.module === 'Settings' && <IoSettingsOutline size={18} color="#3d67ee" />}
-                                  {log.module === 'Inventory' && <IoAlbumsOutline size={18} color="#3d67ee" />}
-                                  {log.module !== 'Authentication' && log.module !== 'Appointments' && log.module !== 'Settings' && log.module !== 'Inventory' && (
-                                    <IoPeopleOutline size={18} color="#3d67ee" />
-                                  )}
+                                  {getModuleIcon(log.module, 18)}
                                 </div>
                                 <div className="auditCellStack">
                                   <span className="tableFont">{log.module}</span>
@@ -942,17 +1029,11 @@ export default function AdminAuditPage() {
                       });
 
                       return (
-                        <article key={`mobile-${log.id}`} className="auditMobileCard">
+                        <article key={`mobile-${log.id}`} className={`auditMobileCard ${getAuditRowClassName(log.status)}`}>
                           <div className="auditMobileTopRow">
                             <div className="auditModuleCell">
                               <div className="auditModuleIcon">
-                                {log.module === 'Authentication' && <IoShieldCheckmarkOutline size={18} color="#3d67ee" />}
-                                {log.module === 'Appointments' && <IoCalendarOutline size={18} color="#3d67ee" />}
-                                {log.module === 'Settings' && <IoSettingsOutline size={18} color="#3d67ee" />}
-                                {log.module === 'Inventory' && <IoAlbumsOutline size={18} color="#3d67ee" />}
-                                {log.module !== 'Authentication' && log.module !== 'Appointments' && log.module !== 'Settings' && log.module !== 'Inventory' && (
-                                  <IoPeopleOutline size={18} color="#3d67ee" />
-                                )}
+                                {getModuleIcon(log.module, 18)}
                               </div>
                               <div className="auditCellStack">
                                 <span className="tableFont">{log.module}</span>
@@ -996,33 +1077,18 @@ export default function AdminAuditPage() {
                     <div className="noData">No audit entries match the current filters.</div>
                   )}
                 </div>
-
-                <div className="auditLegendRow">
-                  <div className="auditLegendItem"><IoArrowUpCircleOutline size={16} color="#1F7A3F" /><span>Success: completed actions</span></div>
-                  <div className="auditLegendItem"><IoAlertCircleOutline size={16} color="#a86200" /><span>Warning: sensitive or reviewable actions</span></div>
-                  <div className="auditLegendItem"><IoArrowDownCircleOutline size={16} color="#b42318" /><span>Failed: rejected or incomplete actions</span></div>
-                </div>
-
-                {filteredLogs.length > 0 && (
-                  <div className="pagination">
-                    <button className="paginationBtn" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={page === 0}>
-                      Previous
+                {sortedLogs.length > 0 && (
+                  <div className="pagination accountPagination auditPagination">
+                    <button className="paginationBtn paginationPrevBtn" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={page === 0}>
+                      <IoChevronBackOutline size={15} />
+                      <span>Previous</span>
                     </button>
-                    <div className="auditPaginationNumbers">
-                      {paginationNumbers.map((pageNumber) => (
-                        <button
-                          key={pageNumber}
-                          type="button"
-                          className={`auditPageNumber ${pageNumber === page ? 'auditPageNumberActive' : ''}`}
-                          onClick={() => setPage(pageNumber)}
-                        >
-                          {pageNumber + 1}
-                        </button>
-                      ))}
-                    </div>
-                    <span className="paginationInfo">Page {page + 1} of {totalPages}</span>
-                    <button className="paginationBtn" onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))} disabled={page === totalPages - 1}>
-                      Next
+                    <span className="paginationInfo">
+                      Showing {sortedLogs.length === 0 ? 0 : page * itemsPerPage + 1} to {Math.min((page + 1) * itemsPerPage, sortedLogs.length)} of {sortedLogs.length} items
+                    </span>
+                    <button className="paginationBtn paginationNextBtn" onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))} disabled={page === totalPages - 1}>
+                      <span>Next</span>
+                      <IoChevronForwardOutline size={15} />
                     </button>
                   </div>
                 )}

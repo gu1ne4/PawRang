@@ -1947,26 +1947,25 @@ export default function AdminSettingsPage({ settingsMode = 'admin' }: AdminSetti
     <div className="biContainer">
       <Navbar currentUser={currentUser} onLogout={handleLogoutPress} onNavigateAttempt={handleProtectedSettingsNavigation} />
 
-      <div className="bodyContainer">
+      <div className="bodyContainer settingsBodyContainer">
         <div className="topContainer settingsTopContainer">
           <div className="subTopContainer settingsSubTopContainer">
-            <div className="settingsSubTopLeft">
-              <IoSettingsOutline size={23} className="blueIcon" />
-              <span className="blueText">Settings</span>
+            <div className="settingsHeroIcon">
+              <IoSettingsOutline size={25} />
             </div>
-
-            <div className="settingsHeaderStatus">
-              <span>Current Panel:</span>
-              <strong>{activePanelLabel}</strong>
+            <div className="settingsHeroCopy">
+              <span>Admin Settings</span>
+              <h1>Settings</h1>
+              <p>Manage profile details, password updates, and OTP email verification.</p>
             </div>
-
           </div>
 
           {!isDoctorSettings && (
+          <div className="settingsHeaderActions">
             <div className="subTopContainer notificationContainer settingsNotificationContainer">
               <Notifications
-                buttonClassName="iconButton"
-                iconClassName="blueIcon"
+                buttonClassName="settingsIconButton"
+                iconClassName="settingsBlueIcon"
                 onViewAll={() => {
                   console.log('View all notifications');
                 }}
@@ -1978,48 +1977,40 @@ export default function AdminSettingsPage({ settingsMode = 'admin' }: AdminSetti
                 }}
               />
             </div>
+          </div>
           )}
         </div>
 
         <div className="tableContainer settingsTableContainer settingsTableNoHeader">
-          <div className={`settingsHero ${showFutureDefenseSettings ? '' : 'settingsHeroDefenseMode'}`}>
-            <div className="settingsHeroPanel">
-              <span className="settingsHeroEyebrow">{settingsHeroCopy.eyebrow}</span>
-              <h2>{settingsHeroCopy.title}</h2>
-              <p>
-                {settingsHeroCopy.description}
-              </p>
-              <div className="settingsHeroPills">
-                <span>Editable profile image</span>
-                <span>Password validation</span>
-                <span>Email OTP verification</span>
-              </div>
-            </div>
-
-            {showFutureDefenseSettings && (
-              <div className="settingsSummaryGrid">
-                <div className="settingsSummaryCard">
-                  <div className="settingsSummaryIcon blue"><IoShieldCheckmarkOutline size={18} /></div>
-                  <strong>3 security actions</strong>
-                  <span>Profile, password, and email management with validation.</span>
-                </div>
-                <div className="settingsSummaryCard">
-                  <div className="settingsSummaryIcon cyan"><IoPricetagOutline size={18} /></div>
-                  <strong>{services.length} services</strong>
-                  <span>Based on the Billing module structure and editable here.</span>
-                </div>
-                <div className="settingsSummaryCard">
-                  <div className="settingsSummaryIcon pink"><IoAppsOutline size={18} /></div>
-                  <strong>{announcements.length} homepage announcements</strong>
-                  <span>Target Web Home, Mobile App Home, or both homepages.</span>
-                </div>
-                <div className="settingsSummaryCard">
-                  <div className="settingsSummaryIcon amber"><IoGlobeOutline size={18} /></div>
-                  <strong>Focused editor flow</strong>
-                  <span>Click a preview area first, then edit only that part in the side pane.</span>
-                </div>
-              </div>
-            )}
+          <div className="settingsScopeStrip">
+            <button
+              type="button"
+              className={`settingsSummaryCard ${
+                activePanel === 'account'
+                  ? 'settingsSummaryCardActive'
+                  : activePanel === 'security' ? 'settingsSummaryCardInactive' : ''
+              }`}
+              onClick={() => setActivePanel('account')}
+              aria-pressed={activePanel === 'account'}
+            >
+              <div className="settingsSummaryIcon blue"><IoPeopleOutline size={18} /></div>
+              <strong>Account profile</strong>
+              <span>Update admin identity, assigned clinic, contact number, and display photo.</span>
+            </button>
+            <button
+              type="button"
+              className={`settingsSummaryCard ${
+                activePanel === 'security'
+                  ? 'settingsSummaryCardActive'
+                  : activePanel === 'account' ? 'settingsSummaryCardInactive' : ''
+              }`}
+              onClick={() => setActivePanel('security')}
+              aria-pressed={activePanel === 'security'}
+            >
+              <div className="settingsSummaryIcon red"><IoShieldCheckmarkOutline size={18} /></div>
+              <strong>Security controls</strong>
+              <span>Change password and verify email updates through the OTP confirmation modal.</span>
+            </button>
           </div>
 
           <div className="settingsTabRow">
@@ -2031,22 +2022,6 @@ export default function AdminSettingsPage({ settingsMode = 'admin' }: AdminSetti
               <IoShieldCheckmarkOutline size={16} />
               <span>Security</span>
             </button>
-            {showFutureDefenseSettings && (
-              <>
-                <button className={`settingsTab ${activePanel === 'developer' ? 'active' : ''}`} onClick={() => handleSettingsPanelChange('developer')}>
-                  <IoLayersOutline size={16} />
-                  <span>Developer Settings</span>
-                </button>
-                <button className={`settingsTab ${activePanel === 'homepage' ? 'active' : ''}`} onClick={() => handleSettingsPanelChange('homepage')}>
-                  <IoGlobeOutline size={16} />
-                  <span>Homepage Editor</span>
-                </button>
-                <button className={`settingsTab ${activePanel === 'announcements' ? 'active' : ''}`} onClick={() => handleSettingsPanelChange('announcements')}>
-                  <IoAppsOutline size={16} />
-                  <span>Announcements</span>
-                </button>
-              </>
-            )}
           </div>
 
           {activePanel === 'account' && (

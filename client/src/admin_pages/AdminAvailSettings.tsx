@@ -8,6 +8,7 @@ import {
   IoTodayOutline, IoTimeOutline, IoDocumentTextOutline, IoSettingsOutline,
   IoLogOutOutline, IoNotifications, IoCheckmarkCircleOutline, IoCloseCircleOutline,
   IoAlertCircleOutline, IoChevronUp, IoChevronDown, IoTrashOutline, IoClose, IoCreateOutline,
+  IoCopyOutline, IoArrowBackOutline,
   IoChevronBack, IoChevronForward // 🟢 Restored Custom Calendar Icons
 } from 'react-icons/io5';
 
@@ -351,6 +352,10 @@ const getSpecialEventIdentifier = (event: any) => {
   return getSpecialEventDate(event);
 };
 
+const DAYS_OF_WEEK = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const DEFAULT_START_TIME = '8:00 AM';
+const DEFAULT_END_TIME = '9:00 AM';
+
 // ==========================================
 //  MAIN COMPONENT
 // ==========================================
@@ -360,6 +365,7 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
   const isActive = location.pathname === '/AvailSettings';
   const isDoctorMode = viewerRole === 'doctor';
   const isViewOnly = readOnly || isDoctorMode;
+  const isBulkTimeSlotPage = location.pathname === '/admin/availability/bulk-time-slots';
 
   const API_URL = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:5000';
 
@@ -379,6 +385,8 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
   
   const [modalVisible, setModalVisible] = useState(false);
   const [modalVisible2, setModalVisible2] = useState(false);
+  const [bulkSelectedDays, setBulkSelectedDays] = useState<string[]>([]);
+  const [savingBulkTimeSlots, setSavingBulkTimeSlots] = useState(false);
 
   // Time slots storage
   const [timeSlotsByDay, setTimeSlotsByDay] = useState<any>({
@@ -406,9 +414,6 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
   const [editingSpecialDateOriginalDay, setEditingSpecialDateOriginalDay] = useState<number | null>(null);
 
   const [loadingTimeSlots, setLoadingTimeSlots] = useState(false);
-
-  const DEFAULT_START_TIME = '8:00 AM';
-  const DEFAULT_END_TIME = '9:00 AM';
 
   const specialDateMap = useMemo(() => {
     return specialDates.reduce((dates: Record<string, boolean>, event: any) => {
@@ -494,6 +499,19 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
     loadAppointmentsForCalendar(); 
   }, []);
 
+  useEffect(() => {
+    if (!isBulkTimeSlotPage) return;
+
+    setCurrentEditingDay('bulk');
+    setTimeSlotsByDay((prev: any) => ({
+      ...prev,
+      bulk: prev.bulk || []
+    }));
+    setStartTime((prev) => prev || DEFAULT_START_TIME);
+    setEndTime((prev) => prev || DEFAULT_END_TIME);
+    setSlotIntervalMinutes((prev) => prev || '30');
+  }, [isBulkTimeSlotPage]);
+
   const loadInitialData = async () => {
     try {
       const dayData = await availabilityService.getDayAvailability();
@@ -555,6 +573,38 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
       setDayAvailability((prev: any) => ({ ...prev, [dayKey]: !newValue }));
       console.error('Failed to save day availability:', error);
     }
+  };
+
+  const openBulkTimeSlotPage = () => {
+    setCurrentEditingDay('bulk');
+    setStartTime(DEFAULT_START_TIME);
+    setEndTime(DEFAULT_END_TIME);
+    setSlotIntervalMinutes('30');
+    setBreakTimes([]);
+    setTimeSlotsByDay((prev: any) => ({ ...prev, bulk: [] }));
+    navigate('/admin/availability/bulk-time-slots');
+  };
+
+  const goBackToAvailabilitySettings = () => {
+    navigate('/admin/availability');
+  };
+
+  const toggleBulkDay = (day: string) => {
+    if (!dayAvailability[day]) return;
+
+    setBulkSelectedDays((prev) => (
+      prev.includes(day)
+        ? prev.filter((selectedDay) => selectedDay !== day)
+        : [...prev, day]
+    ));
+  };
+
+  const selectAllWorkingDays = () => {
+    setBulkSelectedDays(DAYS_OF_WEEK.filter((day) => dayAvailability[day]));
+  };
+
+  const clearBulkSelectedDays = () => {
+    setBulkSelectedDays([]);
   };
 
   const addBreakTime = () => {
@@ -938,6 +988,59 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
     }
   };
 
+  const saveBulkTimeSlotsToDatabase = async () => {
+    if (bulkSelectedDays.length === 0) {
+      window.alert('Select at least one working day.');
+      return;
+    }
+
+    try {
+      setSavingBulkTimeSlots(true);
+      const bulkSlots = timeSlotsByDay.bulk || [];
+      const generatorSettings = buildSlotGeneratorSettingsPayload();
+      const slotsToSave = bulkSlots.map((slot: any) => {
+        const payload: any = {
+          start_time: formatTo24Hour(slot.startTime),
+          end_time: formatTo24Hour(slot.endTime)
+        };
+
+        if (slot.id && !String(slot.id).startsWith('temp-')) {
+          payload.id = slot.id;
+        }
+
+        return payload;
+      });
+
+      const result = await availabilityService.saveBulkTimeSlots(bulkSelectedDays, generatorSettings, slotsToSave);
+      const updatedSlotsByDay = result?.timeSlotsByDay || {};
+
+      setTimeSlotsByDay((prev: any) => {
+        const next = { ...prev };
+        bulkSelectedDays.forEach((day) => {
+          const savedSlots = updatedSlotsByDay[day] || [];
+          next[day] = savedSlots.map((slot: any) => ({
+            id: slot.id,
+            startTime: slot.start_time,
+            endTime: slot.end_time
+          }));
+        });
+        next.bulk = bulkSlots;
+        return next;
+      });
+
+      showAlert(
+        'success',
+        'Time Slots Saved',
+        `Applied ${bulkSlots.length} time slot(s) to ${bulkSelectedDays.length} working day(s).`
+      );
+    } catch (error) {
+      console.error('Failed to save bulk time slots:', error);
+      window.alert('Failed to save bulk time slots. Please try again.');
+    } finally {
+      setSavingBulkTimeSlots(false);
+    }
+  };
+
   const cancelTimeSlotEditing = () => {
     if (currentEditingDay) {
       availabilityService.getTimeSlotsForDay(currentEditingDay)
@@ -959,8 +1062,6 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
     setSlotIntervalMinutes('30');
     setBreakTimes([]);
   };
-
-  const DAYS_OF_WEEK = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
   return (
     <div className="biContainer">
@@ -1079,57 +1180,319 @@ export default function AdminAvailSettings({ viewerRole = 'admin', readOnly = fa
             </div>
           </div>
 
-          {/* RIGHT SIDE (Availability Toggles) */}
+          {/* RIGHT SIDE (Availability Toggles / Bulk Time Slots) */}
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', flex: 2, overflowY: 'auto', boxShadow: '0 0 18px rgba(0,0,0,0.05)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-              <h2 style={{ fontSize: '28px', fontWeight: '700', margin: 0 }}>Availability Settings</h2>
-              {isViewOnly && (
-                <span style={{ border: '1px solid #cdd8ff', borderRadius: '999px', color: '#3d67ee', backgroundColor: '#f4f7ff', padding: '6px 12px', fontSize: '12px', fontWeight: 700 }}>
-                  View Only
-                </span>
-              )}
-            </div>
-            <p style={{ fontSize: '14px', marginTop: '10px', color: '#888' }}>
-              {isViewOnly ? 'View available days, working hours, and appointment slots for vet bookings.' : 'Manage available days, working hours, and appointment slots for vet bookings.'}
-            </p>
+            {isBulkTimeSlotPage ? (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                  <div>
+                    <h2 style={{ fontSize: '28px', fontWeight: '700', margin: 0 }}>Bulk Time Slot Settings</h2>
+                    <p style={{ fontSize: '14px', marginTop: '10px', color: '#888' }}>Apply one slot setup to selected working days.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={goBackToAvailabilitySettings}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '10px 16px',
+                      backgroundColor: '#f5f7fb',
+                      border: '1px solid #d9e1f2',
+                      borderRadius: '8px',
+                      color: '#3d67ee',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <IoArrowBackOutline size={18} />
+                    Back
+                  </button>
+                </div>
 
-            <div style={{ marginTop: '20px' }}>
-              {DAYS_OF_WEEK.map((day) => (
-                <React.Fragment key={day}>
-                  <div style={{ display: 'flex', alignItems: 'center', opacity: dayAvailability[day] ? 1 : 0.6, padding: '15px 0' }}>
-                    <label className="switch" style={{ margin: 0, marginRight: '20px' }}>
-                      <input 
-                        type="checkbox" 
-                        checked={dayAvailability[day]} 
-                        disabled={isViewOnly}
-                        onChange={() => handleDayToggle(day)} 
-                      />
-                      <span className="slider"></span>
-                    </label>
-                    <span style={{ fontSize: '16px', fontWeight: '500', color: dayAvailability[day] ? '#000' : '#666', width: '100px', textTransform: 'capitalize' }}>
-                      {day}
-                    </span>
-                    
-                    <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
-                        <button 
-                        onClick={() => dayAvailability[day] && openTimeSlotModalForDay(day)}
-                        disabled={!dayAvailability[day]}
-                        style={{
-                            display: 'flex', alignItems: 'center', background: 'none', border: 'none', 
-                            cursor: dayAvailability[day] ? 'pointer' : 'not-allowed',
-                            color: dayAvailability[day] ? '#3d67ee' : '#999',
-                            fontWeight: '600', fontSize: '15px'
-                        }}
-                        >
-                        <span>{isViewOnly ? 'View Slots' : 'Time Slot'}</span>
-                        <IoTimeOutline size={18} style={{ marginLeft: '8px' }} />
-                        </button>
+                <div style={{ marginTop: '24px', borderBottom: '1px solid #eef1f6', paddingBottom: '22px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                    <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Apply To</h3>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={selectAllWorkingDays}
+                        style={{ padding: '9px 13px', backgroundColor: '#eef4ff', border: '1px solid #cfe0ff', borderRadius: '8px', color: '#315de8', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        All Working Days
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearBulkSelectedDays}
+                        style={{ padding: '9px 13px', backgroundColor: '#fff', border: '1px solid #e1e5ee', borderRadius: '8px', color: '#64748b', fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Clear
+                      </button>
                     </div>
                   </div>
-                  {day !== 'saturday' && <div style={{ height: '1px', backgroundColor: '#f0f0f0' }}></div>}
-                </React.Fragment>
-              ))}
-            </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
+                    {DAYS_OF_WEEK.map((day) => {
+                      const isWorkingDay = Boolean(dayAvailability[day]);
+                      const isSelected = bulkSelectedDays.includes(day);
+                      return (
+                        <button
+                          type="button"
+                          key={day}
+                          onClick={() => toggleBulkDay(day)}
+                          disabled={!isWorkingDay}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '10px',
+                            minHeight: '44px',
+                            padding: '10px 12px',
+                            border: isSelected ? '1px solid #3d67ee' : '1px solid #e1e5ee',
+                            borderRadius: '8px',
+                            backgroundColor: isSelected ? '#eef4ff' : '#fff',
+                            color: !isWorkingDay ? '#a3aab8' : '#111827',
+                            cursor: isWorkingDay ? 'pointer' : 'not-allowed',
+                            fontWeight: 700,
+                            textTransform: 'capitalize',
+                            opacity: isWorkingDay ? 1 : 0.55
+                          }}
+                        >
+                          <span>{day}</span>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            readOnly
+                            tabIndex={-1}
+                            style={{ width: '16px', height: '16px', accentColor: '#3d67ee' }}
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'row', gap: '30px', marginTop: '24px', minHeight: '420px' }}>
+                  <div style={{ flex: 1, minWidth: '250px' }}>
+                    <TimeSelector label="Opening Time" value={startTime} onChange={setStartTime} />
+                    <TimeSelector label="Closing Time" value={endTime} onChange={setEndTime} />
+                    <div className="formGroup">
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '8px', color: '#333' }}>
+                        Slot Interval
+                      </label>
+                      <input
+                        type="number"
+                        min="5"
+                        max="240"
+                        step="5"
+                        placeholder="30"
+                        value={slotIntervalMinutes}
+                        onChange={(event) => setSlotIntervalMinutes(event.target.value.replace(/[^\d]/g, ''))}
+                        className="formInput"
+                      />
+                    </div>
+
+                    <div className="formGroup">
+                      <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '8px', color: '#333' }}>
+                        Break Times
+                      </label>
+                      {breakTimes.length === 0 ? (
+                        <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '10px' }}>
+                          No break time configured.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          {breakTimes.map((breakItem) => (
+                            <div
+                              key={breakItem.id}
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns: '1fr 1fr auto',
+                                gap: '8px',
+                                alignItems: 'center'
+                              }}
+                            >
+                              <input
+                                type="time"
+                                value={breakItem.startTime}
+                                onChange={(event) => updateBreakTime(breakItem.id, 'startTime', event.target.value)}
+                                className="formInput"
+                                aria-label="Break start time"
+                              />
+                              <input
+                                type="time"
+                                value={breakItem.endTime}
+                                onChange={(event) => updateBreakTime(breakItem.id, 'endTime', event.target.value)}
+                                className="formInput"
+                                aria-label="Break end time"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeBreakTime(breakItem.id)}
+                                title="Remove break time"
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px' }}
+                              >
+                                <IoTrashOutline size={18} color="#d32f2f" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={addBreakTime}
+                        style={{
+                          width: '100%',
+                          marginTop: '10px',
+                          padding: '10px 12px',
+                          border: '1px solid #d9e1f2',
+                          borderRadius: '8px',
+                          backgroundColor: '#fff',
+                          color: '#3d67ee',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        + Add Another Break Time
+                      </button>
+                    </div>
+
+                    <button onClick={generateSlots} className="gradientBtn submitBtn" style={{ width: '100%', margin: 0, marginTop: '10px' }}>
+                      Generate Slots
+                    </button>
+                  </div>
+
+                  <div style={{ flex: 1.5, display: 'flex', flexDirection: 'column', borderLeft: '1px solid #eee', paddingLeft: '30px', minWidth: '300px' }}>
+                    <div style={{ flex: 1, overflowY: 'auto' }}>
+                      <table className="dataTable" style={{ width: '100%' }}>
+                        <thead>
+                          <tr>
+                            <th style={{ textAlign: 'left' }}>Start</th>
+                            <th style={{ textAlign: 'left' }}>End</th>
+                            <th style={{ textAlign: 'right' }}>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {timeSlotsByDay.bulk?.length === 0 ? (
+                            <tr><td colSpan={3} style={{ textAlign: 'center', padding: '30px', color: '#999', fontStyle: 'italic' }}>No time slots configured</td></tr>
+                          ) : (
+                            timeSlotsByDay.bulk?.map((item: any) => (
+                              <tr key={item.id}>
+                                <td>{formatToAMPM(item.startTime)}</td>
+                                <td>{formatToAMPM(item.endTime)}</td>
+                                <td style={{ textAlign: 'right' }}>
+                                  <button onClick={() => deleteSlot(item.id)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+                                    <IoTrashOutline size={20} color="#d32f2f" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div style={{ textAlign: 'center', fontSize: '12px', color: '#666', marginTop: '15px' }}>
+                      {(timeSlotsByDay.bulk || []).length} time slot(s) configured
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px', marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #eee' }}>
+                  <button onClick={goBackToAvailabilitySettings} style={{ padding: '10px 25px', backgroundColor: '#f5f5f5', border: 'none', borderRadius: '8px', cursor: 'pointer', color: '#d32f2f', fontWeight: '600' }}>Cancel</button>
+                  <button
+                    onClick={saveBulkTimeSlotsToDatabase}
+                    disabled={savingBulkTimeSlots}
+                    style={{
+                      padding: '10px 25px',
+                      backgroundColor: savingBulkTimeSlots ? '#9aaef7' : '#3d67ee',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: savingBulkTimeSlots ? 'not-allowed' : 'pointer',
+                      color: 'white',
+                      fontWeight: '600'
+                    }}
+                  >
+                    {savingBulkTimeSlots ? 'Saving...' : 'Save to Selected Days'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                  <div>
+                    <h2 style={{ fontSize: '28px', fontWeight: '700', margin: 0 }}>Availability Settings</h2>
+                    <p style={{ fontSize: '14px', marginTop: '10px', color: '#888' }}>
+                      {isViewOnly ? 'View available days, working hours, and appointment slots for vet bookings.' : 'Manage available days, working hours, and appointment slots for vet bookings.'}
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    {isViewOnly && (
+                      <span style={{ border: '1px solid #cdd8ff', borderRadius: '999px', color: '#3d67ee', backgroundColor: '#f4f7ff', padding: '6px 12px', fontSize: '12px', fontWeight: 700 }}>
+                        View Only
+                      </span>
+                    )}
+                    {!isViewOnly && (
+                      <button
+                        type="button"
+                        onClick={openBulkTimeSlotPage}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '10px 16px',
+                          backgroundColor: '#3d67ee',
+                          border: 'none',
+                          borderRadius: '8px',
+                          color: 'white',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <IoCopyOutline size={18} />
+                        Bulk Time Slots
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '20px' }}>
+                  {DAYS_OF_WEEK.map((day) => (
+                    <React.Fragment key={day}>
+                      <div style={{ display: 'flex', alignItems: 'center', opacity: dayAvailability[day] ? 1 : 0.6, padding: '15px 0' }}>
+                        <label className="switch" style={{ margin: 0, marginRight: '20px' }}>
+                          <input
+                            type="checkbox"
+                            checked={dayAvailability[day]}
+                            disabled={isViewOnly}
+                            onChange={() => handleDayToggle(day)}
+                          />
+                          <span className="slider"></span>
+                        </label>
+                        <span style={{ fontSize: '16px', fontWeight: '500', color: dayAvailability[day] ? '#000' : '#666', width: '100px', textTransform: 'capitalize' }}>
+                          {day}
+                        </span>
+
+                        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+                          <button
+                            onClick={() => dayAvailability[day] && openTimeSlotModalForDay(day)}
+                            disabled={!dayAvailability[day]}
+                            style={{
+                              display: 'flex', alignItems: 'center', background: 'none', border: 'none',
+                              cursor: dayAvailability[day] ? 'pointer' : 'not-allowed',
+                              color: dayAvailability[day] ? '#3d67ee' : '#999',
+                              fontWeight: '600', fontSize: '15px'
+                            }}
+                          >
+                            <span>{isViewOnly ? 'View Slots' : 'Time Slot'}</span>
+                            <IoTimeOutline size={18} style={{ marginLeft: '8px' }} />
+                          </button>
+                        </div>
+                      </div>
+                      {day !== 'saturday' && <div style={{ height: '1px', backgroundColor: '#f0f0f0' }}></div>}
+                    </React.Fragment>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
 
