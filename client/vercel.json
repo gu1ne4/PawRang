@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api-proxy/:path*",
+      "destination": "https://pawrang-backend-hosting-production.up.railway.app/:path*"
+    },
+    { 
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
